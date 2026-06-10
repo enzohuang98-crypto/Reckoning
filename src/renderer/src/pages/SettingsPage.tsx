@@ -8,7 +8,9 @@
 
 import { useEffect, useState } from 'react'
 import {
+  ALL_PROVIDER_IDS,
   PROVIDER_DEFAULT_MODELS,
+  PROVIDER_LABEL,
   type AIProviderId
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
@@ -21,12 +23,7 @@ const PATH_SOURCE_LABEL: Record<NonNullable<EngineStatus['pathSource']>, string>
   resource: '打包資源'
 }
 
-const PROVIDERS: AIProviderId[] = ['anthropic', 'openai', 'gemini']
-const PROVIDER_LABEL: Record<AIProviderId, string> = {
-  anthropic: 'Anthropic Claude',
-  openai: 'OpenAI（stub）',
-  gemini: 'Google Gemini（stub）'
-}
+const PROVIDERS = ALL_PROVIDER_IDS
 
 interface Props {
   settings: AppSettings
@@ -246,6 +243,10 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
                   engineStatus.pathSource
                     ? PATH_SOURCE_LABEL[engineStatus.pathSource]
                     : '無'
+                }${
+                  engineStatus.protocol
+                    ? `，協定：${engineStatus.protocol.toUpperCase()}`
+                    : ''
                 }）`
               : `⚠ ${engineStatus.message ?? `${engineStatus.engineName} 未就緒`}`}
             {engineStatus.resolvedPath && (

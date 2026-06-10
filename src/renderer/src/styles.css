@@ -137,7 +137,10 @@ body {
 }
 
 .palette-piece.active {
-  outline: 3px solid var(--accent-2);
+  /* 明顯的白色 ring + 光暈，選中狀態一眼可辨 */
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.18), 0 0 14px rgba(255, 255, 255, 0.6);
 }
 
 .fen-output {
@@ -159,6 +162,9 @@ body {
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  /* 按鈕文字不換行、不被 flex 同列的輸入框壓縮（修正「瀏覽…」溢出） */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn:hover {
@@ -420,4 +426,34 @@ body {
 .settings-page,
 .mistake-page {
   max-width: 760px;
+}
+
+/* 初始設定嚮導 */
+.setup-wizard {
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 48px 20px;
+  overflow: auto;
+}
+
+.setup-card {
+  width: 100%;
+  max-width: 640px;
+}
+
+.setup-card h2 {
+  margin: 0 0 6px;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+/* 嚮導內測試結果與按鈕同列對齊 */
+.setup-wizard .success-text,
+.setup-wizard .error-text {
+  margin-top: 0;
 }

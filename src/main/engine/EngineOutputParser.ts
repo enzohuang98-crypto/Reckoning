@@ -1,7 +1,9 @@
 /**
  * 引擎輸出解析器 (EngineOutputParser)
  *
- * 將 Pikafish (UCI) 的 stdout 文字行解析為結構化資料。
+ * 將引擎 stdout 文字行解析為結構化資料。
+ * 同時支援 UCI（score cp/mate <n>，如 Pikafish）與
+ * UCCI（score <n> 裸數值，如象棋小蟲/旋風/名手/烏雲）兩種 info 格式。
  * 純函式，便於單元測試，不持有任何子行程。
  */
 
@@ -44,10 +46,16 @@ export function parseInfoLine(line: string): EngineLine | null {
         timeMs = Number(tokens[++i])
         break
       case 'score': {
-        const kind = tokens[++i]
-        const value = Number(tokens[++i])
-        if (kind === 'cp') score = { kind: 'cp', value }
-        else if (kind === 'mate') score = { kind: 'mate', value }
+        const next = tokens[i + 1]
+        if (next === 'cp' || next === 'mate') {
+          // UCI：score cp <n> / score mate <n>
+          score = { kind: next, value: Number(tokens[i + 2]) }
+          i += 2
+        } else if (next !== undefined && Number.isFinite(Number(next))) {
+          // UCCI：score <n>（裸數值，視為厘子分）
+          score = { kind: 'cp', value: Number(next) }
+          i += 1
+        }
         break
       }
       case 'pv':

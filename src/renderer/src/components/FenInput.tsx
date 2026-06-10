@@ -36,6 +36,13 @@ export function FenInput({ initialFen = START_FEN, onValidBoard }: Props): JSX.E
         spellCheck={false}
         rows={2}
         onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter 直接套用 FEN（FEN 為單行，不需要換行）；輸入法選字中的 Enter 不觸發
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            apply()
+          }
+        }}
         placeholder="貼上或輸入 FEN，例如：rnbakabnr/9/1c5c1/..."
       />
       <div className="row gap">

@@ -4,7 +4,7 @@
 
 ## 一句話定位
 
-本機桌面應用：以 **Pikafish（本機 UCI 象棋引擎）** 做棋力判斷，再由 **LLM 把結構化引擎資料翻譯成人類能懂的講解**。引擎是事實來源，AI 只負責解釋。
+本機桌面應用：以 **本機象棋引擎**（Pikafish 等 UCI 引擎，或象棋小蟲/旋風/名手/烏雲等 UCCI 引擎）做棋力判斷，再由 **LLM 把結構化引擎資料翻譯成人類能懂的講解**。引擎是事實來源，AI 只負責解釋。
 
 ## 技術棧
 
@@ -31,8 +31,8 @@ src/
   main/                      # Electron 主行程（Node 環境）
     index.ts                 #   進入點：建視窗、註冊 IPC
     engine/
-      PikafishAdapter.ts     #   以子行程驅動 Pikafish (UCI)；找不到二進位會回報不可用
-      EngineOutputParser.ts  #   解析 UCI info/bestmove 行（純函式）
+      PikafishAdapter.ts     #   以子行程驅動引擎；UCI/UCCI 自動偵測；找不到二進位會回報不可用
+      EngineOutputParser.ts  #   解析 UCI/UCCI info/bestmove 行（純函式）
     ai/
       AIProvider.ts          #   Provider 工廠（依 id 建實例）
       promptBuilder.ts       #   由引擎資料組 prompt（內含護欄規則）
@@ -53,9 +53,9 @@ src/
   renderer/                  # React UI（瀏覽器環境，無 Node 權限）
     index.html
     src/
-      App.tsx                # 三分頁：分析 / 設定 / 錯題本
+      App.tsx                # 三分頁：分析 / 設定 / 錯題本；首啟動改顯示 SetupWizard
       components/            # BoardEditor / FenInput / XiangqiBoard / AnalysisPanel / GuessModePanel
-      pages/                 # SettingsPage / MistakeBookPage
+      pages/                 # SettingsPage / MistakeBookPage / SetupWizard
       logic/pieces.ts        # 棋子字形與調色盤
       storage/localSettings.ts  # localStorage（設定 + 錯題本）
   shared/                    # main 與 renderer 共用（純型別與純邏輯）
@@ -107,6 +107,20 @@ src/
 - Stage 4：AI 解釋流程。`AnthropicProvider` 真實呼叫 `@anthropic-ai/sdk`，
   `promptBuilder` 組裝引擎資料（含護欄），`ai:explain` IPC 自 `SecretStore` 取金鑰，
   AnalysisPanel 顯示解說與 token/成本。
+- Stage 5：UCCI 引擎支援 + 初始設定嚮導。
+  - **UCI/UCCI 雙協定**（`PikafishAdapter`）：握手時自動偵測——先送 `uci` 等 `uciok`，
+    2 秒逾時改送 `ucci` 等 `ucciok`；若引擎在偵測期間直接結束行程，以剩餘協定重啟再試。
+    偵測結果持久化於 `engine-config.json`（`engineProtocol` 欄位），下次直接以已知協定握手；
+    設定頁變更引擎路徑時重置為 null 重新偵測。
+  - **UCCI 與 UCI 的差異處理**：`setoption <選項> <值>`（無 name/value 關鍵字）、
+    握手後送 `setoption usemillisec true`（否則 `go time` 單位是秒）、
+    限時搜尋用 `go time <ms>`（UCCI 無 `go movetime`）、`nobestmove` 表示無著法、
+    `info` 行的 `score <n>` 為裸數值（`EngineOutputParser` 兩種格式都解析）。
+  - **連線測試**（`engine:test` IPC）：實際啟動引擎完成握手後關閉，
+    回傳 `EngineTestResult`（協定 + `id name` 版本名），供設定嚮導「測試引擎」使用。
+  - **初始設定嚮導**（`SetupWizard.tsx`）：localStorage `setup_completed` 旗標非 `'1'`
+    且引擎路徑與所有 API 金鑰皆未設定時，取代主介面顯示；引擎路徑與金鑰皆可留空跳過。
+    完成後寫入旗標，之後不再顯示（升級用戶若已有任一設定，啟動時自動補旗標跳過）。
 
 ### 引擎執行前置（使用者需自備）
 

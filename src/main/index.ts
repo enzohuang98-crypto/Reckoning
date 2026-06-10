@@ -11,7 +11,7 @@ import { PikafishAdapter } from './engine/PikafishAdapter'
 import { SecretStore } from './storage/SecretStore'
 import { StorageService } from './storage/StorageService'
 import {
-  loadEnginePath,
+  loadEngineConfig,
   registerEngineAnalysisHandlers
 } from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
@@ -53,8 +53,9 @@ function createWindow(): void {
 
 function registerIpc(): void {
   const storage = new StorageService()
-  // 啟動時讀取使用者於設定頁指定的引擎路徑（若有）注入 adapter
-  const adapter = new PikafishAdapter(loadEnginePath(storage))
+  // 啟動時讀取使用者指定的引擎路徑與先前偵測到的協定（若有）注入 adapter
+  const engineConfig = loadEngineConfig(storage)
+  const adapter = new PikafishAdapter(engineConfig.enginePath, engineConfig.engineProtocol)
   const secretStore = new SecretStore()
   registerEngineAnalysisHandlers(adapter, storage)
   registerAiExplanationHandlers(secretStore)

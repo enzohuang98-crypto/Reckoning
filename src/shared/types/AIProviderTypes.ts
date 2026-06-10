@@ -12,6 +12,16 @@ import type { AIExplanationRequest, AIExplanationResponse } from './AIExplanatio
 /** 支援的 Provider 識別碼 */
 export type AIProviderId = 'anthropic' | 'openai' | 'gemini'
 
+/** 所有 Provider 識別碼（UI 列舉用） */
+export const ALL_PROVIDER_IDS: AIProviderId[] = ['anthropic', 'openai', 'gemini']
+
+/** Provider 顯示名稱 */
+export const PROVIDER_LABEL: Record<AIProviderId, string> = {
+  anthropic: 'Anthropic Claude',
+  openai: 'OpenAI（stub）',
+  gemini: 'Google Gemini（stub）'
+}
+
 /** Token 用量 */
 export interface TokenUsage {
   inputTokens: number

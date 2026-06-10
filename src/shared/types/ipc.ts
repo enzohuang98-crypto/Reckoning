@@ -5,7 +5,11 @@
  * renderer 透過 window.api 呼叫，型別由此檔保證一致。
  */
 
-import type { EngineAnalysis, EngineAnalysisRequest } from './EngineAnalysis'
+import type {
+  EngineAnalysis,
+  EngineAnalysisRequest,
+  EngineProtocol
+} from './EngineAnalysis'
 import type { AIExplanationRequest, AIExplanationResponse } from './AIExplanationTypes'
 import type { AIProviderId } from './AIProviderTypes'
 
@@ -17,6 +21,7 @@ export const IPC = {
   ENGINE_GET_PATH: 'engine:getPath',
   ENGINE_SET_PATH: 'engine:setPath',
   ENGINE_BROWSE_PATH: 'engine:browsePath',
+  ENGINE_TEST: 'engine:test',
   // AI 解釋
   AI_EXPLAIN: 'ai:explain',
   // 安全儲存 (SecretStore)
@@ -38,6 +43,20 @@ export interface EngineStatus {
   pathSource?: 'user' | 'env' | 'resource' | null
   /** 目前生效的引擎路徑（若有） */
   resolvedPath?: string | null
+  /** 已偵測（或儲存）的引擎協定；null 表示尚未偵測 */
+  protocol?: EngineProtocol | null
+}
+
+/** 引擎連線測試結果（engine:test） */
+export interface EngineTestResult {
+  /** 是否成功完成握手（含 isready/readyok） */
+  ok: boolean
+  /** 偵測到的協定（成功時） */
+  protocol?: EngineProtocol
+  /** 引擎回報的 id name（成功時；無回報則為驅動預設名稱） */
+  engineName?: string
+  /** 失敗原因（失敗時） */
+  message?: string
 }
 
 /**
@@ -54,6 +73,8 @@ export interface RendererApi {
     setPath(path: string | null): Promise<EngineStatus>
     /** 開啟原生檔案選擇器挑選引擎可執行檔；取消回 null（不自動儲存） */
     browsePath(): Promise<string | null>
+    /** 實際啟動引擎做握手測試（自動偵測 UCI/UCCI），回傳結果與版本名 */
+    test(): Promise<EngineTestResult>
   }
   ai: {
     explain(request: AIExplanationRequest): Promise<AIExplanationResponse>

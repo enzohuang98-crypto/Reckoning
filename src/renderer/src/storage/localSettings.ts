@@ -10,6 +10,16 @@ import type { MistakeBook, MistakeBookEntry } from '@shared/types/MistakeBookEnt
 
 const SETTINGS_KEY = 'xiangqi.settings'
 const MISTAKE_BOOK_KEY = 'xiangqi.mistakeBook'
+/** 初始設定嚮導完成旗標（'1' = 不再顯示嚮導） */
+const SETUP_COMPLETED_KEY = 'setup_completed'
+
+export function isSetupCompleted(): boolean {
+  return localStorage.getItem(SETUP_COMPLETED_KEY) === '1'
+}
+
+export function markSetupCompleted(): void {
+  localStorage.setItem(SETUP_COMPLETED_KEY, '1')
+}
 
 export function loadSettings(): AppSettings {
   try {

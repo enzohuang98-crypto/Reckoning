@@ -9,6 +9,14 @@
 import type { PieceColor } from './BoardState'
 
 /**
+ * 引擎通訊協定。
+ *  - uci：Pikafish 等（setoption name X value Y / go movetime）
+ *  - ucci：象棋小蟲、象棋旋風、象棋名手、烏雲象棋等
+ *    （setoption 無 name/value 關鍵字、go time、score 為裸數值）
+ */
+export type EngineProtocol = 'uci' | 'ucci'
+
+/**
  * 引擎分數。UCI 引擎回報兩種分數：
  *  - cp：以「輪走方視角」計算的厘子分 (centipawn)
  *  - mate：N 步內將死（正值＝輪走方可將死，負值＝輪走方將被將死）

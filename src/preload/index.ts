@@ -18,7 +18,8 @@ const api: RendererApi = {
     status: () => ipcRenderer.invoke(IPC.ENGINE_STATUS),
     getPath: () => ipcRenderer.invoke(IPC.ENGINE_GET_PATH),
     setPath: (path: string | null) => ipcRenderer.invoke(IPC.ENGINE_SET_PATH, path),
-    browsePath: () => ipcRenderer.invoke(IPC.ENGINE_BROWSE_PATH)
+    browsePath: () => ipcRenderer.invoke(IPC.ENGINE_BROWSE_PATH),
+    test: () => ipcRenderer.invoke(IPC.ENGINE_TEST)
   },
   ai: {
     explain: (request: AIExplanationRequest) =>

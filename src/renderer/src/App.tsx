@@ -5,20 +5,25 @@
  * 共享 board 與 settings 狀態。
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BoardEditor } from './components/BoardEditor'
 import { FenInput } from './components/FenInput'
 import { AnalysisPanel } from './components/AnalysisPanel'
 import { GuessModePanel } from './components/GuessModePanel'
 import { SettingsPage } from './pages/SettingsPage'
+import { SetupWizard } from './pages/SetupWizard'
 import { MistakeBookPage } from './pages/MistakeBookPage'
 import { parseFen } from '@shared/logic/fen'
 import { START_FEN, type BoardState } from '@shared/types/BoardState'
 import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
-import { loadSettings } from './storage/localSettings'
+import { isSetupCompleted, loadSettings, markSetupCompleted } from './storage/localSettings'
 import type { AppSettings } from '@shared/types/Settings'
+import { ALL_PROVIDER_IDS } from '@shared/types/AIProviderTypes'
 
 type Tab = 'analyze' | 'settings' | 'mistakes'
+
+/** 初始設定嚮導顯示狀態：checking = 正在查詢既有設定 */
+type SetupState = 'checking' | 'wizard' | 'done'
 
 function initialBoard(): BoardState {
   const parsed = parseFen(START_FEN)
@@ -31,6 +36,32 @@ export function App(): JSX.Element {
   const [board, setBoard] = useState<BoardState>(initialBoard)
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings())
   const [analysis, setAnalysis] = useState<EngineAnalysis | null>(null)
+  const [setupState, setSetupState] = useState<SetupState>(() =>
+    isSetupCompleted() ? 'done' : 'checking'
+  )
+
+  // 嚮導觸發條件：未完成過嚮導，且引擎路徑與所有 API 金鑰皆未設定。
+  // 任一已設定（例如舊版升級）視同已完成初始設定，直接標記跳過。
+  useEffect(() => {
+    if (setupState !== 'checking') return
+    let cancelled = false
+    void (async () => {
+      const [path, ...hasKeys] = await Promise.all([
+        window.api.engine.getPath(),
+        ...ALL_PROVIDER_IDS.map((p) => window.api.secret.has(p))
+      ])
+      if (cancelled) return
+      if (path || hasKeys.some(Boolean)) {
+        markSetupCompleted()
+        setSetupState('done')
+      } else {
+        setSetupState('wizard')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [setupState])
 
   const tabs = useMemo(
     () =>
@@ -41,6 +72,21 @@ export function App(): JSX.Element {
       ],
     []
   )
+
+  if (setupState === 'checking') {
+    // 等待查詢既有設定（毫秒級），避免主介面與嚮導閃爍切換
+    return <div className="app" />
+  }
+
+  if (setupState === 'wizard') {
+    return (
+      <SetupWizard
+        settings={settings}
+        onSettingsChange={setSettings}
+        onComplete={() => setSetupState('done')}
+      />
+    )
+  }
 
   return (
     <div className="app">
