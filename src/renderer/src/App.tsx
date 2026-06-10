@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BoardEditor } from './components/BoardEditor'
 import { FenInput } from './components/FenInput'
+import { GameImportPanel } from './components/GameImportPanel'
 import { AnalysisPanel } from './components/AnalysisPanel'
 import { GuessModePanel } from './components/GuessModePanel'
 import { SettingsPage } from './pages/SettingsPage'
@@ -111,6 +112,7 @@ export function App(): JSX.Element {
             <div className="left-col">
               <BoardEditor board={board} onChange={setBoard} />
               <FenInput initialFen={board.fen} onValidBoard={setBoard} />
+              <GameImportPanel board={board} onBoardChange={setBoard} />
             </div>
             <div className="right-col">
               <AnalysisPanel board={board} settings={settings} onAnalysis={setAnalysis} />

@@ -139,6 +139,17 @@ src/
   - **錯題本一鍵加入**：猜著結果非 OK 時顯示「加入錯題本」按鈕，寫入 localStorage。
   - **測試基建**（`tests/`）：`FakeEngine.cs`（csc 編譯）模擬 UCI/UCCI/收指令即退/
     無著法四種引擎行為，`engine.e2e.ts` 以 tsx 直接驅動 PikafishAdapter 做端對端驗證。
+- Stage 6：走子合法性驗證 + 棋譜匯入。
+  - **完整規則引擎**（`shared/logic/moves.ts`）：三層驗證——基本檢查
+    （起點輪走方、終點非己方、不可吃將）→ 兵種走法（蹩馬腿、塞象眼、炮架、
+    過河兵橫走、九宮限制、象不過河）→ 走後狀態（送將、王不見王）。
+    `legalMoveCheck` 驗證、`applyUciMove` 驗證並套用（回傳新 BoardState，
+    含 halfmove/fullmove 計數與重算 FEN）。猜著模式已改用完整驗證，
+    非法著法不會送進引擎（引擎會默默忽略非法著法導致錯誤評估）。
+  - **棋譜匯入**（`GameImportPanel.tsx`）：貼上 UCI 著法序列，從開局或目前局面
+    逐手驗證匯入（任一手非法即整批拒絕並指出第幾手與原因），
+    匯入後以 ⏮◀▶⏭ 或點擊著法 chip 逐步檢視，棋盤即時同步，任一步皆可再分析。
+  - 規則測試：`tests/rules.test.ts`（49 條斷言，涵蓋各兵種與特殊規則）。
 
 ### 引擎執行前置（使用者需自備）
 
@@ -150,6 +161,6 @@ src/
 
 - 內含或自動下載 Pikafish 二進位與 `pikafish.nnue`（目前需使用者自備並於設定頁指定）。
 - OpenAI / Gemini Provider 真實實作。
-- 走子合法性驗證（完整兵種規則、王不見王）與棋譜（PGN/UCI move list）匯入。
 - electron-builder 打包設定。
 - 猜著模式以點擊棋盤輸入著法（目前需手打 UCI 字串）。
+- PGN／中文記譜（炮二平五）格式匯入（目前支援 UCI 著法序列）。

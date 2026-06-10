@@ -428,6 +428,41 @@ body {
   max-width: 760px;
 }
 
+/* 棋譜匯入與逐步檢視 */
+.game-nav {
+  margin-top: 10px;
+}
+
+.move-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.move-chip {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: 'Consolas', monospace;
+  cursor: pointer;
+}
+
+.move-chip:hover {
+  color: var(--text);
+}
+
+.move-chip.current {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 /* 初始設定嚮導 */
 .setup-wizard {
   display: flex;

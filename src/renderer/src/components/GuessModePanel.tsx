@@ -15,7 +15,7 @@ import { useState } from 'react'
 import { formatScore, type EngineAnalysis } from '@shared/types/EngineAnalysis'
 import type { AppSettings } from '@shared/types/Settings'
 import { compareMove } from '@shared/logic/MoveComparisonService'
-import { basicMoveCheck } from '@shared/logic/moves'
+import { legalMoveCheck } from '@shared/logic/moves'
 import { parseFen } from '@shared/logic/fen'
 import {
   MOVE_QUALITY_LABELS,
@@ -46,10 +46,11 @@ export function GuessModePanel({ analysis, settings }: Props): JSX.Element {
     }
     const trimmed = guess.trim().toLowerCase()
 
-    // 以「被分析的局面」為準做基本檢查（起點是輪走方棋子、終點非己方）
+    // 以「被分析的局面」為準做完整合法性檢查（兵種走法、送將、王不見王），
+    // 非法著法不送引擎（引擎會默默忽略非法著法導致錯誤評估）
     const parsed = parseFen(analysis.fen)
     if (parsed.valid) {
-      const check = basicMoveCheck(parsed.board.grid, analysis.sideToMove, trimmed)
+      const check = legalMoveCheck(parsed.board.grid, analysis.sideToMove, trimmed)
       if (!check.ok) {
         setNote(check.message)
         return
