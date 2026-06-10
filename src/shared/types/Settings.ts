@@ -28,8 +28,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   activeProvider: 'anthropic',
   selectedModels: {
     anthropic: 'claude-sonnet-4-6',
-    openai: 'gpt-4o',
-    gemini: 'gemini-1.5-pro'
+    openai: 'gpt-5.4',
+    gemini: 'gemini-3.5-flash'
   },
   language: 'zh-TW',
   engineDepth: 15,

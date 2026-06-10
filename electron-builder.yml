@@ -1,0 +1,22 @@
+# electron-builder 打包設定
+# 產出：release/ 下的 Windows NSIS 安裝檔（npm run dist）或未打包目錄（npm run pack，驗證用）。
+# 注意：Pikafish 等引擎二進位與 .nnue 不隨安裝檔散布（授權與體積考量），
+# 使用者安裝後於初始設定嚮導或設定頁自行指定路徑。
+appId: com.xiangqi.analyzer
+productName: 象棋AI分析講解
+# 安裝檔檔名用 ASCII（package name），避免非 ASCII 檔名在散布時出問題
+artifactName: ${name}-${version}-setup.${ext}
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+# 不簽章（個人散布）；正式發行前再加 codeSigning 設定
+forceCodeSigning: false

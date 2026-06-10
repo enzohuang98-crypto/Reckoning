@@ -150,6 +150,18 @@ src/
     逐手驗證匯入（任一手非法即整批拒絕並指出第幾手與原因），
     匯入後以 ⏮◀▶⏭ 或點擊著法 chip 逐步檢視，棋盤即時同步，任一步皆可再分析。
   - 規則測試：`tests/rules.test.ts`（49 條斷言，涵蓋各兵種與特殊規則）。
+- Stage 7：OpenAI / Gemini Provider 真實實作 + electron-builder 打包。
+  - **OpenAI / Gemini**：以內建 fetch 呼叫 REST API（不引入 SDK）。
+    OpenAI 走 `/v1/chat/completions`（Bearer 認證）；Gemini 走
+    `v1beta/models/<model>:generateContent`（金鑰走 `x-goog-api-key` header，
+    不放 URL query）。兩者皆套用 promptBuilder 護欄與 `AIProviderConfig.baseUrl`
+    覆寫（測試時指向本機 mock server）。預設模型：gpt-5.4 / gemini-3.5-flash
+    （定價未確認者不列入 model_pricing.json，UI 不顯示成本）。
+  - **打包**（`electron-builder.yml`）：`npm run pack` 產出未打包目錄驗證、
+    `npm run dist` 產出 NSIS 安裝檔（`release/`，已 gitignore）。
+    引擎二進位不隨包散布，使用者安裝後自行指定。尚無自訂 icon 與簽章。
+  - Provider 測試：`tests/providers.test.ts`（20 條斷言，本機 HTTP mock 驗證
+    請求形狀與回應解析）。`npm test` 跑全部三套測試。
 
 ### 引擎執行前置（使用者需自備）
 
@@ -160,7 +172,7 @@ src/
 ## 尚未完成 / 後續
 
 - 內含或自動下載 Pikafish 二進位與 `pikafish.nnue`（目前需使用者自備並於設定頁指定）。
-- OpenAI / Gemini Provider 真實實作。
-- electron-builder 打包設定。
 - 猜著模式以點擊棋盤輸入著法（目前需手打 UCI 字串）。
 - PGN／中文記譜（炮二平五）格式匯入（目前支援 UCI 著法序列）。
+- gpt-5.4 / gemini-3.5-flash 官方定價確認後補進 model_pricing.json。
+- 應用程式 icon 與程式碼簽章（electron-builder 目前用預設 icon、未簽章）。

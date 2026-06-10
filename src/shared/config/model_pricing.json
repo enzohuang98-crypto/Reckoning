@@ -1,6 +1,6 @@
 {
   "lastUpdated": "2026-06-10",
-  "sourceNote": "價格為每百萬 token 美元 (USD per 1M tokens)。Anthropic 數值來自官方定價頁；OpenAI / Gemini 為占位估值，正式上線前需以官方公告校正。",
+  "sourceNote": "價格為每百萬 token 美元 (USD per 1M tokens)。Anthropic 數值來自官方定價頁；gpt-4o 與 gemini-2.5-flash 為歷史已知定價；gpt-5.4 與 gemini-3.5-flash 定價未確認故不列（成本欄將不顯示），補上前請以官方公告校正。",
   "currency": "USD",
   "unit": "per_1m_tokens",
   "models": {
@@ -19,10 +19,10 @@
       "input": 2.5,
       "output": 10.0
     },
-    "gemini-1.5-pro": {
+    "gemini-2.5-flash": {
       "provider": "gemini",
-      "input": 1.25,
-      "output": 5.0
+      "input": 0.3,
+      "output": 2.5
     }
   }
 }

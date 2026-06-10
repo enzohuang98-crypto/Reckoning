@@ -18,8 +18,8 @@ export const ALL_PROVIDER_IDS: AIProviderId[] = ['anthropic', 'openai', 'gemini'
 /** Provider 顯示名稱 */
 export const PROVIDER_LABEL: Record<AIProviderId, string> = {
   anthropic: 'Anthropic Claude',
-  openai: 'OpenAI（stub）',
-  gemini: 'Google Gemini（stub）'
+  openai: 'OpenAI',
+  gemini: 'Google Gemini'
 }
 
 /** Token 用量 */
@@ -79,6 +79,12 @@ export const PROVIDER_DEFAULT_MODELS: Record<AIProviderId, AIModelInfo[]> = {
     { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', isDefault: true },
     { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' }
   ],
-  openai: [{ id: 'gpt-4o', label: 'GPT-4o (stub)', isDefault: true }],
-  gemini: [{ id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (stub)', isDefault: true }]
+  openai: [
+    { id: 'gpt-5.4', label: 'GPT-5.4', isDefault: true },
+    { id: 'gpt-4o', label: 'GPT-4o' }
+  ],
+  gemini: [
+    { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', isDefault: true },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' }
+  ]
 }

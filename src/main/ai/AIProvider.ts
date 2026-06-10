@@ -2,7 +2,7 @@
  * AI Provider 工廠 (Provider factory)
  *
  * 依 providerId 與設定建立對應的 Provider 實例。
- * 第一版完整實作 Anthropic；OpenAI / Gemini 為 stub。
+ * Anthropic 走官方 SDK；OpenAI / Gemini 以內建 fetch 呼叫 REST API。
  */
 
 import type { AIProvider, AIProviderConfig, AIProviderId } from '@shared/types/AIProviderTypes'
