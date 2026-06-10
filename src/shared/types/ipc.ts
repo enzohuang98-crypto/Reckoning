@@ -8,7 +8,9 @@
 import type {
   EngineAnalysis,
   EngineAnalysisRequest,
-  EngineProtocol
+  EngineProtocol,
+  EvaluateMoveRequest,
+  MoveEvaluation
 } from './EngineAnalysis'
 import type { AIExplanationRequest, AIExplanationResponse } from './AIExplanationTypes'
 import type { AIProviderId } from './AIProviderTypes'
@@ -22,6 +24,7 @@ export const IPC = {
   ENGINE_SET_PATH: 'engine:setPath',
   ENGINE_BROWSE_PATH: 'engine:browsePath',
   ENGINE_TEST: 'engine:test',
+  ENGINE_EVALUATE_MOVE: 'engine:evaluateMove',
   // AI 解釋
   AI_EXPLAIN: 'ai:explain',
   // 安全儲存 (SecretStore)
@@ -75,6 +78,8 @@ export interface RendererApi {
     browsePath(): Promise<string | null>
     /** 實際啟動引擎做握手測試（自動偵測 UCI/UCCI），回傳結果與版本名 */
     test(): Promise<EngineTestResult>
+    /** 評估單一著法的精確分數（猜著模式用），視角已換算回原局面輪走方 */
+    evaluateMove(request: EvaluateMoveRequest): Promise<MoveEvaluation>
   }
   ai: {
     explain(request: AIExplanationRequest): Promise<AIExplanationResponse>

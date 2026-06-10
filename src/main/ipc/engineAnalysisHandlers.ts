@@ -10,7 +10,8 @@ import { dialog, ipcMain } from 'electron'
 import { IPC, type EngineStatus, type EngineTestResult } from '@shared/types/ipc'
 import type {
   EngineAnalysisRequest,
-  EngineProtocol
+  EngineProtocol,
+  EvaluateMoveRequest
 } from '@shared/types/EngineAnalysis'
 import { PikafishAdapter } from '../engine/PikafishAdapter'
 import type { StorageService } from '../storage/StorageService'
@@ -82,6 +83,10 @@ export function registerEngineAnalysisHandlers(
   )
 
   ipcMain.handle(IPC.ENGINE_TEST, (): Promise<EngineTestResult> => adapter.test())
+
+  ipcMain.handle(IPC.ENGINE_EVALUATE_MOVE, async (_e, request: EvaluateMoveRequest) => {
+    return adapter.evaluateMove(request)
+  })
 
   ipcMain.handle(IPC.ENGINE_BROWSE_PATH, async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({

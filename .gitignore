@@ -7,5 +7,7 @@ install.log
 .vite/
 # 引擎二進位（請自行放置，勿提交）
 resources/engine/
+# 測試用假引擎編譯產物（由 tests/FakeEngine.cs 以 csc 編譯）
+tests/fake-engine.exe
 # 機密：safeStorage 加密檔仍不應進版控
 secrets.enc.json

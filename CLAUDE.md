@@ -22,6 +22,14 @@ npm run build    # 型別檢查 + 打包（electron-vite build）
 npm run typecheck# 只跑 tsc 型別檢查（node + web 兩個 project）
 ```
 
+引擎邏輯測試（純函式單元 + 假引擎端對端）：
+
+```bash
+# 先編譯假引擎（僅需一次；csc 為 Windows 內建 .NET Framework 編譯器）
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /out:tests\fake-engine.exe tests\FakeEngine.cs
+npx tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts
+```
+
 > 注意：本機若 `node` 不在 PATH，請先把 `C:\Program Files\nodejs` 加入 PATH。
 
 ## 目錄結構與職責
@@ -107,7 +115,7 @@ src/
 - Stage 4：AI 解釋流程。`AnthropicProvider` 真實呼叫 `@anthropic-ai/sdk`，
   `promptBuilder` 組裝引擎資料（含護欄），`ai:explain` IPC 自 `SecretStore` 取金鑰，
   AnalysisPanel 顯示解說與 token/成本。
-- Stage 5：UCCI 引擎支援 + 初始設定嚮導。
+- Stage 5：UCCI 引擎支援 + 初始設定嚮導 + 猜著模式精確 loss + 錯題本一鍵加入。
   - **UCI/UCCI 雙協定**（`PikafishAdapter`）：握手時自動偵測——先送 `uci` 等 `uciok`，
     2 秒逾時改送 `ucci` 等 `ucciok`；若引擎在偵測期間直接結束行程，以剩餘協定重啟再試。
     偵測結果持久化於 `engine-config.json`（`engineProtocol` 欄位），下次直接以已知協定握手；
@@ -121,6 +129,16 @@ src/
   - **初始設定嚮導**（`SetupWizard.tsx`）：localStorage `setup_completed` 旗標非 `'1'`
     且引擎路徑與所有 API 金鑰皆未設定時，取代主介面顯示；引擎路徑與金鑰皆可留空跳過。
     完成後寫入旗標，之後不再顯示（升級用戶若已有任一設定，啟動時自動補旗標跳過）。
+  - **猜著模式精確 loss**（`engine:evaluateMove` IPC）：對「走完猜測著法後的局面」
+    單獨搜尋（同深度、multiPv=1），引擎分數為對手視角，`negateScore` 取負還原。
+    `position fen <fen> moves <m>` 兩協定皆支援；movesUci 經格式驗證防指令注入。
+    走完即無合法著法（`bestmove (none)` / `nobestmove`）視為 mate in 1
+    （象棋將死與困斃皆對手輸），analyze 對此以 `EngineNoLegalMovesError` 立即拒絕
+    而非等逾時。猜測著法先經 `shared/logic/moves.ts` 的 `basicMoveCheck`
+    （起點為輪走方棋子、終點非己方）；完整兵種規則驗證為後續工作。
+  - **錯題本一鍵加入**：猜著結果非 OK 時顯示「加入錯題本」按鈕，寫入 localStorage。
+  - **測試基建**（`tests/`）：`FakeEngine.cs`（csc 編譯）模擬 UCI/UCCI/收指令即退/
+    無著法四種引擎行為，`engine.e2e.ts` 以 tsx 直接驅動 PikafishAdapter 做端對端驗證。
 
 ### 引擎執行前置（使用者需自備）
 
@@ -132,7 +150,6 @@ src/
 
 - 內含或自動下載 Pikafish 二進位與 `pikafish.nnue`（目前需使用者自備並於設定頁指定）。
 - OpenAI / Gemini Provider 真實實作。
-- 對每個候選著法逐一搜尋以取得精確 loss（目前猜著模式以候選線分數近似）。
-- 將判定為錯著的局面一鍵加入錯題本的 UI 流程。
-- 走子合法性驗證與棋譜（PGN/UCI move list）匯入。
+- 走子合法性驗證（完整兵種規則、王不見王）與棋譜（PGN/UCI move list）匯入。
 - electron-builder 打包設定。
+- 猜著模式以點擊棋盤輸入著法（目前需手打 UCI 字串）。

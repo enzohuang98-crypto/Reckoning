@@ -45,6 +45,16 @@ export function scoreToCentipawns(
   return score.value >= 0 ? magnitude : -magnitude
 }
 
+/**
+ * 分數視角翻轉（輪走方 ↔ 對手）。
+ * 評估「走完某著法後」的局面時，引擎回報的是對手視角，需取負還原為走子方視角。
+ */
+export function negateScore(score: EngineScore): EngineScore {
+  return score.kind === 'cp'
+    ? { kind: 'cp', value: -score.value }
+    : { kind: 'mate', value: -score.value }
+}
+
 /** 可讀化引擎分數（給 UI / prompt 用） */
 export function formatScore(score: EngineScore): string {
   if (score.kind === 'mate') {
@@ -107,4 +117,38 @@ export interface EngineAnalysisRequest {
   movetimeMs?: number
   /** multipv 數量（要幾條候選線） */
   multiPv?: number
+  /**
+   * 在 fen 之後先走的著法（UCI），分析的是走完這些著法後的局面。
+   * 對應引擎指令 position fen <fen> moves <m1> <m2> ...（UCI/UCCI 皆支援）。
+   * 注意：此時引擎回報的分數視角是「走完後的輪走方」。
+   */
+  movesUci?: string[]
+}
+
+/** 單一著法評估請求（猜著模式精確 loss 用） */
+export interface EvaluateMoveRequest {
+  /** 原局面 FEN */
+  fen: string
+  /** 要評估的著法 (UCI)，必須是原局面輪走方的著法 */
+  moveUci: string
+  /** 目標搜尋深度（與 movetimeMs 擇一）；建議與原分析相同以利公平比較 */
+  depth?: number
+  /** 目標思考時間 (ms) */
+  movetimeMs?: number
+}
+
+/** 單一著法評估結果 */
+export interface MoveEvaluation {
+  /** 原局面 FEN */
+  fen: string
+  /** 被評估的著法 (UCI) */
+  moveUci: string
+  /** 走完該著法後的局面分數，已換算回「原局面輪走方」視角 */
+  score: EngineScore
+  /** 走完該著法即無合法著法（將死或困斃對手）時為 true，score 以 mate 表示 */
+  terminatesGame: boolean
+  /** 實際達到的搜尋深度（terminatesGame 時為 0） */
+  depth: number
+  /** 引擎名稱 */
+  engineName: string
 }

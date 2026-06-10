@@ -114,7 +114,7 @@ export function App(): JSX.Element {
             </div>
             <div className="right-col">
               <AnalysisPanel board={board} settings={settings} onAnalysis={setAnalysis} />
-              <GuessModePanel analysis={analysis} />
+              <GuessModePanel analysis={analysis} settings={settings} />
             </div>
           </div>
         )}

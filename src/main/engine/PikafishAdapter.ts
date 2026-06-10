@@ -24,11 +24,14 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type {
-  EngineAnalysis,
-  EngineAnalysisRequest,
-  EngineLine,
-  EngineProtocol
+import {
+  negateScore,
+  type EngineAnalysis,
+  type EngineAnalysisRequest,
+  type EngineLine,
+  type EngineProtocol,
+  type EvaluateMoveRequest,
+  type MoveEvaluation
 } from '@shared/types/EngineAnalysis'
 import type { EngineTestResult } from '@shared/types/ipc'
 import { parseFen } from '@shared/logic/fen'
@@ -38,6 +41,14 @@ export class EngineUnavailableError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'EngineUnavailableError'
+  }
+}
+
+/** 局面無合法著法（將死或困斃；UCI 回 bestmove (none)、UCCI 回 nobestmove） */
+export class EngineNoLegalMovesError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'EngineNoLegalMovesError'
   }
 }
 
@@ -368,6 +379,44 @@ export class PikafishAdapter {
   }
 
   /**
+   * 評估單一著法的精確分數（猜著模式用）。
+   * 作法：分析「走完該著法後」的局面（multiPv=1），引擎回報對手視角分數，
+   * 取負還原為原局面輪走方視角。走完即無合法著法（將死/困斃對手）視為 mate。
+   */
+  async evaluateMove(request: EvaluateMoveRequest): Promise<MoveEvaluation> {
+    try {
+      const analysis = await this.analyze({
+        fen: request.fen,
+        depth: request.depth,
+        movetimeMs: request.movetimeMs,
+        multiPv: 1,
+        movesUci: [request.moveUci]
+      })
+      return {
+        fen: request.fen,
+        moveUci: request.moveUci,
+        score: negateScore(analysis.score),
+        terminatesGame: false,
+        depth: analysis.depth,
+        engineName: analysis.engineName
+      }
+    } catch (err) {
+      if (err instanceof EngineNoLegalMovesError) {
+        // 對手無著可走：象棋中將死與困斃皆為對手輸，對走子方而言等同 mate in 1
+        return {
+          fen: request.fen,
+          moveUci: request.moveUci,
+          score: { kind: 'mate', value: 1 },
+          terminatesGame: true,
+          depth: 0,
+          engineName: ENGINE_NAME
+        }
+      }
+      throw err
+    }
+  }
+
+  /**
    * 分析單一局面。回傳完整 EngineAnalysis。
    * 若引擎不可用則拋出 EngineUnavailableError。
    */
@@ -383,7 +432,18 @@ export class PikafishAdapter {
     if (!parsed.valid) {
       throw new Error(`無效的 FEN：${parsed.message}`)
     }
-    const sideToMove = parsed.board.sideToMove
+
+    // movesUci 僅允許 UCI 著法格式；任意字串（特別是含空白/換行）會被當成引擎指令
+    const movesUci = request.movesUci ?? []
+    for (const move of movesUci) {
+      if (!/^[a-i]\d[a-i]\d$/.test(move)) {
+        throw new Error(`無效的 UCI 著法：${JSON.stringify(move)}`)
+      }
+    }
+    // 分析的是走完 movesUci 後的局面；奇數步代表輪走方翻轉
+    const baseSide = parsed.board.sideToMove
+    const sideToMove =
+      movesUci.length % 2 === 1 ? (baseSide === 'red' ? 'black' : 'red') : baseSide
 
     const multiPv = Math.max(1, request.multiPv ?? 1)
     const session = await this.spawnAndHandshake(enginePath, multiPv)
@@ -392,6 +452,8 @@ export class PikafishAdapter {
     return new Promise<EngineAnalysis>((resolve, reject) => {
       let settled = false
       let bestMoveUci: string | null = null
+      /** 已收到搜尋結束行（bestmove/nobestmove），即使無著法也算結束 */
+      let searchEnded = false
       let searchTimer: ReturnType<typeof setTimeout> | null = null
 
       const finish = (): void => {
@@ -403,7 +465,11 @@ export class PikafishAdapter {
           lines.find((l) => l.multipv === 1) ?? lines[0]
         session.dispose()
         if (!best) {
-          reject(new Error('引擎未回傳任何候選線（可能 FEN 不合法、無子可動或引擎異常）'))
+          reject(
+            searchEnded && bestMoveUci === null
+              ? new EngineNoLegalMovesError('該局面無合法著法（已被將死或困斃）')
+              : new Error('引擎未回傳任何候選線（可能 FEN 不合法或引擎異常）')
+          )
           return
         }
         resolve({
@@ -422,14 +488,11 @@ export class PikafishAdapter {
       session.setExitHandler(finish)
       session.setLineHandler((line) => {
         accumulator.ingestLine(line)
-        // UCCI：無著法可走時回 nobestmove
-        if (line.startsWith('nobestmove')) {
-          finish()
-          return
-        }
-        const bm = parseBestMove(line)
-        if (bm !== null) {
-          bestMoveUci = bm
+        // bestmove xxx / bestmove (none)（UCI）、nobestmove（UCCI）都代表搜尋結束；
+        // (none)/nobestmove 時 parseBestMove 回 null，由 finish 判定為無合法著法
+        if (line.startsWith('bestmove') || line.startsWith('nobestmove')) {
+          searchEnded = true
+          bestMoveUci = parseBestMove(line)
           finish()
         }
       })
@@ -440,7 +503,8 @@ export class PikafishAdapter {
           ? `go time ${request.movetimeMs}`
           : `go movetime ${request.movetimeMs}`
         : `go depth ${request.depth ?? 15}`
-      session.send(`position fen ${request.fen}`)
+      const moves = movesUci.length ? ` moves ${movesUci.join(' ')}` : ''
+      session.send(`position fen ${request.fen}${moves}`)
       session.send(go)
 
       // 安全逾時：搜尋總時長上限，逾時停手取目前最佳結果

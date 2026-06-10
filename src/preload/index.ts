@@ -7,7 +7,10 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC, type RendererApi } from '@shared/types/ipc'
-import type { EngineAnalysisRequest } from '@shared/types/EngineAnalysis'
+import type {
+  EngineAnalysisRequest,
+  EvaluateMoveRequest
+} from '@shared/types/EngineAnalysis'
 import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
 
@@ -19,7 +22,9 @@ const api: RendererApi = {
     getPath: () => ipcRenderer.invoke(IPC.ENGINE_GET_PATH),
     setPath: (path: string | null) => ipcRenderer.invoke(IPC.ENGINE_SET_PATH, path),
     browsePath: () => ipcRenderer.invoke(IPC.ENGINE_BROWSE_PATH),
-    test: () => ipcRenderer.invoke(IPC.ENGINE_TEST)
+    test: () => ipcRenderer.invoke(IPC.ENGINE_TEST),
+    evaluateMove: (request: EvaluateMoveRequest) =>
+      ipcRenderer.invoke(IPC.ENGINE_EVALUATE_MOVE, request)
   },
   ai: {
     explain: (request: AIExplanationRequest) =>
