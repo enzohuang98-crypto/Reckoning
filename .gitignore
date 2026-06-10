@@ -1,0 +1,11 @@
+node_modules/
+out/
+dist/
+*.log
+install.log
+.DS_Store
+.vite/
+# 引擎二進位（請自行放置，勿提交）
+resources/engine/
+# 機密：safeStorage 加密檔仍不應進版控
+secrets.enc.json

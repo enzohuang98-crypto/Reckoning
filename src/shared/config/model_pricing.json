@@ -1,0 +1,28 @@
+{
+  "lastUpdated": "2026-06-10",
+  "sourceNote": "價格為每百萬 token 美元 (USD per 1M tokens)。Anthropic 數值來自官方定價頁；OpenAI / Gemini 為占位估值，正式上線前需以官方公告校正。",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "models": {
+    "claude-opus-4-8": {
+      "provider": "anthropic",
+      "input": 5.0,
+      "output": 25.0
+    },
+    "claude-sonnet-4-6": {
+      "provider": "anthropic",
+      "input": 3.0,
+      "output": 15.0
+    },
+    "gpt-4o": {
+      "provider": "openai",
+      "input": 2.5,
+      "output": 10.0
+    },
+    "gemini-1.5-pro": {
+      "provider": "gemini",
+      "input": 1.25,
+      "output": 5.0
+    }
+  }
+}
