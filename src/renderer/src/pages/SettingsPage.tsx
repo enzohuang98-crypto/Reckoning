@@ -12,7 +12,14 @@ import {
   type AIProviderId
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
+import type { EngineStatus } from '@shared/types/ipc'
 import { saveSettings } from '../storage/localSettings'
+
+const PATH_SOURCE_LABEL: Record<NonNullable<EngineStatus['pathSource']>, string> = {
+  user: '使用者設定',
+  env: '環境變數 PIKAFISH_PATH',
+  resource: '打包資源'
+}
 
 const PROVIDERS: AIProviderId[] = ['anthropic', 'openai', 'gemini']
 const PROVIDER_LABEL: Record<AIProviderId, string> = {
@@ -40,6 +47,58 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
   const [encAvailable, setEncAvailable] = useState<boolean | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
 
+  // 引擎路徑（存於 main 的 StorageService，非 localStorage）
+  const [enginePathInput, setEnginePathInput] = useState('')
+  const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null)
+  const [engineMsg, setEngineMsg] = useState<string | null>(null)
+  /** 是否已存有使用者自訂路徑（即使該路徑暫時無法解析，也允許清除） */
+  const [hasUserPath, setHasUserPath] = useState(false)
+
+  const refreshEngine = async (): Promise<void> => {
+    const [path, status] = await Promise.all([
+      window.api.engine.getPath(),
+      window.api.engine.status()
+    ])
+    setEnginePathInput(path ?? '')
+    setHasUserPath(path !== null && path.trim().length > 0)
+    setEngineStatus(status)
+  }
+
+  const saveEnginePath = async (path: string | null): Promise<void> => {
+    const status = await window.api.engine.setPath(path)
+    setEngineStatus(status)
+    setEnginePathInput(path ?? '')
+    const provided = path !== null && path.trim().length > 0
+    setHasUserPath(provided)
+
+    let msg: string
+    if (provided && status.pathSource !== 'user') {
+      // 指定了路徑，但實際生效來源不是它（檔案不存在 / 解析失敗）
+      msg = status.available
+        ? `⚠ 找不到指定的檔案，目前改用「${
+            status.pathSource ? PATH_SOURCE_LABEL[status.pathSource] : '無'
+          }」。請確認路徑是否正確。`
+        : `⚠ ${status.message ?? '指定的路徑無法使用。'}`
+    } else if (provided) {
+      msg = '✓ 已套用使用者指定的引擎路徑。'
+    } else {
+      // 清除自訂路徑
+      msg = status.available
+        ? `✓ 已清除自訂路徑，改用「${
+            status.pathSource ? PATH_SOURCE_LABEL[status.pathSource] : '無'
+          }」。`
+        : '已清除自訂路徑。目前未偵測到可用引擎。'
+    }
+    setEngineMsg(msg)
+  }
+
+  const browseEnginePath = async (): Promise<void> => {
+    const picked = await window.api.engine.browsePath()
+    if (!picked) return
+    setEnginePathInput(picked)
+    await saveEnginePath(picked)
+  }
+
   const refreshKeyStatus = async (): Promise<void> => {
     const entries = await Promise.all(
       PROVIDERS.map(async (p) => [p, await window.api.secret.has(p)] as const)
@@ -50,6 +109,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
   useEffect(() => {
     window.api.secret.isAvailable().then(setEncAvailable)
     void refreshKeyStatus()
+    void refreshEngine()
   }, [])
 
   const update = (patch: Partial<AppSettings>): void => {
@@ -171,6 +231,61 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
             <option value="en">English</option>
           </select>
         </div>
+      </section>
+
+      <section className="card">
+        <h3>Pikafish 引擎</h3>
+        <p className="muted">
+          指定本機 Pikafish 可執行檔路徑。優先序：此處設定 &gt; 環境變數 PIKAFISH_PATH &gt;
+          打包資源。路徑安全儲存於本機設定檔（非金鑰），重啟後自動沿用。
+        </p>
+        {engineStatus && (
+          <div className={`engine-status ${engineStatus.available ? 'ok' : 'warn'}`}>
+            {engineStatus.available
+              ? `✓ ${engineStatus.engineName} 就緒（來源：${
+                  engineStatus.pathSource
+                    ? PATH_SOURCE_LABEL[engineStatus.pathSource]
+                    : '無'
+                }）`
+              : `⚠ ${engineStatus.message ?? `${engineStatus.engineName} 未就緒`}`}
+            {engineStatus.resolvedPath && (
+              <div className="mono muted small">{engineStatus.resolvedPath}</div>
+            )}
+          </div>
+        )}
+        <div className="field">
+          <label className="field-label">引擎可執行檔路徑</label>
+          <div className="row gap">
+            <input
+              className="text-input"
+              type="text"
+              placeholder="例如 C:\\Tools\\pikafish\\pikafish.exe"
+              value={enginePathInput}
+              onChange={(e) => setEnginePathInput(e.target.value)}
+            />
+            <button className="btn ghost" onClick={browseEnginePath}>
+              瀏覽…
+            </button>
+          </div>
+        </div>
+        <div className="row gap">
+          <button className="btn" onClick={() => saveEnginePath(enginePathInput)}>
+            儲存並套用
+          </button>
+          <button className="btn ghost" onClick={() => void refreshEngine()}>
+            重新偵測
+          </button>
+          {hasUserPath && (
+            <button className="btn danger" onClick={() => saveEnginePath(null)}>
+              清除自訂路徑
+            </button>
+          )}
+        </div>
+        {engineMsg && (
+          <div className={engineMsg.startsWith('✓') ? 'success-text' : 'error-text'}>
+            {engineMsg}
+          </div>
+        )}
       </section>
 
       <section className="card">

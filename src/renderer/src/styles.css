@@ -333,6 +333,15 @@ body {
   font-size: 13px;
 }
 
+.small {
+  font-size: 12px;
+}
+
+.engine-status .mono {
+  margin-top: 4px;
+  word-break: break-all;
+}
+
 .key-row {
   border-top: 1px solid var(--border);
   padding: 12px 0;

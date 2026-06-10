@@ -9,7 +9,11 @@ import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { PikafishAdapter } from './engine/PikafishAdapter'
 import { SecretStore } from './storage/SecretStore'
-import { registerEngineAnalysisHandlers } from './ipc/engineAnalysisHandlers'
+import { StorageService } from './storage/StorageService'
+import {
+  loadEnginePath,
+  registerEngineAnalysisHandlers
+} from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
 
 const isDev = !app.isPackaged
@@ -48,9 +52,11 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
-  const adapter = new PikafishAdapter()
+  const storage = new StorageService()
+  // 啟動時讀取使用者於設定頁指定的引擎路徑（若有）注入 adapter
+  const adapter = new PikafishAdapter(loadEnginePath(storage))
   const secretStore = new SecretStore()
-  registerEngineAnalysisHandlers(adapter)
+  registerEngineAnalysisHandlers(adapter, storage)
   registerAiExplanationHandlers(secretStore)
 }
 

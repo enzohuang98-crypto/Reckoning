@@ -14,6 +14,9 @@ export const IPC = {
   // 引擎分析
   ENGINE_ANALYZE: 'engine:analyze',
   ENGINE_STATUS: 'engine:status',
+  ENGINE_GET_PATH: 'engine:getPath',
+  ENGINE_SET_PATH: 'engine:setPath',
+  ENGINE_BROWSE_PATH: 'engine:browsePath',
   // AI 解釋
   AI_EXPLAIN: 'ai:explain',
   // 安全儲存 (SecretStore)
@@ -31,6 +34,10 @@ export interface EngineStatus {
   engineName: string
   /** 若不可用的說明 */
   message?: string
+  /** 目前生效路徑的來源：使用者設定 / 環境變數 / 打包資源 */
+  pathSource?: 'user' | 'env' | 'resource' | null
+  /** 目前生效的引擎路徑（若有） */
+  resolvedPath?: string | null
 }
 
 /**
@@ -41,6 +48,12 @@ export interface RendererApi {
   engine: {
     analyze(request: EngineAnalysisRequest): Promise<EngineAnalysis>
     status(): Promise<EngineStatus>
+    /** 取得使用者自訂的引擎路徑（未設定回 null） */
+    getPath(): Promise<string | null>
+    /** 設定（或以 null 清除）使用者自訂引擎路徑，回傳更新後狀態 */
+    setPath(path: string | null): Promise<EngineStatus>
+    /** 開啟原生檔案選擇器挑選引擎可執行檔；取消回 null（不自動儲存） */
+    browsePath(): Promise<string | null>
   }
   ai: {
     explain(request: AIExplanationRequest): Promise<AIExplanationResponse>

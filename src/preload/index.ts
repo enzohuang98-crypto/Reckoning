@@ -15,7 +15,10 @@ const api: RendererApi = {
   engine: {
     analyze: (request: EngineAnalysisRequest) =>
       ipcRenderer.invoke(IPC.ENGINE_ANALYZE, request),
-    status: () => ipcRenderer.invoke(IPC.ENGINE_STATUS)
+    status: () => ipcRenderer.invoke(IPC.ENGINE_STATUS),
+    getPath: () => ipcRenderer.invoke(IPC.ENGINE_GET_PATH),
+    setPath: (path: string | null) => ipcRenderer.invoke(IPC.ENGINE_SET_PATH, path),
+    browsePath: () => ipcRenderer.invoke(IPC.ENGINE_BROWSE_PATH)
   },
   ai: {
     explain: (request: AIExplanationRequest) =>

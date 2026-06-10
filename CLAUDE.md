@@ -98,10 +98,25 @@ src/
 - Stage 1：CLAUDE.md、全部核心型別、`npm run build` 可通過。
 - Stage 2：BoardEditor（手動擺棋）、FenInput（FEN 驗證渲染）、SettingsPage（金鑰安全儲存）、
   10x9 棋盤渲染、Electron IPC main/renderer 分離。
+- Stage 3：Pikafish UCI 整合。`PikafishAdapter` 採分段握手
+  （`uci`→`uciok`→`setoption MultiPV`+`isready`→`readyok`→`position`+`go`），
+  `EngineOutputParser` 解析 multipv/cp/mate（已含單元驗證），`engine:analyze` / `engine:status` IPC，
+  AnalysisPanel 顯示候選線。**引擎路徑**可於 SettingsPage 指定（含原生檔案選擇器），
+  經 `engine:setPath` 存入 main 的 `StorageService`（`engine-config.json`），啟動時讀回注入 adapter。
+  路徑優先序：使用者設定 > `PIKAFISH_PATH` > `resources/engine/pikafish.exe`。
+- Stage 4：AI 解釋流程。`AnthropicProvider` 真實呼叫 `@anthropic-ai/sdk`，
+  `promptBuilder` 組裝引擎資料（含護欄），`ai:explain` IPC 自 `SecretStore` 取金鑰，
+  AnalysisPanel 顯示解說與 token/成本。
+
+### 引擎執行前置（使用者需自備）
+
+- Pikafish 為閉源 NNUE 引擎：除 `pikafish.exe` 外，**還需把 `pikafish.nnue` 評估檔放在同目錄**
+  （或以 `setoption name EvalFile` 指定）。缺檔時引擎可能無法通過 `isready`。
+  本軟體只負責驅動 UCI，不內含二進位與評估檔。
 
 ## 尚未完成 / 後續
 
-- 內含或自動下載 Pikafish 二進位（目前需設 `PIKAFISH_PATH` 或放 `resources/engine/pikafish.exe`）。
+- 內含或自動下載 Pikafish 二進位與 `pikafish.nnue`（目前需使用者自備並於設定頁指定）。
 - OpenAI / Gemini Provider 真實實作。
 - 對每個候選著法逐一搜尋以取得精確 loss（目前猜著模式以候選線分數近似）。
 - 將判定為錯著的局面一鍵加入錯題本的 UI 流程。
