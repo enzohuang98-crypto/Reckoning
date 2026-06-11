@@ -1,38 +1,42 @@
 /**
- * 錯題本條目型別 (Mistake book entry types)
+ * 錯題本條目型別 (Mistake book entry types) — SDS v0.2 §2.6.6
+ *
+ * 長期學習核心資料；保存當次 EngineAnalysis 方便回看引擎證據（§2.7.2）。
  */
 
 import type { PieceColor } from './BoardState'
-import type { MoveComparisonResult } from './MoveComparisonResult'
-import type { AIExplanationResponse } from './AIExplanationTypes'
+import type { EngineAnalysis } from './EngineAnalysis'
+import type { ConfidenceLevel, MistakeLevel } from './MoveComparisonResult'
 
-/** 錯題本單一條目 */
+/** 錯題本單一條目（§2.6.6） */
 export interface MistakeBookEntry {
-  /** 唯一識別碼 */
   id: string
-  /** 建立時間 (epoch ms) */
-  createdAt: number
-  /** 局面 FEN */
-  fen: string
-  /** 輪走方 */
+  /** ISO 字串 */
+  createdAt: string
+  /** ISO 字串 */
+  updatedAt: string
+  positionFen: string
   sideToMove: PieceColor
-  /** 使用者實際走的著法 (UCI) */
-  playedMoveUci: string
-  /** 引擎最佳著法 (UCI) */
-  bestMoveUci: string
-  /** 著法比較結果（含錯誤等級） */
-  comparison: MoveComparisonResult
-  /** AI 解釋（選用，可稍後產生） */
-  explanation?: AIExplanationResponse
-  /** 使用者筆記 */
-  note?: string
-  /** 標籤，例如 ['中局', '炮']，便於分類複習 */
+  userMove: string
+  engineBestMove: string
+  evaluationAfterUserMove: number | null
+  evaluationAfterBestMove: number | null
+  scoreDifference: number | null
+  mistakeLevel: MistakeLevel
+  confidence: ConfidenceLevel
+  uncertaintyReasons: string[]
+  /** AI 解釋文字；尚未生成時為空字串 */
+  explanation: string
+  /** 當次引擎分析（回看證據） */
+  engineAnalysis: EngineAnalysis
+  userNote?: string
   tags: string[]
+  understood: boolean
 }
 
 /** 錯題本（localStorage 儲存的整體結構） */
 export interface MistakeBook {
   entries: MistakeBookEntry[]
-  /** schema 版本，便於日後遷移 */
+  /** schema 版本（v2 = SDS v0.2 形狀） */
   version: number
 }

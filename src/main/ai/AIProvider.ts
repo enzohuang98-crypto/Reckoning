@@ -1,29 +1,31 @@
 /**
- * AI Provider 工廠 (Provider factory)
+ * AI Provider 工廠 (getAIProvider) — SDS v0.2 §2.17.8
  *
- * 依 providerId 與設定建立對應的 Provider 實例。
- * Anthropic 走官方 SDK；OpenAI / Gemini 以內建 fetch 呼叫 REST API。
+ * 只依 provider 名稱回傳對應 adapter：不讀 API key、不呼叫 PromptBuilder、
+ * 不讀寫 AppSettings、不碰 UI、不決定 fallback model。
+ * Provider 為無狀態單例。
  */
 
-import type { AIProvider, AIProviderConfig, AIProviderId } from '@shared/types/AIProviderTypes'
+import type { AIProvider, AIProviderId } from '@shared/types/AIProviderTypes'
 import { AnthropicProvider } from './providers/AnthropicProvider'
 import { OpenAIProvider } from './providers/OpenAIProvider'
 import { GeminiProvider } from './providers/GeminiProvider'
 
-export function createProvider(
-  providerId: AIProviderId,
-  config: AIProviderConfig
-): AIProvider {
-  switch (providerId) {
+const anthropicProvider = new AnthropicProvider()
+const openAIProvider = new OpenAIProvider()
+const geminiProvider = new GeminiProvider()
+
+export function getAIProvider(providerName: AIProviderId): AIProvider {
+  switch (providerName) {
     case 'anthropic':
-      return new AnthropicProvider(config)
+      return anthropicProvider
     case 'openai':
-      return new OpenAIProvider(config)
+      return openAIProvider
     case 'gemini':
-      return new GeminiProvider(config)
+      return geminiProvider
     default: {
-      const _exhaustive: never = providerId
-      throw new Error(`未知的 Provider：${String(_exhaustive)}`)
+      const _exhaustive: never = providerName
+      throw new Error(`Unsupported AI provider: ${String(_exhaustive)}`)
     }
   }
 }

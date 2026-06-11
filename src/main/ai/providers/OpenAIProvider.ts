@@ -1,25 +1,24 @@
 /**
- * OpenAI Provider（真實實作）
+ * OpenAI Provider — SDS v0.2 §2.17.4、§2.17.8
  *
+ * 無狀態 adapter：API key 與 prompt 由 AIExplanationRequest 帶入。
  * 以內建 fetch 呼叫 Chat Completions API（不引入 SDK，減少相依）。
- * 套用與 Anthropic 相同的 promptBuilder 與護欄規則。
+ * streaming 介面為包裝模式（§2.17.1）：等完整回應後以單一 text_delta 回傳。
  */
 
 import type {
   AIProvider,
-  AIModelInfo,
-  AIProviderConfig
+  AIExplanationStreamChunk
 } from '@shared/types/AIProviderTypes'
-import { PROVIDER_DEFAULT_MODELS } from '@shared/types/AIProviderTypes'
 import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { buildSystemPrompt, buildUserPrompt } from '../promptBuilder'
 import { estimateCost } from '../cost'
 import { extractApiErrorMessage } from '../http'
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+const MAX_OUTPUT_TOKENS = 4096
 
 /** Chat Completions 回應中本實作會使用的欄位 */
 interface OpenAIChatResponse {
@@ -31,41 +30,26 @@ export class OpenAIProvider implements AIProvider {
   readonly id = 'openai' as const
   readonly displayName = 'OpenAI'
 
-  private readonly config: AIProviderConfig
-
-  constructor(config: AIProviderConfig) {
-    this.config = config
-  }
-
-  listModels(): AIModelInfo[] {
-    return PROVIDER_DEFAULT_MODELS.openai
-  }
-
-  isConfigured(): boolean {
-    return this.config.apiKey.length > 0 && this.config.model.length > 0
-  }
+  constructor(private readonly options: { baseUrl?: string } = {}) {}
 
   async generateExplanation(
-    request: AIExplanationRequest
+    request: AIExplanationRequest,
+    signal?: AbortSignal
   ): Promise<AIExplanationResponse> {
-    const language = request.language ?? 'zh-TW'
-    const model = request.model || this.config.model
-    const baseUrl = (this.config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
 
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
+      signal,
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${this.config.apiKey}`
+        authorization: `Bearer ${request.apiKey}`
       },
       body: JSON.stringify({
-        model,
-        max_tokens: this.config.maxTokens ?? 1024,
-        temperature: this.config.temperature ?? 0.3,
-        messages: [
-          { role: 'system', content: buildSystemPrompt(language) },
-          { role: 'user', content: buildUserPrompt(request) }
-        ]
+        model: request.model,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        temperature: 0.3,
+        messages: [{ role: 'user', content: request.prompt }]
       })
     })
 
@@ -89,11 +73,25 @@ export class OpenAIProvider implements AIProvider {
     return {
       text,
       provider: this.id,
-      model,
+      model: request.model,
       usage,
-      costUsd: usage ? estimateCost(model, usage) : undefined,
+      costUsd: usage ? estimateCost(request.model, usage) : undefined,
       createdAt: Date.now(),
       groundedOnEngineData: true
+    }
+  }
+
+  async *generateExplanationStream(
+    request: AIExplanationRequest,
+    signal: AbortSignal
+  ): AsyncIterable<AIExplanationStreamChunk> {
+    const response = await this.generateExplanation(request, signal)
+    if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
+    yield { type: 'text_delta', deltaText: response.text }
+    yield {
+      type: 'done',
+      usage: response.usage,
+      estimatedCostUsd: response.costUsd ?? null
     }
   }
 }

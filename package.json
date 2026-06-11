@@ -14,7 +14,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "tsx --tsconfig tsconfig.node.json tests/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts",
+    "test": "tsx --tsconfig tsconfig.node.json tests/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/license.test.ts && tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder"
   },

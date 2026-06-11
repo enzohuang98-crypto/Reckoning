@@ -1,18 +1,153 @@
 /**
- * AI 解釋 IPC 處理器 (aiExplanationHandlers)
+ * AI 解釋 IPC 處理器 (aiExplanationHandlers) — SDS v0.2 §2.17
  *
- * 註冊 AI 解釋與 SecretStore 的 IPC。
- * 金鑰流向：renderer 只負責 set/has/delete；解密與使用只在 main 內進行。
+ * Streaming 通道（§2.17.2）：
+ *   ai:generate-explanation:start  (renderer→main)
+ *   ai:generate-explanation:chunk  (main→renderer，逐段文字)
+ *   ai:generate-explanation:done   (main→renderer，finalText + usage + cost)
+ *   ai:generate-explanation:error  (main→renderer)
+ *   ai:generate-explanation:cancel (renderer→main)
+ *
+ * 規則（§2.17.10）：
+ *  - buildAIExplanationRequest() 是唯一組裝 prompt 與注入 API key 的入口。
+ *  - abort 檢查放在 chunk 處理之後；done 分支先設 completedNormally=true 再 reply 並 break。
+ *  - catch 僅在 !completedNormally 時送 error；finally 清除 activeExplanationRequests。
+ *  - cancel 必須實際呼叫 controller.abort()。
+ *
+ * 金鑰流向：renderer 只負責 set/has/delete；解密與使用只在 main 內進行，
+ * API key 不得被 log（§2.11）。
  */
 
 import { ipcMain } from 'electron'
-import { IPC } from '@shared/types/ipc'
+import {
+  IPC,
+  type GenerateExplanationErrorPayload,
+  type GenerateExplanationStartPayload
+} from '@shared/types/ipc'
+import type { AIProviderId } from '@shared/types/AIProviderTypes'
 import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
-import type { AIProviderId, AIProviderConfig } from '@shared/types/AIProviderTypes'
 import { SecretStore } from '../storage/SecretStore'
-import { createProvider } from '../ai/AIProvider'
+import {
+  AnalysisSessionNotFoundError,
+  type AnalysisSessionStore
+} from '../storage/AnalysisSessionStore'
+import { getAIProvider } from '../ai/AIProvider'
+import { buildExplanationPrompt } from '../ai/promptBuilder'
+import { modelRegistry, UnsupportedModelError } from '../ai/ModelRegistry'
 
-export function registerAiExplanationHandlers(secretStore: SecretStore): void {
+/** API key 缺失（§2.17.9：不得用空字串或 placeholder 繼續呼叫） */
+export class MissingApiKeyError extends Error {
+  constructor(public readonly provider: AIProviderId) {
+    super(`Missing API key for provider: ${provider}`)
+    this.name = 'MissingApiKeyError'
+  }
+}
+
+/**
+ * buildAIExplanationRequest（§2.17.9）：
+ * SecretStore、PromptBuilder、ModelRegistry、AnalysisSessionStore 的集中銜接點。
+ * IPC handler 不得自己組 prompt 或讀 API key。
+ */
+export async function buildAIExplanationRequest(
+  payload: GenerateExplanationStartPayload,
+  deps: {
+    secretStore: SecretStore
+    analysisSessionStore: AnalysisSessionStore
+  }
+): Promise<AIExplanationRequest> {
+  // 不存在則丟 UnsupportedModelError（§2.19.1）
+  const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
+  const apiKey = deps.secretStore.getApiKey(payload.provider)
+  if (!apiKey) throw new MissingApiKeyError(payload.provider)
+  const session = await deps.analysisSessionStore.get(payload.analysisId)
+  if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
+  const prompt = buildExplanationPrompt({
+    engineAnalysis: session.engineAnalysis,
+    moveComparison: session.moveComparison,
+    userLevel: payload.userLevel,
+    explanationStyle: payload.explanationStyle,
+    language: payload.language
+  })
+  return {
+    provider: payload.provider,
+    model: modelConfig.model,
+    apiKey,
+    prompt,
+    metadata: {
+      requestId: payload.requestId,
+      analysisId: payload.analysisId,
+      userLevel: payload.userLevel,
+      explanationStyle: payload.explanationStyle
+    }
+  }
+}
+
+/** 錯誤分類（§2.17.6）。訊息不得含 API key。 */
+export function mapStreamingErrorToPayload(
+  requestId: string,
+  error: unknown
+): GenerateExplanationErrorPayload {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return { requestId, code: 'cancelled', message: '已取消生成。' }
+  }
+  if (error instanceof MissingApiKeyError) {
+    return {
+      requestId,
+      code: 'missing_api_key',
+      message: `尚未設定 ${error.provider} 的 API 金鑰，請至設定頁輸入。`
+    }
+  }
+  if (error instanceof UnsupportedModelError) {
+    return {
+      requestId,
+      code: 'unsupported_model',
+      message: `不支援的模型：${error.provider}/${error.model}。請至設定頁選擇有效模型。`
+    }
+  }
+  if (error instanceof AnalysisSessionNotFoundError) {
+    return {
+      requestId,
+      code: 'analysis_session_not_found',
+      message: '這次分析結果已過期，請重新分析局面後再生成 AI 解釋。'
+    }
+  }
+  if (error instanceof Error) {
+    // Anthropic SDK 取消時丟 APIUserAbortError（非 DOMException）
+    if (error.name === 'APIUserAbortError' || error.name === 'AbortError') {
+      return { requestId, code: 'cancelled', message: '已取消生成。' }
+    }
+    const status = (error as { status?: unknown }).status
+    if (status === 429 || /\(429\)/.test(error.message)) {
+      return {
+        requestId,
+        code: 'rate_limited',
+        message: `模型呼叫被限流 (rate limit)，請稍後重試。${error.message}`
+      }
+    }
+    // fetch 網路層失敗（DNS/連線中斷）為 TypeError；SDK 為 APIConnectionError
+    if (error.name === 'APIConnectionError' || error instanceof TypeError) {
+      return {
+        requestId,
+        code: 'network_error',
+        message: '網路連線失敗，請檢查網路後重試。'
+      }
+    }
+    if (typeof status === 'number' || /API 錯誤/.test(error.message)) {
+      return { requestId, code: 'provider_error', message: error.message }
+    }
+    return { requestId, code: 'unknown_error', message: error.message }
+  }
+  return {
+    requestId,
+    code: 'unknown_error',
+    message: 'AI 解釋生成發生未知錯誤。'
+  }
+}
+
+export function registerAiExplanationHandlers(
+  secretStore: SecretStore,
+  sessionStore: AnalysisSessionStore
+): void {
   // ---- SecretStore 通道 ----
   ipcMain.handle(IPC.SECRET_IS_AVAILABLE, (): boolean =>
     secretStore.isEncryptionAvailable()
@@ -38,20 +173,69 @@ export function registerAiExplanationHandlers(secretStore: SecretStore): void {
     }
   )
 
-  // ---- AI 解釋通道 ----
-  ipcMain.handle(IPC.AI_EXPLAIN, async (_e, request: AIExplanationRequest) => {
-    const apiKey = secretStore.getApiKey(request.provider)
-    if (!apiKey) {
-      throw new Error(
-        `尚未設定 ${request.provider} 的 API 金鑰，請至設定頁輸入。`
-      )
+  // ---- AI 解釋 streaming（§2.17.5 最終版 loop） ----
+  const activeExplanationRequests = new Map<string, AbortController>()
+
+  ipcMain.on(
+    IPC.AI_GENERATE_EXPLANATION_START,
+    async (event, payload: GenerateExplanationStartPayload) => {
+      const { requestId } = payload
+      const controller = new AbortController()
+      activeExplanationRequests.set(requestId, controller)
+      let accumulatedText = ''
+      let completedNormally = false
+      try {
+        const provider = getAIProvider(payload.provider)
+        const request = await buildAIExplanationRequest(payload, {
+          secretStore,
+          analysisSessionStore: sessionStore
+        })
+        for await (const chunk of provider.generateExplanationStream(
+          request,
+          controller.signal
+        )) {
+          if (chunk.type === 'text_delta') {
+            accumulatedText += chunk.deltaText
+            event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
+              requestId,
+              deltaText: chunk.deltaText
+            })
+          }
+          if (chunk.type === 'done') {
+            completedNormally = true
+            event.reply(IPC.AI_GENERATE_EXPLANATION_DONE, {
+              requestId,
+              finalText: accumulatedText,
+              usage: chunk.usage,
+              estimatedCostUsd: chunk.estimatedCostUsd ?? null
+            })
+            break
+          }
+          // abort 檢查必須放在 chunk 處理之後，避免 done 與 cancelled 同送（§2.17.5）
+          if (controller.signal.aborted) {
+            throw new DOMException('Request cancelled', 'AbortError')
+          }
+        }
+      } catch (error) {
+        if (!completedNormally) {
+          event.reply(
+            IPC.AI_GENERATE_EXPLANATION_ERROR,
+            mapStreamingErrorToPayload(requestId, error)
+          )
+        }
+      } finally {
+        activeExplanationRequests.delete(requestId)
+      }
     }
-    const config: AIProviderConfig = {
-      providerId: request.provider,
-      apiKey,
-      model: request.model
+  )
+
+  ipcMain.on(
+    IPC.AI_GENERATE_EXPLANATION_CANCEL,
+    (_event, payload: { requestId: string }) => {
+      const controller = activeExplanationRequests.get(payload.requestId)
+      if (!controller) return
+      controller.abort()
+      activeExplanationRequests.delete(payload.requestId)
     }
-    const provider = createProvider(request.provider, config)
-    return provider.generateExplanation(request)
-  })
+  )
 }

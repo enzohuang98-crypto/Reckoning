@@ -1,57 +1,48 @@
 /**
- * Anthropic Provider（完整實作）
+ * Anthropic Provider — SDS v0.2 §2.17.4、§2.17.8
  *
- * 使用 @anthropic-ai/sdk 呼叫 Claude 模型，將結構化引擎資料轉成人類解說。
- * 預設模型：claude-sonnet-4-6（預設）、claude-opus-4-8。
+ * 無狀態 adapter：API key 與 prompt 由 AIExplanationRequest 帶入。
+ * 使用 @anthropic-ai/sdk 呼叫 Claude 模型；streaming 模式為真 SSE streaming，
+ * AbortSignal 直接傳入 SDK。
  */
 
 import Anthropic from '@anthropic-ai/sdk'
 import type {
   AIProvider,
-  AIModelInfo,
-  AIProviderConfig
+  AIExplanationStreamChunk
 } from '@shared/types/AIProviderTypes'
-import { PROVIDER_DEFAULT_MODELS } from '@shared/types/AIProviderTypes'
 import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { buildSystemPrompt, buildUserPrompt } from '../promptBuilder'
 import { estimateCost } from '../cost'
+
+/** 長篇分析輸出上限 */
+const MAX_OUTPUT_TOKENS = 4096
 
 export class AnthropicProvider implements AIProvider {
   readonly id = 'anthropic' as const
   readonly displayName = 'Anthropic Claude'
 
-  private readonly config: AIProviderConfig
-  private readonly client: Anthropic
+  constructor(private readonly options: { baseUrl?: string } = {}) {}
 
-  constructor(config: AIProviderConfig) {
-    this.config = config
-    this.client = new Anthropic({ apiKey: config.apiKey, baseURL: config.baseUrl })
-  }
-
-  listModels(): AIModelInfo[] {
-    return PROVIDER_DEFAULT_MODELS.anthropic
-  }
-
-  isConfigured(): boolean {
-    return this.config.apiKey.length > 0 && this.config.model.length > 0
+  private client(apiKey: string): Anthropic {
+    return new Anthropic({ apiKey, baseURL: this.options.baseUrl })
   }
 
   async generateExplanation(
-    request: AIExplanationRequest
+    request: AIExplanationRequest,
+    signal?: AbortSignal
   ): Promise<AIExplanationResponse> {
-    const language = request.language ?? 'zh-TW'
-    const model = request.model || this.config.model
-
-    const message = await this.client.messages.create({
-      model,
-      max_tokens: this.config.maxTokens ?? 1024,
-      temperature: this.config.temperature ?? 0.3,
-      system: buildSystemPrompt(language),
-      messages: [{ role: 'user', content: buildUserPrompt(request) }]
-    })
+    const message = await this.client(request.apiKey).messages.create(
+      {
+        model: request.model,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        temperature: 0.3,
+        messages: [{ role: 'user', content: request.prompt }]
+      },
+      { signal }
+    )
 
     const text = message.content
       .filter((block): block is Anthropic.TextBlock => block.type === 'text')
@@ -67,11 +58,49 @@ export class AnthropicProvider implements AIProvider {
     return {
       text,
       provider: this.id,
-      model,
+      model: request.model,
       usage,
-      costUsd: estimateCost(model, usage),
+      costUsd: estimateCost(request.model, usage),
       createdAt: Date.now(),
       groundedOnEngineData: true
+    }
+  }
+
+  async *generateExplanationStream(
+    request: AIExplanationRequest,
+    signal: AbortSignal
+  ): AsyncIterable<AIExplanationStreamChunk> {
+    const stream = await this.client(request.apiKey).messages.create(
+      {
+        model: request.model,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        temperature: 0.3,
+        stream: true,
+        messages: [{ role: 'user', content: request.prompt }]
+      },
+      { signal }
+    )
+
+    let inputTokens = 0
+    let outputTokens = 0
+    for await (const event of stream) {
+      if (event.type === 'message_start') {
+        inputTokens = event.message.usage.input_tokens
+      } else if (
+        event.type === 'content_block_delta' &&
+        event.delta.type === 'text_delta'
+      ) {
+        yield { type: 'text_delta', deltaText: event.delta.text }
+      } else if (event.type === 'message_delta') {
+        outputTokens = event.usage.output_tokens
+      }
+    }
+
+    const usage = { inputTokens, outputTokens }
+    yield {
+      type: 'done',
+      usage,
+      estimatedCostUsd: estimateCost(request.model, usage) ?? null
     }
   }
 }

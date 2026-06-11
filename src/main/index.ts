@@ -15,6 +15,12 @@ import {
   registerEngineAnalysisHandlers
 } from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
+import { registerLicenseHandlers } from './ipc/licenseHandlers'
+import { LicenseService } from './license/LicenseService'
+import {
+  InMemoryAnalysisSessionStore,
+  startAnalysisSessionCleanup
+} from './storage/AnalysisSessionStore'
 
 const isDev = !app.isPackaged
 
@@ -57,8 +63,13 @@ function registerIpc(): void {
   const engineConfig = loadEngineConfig(storage)
   const adapter = new PikafishAdapter(engineConfig.enginePath, engineConfig.engineProtocol)
   const secretStore = new SecretStore()
-  registerEngineAnalysisHandlers(adapter, storage)
-  registerAiExplanationHandlers(secretStore)
+  // 短期分析快取（SDS §2.18）：in-memory + TTL，啟動 10 分鐘定時清理
+  const sessionStore = new InMemoryAnalysisSessionStore()
+  startAnalysisSessionCleanup(sessionStore)
+  registerEngineAnalysisHandlers(adapter, storage, sessionStore)
+  registerAiExplanationHandlers(secretStore, sessionStore)
+  // 買斷授權（SDS Q5）：離線 Ed25519 簽章驗證
+  registerLicenseHandlers(new LicenseService(storage))
 }
 
 app.whenReady().then(() => {

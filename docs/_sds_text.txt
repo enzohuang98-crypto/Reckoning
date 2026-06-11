@@ -1,0 +1,1594 @@
+象棋 AI 分析講解軟體
+軟體設計規格書
+Software Design Specification
+產品定位：Windows 桌面 App，用 Pikafish 本機 UCI 引擎計算棋局，再用使用者自己的 AI API Key 產生長篇、仔細、可對話的棋局分析。
+項目
+內容
+文件版本
+v0.2
+日期
+2026-06-08
+作者/需求提出者
+黃亭碩 / Enzo
+文件狀態
+v0.2：整合 MoveComparisonService、EngineScore、PikafishAdapter、Electron IPC、AnalysisSessionStore、ModelRegistry 等模組的詳細規格與修正；模型清單與定價已用官方資料更新。
+參考範本
+R02_軟體設計規格參考範本
+版本紀錄
+版本
+日期
+修訂內容
+v0.1
+2026-06-08
+依產品需求建立第一版軟體設計規格草稿，補入系統架構、模組、資料結構、例外處理、安全機制與待確認事項。
+v0.2
+2026-06-08
+依設計審查整合下列內容：(1) MoveComparisonService 錯誤分級規則（半開區間、負分處理、confidence 計算）；(2) EngineOutputParser 的 EngineScore 與 mate score 處理；(3) PikafishAdapter 雙階段分析與視角反轉；(4) Electron IPC 架構與 AI 解釋 streaming；(5) AnalysisSessionStore 短期分析快取；(6) ModelRegistry 與真實模型定價；(7) Engine 分析取消機制；並修正資料型別一致性問題。
+確認事項總覽
+編號
+待確認項目
+目前狀態/建議
+Q1
+Pikafish 由使用者自行下載並選擇路徑，還是由安裝檔附帶？
+使用者自行下載並在 App 選擇路徑，降低授權與打包風險。
+Q2
+本機儲存採 SQLite、JSON 檔，或先用 localStorage？
+Local storage
+Q3
+「不能離線使用」是指 AI 解釋不能離線，還是整個 App 不能開？
+AI 解釋需網路；已儲存錯題本與本機 Pikafish 分析可離線。
+Q4
+第一個完整支援的 AI Provider 是哪家？
+第一版完整實作 Anthropic，預設模型 claude-sonnet-4-6, Claude Opus 4.8；架構保留 OpenAI、Gemini 介面。
+Q5
+買斷授權是否需要 License Key？
+是
+Q6
+模型價格資料來源與更新頻率？
+建立 model_pricing.json，初始資料以各家官方定價頁為準（見 §2.19），每筆帶 lastUpdated 與 sourceNote，需定期手動核對。
+1　文件目的
+本文件目的在於描述「象棋 AI 分析講解軟體」之軟體設計規格，作為後續 MVP 開發、Claude Code 自動開發任務拆解、程式碼審查、測試驗收與產品溝通之依據。
+本文件涵蓋系統架構、設計方法、開發工具、模組劃分、資料結構、使用者介面、例外處理、外部整合、備份回復、安全機制與共用模組等內容。
+本產品的核心不是取代引擎算棋，而是把 Pikafish 的分析結果轉換成棋手能理解、能追問、能儲存與複習的長篇教練式分析。
+2　工作說明
+2.1　設計方法與工具
+2.1.1　系統設計方法與架構
+本系統採 Windows 桌面 App 架構，不採 Web SaaS，不需使用者登入，不提供雲端同步，也不建置自有後端伺服器。
+第一版採本機優先設計：Pikafish 於使用者電腦本機執行，軟體透過 UCI engine adapter 與引擎溝通；Claude、OpenAI、Gemini 等 AI Provider 則透過使用者自行填入的 API Key 進行雲端模型呼叫。
+重要名詞限制：本文件不將 Pikafish 稱為雲端 API。Pikafish 在本設計中被視為「本機 UCI 象棋引擎」。若程式內出現 API 字樣，僅指本軟體內部封裝之 adapter interface，不代表 Pikafish 有官方 HTTP API。
+系統主要分為六層：使用者介面層、應用服務層、引擎整合層、AI Provider 整合層、本機資料儲存層、安裝與發佈層。
+層級
+主要責任
+代表模組
+使用者介面層
+顯示棋盤、輸入 FEN、手動擺棋、猜棋、查看分析、管理錯題本與設定。
+BoardEditor、FenInput、GuessMode、AnalysisPanel、SettingsPage、MistakeBookPage
+應用服務層
+統一處理棋局狀態、比較使用者走法與引擎走法、建立 AI prompt、估算 token 與成本。
+PositionService、MoveComparisonService、PromptBuilder、TokenCostEstimator
+引擎整合層
+啟動 Pikafish、送出 UCI 指令、解析 UCI output、形成結構化 EngineAnalysis。
+PikafishAdapter、EngineOutputParser
+AI Provider 整合層
+依 provider interface 呼叫 Claude、OpenAI、Gemini，取得分析文字與使用量資料。
+AIProvider、AnthropicProvider、OpenAIProvider、GeminiProvider
+本機資料儲存層
+儲存設定、錯題本、看不懂局面、模型價格表與歷史分析。
+StorageService、SecretStore、LocalDB、model_pricing.json
+安裝與發佈層
+打包 Windows 安裝檔，提供使用者安裝與更新。
+Electron Builder / InstallerConfig
+2.1.2　系統設計模式
+本專案採重複式開發（Iteration）為主，並結合由上而下與由下而上的設計方式。
+由上而下：先固定產品目標、使用者流程、資料流與模組邊界，避免 Claude Code 在開發時自行發明架構。
+由下而上：先建立可測試的資料型別、provider interface、engine adapter interface、prompt builder contract，再逐步整合 UI 與真實外部服務。
+開發階段
+重點
+驗收標準
+Stage 1
+建立產品規則、CLAUDE.md、Claude Code skills、資料型別。
+型別清楚，build 可通過，不接真外部服務。
+Stage 2
+建立棋盤、FEN 輸入、手動擺棋、設定頁。
+使用者可建立局面並儲存設定。
+Stage 3
+建立錯題本、看不懂局面、猜棋流程 UI。
+可儲存與回看局面。
+Stage 4
+建立 PikafishAdapter interface 與 UCI parser。
+可解析 mock engine output。
+Stage 5
+真正連接 Pikafish 本機 UCI 引擎。
+可取得 best move、score、depth、PV。
+Stage 6
+接第一個 AI Provider，產生長篇分析。
+AI 解釋必須只根據 EngineAnalysis，不得自行判棋。
+Stage 7
+補齊三家 Provider、成本估算、Windows 安裝檔。
+可安裝、可輸入 API Key、可顯示 token 與估算價格。
+2.1.3　分析與開發工具
+類別
+工具
+用途
+程式編輯
+VS Code
+主要開發環境。
+版本控制
+Git / GitHub
+分支、commit、PR、Claude Code 任務追蹤。
+AI 開發輔助
+Claude Code / Claude Cowork
+在受控任務、受控分支中協助建立 UI、型別、測試與文件。
+桌面框架
+Electron + React + TypeScript（暫定）
+快速建立 Windows 桌面 App；雖使用 Web 技術，但產品不是網頁版 SaaS。
+打包工具
+Electron Builder（暫定）
+產生 Windows 安裝檔。
+本機資料庫
+SQLite 或 JSON/localStorage（待確認）
+儲存錯題本、看不懂局面、歷史分析與設定。
+引擎整合
+Node child_process / UCI protocol adapter
+啟動 Pikafish 並讀寫 stdin/stdout。
+API 整合
+Anthropic / OpenAI / Gemini SDK 或 HTTPS fetch
+呼叫使用者自己的 AI API Key。
+測試工具
+Vitest / Playwright（待確認）
+單元測試與基本 UI 測試。
+圖表與規格
+Markdown / DOCX / Graphviz
+撰寫設計文件與產生流程圖。
+2.1.4　編碼與命名原則
+本系統採 TypeScript 命名規則，強調模組責任單一、檔案名稱可讀、介面與實作分離。
+項目
+命名規則
+範例
+React Component
+PascalCase + 功能名稱
+BoardEditor.tsx、SettingsPage.tsx、AnalysisPanel.tsx
+Service
+PascalCase + Service
+MoveComparisonService.ts、StorageService.ts
+Adapter
+PascalCase + Adapter
+PikafishAdapter.ts
+Provider
+PascalCase + Provider
+AnthropicProvider.ts、OpenAIProvider.ts、GeminiProvider.ts
+Type / Interface
+PascalCase
+EngineAnalysis、MistakeBookEntry、AIProvider
+設定檔
+snake_case 或 kebab-case
+model_pricing.json、app-settings.json
+測試檔
+原檔名 + .test.ts
+MoveComparisonService.test.ts
+建議目錄結構如下：
+src/
+  main/
+    engine/
+      PikafishAdapter.ts
+      EngineOutputParser.ts
+    ai/
+      AIProvider.ts
+      providers/
+        AnthropicProvider.ts
+        OpenAIProvider.ts
+        GeminiProvider.ts
+    storage/
+      StorageService.ts
+      SecretStore.ts
+      AnalysisSessionStore.ts
+    ipc/
+      engineAnalysisHandlers.ts
+      aiExplanationHandlers.ts
+  renderer/
+    pages/
+      SettingsPage.tsx
+      MistakeBookPage.tsx
+    components/
+      BoardEditor.tsx
+      AnalysisPanel.tsx
+      GuessModePanel.tsx
+  shared/
+    types/
+      EngineAnalysis.ts
+      MistakeBookEntry.ts
+      AIProviderTypes.ts
+    config/
+      model_pricing.json
+2.1.5　軟硬體開發與執行環境
+項目
+規格
+目標作業系統
+Windows 10 / Windows 11 64-bit。
+安裝方式
+Windows 安裝檔（例如 .exe installer 或 .msi，待打包工具確認）。
+最低硬體需求
+4GB RAM 以上；可執行 Pikafish 的一般桌機或筆電。
+網路需求
+AI 解釋與對話功能需要網路；Pikafish 本機分析理論上可離線，但最終離線策略待確認。
+外部程式
+Pikafish 本機執行檔路徑由使用者設定；是否隨安裝檔附帶待確認。
+AI API Key
+使用者自行提供 Claude、OpenAI、Gemini API Key；本軟體不提供 API 額度。
+本機儲存
+設定、錯題本、看不懂局面、歷史分析、模型價格表。API Key 需使用安全儲存，不可明文寫入一般設定檔。
+開發環境
+開發者可使用 macOS 或 Windows；Windows 打包與測試需於 Windows 環境驗證。
+2.1.6　系統分析與設計方法
+本專案採物件導向與元件化設計。對外部不穩定部分，例如 Pikafish UCI output 與不同 AI Provider API，使用 adapter interface 隔離；對核心資料流，例如 EngineAnalysis 與 MistakeBookEntry，使用固定 TypeScript type 作為契約。
+核心設計原則：Pikafish 負責棋力判斷，LLM 只負責解釋結構化引擎資料。任何 AI 解釋不得自行發明不在引擎資料中的戰術、殺法、勝勢或計畫。
+2.2　系統流程圖
+2.2.1　系統概圖（文字版）
+本系統的外部互動對象包含：使用者、Pikafish 本機 UCI 引擎、AI Provider、以及本機資料儲存。
+          ┌─────────────┐
+          │   使用者     │
+          └──────┬──────┘
+                 │ 擺棋 / 貼 FEN / 猜棋 / 追問
+          ┌──────▼───────────────────────┐
+          │   Renderer（UI 層）           │
+          └──────┬───────────────────────┘
+                 │ IPC（channel + payload）
+          ┌──────▼───────────────────────┐
+          │   Main process（服務協調層）   │
+          └─┬──────────────┬─────────────┬┘
+            │              │             │
+   ┌────────▼──┐   ┌───────▼──────┐  ┌───▼────────┐
+   │ Pikafish  │   │ AI Provider  │  │ 本機儲存    │
+   │ (本機UCI) │   │ (雲端 API)   │  │ (SQLite等)  │
+   └───────────┘   └──────────────┘  └────────────┘
+2.2.2　主要分析循序圖（文字版）
+以下流程描述使用者先猜一步，系統比較使用者走法與引擎最佳著法，並透過 AI Provider 產生長篇分析的順序。
+Renderer            Main            Pikafish        AIProvider
+   │  analyze-position │                │                │
+   ├──────────────────&gt;│                │                │
+   │                   │  FEN 驗證       │                │
+   │                   │  root 分析      │                │
+   │                   ├───────────────&gt;│                │
+   │                   │  best/PV/score │                │
+   │                   │&lt;───────────────┤                │
+   │                   │ (若 userMove 不在候選) 二次分析    │
+   │                   ├───────────────&gt;│                │
+   │                   │&lt;───────────────┤  (取負號)       │
+   │                   │ MoveComparison + 建立 analysisId  │
+   │                   │ AnalysisSessionStore.save()       │
+   │  analysis-result  │                │                │
+   │&lt;──────────────────┤  (含 analysisId)                 │
+   │  ai:generate:start (帶 analysisId)  │                │
+   ├──────────────────&gt;│  查 session→建 prompt             │
+   │                   ├───────────────────────────────&gt;│
+   │  ai:...:chunk     │&lt;───────────────  streaming ─────┤
+   │&lt;──────────────────┤   (逐段)                        │
+   │  ai:...:done      │&lt;───────────────────────────────┤
+   │&lt;──────────────────┤                │                │
+2.2.3　狀態圖（文字版）
+系統核心狀態如下，箭頭代表允許的狀態轉移。
+[未載入局面]
+     │ 貼 FEN / 擺棋
+     ▼
+[局面已建立] ──猜一步──&gt; [使用者已猜]
+     │                        │ 送出分析
+     │ 直接分析                ▼
+     └──────────────&gt; [引擎分析中] ──失敗──&gt; [錯誤狀態]
+                            │ 完成
+                            ▼
+                       [已比較] ──生成解釋──&gt; [AI 解釋中]
+                            │                    │ 完成
+                            │                    ▼
+                            │              [閱讀/追問]
+                            │                    │ 儲存
+                            └────────────────&gt; [已儲存]
+任一狀態皆可：[取消] → 回到 [局面已建立] 或 [錯誤狀態]
+2.2.4　主要資料流程
+步驟
+輸入
+處理
+輸出
+1
+FEN 或手動擺棋資料
+PositionService 驗證並轉成標準 BoardState / FEN
+標準化 positionFen
+2
+使用者猜的走法 userMove
+GuessMode 記錄使用者判斷
+UserGuess
+3
+positionFen、分析深度、候選著法數
+PikafishAdapter 啟動 UCI 分析
+raw UCI output
+4
+raw UCI output
+EngineOutputParser 解析 bestMove、score、PV、depth
+EngineAnalysis
+5
+EngineAnalysis + userMove
+MoveComparisonService 比較分數差距與錯誤等級
+MoveComparisonResult
+6
+MoveComparisonResult
+PromptBuilder 產生防幻覺 prompt
+AIExplanationRequest
+7
+AIExplanationRequest + API Key
+AI Provider 回傳解釋與 token usage
+AIExplanationResponse
+8
+解釋、局面、錯誤等級
+StorageService 儲存
+MistakeBookEntry / MisunderstoodPosition
+2.3　軟體組織架構
+2.3.1　主要物件與責任
+物件 / 類型
+責任
+備註
+BoardState
+表示當前棋盤、輪到哪方、可轉成 FEN。
+核心狀態，不應被 AI Provider 直接修改。
+UserGuess
+記錄使用者在看答案前猜的走法與理由。
+用於學習比較。
+EngineAnalysis
+儲存 Pikafish 結構化分析結果。
+AI 解釋的唯一棋力依據。
+MoveComparisonResult
+比較 userMove 與 engineBestMove，計算分數差距與錯誤等級。
+錯誤分類為產品 heuristic。
+AIExplanationRequest
+封裝 provider、model、prompt 與 API key。
+API key 不得被 log。
+AIExplanationResponse
+儲存模型文字、token usage、估算成本。
+成本為估算值。
+MistakeBookEntry
+錯題本資料，包含局面、錯誤走法、最佳走法、解釋與使用者筆記。
+長期學習核心資料。
+AppSettings
+儲存 engine path、provider、model、分析深度等設定。
+API key 不放一般設定檔。
+2.4　軟體元件模組設計
+2.4.1　功能架構
+一級功能
+二級功能
+棋局建立
+貼上 FEN、手動擺棋、清空棋盤、保存局面。
+猜棋模式
+使用者先選一步、輸入理由、送出後不可先看答案。
+引擎分析
+設定分析深度/時間/候選著法數、取得 best move、score、PV。
+AI 解釋
+長篇分析、追問對話、重新生成、顯示可信度提醒。
+錯題本
+儲存錯誤局面、標籤、筆記、理解狀態、回看原始分析。
+看不懂局面
+收藏尚未理解的局面，之後回來追問或複習。
+設定
+Pikafish 路徑、AI Provider、API Key、模型、價格表、分析參數。
+成本顯示
+顯示輸入/輸出 token、估算價格、模型價格是否更新。
+2.5　使用者介面設計
+本系統採圖形化桌面介面。核心介面應避免像純工程工具，而要讓有基礎的棋手能直接完成「擺局/貼 FEN → 先猜 → 引擎分析 → AI 長篇解釋 → 儲存錯題」的流程。
+畫面
+主要元件
+使用者可執行動作
+輸出
+主棋盤頁
+棋盤、FEN 輸入、走法列、開始分析按鈕。
+貼 FEN、手動擺棋、選一步作為自己的答案。
+局面、使用者走法、驗證訊息。
+猜棋頁/區塊
+猜測走法、理由輸入、提交按鈕。
+先猜最佳走法或自己原本想走的棋。
+UserGuess。
+引擎分析頁/區塊
+best move、候選著法、score、depth、PV。
+調整分析參數、重新分析。
+EngineAnalysis 與可信度提醒。
+AI 解釋頁/區塊
+長篇分析、追問輸入框、重新生成、成本顯示。
+閱讀、追問、儲存、複製。
+AIExplanationResponse、token/cost estimate。
+錯題本頁
+列表、標籤、理解狀態、搜尋、單筆詳情。
+回看、加筆記、標記已理解、刪除。
+MistakeBookEntry。
+看不懂局面頁
+收藏清單、原因、再次追問按鈕。
+收藏、回看、移入錯題本。
+MisunderstoodPosition。
+設定頁
+Pikafish 路徑、provider、model、API Key、模型價格表。
+選路徑、輸入 key、清除 key、測試設定。
+AppSettings、SecretStore 狀態。
+2.6　資料結構設計（核心型別契約）
+本系統的核心資料結構必須先固定，因為 AI 解釋、錯題本、成本估算與安全規則都依賴穩定資料契約。以下型別為 v0.2 之後的唯一真相來源；MoveComparisonService、EngineOutputParser、PikafishAdapter、StorageService、UI 與 IPC 都必須使用同一組型別。
+2.6.1　分數型別 EngineScore
+Pikafish 在一般局面回傳 centipawn（score cp N），在殺棋或接近殺棋時回傳 mate score（score mate N）。為避免 UI 與 AI 解釋失去語義，分數不得只存裸數字。
+type ScoreSource =
+  | &quot;root_analysis&quot;
+  | &quot;candidate_move&quot;
+  | &quot;separate_engine_call&quot;;
+type EngineScore =
+  | {
+      type: &quot;cp&quot;;
+      cp: number;            // Pikafish 原始 centipawn
+      value: number;         // 兵/卒單位 (cp / 100)
+      comparableValue: number; // 給 MoveComparisonService 比較用
+      raw: string;           // 原始 UCI 字串，僅供 debug
+      displayText: string;   // UI 顯示文字，如 +1.20
+      wasInverted: boolean;  // 是否經過視角反轉
+      source: ScoreSource;
+    }
+  | {
+      type: &quot;mate&quot;;
+      mateIn: number;        // mate 距離；負數表示自己將被將死
+      comparableValue: number;
+      raw: string;
+      displayText: string;   // 如「殺 3」「被殺 2」「已被將死」
+      isTerminalMate: boolean; // mate 0 終局狀態
+      wasInverted: boolean;
+      source: ScoreSource;
+    };
+關鍵限制：raw 僅供 debug 與追蹤，不得被 UI、PromptBuilder、MoveComparisonService 或分級邏輯使用（理由見 §2.15）。
+2.6.2　候選著法 EngineCandidateMove
+multiPV 中每個候選走法都有自己的 score，且可能是 mate。因此候選著法必須保留完整 EngineScore，evaluation 僅作為由 score.comparableValue 派生的比較數值。
+type EngineCandidateMove = {
+  move: string;
+  displayMove?: string;
+  score: EngineScore | null;
+  evaluation: number | null;  // = score === null ? null : score.comparableValue
+  depth: number | null;
+  principalVariation: string[];
+};
+2.6.3　引擎分析 EngineAnalysis
+EngineAnalysis 同時保留 EngineScore（給 UI 與 AI 解釋）與 evaluation 數值（給 MoveComparisonService）。userMoveEvaluationSource 標示 scoreAfterUserMove 的來源。
+type UserMoveEvaluationSource =
+  | &quot;candidate_move&quot;
+  | &quot;separate_engine_call&quot;
+  | &quot;unavailable&quot;;
+type EngineAnalysis = {
+  positionFen: string;
+  sideToMove: &quot;red&quot; | &quot;black&quot;;
+  userMove?: string;
+  bestMove: string;
+  scoreAfterUserMove: EngineScore | null;
+  scoreAfterBestMove: EngineScore | null;
+  evaluationAfterUserMove: number | null; // 由 scoreAfterUserMove.comparableValue 派生
+  evaluationAfterBestMove: number | null; // 由 scoreAfterBestMove.comparableValue 派生
+  userMoveEvaluationSource: UserMoveEvaluationSource;
+  depth: number | null;
+  candidateMoves: EngineCandidateMove[];
+  principalVariation: string[];
+  analysisTimeMs?: number;
+  engineName: &quot;Pikafish&quot;;
+};
+2.6.4　錯誤等級 MistakeLevel（全系統共用）
+本系統只允許使用以下 MistakeLevel。MoveComparisonService、MistakeBookEntry、StorageService、UI 與資料庫欄位都必須使用同一組值。turning_point 不列入第一版（理由見 §2.13.4）。
+type MistakeLevel =
+  | &quot;unknown&quot;
+  | &quot;acceptable_or_tiny_inaccuracy&quot;
+  | &quot;inaccuracy&quot;
+  | &quot;mistake&quot;
+  | &quot;serious_mistake&quot;
+  | &quot;major_blunder&quot;;
+2.6.5　比較結果 MoveComparisonResult
+type MoveComparisonResult = {
+  positionFen: string;
+  sideToMove: &quot;red&quot; | &quot;black&quot;;
+  userMove: string;
+  engineBestMove: string;
+  evaluationAfterUserMove: number | null;
+  evaluationAfterBestMove: number | null;
+  scoreDifference: number | null;
+  mistakeLevel: MistakeLevel;
+  depth: number | null;
+  confidence: &quot;low&quot; | &quot;medium&quot; | &quot;high&quot;;
+  uncertaintyReasons: string[];
+};
+2.6.6　錯題本 MistakeBookEntry
+type MistakeBookEntry = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  positionFen: string;
+  sideToMove: &quot;red&quot; | &quot;black&quot;;
+  userMove: string;
+  engineBestMove: string;
+  evaluationAfterUserMove: number | null;
+  evaluationAfterBestMove: number | null;
+  scoreDifference: number | null;
+  mistakeLevel: MistakeLevel;
+  confidence: &quot;low&quot; | &quot;medium&quot; | &quot;high&quot;;
+  uncertaintyReasons: string[];
+  explanation: string;
+  engineAnalysis: EngineAnalysis;
+  userNote?: string;
+  tags: string[];
+  understood: boolean;
+};
+2.6.7　設定 AppSettings 與使用者棋力 UserLevel
+type UserLevel = &quot;basic&quot; | &quot;intermediate&quot; | &quot;advanced&quot;;
+type AppSettings = {
+  rootAnalysisMovetimeMs: number;
+  userMoveEvalMovetimeMs: number;
+  multiPv: number;
+  aiProvider: &quot;anthropic&quot; | &quot;openai&quot; | &quot;gemini&quot;;
+  aiModel: string;     // 真實 API model id，不得用 &quot;default&quot;
+  userLevel: UserLevel;
+};
+const DEFAULT_APP_SETTINGS: AppSettings = {
+  rootAnalysisMovetimeMs: 3000,
+  userMoveEvalMovetimeMs: 1000,
+  multiPv: 3,
+  aiProvider: &quot;anthropic&quot;,
+  aiModel: &quot;claude-sonnet-4-6&quot;,
+  userLevel: &quot;intermediate&quot;,
+};
+API Key 不放入 AppSettings，由 SecretStore 管理（見 §2.11、§2.17）。
+2.13　MoveComparisonService 錯誤分級規則
+2.13.1　設計目的
+MoveComparisonService 比較使用者走法與 Pikafish 推薦走法之間的評估差距，並轉換為棋手能理解的錯誤等級。本系統不得只顯示「你錯了」，而必須說明：
+使用者走法造成多少評估損失。
+該損失屬於可接受、緩手、明顯錯誤、嚴重錯誤，或重大敗著。
+錯誤等級只是產品輔助判斷，不等於絕對棋理真理。
+若引擎深度不足或資料缺失，必須標示可信度不足。
+2.13.2　評估分數正規化與 scoreDifference 計算
+Pikafish 原始評估分數以紅方角度呈現：分數越高代表紅方越好。比較前必須依 sideToMove 正規化成「對目前行棋方有利」的方向。normalizeScore() 只接受有效數字，不處理 null。
+function normalizeScore(rawScore: number, sideToMove: &quot;red&quot; | &quot;black&quot;): number {
+  return sideToMove === &quot;red&quot; ? rawScore : -rawScore;
+}
+evaluationAfterBestMove 與 evaluationAfterUserMove 皆可能為 number | null。若任一為 null，scoreDifference 必須為 null，不得嘗試計算，也不得用 0 補值。
+const scoreDifference: number | null =
+  evaluationAfterBestMove === null || evaluationAfterUserMove === null
+    ? null
+    : normalizeScore(evaluationAfterBestMove, sideToMove) -
+      normalizeScore(evaluationAfterUserMove, sideToMove);
+若行棋方為黑方，必須反轉分數方向，否則會把「對紅方有利」誤判為「對黑方有利」。
+2.13.3　MistakeLevel 明確區間表
+本系統使用半開區間 [a, b)：包含左邊界，不包含右邊界。例如 [0.31, 0.81) 代表 0.31 &lt;= scoreDifference &lt; 0.81。
+scoreDifference 範圍
+mistakeLevel
+中文顯示
+說明
+無法計算
+unknown
+無法判定
+缺少必要引擎資料，不能做可靠判斷
+&lt; 0.00
+acceptable_or_tiny_inaccuracy
+可接受或輕微誤差
+使用者走法不遜於 AI 推薦，視為可接受
+[0.00, 0.31)
+acceptable_or_tiny_inaccuracy
+可接受或輕微誤差
+差距很小，通常不是主要問題
+[0.31, 0.81)
+inaccuracy
+緩手 / 不精確
+走法略弱，可能錯失較佳計畫或先手
+[0.81, 1.51)
+mistake
+明顯錯誤
+造成明顯局勢損失，需解釋具體原因
+[1.51, 3.01)
+serious_mistake
+嚴重錯誤
+可能導致攻守形勢明顯惡化
+&gt;= 3.01
+major_blunder
+重大敗著
+造成極大評估損失，但不必然代表勝負轉折
+分類時必須使用原始 scoreDifference 數值，不得使用 UI 四捨五入後的數值。例如 scoreDifference = 0.305，因 0.00 &lt;= 0.305 &lt; 0.31，必須分類為 acceptable_or_tiny_inaccuracy，即使 UI 顯示成 0.31。
+2.13.4　為什麼不用 turning_point
+第一版不使用 turning_point。單純的 scoreDifference &gt; 3.00 只代表使用者走法造成重大損失，不能證明該步是整盤棋的勝負轉折點。例如局面原本已是黑方大優，使用者再走更差的一步，分數會繼續惡化，但這只是「輸得更嚴重」，不是「轉折」。因此第一版使用 major_blunder，語義上只表示「重大損失」。
+未來若要偵測真正的 turning point，應新增獨立欄位（例如 isTurningPointCandidate: boolean），並至少需要 evaluationBefore、evaluationAfterUserMove、evaluationAfterBestMove，以及分數是否跨越指定臨界值。此功能不列入第一版 MVP。
+2.13.5　classifyMistakeLevel 實作（純函式）
+function classifyMistakeLevel(scoreDifference: number | null): MistakeLevel {
+  if (
+    scoreDifference === null ||
+    Number.isNaN(scoreDifference) ||
+    !Number.isFinite(scoreDifference)
+  ) {
+    return &quot;unknown&quot;;
+  }
+  if (scoreDifference &lt; 0.31) return &quot;acceptable_or_tiny_inaccuracy&quot;;
+  if (scoreDifference &lt; 0.81) return &quot;inaccuracy&quot;;
+  if (scoreDifference &lt; 1.51) return &quot;mistake&quot;;
+  if (scoreDifference &lt; 3.01) return &quot;serious_mistake&quot;;
+  return &quot;major_blunder&quot;;
+}
+2.13.6　confidence 計算規則
+以下每一項都算一個 uncertainty reason：
+depth 缺失。
+depth 低於使用者設定的最低深度。
+candidateMoves 少於 2 個。
+principalVariation 為空。
+evaluationAfterUserMove 缺失。
+evaluationAfterBestMove 缺失。
+scoreDifference 無法計算。
+confidence 映射：0 個 → high；1 個 → medium；2 個以上 → low。
+強制 low：以下任一情況即使只有 1 個 reason 也必須直接判為 low：evaluationAfterUserMove 缺失、evaluationAfterBestMove 缺失、scoreDifference 無法計算、engineBestMove 缺失、或 principalVariation 為空且 candidateMoves 少於 2 個。
+2.13.7　Claude Code 實作限制
+不得自行修改 mistakeLevel 閾值。
+不得使用 turning_point。
+不得用 LLM 判斷錯誤等級；只能由結構化引擎資料計算。
+不得把 scoreDifference &lt; 0.00 判定為錯誤。
+必須使用本節定義的半開區間；分級邏輯必須寫成可單元測試的純函式。
+分類必須使用原始 scoreDifference，不得使用 UI 四捨五入後數值。
+若 scoreDifference 為 null、NaN 或 Infinity，必須回傳 unknown。
+若行棋方為黑方，必須先做評估分數正規化。
+confidence 必須依本節規則計算，不得自行猜測。
+2.14　EngineOutputParser：EngineScore 與 mate score 處理
+2.14.1　設計目的
+Pikafish 一般局面回傳 score cp N，殺棋或接近殺棋回傳 score mate N。EngineOutputParser 必須同時保留：(1) 可供 MoveComparisonService 計算的數值；(2) 可供 UI 顯示的原始 score 類型；(3) 可供 AI 解釋使用的 mate 資訊。不得只把 score mate 3 轉成 29997 後丟掉原始語義，也不得讓 Infinity / -Infinity 進入 EngineAnalysis。
+2.14.2　convertCpScore
+function convertCpScore(
+  cp: number,
+  raw: string,
+  source: ScoreSource = &quot;root_analysis&quot;
+): EngineScore {
+  const value = cp / 100;
+  return {
+    type: &quot;cp&quot;,
+    cp,
+    value,
+    comparableValue: value,
+    raw,
+    displayText: value &gt;= 0 ? `+${value.toFixed(2)}` : value.toFixed(2),
+    wasInverted: false,
+    source,
+  };
+}
+2.14.3　convertMateScore（含 mate 0 terminal case）
+一般 parser 階段，score mate 0 代表目前分析局面的行棋方已被將死，因此 comparableValue = -MATE_SCORE，displayText = 「已被將死」。注意：此為「未反轉」語義；第二次分析後的反轉由 PikafishAdapter 的 invertEngineScore() 負責（見 §2.15）。
+const MATE_SCORE = 30000;
+function convertMateScore(
+  mateIn: number,
+  raw: string,
+  source: ScoreSource = &quot;root_analysis&quot;
+): EngineScore {
+  if (mateIn === 0) {
+    return {
+      type: &quot;mate&quot;,
+      mateIn: 0,
+      comparableValue: -MATE_SCORE,
+      raw,
+      displayText: &quot;已被將死&quot;,
+      isTerminalMate: true,
+      wasInverted: false,
+      source,
+    };
+  }
+  const sign = mateIn &gt; 0 ? 1 : -1;
+  const distancePenalty = Math.min(Math.abs(mateIn), 100);
+  const comparableValue = sign * (MATE_SCORE - distancePenalty);
+  return {
+    type: &quot;mate&quot;,
+    mateIn,
+    comparableValue,
+    raw,
+    displayText: mateIn &gt; 0 ? `殺 ${mateIn}` : `被殺 ${Math.abs(mateIn)}`,
+    isTerminalMate: false,
+    wasInverted: false,
+    source,
+  };
+}
+2.14.4　comparableValue 對照
+原始輸出
+comparableValue
+UI 顯示
+score cp 120
+1.20
++1.20
+score cp -80
+-0.80
+-0.80
+score mate 3
+29997
+殺 3
+score mate 1
+29999
+殺 1
+score mate -2
+-29998
+被殺 2
+score mate 0
+-30000
+已被將死
+2.14.5　evaluation 派生規則
+evaluationAfterUserMove =
+  scoreAfterUserMove === null ? null : scoreAfterUserMove.comparableValue;
+evaluationAfterBestMove =
+  scoreAfterBestMove === null ? null : scoreAfterBestMove.comparableValue;
+Claude Code 不得讓 score.comparableValue 與對應的 evaluation 出現不一致。
+2.14.6　必要單元測試
+測試情境
+輸入
+預期
+cp 正分
+score cp 120
++1.20，wasInverted: false
+cp 負分
+score cp -80
+-0.80，wasInverted: false
+mate 正數
+score mate 3
+殺 3，wasInverted: false
+mate 負數
+score mate -2
+被殺 2，wasInverted: false
+mate 0
+score mate 0
+已被將死，comparableValue -30000
+candidate 來源
+candidate score
+source: candidate_move
+separate 來源
+第二次分析 score
+source: separate_engine_call
+無 score
+（缺失）
+null
+無效 score
+（無法解析）
+null，顯示解析失敗提醒
+2.14.7　Claude Code 實作限制
+convertCpScore() 與 convertMateScore() 都必須回傳 wasInverted 與 source。
+mateIn === 0 必須有獨立 terminal case。
+Parser 階段不得直接把 separate_engine_call 的 score 取負號；視角反轉只能由 PikafishAdapter 負責。
+不得讓 Infinity 或 -Infinity 進入 EngineScore。
+raw 只供 debug，不得供 UI、PromptBuilder、MoveComparisonService 或分級邏輯使用。
+2.15　PikafishAdapter：userMove 分析與視角反轉
+2.15.1　設計目的
+系統需取得 scoreAfterUserMove 與 scoreAfterBestMove。若 userMove 不在 root analysis 的 candidateMoves 中，系統必須對 userMove 後的局面進行第二次 Pikafish 分析，否則 MoveComparisonService 只能回傳 unknown，降低產品核心價值。
+2.15.2　雙階段分析流程
+使用者提交 userMove
+  → PikafishAdapter 分析原局面 (root analysis)
+  → 取得 bestMove、scoreAfterBestMove、candidateMoves
+  → 檢查 userMove 是否在 candidateMoves
+     是 → 使用 candidate.score 作為 scoreAfterUserMove
+          (source: candidate_move，不取負號)
+     否 → 套用 userMove 產生新局面 → 第二次分析
+          (source: separate_engine_call，必須取負號)
+  → 第二次分析失敗 → scoreAfterUserMove = null，加入 uncertainty reason
+  → 建立 EngineAnalysis
+2.15.3　UCI score 視角規則
+UCI engine 的 score 相對於該分析局面的行棋方。第一次分析的局面是原局面；第二次分析的局面是 userMove 後的局面，此時行棋方已換邊，回傳的 score 是對方視角。要與 scoreAfterBestMove 比較，必須把第二次分析的 score 取負號，轉回原局面行棋方視角。
+userMove score 來源
+是否取負號
+原因
+candidate_move
+不需要
+candidate 來自原局面 root analysis，已是原局面視角
+separate_engine_call
+需要
+第二次分析在 userMove 後局面，行棋方已換邊
+unavailable
+不適用
+無分數可轉換
+2.15.4　invertEngineScore（含 mate 0 修正）
+mate 0 在反轉後語義改變：第二次分析回傳 mate 0 代表 userMove 後輪到的對方已被將死，即 userMove 是殺棋著法。從對方視角是 -MATE_SCORE，反轉回原局面行棋方視角後必須變成 +MATE_SCORE，顯示「殺棋（終局）」，不得仍顯示「已被將死」。
+function invertEngineScore(score: EngineScore): EngineScore {
+  if (score.type === &quot;cp&quot;) {
+    const invertedCp = -score.cp;
+    const value = invertedCp / 100;
+    return {
+      type: &quot;cp&quot;,
+      cp: invertedCp,
+      value,
+      comparableValue: value,
+      raw: score.raw,
+      displayText: value &gt;= 0 ? `+${value.toFixed(2)}` : value.toFixed(2),
+      wasInverted: true,
+      source: &quot;separate_engine_call&quot;,
+    };
+  }
+  const invertedMateIn = -score.mateIn;
+  if (invertedMateIn === 0) {
+    return {
+      type: &quot;mate&quot;,
+      mateIn: 0,
+      comparableValue: MATE_SCORE,   // 反轉後為正：使用者剛將死對方
+      raw: score.raw,
+      displayText: &quot;殺棋（終局）&quot;,
+      isTerminalMate: true,
+      wasInverted: true,
+      source: &quot;separate_engine_call&quot;,
+    };
+  }
+  const sign = invertedMateIn &gt; 0 ? 1 : -1;
+  const distancePenalty = Math.min(Math.abs(invertedMateIn), 100);
+  const comparableValue = sign * (MATE_SCORE - distancePenalty);
+  return {
+    type: &quot;mate&quot;,
+    mateIn: invertedMateIn,
+    comparableValue,
+    raw: score.raw,
+    displayText:
+      invertedMateIn &gt; 0
+        ? `殺 ${invertedMateIn}`
+        : `被殺 ${Math.abs(invertedMateIn)}`,
+    isTerminalMate: false,
+    wasInverted: true,
+    source: &quot;separate_engine_call&quot;,
+  };
+}
+2.15.5　raw 欄位使用規則
+反轉後 raw 仍是原始 UCI 字串，其正負號與反轉後的數值相反。為避免 AI 解釋方向錯誤，raw 只能供 debug 與追蹤，不得被 PromptBuilder、MoveComparisonService、UI 顯示或 mistakeLevel 分級使用。
+UI 必須使用 score.displayText。PromptBuilder 只能使用 score.type、score.displayText、score.comparableValue 以及（type === &quot;mate&quot; 時）score.mateIn，且不得把 raw 放進送給 LLM 的 prompt。
+2.15.6　UserMoveEvalConfig（第一版固定值）
+第一版不使用「root analysis 的 50%–100%」這種模糊範圍，改用固定值。
+type UserMoveEvalConfig = { movetimeMs: number };
+const DEFAULT_USER_MOVE_EVAL_CONFIG: UserMoveEvalConfig = {
+  movetimeMs: 1000,
+};
+userMoveEvalConfig.movetimeMs 預設 1000ms。
+若 AppSettings 未提供，使用 DEFAULT_USER_MOVE_EVAL_CONFIG。
+不得從第一次分析的 analysisTimeMs 推算第二次分析時間。
+未來若開放使用者設定，使用 AppSettings.userMoveEvalMovetimeMs 欄位。
+2.15.7　第二次分析失敗處理
+scoreAfterUserMove = null;
+evaluationAfterUserMove = null;
+userMoveEvaluationSource = &quot;unavailable&quot;;
+// uncertainty reason:
+// &quot;User move was not included in MultiPV candidates,
+//  and separate user move evaluation failed.&quot;
+此時 MoveComparisonService 應回傳 scoreDifference = null、mistakeLevel = &quot;unknown&quot;、confidence = &quot;low&quot;。
+2.15.8　Claude Code 實作限制
+candidate_move 來源不取負號；separate_engine_call 來源必須取負號。
+不得直接把第二次分析的 raw score 存入 scoreAfterUserMove。
+Parser 不得自行決定是否重新分析；是否第二次分析由 PikafishAdapter 決定。
+第二次分析失敗不得用 0 補值。
+所有 evaluation 欄位必須使用同一個比較視角（原局面行棋方）。
+第二次分析的 mate 0 反轉後必須是 +MATE_SCORE，UI 顯示「殺棋（終局）」，wasInverted = true。
+單元測試須涵蓋：userMove 在候選中、不在候選且二次成功、不在候選且二次失敗、二次出現 score mate、二次出現 mate 0。
+2.16　Electron IPC 架構
+2.16.1　設計原則
+Electron 的 main process 與 renderer process 不能直接互相呼叫，必須透過 IPC channel。PikafishAdapter、AIProvider、SecretStore、AnalysisSessionStore 都在 main process；BoardEditor、AnalysisPanel 等 UI 在 renderer。EngineAnalysis 與 MoveComparisonResult 的真相來源必須在 main process；renderer 只接收顯示用資料與 analysisId，不得把分析資料再傳回 main 作為 AI 解釋依據。
+安全邊界：API Key 只能在 main process 或安全設定層取得，不得暴露給 renderer 任意讀取。Renderer 不得直接呼叫 provider API；provider adapter 不得直接操作 renderer UI。PromptBuilder 必須在 main 或受控 service 層執行，不得散落在 UI component。
+2.16.2　Engine 分析 channel 清單
+Channel
+方向
+用途
+engine:analyze-position:start
+renderer → main
+開始分析局面
+engine:analysis-result
+main → renderer
+回傳分析結果與 analysisId
+engine:analysis-error
+main → renderer
+回傳分析錯誤
+engine:analysis-cancel
+renderer → main
+取消分析
+2.16.3　Engine 分析 payload
+type AnalyzePositionStartPayload = {
+  requestId: string;
+  positionFen: string;
+  userMove?: string;
+  analysisConfig: {
+    rootAnalysisMovetimeMs: number;
+    userMoveEvalMovetimeMs: number;
+    multiPv: number;
+  };
+};
+type EngineAnalysisResultPayload = {
+  requestId: string;
+  analysisId: string;
+  engineAnalysis: EngineAnalysis;
+  moveComparison: MoveComparisonResult;
+};
+type EngineAnalysisErrorPayload = {
+  requestId: string;
+  code:
+    | &quot;invalid_fen&quot;
+    | &quot;invalid_user_move&quot;
+    | &quot;engine_not_configured&quot;
+    | &quot;engine_start_failed&quot;
+    | &quot;engine_timeout&quot;
+    | &quot;engine_parse_error&quot;
+    | &quot;session_store_failed&quot;   // AnalysisSessionStore.save() 失敗
+    | &quot;cancelled&quot;
+    | &quot;unknown_error&quot;;
+  message: string;
+};
+2.16.4　analysisId 生成與儲存順序
+analysisId 必須由 main process 生成（renderer 只生成 requestId）。必須在 EngineAnalysis 與 MoveComparisonResult 都建立完成後產生，並先成功存入 AnalysisSessionStore，再發送 engine:analysis-result。順序不得顛倒。save() 必須包 try/catch；失敗時送 engine:analysis-error（code: &quot;session_store_failed&quot;），不得讓 renderer 永遠等待。
+const analysisId = crypto.randomUUID();
+const now = Date.now();
+const session: AnalysisSession = {
+  analysisId,
+  requestId: payload.requestId,
+  createdAt: new Date(now).toISOString(),
+  expiresAt: new Date(now + DEFAULT_ANALYSIS_SESSION_TTL_MS).toISOString(),
+  positionFen: payload.positionFen,
+  userMove: payload.userMove,
+  engineAnalysis,
+  moveComparison,
+};
+try {
+  await analysisSessionStore.save(session);
+  event.reply(&quot;engine:analysis-result&quot;, {
+    requestId: payload.requestId,
+    analysisId,
+    engineAnalysis,
+    moveComparison,
+  });
+} catch (error) {
+  event.reply(&quot;engine:analysis-error&quot;, {
+    requestId: payload.requestId,
+    code: &quot;session_store_failed&quot;,
+    message: &quot;Failed to store analysis session.&quot;,
+  });
+}
+2.16.5　engine:analysis-cancel 取消機制
+Engine 取消與 AI streaming 取消（§2.17）採對稱設計：以 requestId 管理進行中的分析。每個進行中的分析在 main process 註冊一個 handle，內含 AbortController 與目前使用的 Pikafish 子程序參照。
+const activeEngineAnalyses = new Map&lt;string, EngineAnalysisHandle&gt;();
+type EngineAnalysisHandle = {
+  requestId: string;
+  controller: AbortController;
+  // 目前進行中的階段：root 或 userMove 二次分析
+  phase: &quot;root_analysis&quot; | &quot;user_move_analysis&quot;;
+  // 對目前使用中的 Pikafish 子程序送出 UCI 指令
+  sendStop: () =&gt; void;        // 寫入 &quot;stop&quot; 到 engine stdin
+  killEngine: () =&gt; void;      // 寬限期後強制終止子程序
+};
+UCI 協議規定：收到 stop 後，引擎仍會送出一個最終 bestmove（每個 go 都必須對應一個 bestmove）。因此取消流程是：
+依 requestId 找到 handle。
+呼叫 controller.abort()，讓雙階段流程（不論在 root 或 userMove 階段）停止往下走。
+對目前使用中的子程序送出 UCI &quot;stop&quot;。
+等待引擎送出最終 bestmove 後丟棄；若在寬限期（例如 500ms）內未回應，呼叫 killEngine() 強制終止子程序避免卡死。
+不得發送 engine:analysis-result；改送 engine:analysis-error（code: &quot;cancelled&quot;）。
+從 activeEngineAnalyses 移除該 requestId。
+兩個階段的取消行為一致：第二次（userMove）分析檢查同一個 AbortSignal，若 abort 在二次分析期間觸發，對二次分析的子程序送 stop。
+function handleEngineCancel(payload: { requestId: string }): void {
+  const handle = activeEngineAnalyses.get(payload.requestId);
+  if (!handle) return;
+  handle.controller.abort();
+  handle.sendStop();
+  // 在主分析迴圈中，abort 觸發後丟出 AbortError，
+  // catch 分支送出 engine:analysis-error code &quot;cancelled&quot;
+  activeEngineAnalyses.delete(payload.requestId);
+}
+主分析迴圈（root + userMove）必須以 try/catch/finally 包住，AbortError 對應 code &quot;cancelled&quot;，其他例外對應對應的 engine_* 錯誤碼；finally 必須從 activeEngineAnalyses 移除 requestId，避免 handle 洩漏。
+2.17　AI 解釋 Streaming IPC
+2.17.1　設計決策
+ai:generate-explanation 第一版必須採 streaming IPC，不採單次 request/response。長篇分析可能需數秒到數十秒；streaming 讓使用者即時看到文字逐段出現，也較易支援取消。即使某 provider SDK 尚未支援真 streaming，adapter 仍須包裝成相同 streaming 介面（先等完整回應，再以單一 text_delta chunk 回傳，最後送 done），UI 與 IPC 層不得因此改回單次 response 架構。
+2.17.2　Channel 清單
+Channel
+方向
+用途
+ai:generate-explanation:start
+renderer → main
+開始生成
+ai:generate-explanation:chunk
+main → renderer
+回傳部分文字
+ai:generate-explanation:done
+main → renderer
+生成完成
+ai:generate-explanation:error
+main → renderer
+生成失敗
+ai:generate-explanation:cancel
+renderer → main
+取消生成
+2.17.3　Payload（start 使用 analysisId，不傳分析資料）
+start payload 不得包含 engineAnalysis 或 moveComparison；AI 解釋只透過 analysisId 查 main process 的 canonical session（見 §2.18）。userLevel 來自 AppSettings.userLevel，renderer 不得寫死，fallback 為 &quot;intermediate&quot;。
+type GenerateExplanationStartPayload = {
+  requestId: string;
+  analysisId: string;
+  provider: AIProviderName;
+  model: string;
+  userLevel: &quot;basic&quot; | &quot;intermediate&quot; | &quot;advanced&quot;;
+  explanationStyle: &quot;long_analytical&quot;;
+};
+type GenerateExplanationChunkPayload = {
+  requestId: string;
+  deltaText: string;
+};
+type GenerateExplanationDonePayload = {
+  requestId: string;
+  finalText: string;
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  estimatedCostUsd?: number | null;
+};
+type GenerateExplanationErrorPayload = {
+  requestId: string;
+  code:
+    | &quot;missing_api_key&quot;
+    | &quot;unsupported_model&quot;
+    | &quot;analysis_session_not_found&quot;
+    | &quot;provider_error&quot;
+    | &quot;network_error&quot;
+    | &quot;rate_limited&quot;
+    | &quot;cancelled&quot;
+    | &quot;unknown_error&quot;;
+  message: string;
+};
+2.17.4　Provider streaming 介面（含 AbortSignal）
+streaming 介面必須接收 AbortSignal 以支援取消。若 provider SDK 支援 signal，必須傳入；若不支援，adapter 至少要在每次 yield 前檢查 signal.aborted。
+type AIExplanationStreamChunk =
+  | { type: &quot;text_delta&quot;; deltaText: string }
+  | { type: &quot;done&quot;;
+      usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+      estimatedCostUsd?: number | null };
+interface AIProvider {
+  generateExplanationStream(
+    request: AIExplanationRequest,
+    signal: AbortSignal
+  ): AsyncIterable&lt;AIExplanationStreamChunk&gt;;
+}
+2.17.5　Main process streaming loop（最終版）
+重點：(1) accumulatedText 累積完整文字（done chunk 不含 finalText）；(2) done 分支先設 completedNormally=true 再 reply，然後 break；(3) abort 檢查放在 chunk 處理「之後」，避免 done 與 cancelled 同時送出的 race condition；(4) catch 僅在 !completedNormally 時送 error；(5) finally 清除 activeExplanationRequests 避免 memory leak。
+const activeExplanationRequests = new Map&lt;string, AbortController&gt;();
+async function handleGenerateExplanationStart(
+  event: Electron.IpcMainEvent,
+  payload: GenerateExplanationStartPayload
+): Promise&lt;void&gt; {
+  const { requestId } = payload;
+  const controller = new AbortController();
+  activeExplanationRequests.set(requestId, controller);
+  let accumulatedText = &quot;&quot;;
+  let completedNormally = false;
+  try {
+    const provider = getAIProvider(payload.provider);
+    const request = await buildAIExplanationRequest(payload, {
+      secretStore, promptBuilder, modelRegistry,
+      settingsService, analysisSessionStore,
+    });
+    for await (const chunk of provider.generateExplanationStream(
+      request, controller.signal
+    )) {
+      if (chunk.type === &quot;text_delta&quot;) {
+        accumulatedText += chunk.deltaText;
+        event.reply(&quot;ai:generate-explanation:chunk&quot;, {
+          requestId, deltaText: chunk.deltaText,
+        });
+      }
+      if (chunk.type === &quot;done&quot;) {
+        completedNormally = true;
+        event.reply(&quot;ai:generate-explanation:done&quot;, {
+          requestId,
+          finalText: accumulatedText,
+          usage: chunk.usage,
+          estimatedCostUsd: chunk.estimatedCostUsd ?? null,
+        });
+        break;
+      }
+      if (controller.signal.aborted) {
+        throw new DOMException(&quot;Request cancelled&quot;, &quot;AbortError&quot;);
+      }
+    }
+  } catch (error) {
+    if (!completedNormally) {
+      const errorPayload = mapStreamingErrorToPayload(requestId, error);
+      event.reply(&quot;ai:generate-explanation:error&quot;, errorPayload);
+    }
+  } finally {
+    activeExplanationRequests.delete(requestId);
+  }
+}
+2.17.6　取消與錯誤對應
+收到 ai:generate-explanation:cancel 時，main 找到該 requestId 的 AbortController，呼叫 controller.abort() 並從 map 移除。錯誤分類如下：
+function mapStreamingErrorToPayload(
+  requestId: string, error: unknown
+): GenerateExplanationErrorPayload {
+  if (error instanceof DOMException &amp;&amp; error.name === &quot;AbortError&quot;) {
+    return { requestId, code: &quot;cancelled&quot;,
+      message: &quot;AI explanation generation was cancelled by the user.&quot; };
+  }
+  // provider-specific mapping 在 adapter 或共用 error mapper 實作
+  return { requestId, code: &quot;unknown_error&quot;,
+    message: &quot;AI explanation generation failed unexpectedly.&quot; };
+}
+情況
+error code
+使用者取消
+cancelled
+API key 缺失
+missing_api_key
+model 不支援
+unsupported_model
+analysisId 找不到或過期
+analysis_session_not_found
+Provider SDK 錯誤
+provider_error
+網路中斷
+network_error
+rate limit
+rate_limited
+無法分類
+unknown_error
+2.17.7　Renderer 規則
+產生唯一 requestId，發送 start。
+監聽 chunk 逐段 append；監聽 done 結束 loading；監聽 error 顯示訊息並保留 partial text。
+離開頁面或按取消時發送 cancel；不得在等待期間鎖死 UI。
+以 requestId 追蹤 active request：已收到 done 後，後續同一 requestId 的 chunk/done/error 必須忽略，避免狀態混亂。
+收到 cancelled 時顯示「已取消生成」，不得顯示成系統失敗。
+2.17.8　getAIProvider 合約
+getAIProvider() 只依 provider 名稱回傳對應 adapter，不讀 API key、不呼叫 PromptBuilder、不讀寫 AppSettings、不碰 UI、不決定 fallback model。
+function getAIProvider(providerName: AIProviderName): AIProvider {
+  switch (providerName) {
+    case &quot;anthropic&quot;: return anthropicProvider;
+    case &quot;openai&quot;:    return openAIProvider;
+    case &quot;gemini&quot;:    return geminiProvider;
+    default:
+      throw new Error(`Unsupported AI provider: ${providerName}`);
+  }
+}
+2.17.9　buildAIExplanationRequest 合約
+buildAIExplanationRequest() 是 SecretStore、PromptBuilder、ModelRegistry、AnalysisSessionStore 的集中銜接點。IPC handler 不得自己組 prompt 或讀 API key。
+type AIExplanationRequest = {
+  provider: AIProviderName;
+  model: string;
+  apiKey: string;
+  prompt: string;
+  metadata: {
+    requestId: string;
+    analysisId: string;
+    userLevel: &quot;basic&quot; | &quot;intermediate&quot; | &quot;advanced&quot;;
+    explanationStyle: &quot;long_analytical&quot;;
+  };
+};
+async function buildAIExplanationRequest(
+  payload: GenerateExplanationStartPayload,
+  deps: {
+    secretStore: SecretStore;
+    promptBuilder: PromptBuilder;
+    modelRegistry: ModelRegistry;
+    settingsService: SettingsService;
+    analysisSessionStore: AnalysisSessionStore;
+  }
+): Promise&lt;AIExplanationRequest&gt; {
+  const modelConfig = deps.modelRegistry.getModel(
+    payload.provider, payload.model
+  ); // 不存在則丟 UnsupportedModelError
+  const apiKey = await deps.secretStore.getApiKey(payload.provider);
+  if (!apiKey) throw new MissingApiKeyError(payload.provider);
+  const session = await deps.analysisSessionStore.get(payload.analysisId);
+  if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId);
+  const prompt = deps.promptBuilder.buildExplanationPrompt({
+    engineAnalysis: session.engineAnalysis,
+    moveComparison: session.moveComparison,
+    userLevel: payload.userLevel,
+    explanationStyle: payload.explanationStyle,
+  });
+  return {
+    provider: payload.provider,
+    model: modelConfig.model,
+    apiKey,
+    prompt,
+    metadata: {
+      requestId: payload.requestId,
+      analysisId: payload.analysisId,
+      userLevel: payload.userLevel,
+      explanationStyle: payload.explanationStyle,
+    },
+  };
+}
+PromptBuilder 只讀取 EngineAnalysis、MoveComparisonResult、userLevel、explanationStyle；不得讀取 API key、raw UCI score、renderer UI state、provider SDK response 或 SecretStore。SecretStore 缺 key 時丟 MissingApiKeyError，不得用空字串或 placeholder 繼續呼叫。
+2.17.10　Claude Code 實作限制
+不得使用單次 ipcMain.handle 作為最終設計；必須 chunk/done/error/cancel 齊全。
+abort 檢查必須放在 chunk 處理之後；done 分支先設 completedNormally=true 再 reply，並 break。
+catch 僅在 !completedNormally 時送 error；finally 必須清除 activeExplanationRequests。
+userLevel 必須來自 AppSettings.userLevel，fallback &quot;intermediate&quot;；不得在 AnalysisPanel 內寫死。
+cancel 不得只改 UI 狀態，必須實際呼叫 controller.abort()。
+buildAIExplanationRequest() 是唯一組裝 prompt 與注入 API key 的入口；IPC handler 不得散落 prompt 字串或把 key 寫進 adapter 全域狀態。
+PromptBuilder 不得使用 EngineScore.raw。
+2.18　AnalysisSessionStore（短期分析快取）
+2.18.1　設計目的與責任邊界
+AnalysisSessionStore 是 main process 中的短期分析結果儲存層。它只保存近期的 EngineAnalysis + MoveComparisonResult，讓 AI 解釋功能可透過 analysisId 取得 canonical data。它不是錯題本、不是永久資料庫，也不是多輪對話儲存層。
+模組
+用途
+保存時間
+資料來源
+AnalysisSessionStore
+短期保存本次分析結果
+暫存，可過期清除
+main process / PikafishAdapter
+StorageService
+永久保存錯題本、筆記、對話
+長期保存
+使用者主動儲存
+ai_conversations
+保存已儲存錯題/分析的追問紀錄
+長期保存
+AI 對話功能
+使用者按下「儲存到錯題本」時，才將資料交給 StorageService 寫入永久儲存。
+2.18.2　型別與介面
+type AnalysisSession = {
+  analysisId: string;
+  requestId: string;
+  createdAt: string;
+  expiresAt: string;
+  positionFen: string;
+  userMove?: string;
+  engineAnalysis: EngineAnalysis;
+  moveComparison: MoveComparisonResult;
+};
+interface AnalysisSessionStore {
+  save(session: AnalysisSession): Promise&lt;void&gt;;
+  get(analysisId: string): Promise&lt;AnalysisSession | null&gt;;
+  delete(analysisId: string): Promise&lt;void&gt;;
+  clearExpiredSessions(): Promise&lt;void&gt;;
+}
+2.18.3　第一版實作（記憶體 Map）與 TTL
+const DEFAULT_ANALYSIS_SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+class InMemoryAnalysisSessionStore implements AnalysisSessionStore {
+  private sessions = new Map&lt;string, AnalysisSession&gt;();
+  async save(session: AnalysisSession): Promise&lt;void&gt; {
+    await this.clearExpiredSessions();   // save() 前先清理
+    this.sessions.set(session.analysisId, session);
+  }
+  async get(analysisId: string): Promise&lt;AnalysisSession | null&gt; {
+    const session = this.sessions.get(analysisId);
+    if (!session) return null;
+    if (Date.now() &gt; Date.parse(session.expiresAt)) {
+      this.sessions.delete(analysisId);
+      return null;
+    }
+    return session;
+  }
+  async delete(analysisId: string): Promise&lt;void&gt; {
+    this.sessions.delete(analysisId);
+  }
+  async clearExpiredSessions(): Promise&lt;void&gt; {
+    const now = Date.now();
+    for (const [id, s] of this.sessions.entries()) {
+      if (now &gt; Date.parse(s.expiresAt)) this.sessions.delete(id);
+    }
+  }
+}
+2.18.4　清理觸發（兩層）
+第一版採兩層清理策略：(1) 每次 save() 前呼叫 clearExpiredSessions()；(2) app 啟動後設定定時清理。
+const ANALYSIS_SESSION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 min
+setInterval(() =&gt; {
+  analysisSessionStore.clearExpiredSessions();
+}, ANALYSIS_SESSION_CLEANUP_INTERVAL_MS);
+2.18.5　找不到 session 的錯誤
+class AnalysisSessionNotFoundError extends Error {
+  constructor(public analysisId: string) {
+    super(`Analysis session not found or expired: ${analysisId}`);
+    this.name = &quot;AnalysisSessionNotFoundError&quot;;
+  }
+}
+main process 必須將此錯誤轉成 GenerateExplanationErrorPayload（code: &quot;analysis_session_not_found&quot;）。Renderer 應提示：「這次分析結果已過期，請重新分析局面後再生成 AI 解釋。」
+2.18.6　Claude Code 實作限制
+AnalysisSessionStore 只存在於 main process 或其可控 service layer；renderer 不得直接寫入。
+不得儲存 API key 或 AI 對話歷史；不得取代 StorageService。
+AI 解釋流程必須透過 analysisSessionStore.get(analysisId) 取得資料。
+若 session 找不到或過期，必須回傳明確錯誤，不得用空資料繼續生成 AI 解釋。
+clearExpiredSessions() 必須在 save() 前觸發，且 app 啟動後設定 10 分鐘定時清理。
+2.19　ModelRegistry 與模型清單／定價
+2.19.1　ModelRegistry 介面
+ModelRegistry 是模型 id 與定價的唯一查詢入口。它與 TokenCostEstimator 必須讀同一份 model_pricing.json，不得各自寫死價格。getModel() 找不到時丟 UnsupportedModelError（對應 IPC code &quot;unsupported_model&quot;）。
+type ModelPricing = {
+  inputPricePerMillionTokens: number;
+  outputPricePerMillionTokens: number;
+  currency: &quot;USD&quot;;
+};
+type AIModelConfig = {
+  provider: AIProviderName;
+  model: string;        // 實際 API 呼叫使用的 model id
+  displayName: string;  // UI 顯示名稱
+  pricing: ModelPricing;
+  contextNote?: string; // 分層定價等備註
+  lastUpdated: string;  // 官方核對日期 (ISO)
+  sourceNote: string;   // 官方定價頁來源
+};
+interface ModelRegistry {
+  getModel(provider: AIProviderName, model: string): AIModelConfig;
+  hasModel(provider: AIProviderName, model: string): boolean;
+  listModels(provider?: AIProviderName): AIModelConfig[];
+  getDefaultModel(provider: AIProviderName): AIModelConfig;
+}
+class UnsupportedModelError extends Error {
+  constructor(public provider: AIProviderName, public model: string) {
+    super(`Unsupported model: ${provider}/${model}`);
+    this.name = &quot;UnsupportedModelError&quot;;
+  }
+}
+2.19.2　第一版模型清單與定價
+以下為 2026-06-08 依各家官方定價頁核對之資料，單位為「每百萬 token 美元（輸入 / 輸出）」。第一版完整實作 Anthropic，OpenAI 與 Gemini 先建表保留介面。
+注意：OpenAI 與 Gemini 的實際 API model id 字串與行銷名稱可能不同，下表 model 欄位之 id 在正式呼叫前必須再向官方 model 列表核對；Anthropic id 已確認可用。
+Anthropic（來源：anthropic.com 官方定價，核對日 2026-06-08）
+model id
+displayName
+輸入 $/M
+輸出 $/M
+claude-opus-4-8
+Claude Opus 4.8
+5.00
+25.00
+claude-opus-4-7
+Claude Opus 4.7
+5.00
+25.00
+claude-sonnet-4-6
+Claude Sonnet 4.6（預設）
+3.00
+15.00
+claude-haiku-4-5
+Claude Haiku 4.5
+1.00
+5.00
+OpenAI（來源：openai.com/api/pricing，核對日 2026-06-08；model id 待官方核對）
+model id（待核對）
+displayName
+輸入 $/M
+輸出 $/M
+gpt-5.5
+GPT-5.5
+5.00
+30.00
+gpt-5.4
+GPT-5.4
+2.50
+15.00
+gpt-5.4-mini
+GPT-5.4 Mini
+0.75
+4.50
+gpt-5.4-nano
+GPT-5.4 Nano
+0.20
+1.25
+Gemini（來源：ai.google.dev/gemini-api/docs/pricing，核對日 2026-06-08；model id 待官方核對）
+model id（待核對）
+displayName
+輸入 $/M
+輸出 $/M
+gemini-3.5-flash
+Gemini 3.5 Flash
+1.50
+9.00
+gemini-3.1-pro
+Gemini 3.1 Pro（≤200K context）
+2.00
+12.00
+gemini-3.1-flash-lite
+Gemini 3.1 Flash-Lite
+0.25
+1.50
+Gemini 3.1 Pro 為 context 分層定價：超過 200K token 時輸入/輸出價格上升（約 4.00 / 18.00）。第一版以 ≤200K 層為估算基準，並在 AIModelConfig.contextNote 標示分層；TokenCostEstimator 若無法判斷 context 層級，必須顯示為估算值而非精確帳單。
+2.19.3　model_pricing.json 範例
+{
+  &quot;lastUpdated&quot;: &quot;2026-06-08&quot;,
+  &quot;models&quot;: [
+    {
+      &quot;provider&quot;: &quot;anthropic&quot;,
+      &quot;model&quot;: &quot;claude-sonnet-4-6&quot;,
+      &quot;displayName&quot;: &quot;Claude Sonnet 4.6&quot;,
+      &quot;pricing&quot;: {
+        &quot;inputPricePerMillionTokens&quot;: 3.00,
+        &quot;outputPricePerMillionTokens&quot;: 15.00,
+        &quot;currency&quot;: &quot;USD&quot;
+      },
+      &quot;lastUpdated&quot;: &quot;2026-06-08&quot;,
+      &quot;sourceNote&quot;: &quot;anthropic.com official pricing page&quot;
+    }
+    // ...其餘模型同結構
+  ]
+}
+2.19.4　Claude Code 實作限制
+不得使用 &quot;default&quot; 作為實際 API model。
+aiProvider === &quot;anthropic&quot; 且無使用者設定時，第一版使用 claude-sonnet-4-6。
+ModelRegistry 與 TokenCostEstimator 必須讀同一份 model_pricing.json，不得各自寫死。
+Provider adapter 不得自行猜測 fallback model；找不到可用 model 必須阻擋 API 呼叫並顯示設定錯誤。
+模型清單與價格必須可更新、附 lastUpdated 與 sourceNote，且需以官方資料核對，不得僅憑記憶寫死。
+若價格缺失，TokenCostEstimator 顯示「無法估算」，不得亂填。
+2.7　資料庫設計
+第一版建議使用本機 SQLite 儲存錯題本、看不懂局面、歷史分析與非敏感設定；API Key 應使用 OS secret store，不應直接存在 SQLite 明文欄位。本資料庫選型仍屬待確認（Q2）。
+2.7.1　概念模式
+資料表/檔案
+用途
+主要關聯
+app_settings
+儲存非敏感設定（engine path、provider、model、分析深度、userLevel）。
+一筆或多筆設定記錄。
+engine_analysis
+儲存每次 Pikafish 分析結果。
+可被 mistake_book_entries 參照。
+mistake_book_entries
+儲存使用者錯題本。
+關聯 positionFen、userMove、engineBestMove、analysisId。
+misunderstood_positions
+看不懂但尚未整理成錯題的局面。
+可轉換為 mistake_book_entries。
+ai_conversations
+針對某局面的追問與回覆。
+關聯 analysisId 或 mistakeEntryId。
+model_pricing.json
+provider/model 價格與更新時間。
+供 ModelRegistry 與 TokenCostEstimator 讀取。
+secret store
+安全儲存 API Key。
+由 provider 作為索引，不進一般資料庫。
+2.7.2　資料關聯說明
+app_settings 儲存 provider/model，API Key 另由 SecretStore 管理。一筆錯題本可保存當次 EngineAnalysis 方便回看引擎證據。每次追問應綁定原始 EngineAnalysis 或 analysisId，避免模型後續離題或亂判棋。看不懂局面可在補充 userMove 與 AI 解釋後轉為錯題本。匯出時必須保留 schemaVersion 以支援日後升級。
+2.8　例外處理
+原則：錯誤要可理解、可復原，不可讓使用者以為不完整分析是確定結論。
+例外情境
+處理方式
+使用者提示
+FEN 無效
+阻止分析，標示錯誤位置。
+「FEN 格式不正確，請檢查局面資料。」
+Pikafish 路徑不存在
+停止分析，引導到設定頁。
+「找不到 Pikafish，請重新選擇引擎路徑。」
+Pikafish 啟動失敗
+記錄非敏感錯誤，提供重試。
+「引擎無法啟動，請確認檔案是否可執行。」
+分析 timeout
+停止引擎，保留已取得資料並標記不完整。
+「分析時間過長，結果可信度可能不足。」
+PV / 候選著法不足
+允許顯示，但強制可信度提醒。
+「目前變化線資料不足，建議提高深度或候選著法數。」
+API Key 未填
+只允許本機引擎分析。
+「未設定 API Key，無法使用 AI 解釋。」
+AI Provider 呼叫失敗
+顯示 provider 錯誤，不清除原始分析。
+「模型呼叫失敗，請檢查網路、額度或 API Key。」
+模型價格缺失
+仍可解釋，但不顯示成本或顯示未知。
+「此模型尚未設定價格，因此無法估算成本。」
+analysis session 過期
+不生成解釋，要求重新分析。
+「這次分析結果已過期，請重新分析局面後再生成 AI 解釋。」
+本機儲存失敗
+提示匯出或重試，不遺失畫面內容。
+「儲存失敗，請先複製分析內容或稍後重試。」
+API Key 儲存失敗
+不落回明文儲存，要求下次重填。
+「無法安全儲存 API Key，系統不會以明文保存。」
+2.9　軟體整合說明
+MVP 不提供外部系統整合機制，不提供公開 API，不支援雲端同步，也不與線上象棋平台直接整合。引用的外部系統如下：
+引用對象
+整合方式
+限制
+Pikafish 本機 UCI 引擎
+本機 subprocess，stdin/stdout UCI 指令。
+不假設雲端 API；路徑與授權待確認。
+Claude API
+AnthropicProvider adapter（HTTPS/SDK）。
+使用者 API Key；需網路。
+OpenAI API
+OpenAIProvider adapter。
+使用者 API Key；需網路。
+Gemini API
+GeminiProvider adapter。
+使用者 API Key；需網路。
+Windows Secret Store
+OS 層級安全儲存。
+實作方式待技術驗證。
+2.10　備份與回復機制
+第一版不使用自有雲端伺服器，備份與回復以本機匯出/匯入為主。錯題本與看不懂局面以 JSON 或 SQLite backup 匯出，匯入時需保留 schemaVersion 並避免重複資料。歷史 AI 解釋可隨錯題本一起匯出，回復後可離線查看已生成文字、不重新計費。API Key 不納入一般匯出，新電腦需重新輸入。模型價格表隨 App 附帶並可手動更新，需顯示 lastUpdated。
+2.11　安全機制
+主要安全風險不是傳統資料庫攻擊，而是 API Key 洩漏、AI 解釋幻覺、外部成本不可控，以及 Claude Code 自動開發時不小心提交秘密資訊。
+風險
+防護設計
+API Key 洩漏
+輸入欄位遮蔽；不可寫入程式碼、不可 console.log、不可上傳到自有伺服器；優先使用 OS secret store。
+模型亂判棋
+PromptBuilder 要求模型只根據 EngineAnalysis；缺資料時顯示可信度不足；Pikafish 是棋力來源。
+成本失控
+每次解釋前顯示預估 token 與估算價格；價格由 model_pricing.json 管理。
+Claude Code 亂改
+使用 CLAUDE.md、skills、protected files、build/test 驗收；高風險任務不得無人看守。
+資料遺失
+錯題本支援匯出；本機儲存失敗時保留畫面內容。
+Prompt injection
+使用者輸入與引擎資料僅作分析資料，不得被視為系統指令；系統 prompt 優先。
+Log 洩漏
+logger 自動遮蔽 apiKey、Authorization header、secret token。
+2.12　共用模組元件
+共用模組
+功能
+被參考模組
+ValidationUtils
+FEN、move、settings、model config 驗證。
+FenInput、SettingsPage、PikafishAdapter。
+Logger
+記錄非敏感錯誤與事件，遮蔽 API Key。
+所有 service。
+ErrorBoundary
+UI 例外保護。
+Renderer pages/components。
+PromptBuilder
+統一產生防幻覺棋局分析 prompt。
+AIProvider、AnalysisPanel、ConversationPanel。
+TokenCostEstimator
+估算 token 與價格（讀 model_pricing.json）。
+AIProvider、AnalysisPanel。
+ModelRegistry
+模型 id 與定價查詢。
+buildAIExplanationRequest、SettingsPage、TokenCostEstimator。
+StorageService
+本機讀寫錯題本、看不懂局面、歷史分析。
+MistakeBookPage、AnalysisPanel、SettingsPage。
+AnalysisSessionStore
+短期保存 canonical 分析結果。
+engine/ai IPC handlers、buildAIExplanationRequest。
+SecretStore
+本機安全儲存 API Key。
+SettingsPage、AIProvider、buildAIExplanationRequest。
+EngineAnalysisTypes
+EngineScore、EngineAnalysis 等核心型別。
+PikafishAdapter、PromptBuilder、MoveComparisonService、StorageService。
+附錄 A：Claude Code / Skill 防亂搞規則
+本產品若要在上課時讓 Claude Code 自動開發，必須先把以下規則放入 CLAUDE.md 與 .claude/skills 中。這是防止 LLM 自行發明架構、亂接 API、洩漏 API Key、或讓 AI 解釋亂判棋的保護層。
+A.1　專案總規則摘要
+Core product rule:
+  Pikafish provides chess judgment.
+  The LLM only explains structured engine output.
+  The LLM must not invent chess analysis.
+Terminology rule:
+  Never call Pikafish a cloud API.
+  Pikafish is a local UCI Xiangqi engine.
+MVP rule:
+  This is a Windows desktop app, not a web SaaS.
+  Do not add backend server, account system, cloud sync,
+  mobile app, or payment system unless explicitly requested.
+Security rule:
+  No API key may be hardcoded, logged, committed,
+  or sent to any server owned by this app.
+A.2　Claude Code 任務分級
+等級
+可否上課時自動做
+範例
+規則
+A 低風險
+可以
+UI 頁面、型別、README、mock data。
+仍需 build，不能改核心邏輯。
+B 中風險
+可以，但下課必須 review
+localStorage、prompt builder、cost estimator、parser mock。
+需檢查 diff 與測試。
+C 高風險
+不建議無人看守
+Pikafish subprocess、真實 API 呼叫、API Key 儲存、installer、license、IPC 取消邏輯。
+做之前要明確批准與驗收標準。
+A.3　Engine Analysis Contract 摘要
+AI 解釋前必須具備 userMove、engineBestMove、evaluationAfterUserMove、evaluationAfterBestMove、depth、principalVariation、candidateMoves 等資料。若資料不足，必須顯示不確定性，不可假裝確定。所有分數比較必須在同一視角（原局面行棋方）下進行。
+附錄 B：正式開發前需要確認的問題
+問題
+為什麼需要確認
+第一版是否真的要讓整個 App 無網路時不能開？
+若整個 App 都不能離線，會需要 license server 或啟動驗證，與低成本策略衝突。
+Pikafish 是否由使用者自己下載？
+會影響安裝檔、授權、客服與使用門檻。
+本機資料庫選 SQLite 還是 JSON/localStorage？
+會影響錯題本搜尋、備份、資料升級。
+Windows 安裝檔是否需要自動更新？
+自動更新可能需要額外託管與版本管理。
+是否需要買斷制 License Key？
+若要正式販售，需要另外設計授權啟用流程。
+多輪追問（ai_conversations）的 context 策略？
+影響 token 成本與 AIProvider 實作；尚未在本版定義，列為下一個待補規格。
+附錄 C：v0.2 修正與新增摘要
+本版針對 v0.1 的設計審查，解決下列問題：
+MistakeLevel 型別全系統統一，移除 turning_point，新增 acceptable_or_tiny_inaccuracy 與 major_blunder（§2.6.4、§2.13）。
+MoveComparisonService 分級改用半開區間，定義負分處理、浮點數規則與 confidence 計算（§2.13）。
+新增 EngineScore 型別，cp/mate 分數保留語義與顯示文字；mate 0 terminal case 明確化（§2.6.1、§2.14）。
+EngineCandidateMove 與 EngineAnalysis 升級為保留 EngineScore；evaluation 由 comparableValue 派生（§2.6.2、§2.6.3）。
+PikafishAdapter 雙階段分析；第二次分析的 score 必須取負號轉回原局面視角；invertEngineScore 的 mate 0 修正為 +MATE_SCORE（§2.15）。
+raw 欄位限定 debug 用途，禁止進入 PromptBuilder/UI/分級邏輯（§2.6.1、§2.15.5）。
+Electron IPC 架構與 channel 定義；engine:analysis-result（main→renderer）與 analysisId 流程補齊（§2.16）。
+AI 解釋採 streaming IPC；補齊 accumulatedText、completedNormally、abort 順序、done 後 break、AbortController 取消、錯誤對應（§2.17）。
+getAIProvider 與 buildAIExplanationRequest 合約定義；start payload 改用 analysisId，移除 engineAnalysis/moveComparison（§2.17）。
+新增 AnalysisSessionStore 短期快取，含 TTL 與兩層清理（§2.18）。
+save() 失敗改送 engine:analysis-error（code: session_store_failed）（§2.16.4）。
+engine:analysis-cancel 與 AI streaming cancel 對稱設計，使用 AbortController + UCI stop + 寬限期 kill（§2.16.5）。
+新增 ModelRegistry 介面與第一版模型清單／定價，資料以官方頁面核對（§2.19）。
+userLevel 來源定為 AppSettings.userLevel，預設 intermediate；DEFAULT_APP_SETTINGS.aiModel 改為真實 model claude-sonnet-4-6（§2.6.7、§2.17.3）。
+尚未在本版納入、列為後續工作：多輪追問 context 策略、象棋 FEN 詳細驗證規則、實際資料庫 DDL（外鍵與索引）、SecretStore 在 Windows 的最終實作選型。
+象棋 AI 分析講解軟體 — 軟體設計規格書 v0.2

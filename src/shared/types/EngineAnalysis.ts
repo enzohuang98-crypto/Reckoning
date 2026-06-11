@@ -1,154 +1,114 @@
 /**
- * 引擎分析型別 (Engine analysis types)
+ * 引擎分析型別 (Engine analysis types) — SDS v0.2 §2.6
  *
- * Pikafish 為「本機 UCI 象棋引擎」，負責所有棋力判斷。
- * 這些型別描述引擎輸出的結構化資料；LLM 僅能根據這些資料解釋，
- * 不得自行發明不在引擎資料中的戰術。
+ * 本檔型別為全系統唯一真相來源（§2.6 開頭）：
+ * MoveComparisonService、EngineOutputParser、PikafishAdapter、StorageService、
+ * UI 與 IPC 都必須使用同一組型別。
+ *
+ * 重要規則：
+ *  - 分數不得只存裸數字（§2.6.1）；EngineScore 保留語義、顯示文字與來源。
+ *  - raw 僅供 debug 與追蹤，不得被 UI、PromptBuilder、MoveComparisonService
+ *    或分級邏輯使用（§2.6.1、§2.15.5）。
+ *  - 不得讓 Infinity / -Infinity 進入 EngineScore（§2.14.1）。
  */
 
 import type { PieceColor } from './BoardState'
 
 /**
- * 引擎通訊協定。
- *  - uci：Pikafish 等（setoption name X value Y / go movetime）
+ * 引擎通訊協定（本專案擴充，SDS 之外）。
+ *  - uci：Pikafish 等
  *  - ucci：象棋小蟲、象棋旋風、象棋名手、烏雲象棋等
- *    （setoption 無 name/value 關鍵字、go time、score 為裸數值）
  */
 export type EngineProtocol = 'uci' | 'ucci'
 
+/** mate 正規化基準（§2.14.3） */
+export const MATE_SCORE = 30000
+
+/** 分數來源（§2.6.1） */
+export type ScoreSource = 'root_analysis' | 'candidate_move' | 'separate_engine_call'
+
 /**
- * 引擎分數。UCI 引擎回報兩種分數：
- *  - cp：以「輪走方視角」計算的厘子分 (centipawn)
- *  - mate：N 步內將死（正值＝輪走方可將死，負值＝輪走方將被將死）
+ * 引擎分數（§2.6.1）。
+ * cp：一般局面 centipawn；mate：殺棋距離（負數 = 自己將被將死）。
  */
 export type EngineScore =
-  | { readonly kind: 'cp'; readonly value: number }
-  | { readonly kind: 'mate'; readonly value: number }
+  | {
+      readonly type: 'cp'
+      /** Pikafish 原始 centipawn */
+      readonly cp: number
+      /** 兵/卒單位 (cp / 100) */
+      readonly value: number
+      /** 給 MoveComparisonService 比較用 */
+      readonly comparableValue: number
+      /** 原始 UCI 字串，僅供 debug；禁止進 UI / PromptBuilder / 分級邏輯 */
+      readonly raw: string
+      /** UI 顯示文字，如 +1.20 */
+      readonly displayText: string
+      /** 是否經過視角反轉 */
+      readonly wasInverted: boolean
+      readonly source: ScoreSource
+    }
+  | {
+      readonly type: 'mate'
+      /** mate 距離；負數表示自己將被將死 */
+      readonly mateIn: number
+      readonly comparableValue: number
+      readonly raw: string
+      /** 如「殺 3」「被殺 2」「已被將死」「殺棋（終局）」 */
+      readonly displayText: string
+      /** mate 0 終局狀態 */
+      readonly isTerminalMate: boolean
+      readonly wasInverted: boolean
+      readonly source: ScoreSource
+    }
+
+/** 候選著法（§2.6.2）。evaluation 由 score.comparableValue 派生。 */
+export interface EngineCandidateMove {
+  move: string
+  displayMove?: string
+  score: EngineScore | null
+  /** = score === null ? null : score.comparableValue */
+  evaluation: number | null
+  depth: number | null
+  principalVariation: string[]
+}
+
+/** scoreAfterUserMove 的來源標示（§2.6.3） */
+export type UserMoveEvaluationSource =
+  | 'candidate_move'
+  | 'separate_engine_call'
+  | 'unavailable'
 
 /**
- * 將 mate 分數視為極大值時使用的基準（厘子）。
- * 用於 MoveComparisonService 的差值比較，避免 mate 與 cp 混算。
+ * 引擎分析結果（§2.6.3）。
+ * 所有 evaluation 欄位皆為「原局面行棋方視角」（§2.15.8、附錄 A.3）。
  */
-export const MATE_SCORE_VALUE = 100000
-
-/**
- * 將 EngineScore 正規化為厘子數值（mate 視為極大值）。
- * mate in N 的絕對值越小代表越快將死，給予越高的分數。
- */
-export function scoreToCentipawns(
-  score: EngineScore,
-  mateBase: number = MATE_SCORE_VALUE
-): number {
-  if (score.kind === 'cp') return score.value
-  // mate：步數越少分數越高；保留正負號代表是我方或對方將死
-  const magnitude = mateBase - Math.min(Math.abs(score.value), mateBase - 1)
-  return score.value >= 0 ? magnitude : -magnitude
-}
-
-/**
- * 分數視角翻轉（輪走方 ↔ 對手）。
- * 評估「走完某著法後」的局面時，引擎回報的是對手視角，需取負還原為走子方視角。
- */
-export function negateScore(score: EngineScore): EngineScore {
-  return score.kind === 'cp'
-    ? { kind: 'cp', value: -score.value }
-    : { kind: 'mate', value: -score.value }
-}
-
-/** 可讀化引擎分數（給 UI / prompt 用） */
-export function formatScore(score: EngineScore): string {
-  if (score.kind === 'mate') {
-    return score.value >= 0 ? `將死 (M${score.value})` : `被將死 (M${Math.abs(score.value)})`
-  }
-  const pawns = (score.value / 100).toFixed(2)
-  return score.value > 0 ? `+${pawns}` : pawns
-}
-
-/** 單一候選著法線 (UCI multipv 一行) */
-export interface EngineLine {
-  /** multipv 序號，1 為最佳 */
-  multipv: number
-  /** 搜尋深度 */
-  depth: number
-  /** 選擇性搜尋深度 (seldepth) */
-  selDepth?: number
-  /** 此線分數（輪走方視角） */
-  score: EngineScore
-  /** 搜尋節點數 */
-  nodes?: number
-  /** 每秒節點數 */
-  nps?: number
-  /** 思考時間 (ms) */
-  timeMs?: number
-  /** 主要變例 (principal variation)，UCI 著法陣列，如 ['h2e2','h9g7'] */
-  pv: string[]
-  /** 此線的第一步（= pv[0]） */
-  bestMoveUci: string
-}
-
-/** 一次完整的引擎分析結果 */
 export interface EngineAnalysis {
-  /** 被分析的局面 FEN */
-  fen: string
-  /** 輪走方 */
+  positionFen: string
   sideToMove: PieceColor
-  /** 最終達到的搜尋深度 */
-  depth: number
-  /** 引擎建議的最佳著法 (UCI) */
-  bestMoveUci: string
-  /** 最佳線 */
-  bestLine: EngineLine
-  /** 所有候選線，依強到弱排序 (multipv) */
-  lines: EngineLine[]
-  /** 最佳線分數（輪走方視角） */
-  score: EngineScore
-  /** 引擎名稱，例如 'Pikafish' */
-  engineName: string
-  /** 完成時間 (epoch ms) */
-  computedAt: number
-}
-
-/** 引擎分析請求參數 */
-export interface EngineAnalysisRequest {
-  fen: string
-  /** 目標搜尋深度（與 movetimeMs 擇一） */
-  depth?: number
-  /** 目標思考時間 (ms) */
-  movetimeMs?: number
-  /** multipv 數量（要幾條候選線） */
-  multiPv?: number
+  userMove?: string
+  bestMove: string
+  scoreAfterUserMove: EngineScore | null
+  scoreAfterBestMove: EngineScore | null
+  /** 由 scoreAfterUserMove.comparableValue 派生（§2.14.5） */
+  evaluationAfterUserMove: number | null
+  /** 由 scoreAfterBestMove.comparableValue 派生（§2.14.5） */
+  evaluationAfterBestMove: number | null
+  userMoveEvaluationSource: UserMoveEvaluationSource
+  depth: number | null
+  candidateMoves: EngineCandidateMove[]
+  principalVariation: string[]
+  analysisTimeMs?: number
   /**
-   * 在 fen 之後先走的著法（UCI），分析的是走完這些著法後的局面。
-   * 對應引擎指令 position fen <fen> moves <m1> <m2> ...（UCI/UCCI 皆支援）。
-   * 注意：此時引擎回報的分數視角是「走完後的輪走方」。
+   * SDS 型別為字面值 "Pikafish"；本專案支援 UCCI 引擎（小蟲/旋風/名手/烏雲），
+   * 放寬為 string 以保留引擎回報的 id name（文件化偏差，見 CLAUDE.md）。
    */
-  movesUci?: string[]
-}
-
-/** 單一著法評估請求（猜著模式精確 loss 用） */
-export interface EvaluateMoveRequest {
-  /** 原局面 FEN */
-  fen: string
-  /** 要評估的著法 (UCI)，必須是原局面輪走方的著法 */
-  moveUci: string
-  /** 目標搜尋深度（與 movetimeMs 擇一）；建議與原分析相同以利公平比較 */
-  depth?: number
-  /** 目標思考時間 (ms) */
-  movetimeMs?: number
-}
-
-/** 單一著法評估結果 */
-export interface MoveEvaluation {
-  /** 原局面 FEN */
-  fen: string
-  /** 被評估的著法 (UCI) */
-  moveUci: string
-  /** 走完該著法後的局面分數，已換算回「原局面輪走方」視角 */
-  score: EngineScore
-  /** 走完該著法即無合法著法（將死或困斃對手）時為 true，score 以 mate 表示 */
-  terminatesGame: boolean
-  /** 實際達到的搜尋深度（terminatesGame 時為 0） */
-  depth: number
-  /** 引擎名稱 */
   engineName: string
+}
+
+/** 引擎分析參數（§2.16.3 analysisConfig；預設值見 Settings DEFAULT_APP_SETTINGS） */
+export interface AnalysisConfig {
+  rootAnalysisMovetimeMs: number
+  userMoveEvalMovetimeMs: number
+  multiPv: number
 }

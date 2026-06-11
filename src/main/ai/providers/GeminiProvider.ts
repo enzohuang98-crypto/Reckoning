@@ -1,25 +1,23 @@
 /**
- * Google Gemini Provider（真實實作）
+ * Google Gemini Provider — SDS v0.2 §2.17.8
  *
+ * 無狀態 adapter：API key 與 prompt 由 AIExplanationRequest 帶入。
  * 以內建 fetch 呼叫 generateContent REST API（不引入 SDK，減少相依）。
- * 套用與 Anthropic 相同的 promptBuilder 與護欄規則。
  */
 
 import type {
   AIProvider,
-  AIModelInfo,
-  AIProviderConfig
+  AIExplanationStreamChunk
 } from '@shared/types/AIProviderTypes'
-import { PROVIDER_DEFAULT_MODELS } from '@shared/types/AIProviderTypes'
 import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { buildSystemPrompt, buildUserPrompt } from '../promptBuilder'
 import { estimateCost } from '../cost'
 import { extractApiErrorMessage } from '../http'
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
+const MAX_OUTPUT_TOKENS = 4096
 
 /** generateContent 回應中本實作會使用的欄位 */
 interface GeminiGenerateContentResponse {
@@ -31,43 +29,33 @@ export class GeminiProvider implements AIProvider {
   readonly id = 'gemini' as const
   readonly displayName = 'Google Gemini'
 
-  private readonly config: AIProviderConfig
-
-  constructor(config: AIProviderConfig) {
-    this.config = config
-  }
-
-  listModels(): AIModelInfo[] {
-    return PROVIDER_DEFAULT_MODELS.gemini
-  }
-
-  isConfigured(): boolean {
-    return this.config.apiKey.length > 0 && this.config.model.length > 0
-  }
+  constructor(private readonly options: { baseUrl?: string } = {}) {}
 
   async generateExplanation(
-    request: AIExplanationRequest
+    request: AIExplanationRequest,
+    signal?: AbortSignal
   ): Promise<AIExplanationResponse> {
-    const language = request.language ?? 'zh-TW'
-    const model = request.model || this.config.model
-    const baseUrl = (this.config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
 
-    const res = await fetch(`${baseUrl}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        // 金鑰走 header，不放 URL query（避免進入日誌）
-        'x-goog-api-key': this.config.apiKey
-      },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: buildSystemPrompt(language) }] },
-        contents: [{ role: 'user', parts: [{ text: buildUserPrompt(request) }] }],
-        generationConfig: {
-          maxOutputTokens: this.config.maxTokens ?? 1024,
-          temperature: this.config.temperature ?? 0.3
-        }
-      })
-    })
+    const res = await fetch(
+      `${baseUrl}/models/${encodeURIComponent(request.model)}:generateContent`,
+      {
+        method: 'POST',
+        signal,
+        headers: {
+          'content-type': 'application/json',
+          // 金鑰走 header，不放 URL query（避免進入日誌；§2.11）
+          'x-goog-api-key': request.apiKey
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
+          generationConfig: {
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            temperature: 0.3
+          }
+        })
+      }
+    )
 
     if (!res.ok) {
       throw new Error(`Gemini API 錯誤 (${res.status})：${await extractApiErrorMessage(res)}`)
@@ -92,11 +80,26 @@ export class GeminiProvider implements AIProvider {
     return {
       text,
       provider: this.id,
-      model,
+      model: request.model,
       usage,
-      costUsd: usage ? estimateCost(model, usage) : undefined,
+      costUsd: usage ? estimateCost(request.model, usage) : undefined,
       createdAt: Date.now(),
       groundedOnEngineData: true
+    }
+  }
+
+  /** streaming 介面為包裝模式（§2.17.1）：等完整回應後以單一 text_delta 回傳 */
+  async *generateExplanationStream(
+    request: AIExplanationRequest,
+    signal: AbortSignal
+  ): AsyncIterable<AIExplanationStreamChunk> {
+    const response = await this.generateExplanation(request, signal)
+    if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
+    yield { type: 'text_delta', deltaText: response.text }
+    yield {
+      type: 'done',
+      usage: response.usage,
+      estimatedCostUsd: response.costUsd ?? null
     }
   }
 }

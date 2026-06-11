@@ -1,55 +1,56 @@
 /**
- * 引擎介面 (PikafishAdapter)
+ * 引擎介面 (PikafishAdapter) — SDS v0.2 §2.15
  *
- * 以子行程驅動本機象棋引擎，支援兩種協定：
- *  - UCI（Pikafish）：uci→uciok、setoption name X value Y、go movetime
- *  - UCCI（象棋小蟲/旋風/名手/烏雲等）：ucci→ucciok、setoption X Y、go time
+ * 以子行程驅動本機象棋引擎，支援 UCI（Pikafish）與 UCCI（小蟲/旋風/名手/烏雲）。
+ * 協定自動偵測：先送 uci，2 秒內未收到 uciok 改送 ucci；引擎在偵測期間
+ * 退出則以剩餘協定重啟再試。偵測結果經 onProtocolDetected 由上層持久化。
  *
- * 協定自動偵測：先送 uci，2 秒內未收到 uciok 改送 ucci 等 ucciok；
- * 若引擎在偵測期間直接結束行程（部分引擎收到未知指令即退出），
- * 會以剩餘協定重新啟動再試。偵測結果經 onProtocolDetected 回呼由上層持久化，
- * 下次啟動直接以已知協定握手。
+ * 雙階段分析（§2.15.2）：
+ *   root analysis → bestMove / scoreAfterBestMove / candidateMoves
+ *   userMove 在候選中 → 直接用 candidate.score（source: candidate_move，不取負號）
+ *   不在候選 → 對 userMove 後局面二次分析（movetime 固定值，§2.15.6），
+ *              結果必須經 invertEngineScore() 反轉回原局面行棋方視角
+ *   二次分析失敗 → scoreAfterUserMove = null + uncertainty reason（§2.15.7）
  *
- * 二進位檔尋找順序：
- *   1. 使用者於設定頁指定並由 StorageService 持久化的路徑（userPath）
- *   2. 環境變數 PIKAFISH_PATH
- *   3. <resources>/engine/pikafish.exe（打包後）
- * 若找不到，isAvailable() 回 false，analyze() 拋出明確錯誤，
- * 由上層 IPC 轉成 renderer 可顯示的訊息。MVP 不內含二進位檔。
+ * 取消（§2.16.5）：analyzePosition 接受 AbortSignal；abort 時對目前子行程送
+ * UCI "stop"，500ms 寬限期後強制 kill，流程以 AbortError 拒絕。
  *
- * 握手採「分段等待」：偵測協定（uciok/ucciok）→ setoption → isready 等 readyok，
- * 確認引擎就緒後才送 position / go，避免對未就緒引擎送出指令。
+ * 二進位檔尋找順序：使用者設定路徑 > PIKAFISH_PATH > resources/engine/pikafish.exe。
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  negateScore,
+  MATE_SCORE,
+  type AnalysisConfig,
   type EngineAnalysis,
-  type EngineAnalysisRequest,
-  type EngineLine,
+  type EngineCandidateMove,
   type EngineProtocol,
-  type EvaluateMoveRequest,
-  type MoveEvaluation
+  type EngineScore,
+  type UserMoveEvaluationSource
 } from '@shared/types/EngineAnalysis'
-import type { EngineTestResult } from '@shared/types/ipc'
+import type {
+  EngineAnalysisErrorCode,
+  EngineTestResult
+} from '@shared/types/ipc'
 import { parseFen } from '@shared/logic/fen'
+import { legalMoveCheck } from '@shared/logic/moves'
 import { MultiPvAccumulator, parseBestMove } from './EngineOutputParser'
 
-export class EngineUnavailableError extends Error {
-  constructor(message: string) {
+/** 帶 IPC 錯誤碼的分析錯誤（§2.16.3 code 對應） */
+export class EngineAnalysisError extends Error {
+  constructor(
+    public readonly code: EngineAnalysisErrorCode,
+    message: string
+  ) {
     super(message)
-    this.name = 'EngineUnavailableError'
+    this.name = 'EngineAnalysisError'
   }
 }
 
-/** 局面無合法著法（將死或困斃；UCI 回 bestmove (none)、UCCI 回 nobestmove） */
-export class EngineNoLegalMovesError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'EngineNoLegalMovesError'
-  }
+function abortError(): DOMException {
+  return new DOMException('Analysis cancelled', 'AbortError')
 }
 
 const ENGINE_NAME = 'Pikafish'
@@ -64,6 +65,63 @@ const PROTOCOL_HANDSHAKE: Record<EngineProtocol, { greet: string; ok: string }> 
 const PROTOCOL_DETECT_TIMEOUT_MS = 2000
 /** 握手完成後等待 readyok 的時限（NNUE 載入可能較慢） */
 const READY_TIMEOUT_MS = 15000
+/** 取消時等待引擎回應 stop 的寬限期（§2.16.5） */
+const CANCEL_GRACE_MS = 500
+/** 搜尋安全逾時的額外緩衝 */
+const SEARCH_TIMEOUT_MARGIN_MS = 15000
+
+/**
+ * 視角反轉（§2.15.4，含 mate 0 修正）。
+ * 二次分析的局面行棋方已換邊，分數須取負號轉回原局面行棋方視角。
+ * mate 0 反轉後 = 使用者剛將死對方 → +MATE_SCORE，顯示「殺棋（終局）」。
+ */
+export function invertEngineScore(score: EngineScore): EngineScore {
+  if (score.type === 'cp') {
+    const invertedCp = -score.cp
+    const value = invertedCp / 100
+    return {
+      type: 'cp',
+      cp: invertedCp,
+      value,
+      comparableValue: value,
+      raw: score.raw,
+      displayText: value >= 0 ? `+${value.toFixed(2)}` : value.toFixed(2),
+      wasInverted: true,
+      source: 'separate_engine_call'
+    }
+  }
+  const invertedMateIn = -score.mateIn
+  if (invertedMateIn === 0) {
+    return {
+      type: 'mate',
+      mateIn: 0,
+      comparableValue: MATE_SCORE, // 反轉後為正：使用者剛將死對方
+      raw: score.raw,
+      displayText: '殺棋（終局）',
+      isTerminalMate: true,
+      wasInverted: true,
+      source: 'separate_engine_call'
+    }
+  }
+  const sign = invertedMateIn > 0 ? 1 : -1
+  const distancePenalty = Math.min(Math.abs(invertedMateIn), 100)
+  return {
+    type: 'mate',
+    mateIn: invertedMateIn,
+    comparableValue: sign * (MATE_SCORE - distancePenalty),
+    raw: score.raw,
+    displayText:
+      invertedMateIn > 0 ? `殺 ${invertedMateIn}` : `被殺 ${Math.abs(invertedMateIn)}`,
+    isTerminalMate: false,
+    wasInverted: true,
+    source: 'separate_engine_call'
+  }
+}
+
+/** 改寫分數來源（保留其餘欄位）；root 最佳分數需標記為 root_analysis */
+function withSource(score: EngineScore, source: EngineScore['source']): EngineScore {
+  return score.type === 'cp' ? { ...score, source } : { ...score, source }
+}
 
 /** 由環境變數 / 打包資源解析引擎路徑（不含使用者自訂路徑） */
 function resolveBundledEnginePath(): string | null {
@@ -83,26 +141,42 @@ function resolveBundledEnginePath(): string | null {
 /** 引擎路徑來源，供 UI 提示用 */
 export type EnginePathSource = 'user' | 'env' | 'resource' | null
 
+/** 進行中分析的階段（§2.16.5） */
+export type AnalysisPhase = 'root_analysis' | 'user_move_analysis'
+
+/** 取消控制：對目前使用中的子行程操作 */
+export interface EngineProcessControls {
+  phase: AnalysisPhase
+  /** 寫入 "stop" 到 engine stdin */
+  sendStop: () => void
+  /** 強制終止子程序 */
+  killEngine: () => void
+}
+
 /** 握手完成、可收發指令的引擎工作階段 */
 interface ReadySession {
   protocol: EngineProtocol
-  /** 引擎回報的 id name（未回報為 null） */
   engineId: string | null
   send(cmd: string): void
-  /** 註冊握手後 stdout 行回呼（搜尋階段輸出） */
   setLineHandler(handler: (line: string) => void): void
-  /** 註冊握手後行程結束回呼 */
   setExitHandler(handler: () => void): void
-  /** 送 quit 並終止行程 */
+  kill(): void
   dispose(): void
 }
 
+/** 單一局面搜尋結果（內部） */
+interface SearchResult {
+  candidateMoves: EngineCandidateMove[]
+  /** 最佳行分數（含無 pv 的 mate 0 終局行） */
+  topScore: EngineScore | null
+  /** bestmove 著法；(none)/nobestmove 為 null（無合法著法） */
+  bestMoveUci: string | null
+  engineId: string | null
+}
+
 export class PikafishAdapter {
-  /** 使用者於設定頁指定的路徑（最高優先；可為 null） */
   private userPath: string | null
-  /** 已知（先前偵測並持久化）的協定；null 表示需自動偵測 */
   private knownProtocol: EngineProtocol | null
-  /** 偵測到（或變更）協定時通知上層持久化 */
   private protocolListener: ((protocol: EngineProtocol) => void) | null = null
 
   constructor(
@@ -117,28 +191,23 @@ export class PikafishAdapter {
     return ENGINE_NAME
   }
 
-  /** 設定（或清除）使用者自訂引擎路徑。傳入 null / 空字串代表清除。 */
   setUserPath(path: string | null): void {
     const trimmed = path?.trim()
     this.userPath = trimmed ? trimmed : null
   }
 
-  /** 取得使用者自訂路徑（未設定回 null） */
   getUserPath(): string | null {
     return this.userPath
   }
 
-  /** 已知的引擎協定（尚未偵測回 null） */
   getKnownProtocol(): EngineProtocol | null {
     return this.knownProtocol
   }
 
-  /** 設定（或以 null 重置）已知協定；路徑變更時應重置以重新偵測 */
   setKnownProtocol(protocol: EngineProtocol | null): void {
     this.knownProtocol = protocol
   }
 
-  /** 註冊協定偵測回呼（偵測結果與已知值不同時觸發，供上層持久化） */
   onProtocolDetected(listener: (protocol: EngineProtocol) => void): void {
     this.protocolListener = listener
   }
@@ -149,13 +218,11 @@ export class PikafishAdapter {
     this.protocolListener?.(protocol)
   }
 
-  /** 實際會使用的引擎路徑（依優先序解析）；找不到回 null。 */
   resolveEnginePath(): string | null {
     if (this.userPath && existsSync(this.userPath)) return this.userPath
     return resolveBundledEnginePath()
   }
 
-  /** 目前生效路徑的來源，供 UI 顯示。 */
   pathSource(): EnginePathSource {
     if (this.userPath && existsSync(this.userPath)) return 'user'
     const fromEnv = process.env.PIKAFISH_PATH
@@ -168,15 +235,12 @@ export class PikafishAdapter {
     return this.resolveEnginePath() !== null
   }
 
-  /**
-   * 啟動引擎並完成「協定偵測 → setoption → isready/readyok」握手。
-   * multiPv 為 null 時不設定 MultiPV（測試連線用）。
-   */
+  /* ---------- 握手（協定偵測） ---------- */
+
   private spawnAndHandshake(
     enginePath: string,
     multiPv: number | null
   ): Promise<ReadySession> {
-    // 已知協定優先嘗試；偵測失敗仍會輪到另一個協定（自我修復）
     const order: EngineProtocol[] =
       this.knownProtocol === 'ucci' ? ['ucci', 'uci'] : ['uci', 'ucci']
     return this.attemptHandshake(enginePath, order, multiPv)
@@ -192,13 +256,14 @@ export class PikafishAdapter {
       try {
         child = spawn(enginePath, [], { windowsHide: true })
       } catch (err) {
-        reject(new EngineUnavailableError(`無法啟動引擎：${String(err)}`))
+        reject(
+          new EngineAnalysisError('engine_start_failed', `無法啟動引擎：${String(err)}`)
+        )
         return
       }
 
       let buffer = ''
       let settled = false
-      /** 目前嘗試中的協定索引 */
       let trying = 0
       let detected: EngineProtocol | null = null
       let engineId: string | null = null
@@ -242,7 +307,8 @@ export class PikafishAdapter {
             greetCurrent()
           } else {
             fail(
-              new EngineUnavailableError(
+              new EngineAnalysisError(
+                'engine_timeout',
                 '引擎握手逾時：對 UCI 與 UCCI 指令皆無回應。請確認指定的檔案為有效的象棋引擎可執行檔。'
               )
             )
@@ -256,8 +322,7 @@ export class PikafishAdapter {
         phase = 'awaiting-readyok'
         this.recordDetectedProtocol(protocol)
         if (protocol === 'ucci') {
-          // UCCI 時間單位預設為「秒」，要求改用毫秒（go time 才能與 UCI movetime 對齊）；
-          // UCCI 的 setoption 無 name/value 關鍵字，未支援的選項會被引擎忽略
+          // UCCI 時間單位預設為秒，要求改用毫秒；setoption 無 name/value 關鍵字
           send('setoption usemillisec true')
           if (multiPv !== null) send(`setoption multipv ${multiPv}`)
         } else if (multiPv !== null) {
@@ -266,7 +331,8 @@ export class PikafishAdapter {
         send('isready')
         readyTimer = setTimeout(() => {
           fail(
-            new EngineUnavailableError(
+            new EngineAnalysisError(
+              'engine_timeout',
               '引擎未在時限內就緒（readyok）。若為 Pikafish，請確認 pikafish.nnue 評估檔與執行檔在同一目錄。'
             )
           )
@@ -283,7 +349,6 @@ export class PikafishAdapter {
           return
         }
         if (phase === 'detecting') {
-          // 接受任一協定的完成標記（晚到的回應也算數）
           if (line === 'uciok') onDetected('uci')
           else if (line === 'ucciok') onDetected('ucci')
           return
@@ -302,6 +367,7 @@ export class PikafishAdapter {
             setExitHandler: (h) => {
               exitHandler = h
             },
+            kill: () => child.kill(),
             dispose
           })
         }
@@ -320,7 +386,9 @@ export class PikafishAdapter {
       })
 
       child.on('error', (err) => {
-        fail(new EngineUnavailableError(`引擎行程錯誤：${err.message}`))
+        fail(
+          new EngineAnalysisError('engine_start_failed', `引擎行程錯誤：${err.message}`)
+        )
       })
 
       child.on('exit', () => {
@@ -338,7 +406,8 @@ export class PikafishAdapter {
           this.attemptHandshake(enginePath, remaining, multiPv).then(resolve, reject)
         } else {
           reject(
-            new EngineUnavailableError(
+            new EngineAnalysisError(
+              'engine_start_failed',
               '引擎行程在握手期間結束。請確認指定的檔案為有效的 UCI/UCCI 象棋引擎。'
             )
           )
@@ -349,17 +418,115 @@ export class PikafishAdapter {
     })
   }
 
-  /**
-   * 連線測試：啟動引擎完成握手後立即關閉。
-   * 回傳偵測到的協定與引擎版本名，失敗時回傳原因（不拋出例外）。
-   */
+  /* ---------- 單一局面搜尋（內部） ---------- */
+
+  private async searchPosition(options: {
+    enginePath: string
+    fen: string
+    movesUci?: string[]
+    movetimeMs: number
+    multiPv: number
+    scoreSource: 'candidate_move' | 'separate_engine_call'
+    signal?: AbortSignal
+    onControls?: (controls: { sendStop: () => void; killEngine: () => void }) => void
+  }): Promise<SearchResult> {
+    if (options.signal?.aborted) throw abortError()
+
+    const session = await this.spawnAndHandshake(options.enginePath, options.multiPv)
+    const accumulator = new MultiPvAccumulator(options.scoreSource)
+
+    // 回報目前子行程控制，供 IPC 取消 handle 使用（§2.16.5）
+    options.onControls?.({
+      sendStop: () => session.send('stop'),
+      killEngine: () => session.kill()
+    })
+
+    return new Promise<SearchResult>((resolve, reject) => {
+      let settled = false
+      let bestMoveUci: string | null = null
+      let searchEnded = false
+      let searchTimer: ReturnType<typeof setTimeout> | null = null
+      let graceTimer: ReturnType<typeof setTimeout> | null = null
+
+      const cleanup = (): void => {
+        if (searchTimer) clearTimeout(searchTimer)
+        if (graceTimer) clearTimeout(graceTimer)
+        options.signal?.removeEventListener('abort', onAbort)
+        session.dispose()
+      }
+
+      const finish = (): void => {
+        if (settled) return
+        settled = true
+        // 取消優先於結果（§2.16.5：取消後不得發送 analysis-result）
+        if (options.signal?.aborted) {
+          cleanup()
+          reject(abortError())
+          return
+        }
+        const candidateMoves = accumulator.getCandidateMoves()
+        const topScore = accumulator.getTopScore()
+        cleanup()
+        if (candidateMoves.length === 0 && topScore === null && !searchEnded) {
+          reject(
+            new EngineAnalysisError(
+              'engine_parse_error',
+              '引擎未回傳任何候選線（可能引擎異常或輸出無法解析）'
+            )
+          )
+          return
+        }
+        resolve({
+          candidateMoves,
+          topScore,
+          bestMoveUci,
+          engineId: session.engineId
+        })
+      }
+
+      // 取消：送 stop，寬限期內等引擎回 bestmove，逾期強制 kill（§2.16.5）
+      const onAbort = (): void => {
+        session.send('stop')
+        graceTimer = setTimeout(() => {
+          session.kill()
+        }, CANCEL_GRACE_MS)
+      }
+      options.signal?.addEventListener('abort', onAbort, { once: true })
+
+      session.setExitHandler(finish)
+      session.setLineHandler((line) => {
+        accumulator.ingestLine(line)
+        // bestmove xxx / bestmove (none)（UCI）、nobestmove（UCCI）都代表搜尋結束
+        if (line.startsWith('bestmove') || line.startsWith('nobestmove')) {
+          searchEnded = true
+          bestMoveUci = parseBestMove(line)
+          finish()
+        }
+      })
+
+      // UCCI 不支援 go movetime；usemillisec 已設 true，go time 單位為毫秒
+      const go =
+        session.protocol === 'ucci'
+          ? `go time ${options.movetimeMs}`
+          : `go movetime ${options.movetimeMs}`
+      const moves = options.movesUci?.length ? ` moves ${options.movesUci.join(' ')}` : ''
+      session.send(`position fen ${options.fen}${moves}`)
+      session.send(go)
+
+      // 安全逾時：停止引擎，保留已取得資料（§2.8 分析 timeout 處理）
+      searchTimer = setTimeout(() => {
+        session.send('stop')
+        finish()
+      }, options.movetimeMs + SEARCH_TIMEOUT_MARGIN_MS)
+    })
+  }
+
+  /* ---------- 連線測試 ---------- */
+
   async test(): Promise<EngineTestResult> {
     const enginePath = this.resolveEnginePath()
     if (!enginePath) {
-      return {
-        ok: false,
-        message: '找不到引擎執行檔。請指定引擎路徑後再測試。'
-      }
+      return { ok: false, message: '找不到引擎執行檔。請指定引擎路徑後再測試。' }
     }
     try {
       const session = await this.spawnAndHandshake(enginePath, null)
@@ -371,147 +538,148 @@ export class PikafishAdapter {
       session.dispose()
       return result
     } catch (err) {
-      return {
-        ok: false,
-        message: err instanceof Error ? err.message : String(err)
-      }
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }
   }
 
-  /**
-   * 評估單一著法的精確分數（猜著模式用）。
-   * 作法：分析「走完該著法後」的局面（multiPv=1），引擎回報對手視角分數，
-   * 取負還原為原局面輪走方視角。走完即無合法著法（將死/困斃對手）視為 mate。
-   */
-  async evaluateMove(request: EvaluateMoveRequest): Promise<MoveEvaluation> {
-    try {
-      const analysis = await this.analyze({
-        fen: request.fen,
-        depth: request.depth,
-        movetimeMs: request.movetimeMs,
-        multiPv: 1,
-        movesUci: [request.moveUci]
-      })
-      return {
-        fen: request.fen,
-        moveUci: request.moveUci,
-        score: negateScore(analysis.score),
-        terminatesGame: false,
-        depth: analysis.depth,
-        engineName: analysis.engineName
-      }
-    } catch (err) {
-      if (err instanceof EngineNoLegalMovesError) {
-        // 對手無著可走：象棋中將死與困斃皆為對手輸，對走子方而言等同 mate in 1
-        return {
-          fen: request.fen,
-          moveUci: request.moveUci,
-          score: { kind: 'mate', value: 1 },
-          terminatesGame: true,
-          depth: 0,
-          engineName: ENGINE_NAME
-        }
-      }
-      throw err
-    }
-  }
+  /* ---------- 雙階段分析（§2.15） ---------- */
 
-  /**
-   * 分析單一局面。回傳完整 EngineAnalysis。
-   * 若引擎不可用則拋出 EngineUnavailableError。
-   */
-  async analyze(request: EngineAnalysisRequest): Promise<EngineAnalysis> {
+  async analyzePosition(
+    input: { positionFen: string; userMove?: string },
+    config: AnalysisConfig,
+    options?: {
+      signal?: AbortSignal
+      /** 每個階段開始時回報目前子行程的控制（供 IPC 取消 handle 使用） */
+      onPhase?: (phase: AnalysisPhase, controls: EngineProcessControls) => void
+    }
+  ): Promise<EngineAnalysis> {
     const enginePath = this.resolveEnginePath()
     if (!enginePath) {
-      throw new EngineUnavailableError(
-        '找不到引擎執行檔。請至設定頁指定引擎路徑，或設定 PIKAFISH_PATH 環境變數 / 放置 resources/engine/pikafish.exe。'
+      throw new EngineAnalysisError(
+        'engine_not_configured',
+        '找不到引擎。請至設定頁指定引擎路徑，或設定 PIKAFISH_PATH / 放置 resources/engine/pikafish.exe。'
       )
     }
 
-    const parsed = parseFen(request.fen)
+    const parsed = parseFen(input.positionFen)
     if (!parsed.valid) {
-      throw new Error(`無效的 FEN：${parsed.message}`)
+      throw new EngineAnalysisError('invalid_fen', `FEN 格式不正確：${parsed.message}`)
     }
+    const sideToMove = parsed.board.sideToMove
 
-    // movesUci 僅允許 UCI 著法格式；任意字串（特別是含空白/換行）會被當成引擎指令
-    const movesUci = request.movesUci ?? []
-    for (const move of movesUci) {
-      if (!/^[a-i]\d[a-i]\d$/.test(move)) {
-        throw new Error(`無效的 UCI 著法：${JSON.stringify(move)}`)
+    const userMove = input.userMove?.trim().toLowerCase() || undefined
+    if (userMove) {
+      const check = legalMoveCheck(parsed.board.grid, sideToMove, userMove)
+      if (!check.ok) {
+        throw new EngineAnalysisError('invalid_user_move', `使用者著法不合法：${check.message}`)
       }
     }
-    // 分析的是走完 movesUci 後的局面；奇數步代表輪走方翻轉
-    const baseSide = parsed.board.sideToMove
-    const sideToMove =
-      movesUci.length % 2 === 1 ? (baseSide === 'red' ? 'black' : 'red') : baseSide
 
-    const multiPv = Math.max(1, request.multiPv ?? 1)
-    const session = await this.spawnAndHandshake(enginePath, multiPv)
-    const accumulator = new MultiPvAccumulator()
+    const startedAt = Date.now()
+    const signal = options?.signal
 
-    return new Promise<EngineAnalysis>((resolve, reject) => {
-      let settled = false
-      let bestMoveUci: string | null = null
-      /** 已收到搜尋結束行（bestmove/nobestmove），即使無著法也算結束 */
-      let searchEnded = false
-      let searchTimer: ReturnType<typeof setTimeout> | null = null
-
-      const finish = (): void => {
-        if (settled) return
-        settled = true
-        if (searchTimer) clearTimeout(searchTimer)
-        const lines = accumulator.getLines()
-        const best: EngineLine | undefined =
-          lines.find((l) => l.multipv === 1) ?? lines[0]
-        session.dispose()
-        if (!best) {
-          reject(
-            searchEnded && bestMoveUci === null
-              ? new EngineNoLegalMovesError('該局面無合法著法（已被將死或困斃）')
-              : new Error('引擎未回傳任何候選線（可能 FEN 不合法或引擎異常）')
-          )
-          return
-        }
-        resolve({
-          fen: request.fen,
-          sideToMove,
-          depth: best.depth,
-          bestMoveUci: bestMoveUci ?? best.bestMoveUci,
-          bestLine: best,
-          lines,
-          score: best.score,
-          engineName: session.engineId ?? ENGINE_NAME,
-          computedAt: Date.now()
-        })
+    // ---- 第一階段：root analysis ----
+    const registerControls =
+      (phase: AnalysisPhase) =>
+      (c: { sendStop: () => void; killEngine: () => void }): void => {
+        options?.onPhase?.(phase, { phase, ...c })
       }
 
-      session.setExitHandler(finish)
-      session.setLineHandler((line) => {
-        accumulator.ingestLine(line)
-        // bestmove xxx / bestmove (none)（UCI）、nobestmove（UCCI）都代表搜尋結束；
-        // (none)/nobestmove 時 parseBestMove 回 null，由 finish 判定為無合法著法
-        if (line.startsWith('bestmove') || line.startsWith('nobestmove')) {
-          searchEnded = true
-          bestMoveUci = parseBestMove(line)
-          finish()
-        }
-      })
-
-      // UCCI 不支援 go movetime；usemillisec 已設 true，go time 單位為毫秒
-      const go = request.movetimeMs
-        ? session.protocol === 'ucci'
-          ? `go time ${request.movetimeMs}`
-          : `go movetime ${request.movetimeMs}`
-        : `go depth ${request.depth ?? 15}`
-      const moves = movesUci.length ? ` moves ${movesUci.join(' ')}` : ''
-      session.send(`position fen ${request.fen}${moves}`)
-      session.send(go)
-
-      // 安全逾時：搜尋總時長上限，逾時停手取目前最佳結果
-      searchTimer = setTimeout(() => {
-        session.send('stop')
-        finish()
-      }, (request.movetimeMs ?? 30000) + 15000)
+    const root = await this.searchPosition({
+      enginePath,
+      fen: input.positionFen,
+      movetimeMs: config.rootAnalysisMovetimeMs,
+      multiPv: Math.max(1, config.multiPv),
+      scoreSource: 'candidate_move',
+      signal,
+      onControls: registerControls('root_analysis')
     })
+    if (signal?.aborted) throw abortError()
+
+    const candidateMoves = root.candidateMoves
+    const bestCandidate = candidateMoves[0]
+    const bestMove = root.bestMoveUci ?? bestCandidate?.move ?? null
+    if (!bestMove || !bestCandidate) {
+      // root 局面即無合法著法（已被將死/困斃）或無可解析輸出
+      throw new EngineAnalysisError(
+        'engine_parse_error',
+        root.topScore?.type === 'mate' && root.topScore.isTerminalMate
+          ? '該局面已被將死或困斃，沒有可分析的著法。'
+          : '引擎未回傳任何候選著法（可能局面已終局或引擎輸出無法解析）。'
+      )
+    }
+
+    const scoreAfterBestMove =
+      bestCandidate.score !== null ? withSource(bestCandidate.score, 'root_analysis') : null
+
+    // ---- 第二階段：userMove 評估（§2.15.2） ----
+    let scoreAfterUserMove: EngineScore | null = null
+    let userMoveEvaluationSource: UserMoveEvaluationSource = 'unavailable'
+
+    if (userMove) {
+      const matched = candidateMoves.find((c) => c.move === userMove)
+      if (matched) {
+        // candidate fast path：已是原局面視角，不取負號（§2.15.3）
+        scoreAfterUserMove = matched.score
+        userMoveEvaluationSource = matched.score !== null ? 'candidate_move' : 'unavailable'
+      } else {
+        try {
+          const second = await this.searchPosition({
+            enginePath,
+            fen: input.positionFen,
+            movesUci: [userMove],
+            movetimeMs: config.userMoveEvalMovetimeMs,
+            multiPv: 1,
+            scoreSource: 'separate_engine_call',
+            signal,
+            onControls: registerControls('user_move_analysis')
+          })
+          // 取對手視角最佳分數後反轉；無任何分數但搜尋正常結束
+          //（bestmove (none)/nobestmove）= 對方已無著法 = userMove 將死對方
+          const opponentScore =
+            second.topScore ??
+            (second.bestMoveUci === null
+              ? // 等同 score mate 0（對方視角已被將死）；invertEngineScore 轉為「殺棋（終局）」
+                ({
+                  type: 'mate',
+                  mateIn: 0,
+                  comparableValue: -MATE_SCORE,
+                  raw: 'bestmove (none)',
+                  displayText: '已被將死',
+                  isTerminalMate: true,
+                  wasInverted: false,
+                  source: 'separate_engine_call'
+                } satisfies EngineScore)
+              : null)
+          if (opponentScore !== null) {
+            scoreAfterUserMove = invertEngineScore(opponentScore)
+            userMoveEvaluationSource = 'separate_engine_call'
+          }
+        } catch (err) {
+          // 取消必須中止整個分析；其他失敗依 §2.15.7 降級為 unavailable
+          if (err instanceof DOMException && err.name === 'AbortError') throw err
+          scoreAfterUserMove = null
+          userMoveEvaluationSource = 'unavailable'
+        }
+      }
+    }
+    if (signal?.aborted) throw abortError()
+
+    return {
+      positionFen: input.positionFen,
+      sideToMove,
+      userMove,
+      bestMove,
+      scoreAfterUserMove,
+      scoreAfterBestMove,
+      evaluationAfterUserMove: scoreAfterUserMove?.comparableValue ?? null,
+      evaluationAfterBestMove: scoreAfterBestMove?.comparableValue ?? null,
+      userMoveEvaluationSource: userMove ? userMoveEvaluationSource : 'unavailable',
+      depth: bestCandidate.depth,
+      candidateMoves,
+      principalVariation: bestCandidate.principalVariation,
+      analysisTimeMs: Date.now() - startedAt,
+      engineName: root.engineId ?? ENGINE_NAME
+    }
   }
 }

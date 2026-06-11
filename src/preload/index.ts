@@ -1,34 +1,59 @@
 /**
- * Preload 橋接 (Preload bridge)
+ * Preload 橋接 (Preload bridge) — SDS v0.2 §2.16.1
  *
  * 透過 contextBridge 將型別安全的 window.api 暴露給 renderer。
  * renderer 永遠不直接接觸 Node / Electron / ipcRenderer。
+ * 事件式通道（engine:analysis-result 等）以訂閱函式包裝，回傳取消訂閱。
  */
 
-import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type RendererApi } from '@shared/types/ipc'
-import type {
-  EngineAnalysisRequest,
-  EvaluateMoveRequest
-} from '@shared/types/EngineAnalysis'
-import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import {
+  IPC,
+  type AnalyzePositionStartPayload,
+  type EngineAnalysisErrorPayload,
+  type EngineAnalysisResultPayload,
+  type GenerateExplanationChunkPayload,
+  type GenerateExplanationDonePayload,
+  type GenerateExplanationErrorPayload,
+  type GenerateExplanationStartPayload,
+  type RendererApi
+} from '@shared/types/ipc'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
+
+/** 包裝 main→renderer 事件為「訂閱 + 取消訂閱」形式 */
+function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
+  const wrapped = (_event: IpcRendererEvent, payload: T): void => listener(payload)
+  ipcRenderer.on(channel, wrapped)
+  return () => ipcRenderer.removeListener(channel, wrapped)
+}
 
 const api: RendererApi = {
   engine: {
-    analyze: (request: EngineAnalysisRequest) =>
-      ipcRenderer.invoke(IPC.ENGINE_ANALYZE, request),
+    startAnalysis: (payload: AnalyzePositionStartPayload) =>
+      ipcRenderer.send(IPC.ENGINE_ANALYZE_POSITION_START, payload),
+    onAnalysisResult: (listener: (payload: EngineAnalysisResultPayload) => void) =>
+      subscribe(IPC.ENGINE_ANALYSIS_RESULT, listener),
+    onAnalysisError: (listener: (payload: EngineAnalysisErrorPayload) => void) =>
+      subscribe(IPC.ENGINE_ANALYSIS_ERROR, listener),
+    cancelAnalysis: (requestId: string) =>
+      ipcRenderer.send(IPC.ENGINE_ANALYSIS_CANCEL, { requestId }),
     status: () => ipcRenderer.invoke(IPC.ENGINE_STATUS),
     getPath: () => ipcRenderer.invoke(IPC.ENGINE_GET_PATH),
     setPath: (path: string | null) => ipcRenderer.invoke(IPC.ENGINE_SET_PATH, path),
     browsePath: () => ipcRenderer.invoke(IPC.ENGINE_BROWSE_PATH),
-    test: () => ipcRenderer.invoke(IPC.ENGINE_TEST),
-    evaluateMove: (request: EvaluateMoveRequest) =>
-      ipcRenderer.invoke(IPC.ENGINE_EVALUATE_MOVE, request)
+    test: () => ipcRenderer.invoke(IPC.ENGINE_TEST)
   },
   ai: {
-    explain: (request: AIExplanationRequest) =>
-      ipcRenderer.invoke(IPC.AI_EXPLAIN, request)
+    startExplanation: (payload: GenerateExplanationStartPayload) =>
+      ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_START, payload),
+    onExplanationChunk: (listener: (payload: GenerateExplanationChunkPayload) => void) =>
+      subscribe(IPC.AI_GENERATE_EXPLANATION_CHUNK, listener),
+    onExplanationDone: (listener: (payload: GenerateExplanationDonePayload) => void) =>
+      subscribe(IPC.AI_GENERATE_EXPLANATION_DONE, listener),
+    onExplanationError: (listener: (payload: GenerateExplanationErrorPayload) => void) =>
+      subscribe(IPC.AI_GENERATE_EXPLANATION_ERROR, listener),
+    cancelExplanation: (requestId: string) =>
+      ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_CANCEL, { requestId })
   },
   secret: {
     set: (providerId: AIProviderId, apiKey: string) =>
@@ -37,6 +62,11 @@ const api: RendererApi = {
     delete: (providerId: AIProviderId) =>
       ipcRenderer.invoke(IPC.SECRET_DELETE, providerId),
     isAvailable: () => ipcRenderer.invoke(IPC.SECRET_IS_AVAILABLE)
+  },
+  license: {
+    status: () => ipcRenderer.invoke(IPC.LICENSE_STATUS),
+    activate: (licenseKey: string) => ipcRenderer.invoke(IPC.LICENSE_ACTIVATE, licenseKey),
+    deactivate: () => ipcRenderer.invoke(IPC.LICENSE_DEACTIVATE)
   }
 }
 

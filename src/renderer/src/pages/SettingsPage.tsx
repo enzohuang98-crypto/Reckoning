@@ -15,6 +15,7 @@ import {
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type { EngineStatus } from '@shared/types/ipc'
+import type { LicenseStatus } from '@shared/types/License'
 import { saveSettings } from '../storage/localSettings'
 
 const PATH_SOURCE_LABEL: Record<NonNullable<EngineStatus['pathSource']>, string> = {
@@ -103,11 +104,21 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
     setHasKey(Object.fromEntries(entries) as Record<AIProviderId, boolean>)
   }
 
+  // 買斷授權狀態（SDS Q5）
+  const [license, setLicense] = useState<LicenseStatus | null>(null)
+
   useEffect(() => {
     window.api.secret.isAvailable().then(setEncAvailable)
     void refreshKeyStatus()
     void refreshEngine()
+    window.api.license.status().then(setLicense)
   }, [])
+
+  const deactivateLicense = async (): Promise<void> => {
+    const status = await window.api.license.deactivate()
+    setLicense(status)
+    // 解除後主介面會在下次啟動時要求重新輸入 License Key
+  }
 
   const update = (patch: Partial<AppSettings>): void => {
     const next = { ...settings, ...patch }
@@ -177,13 +188,20 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
       </section>
 
       <section className="card">
-        <h3>模型與語言</h3>
+        <h3>模型與解說</h3>
         <div className="field">
           <label className="field-label">使用中的 Provider</label>
           <select
             className="select"
-            value={settings.activeProvider}
-            onChange={(e) => update({ activeProvider: e.target.value as AIProviderId })}
+            value={settings.aiProvider}
+            onChange={(e) => {
+              const aiProvider = e.target.value as AIProviderId
+              // 切換 Provider 時改用該家預設模型（不得用 "default" 字串）
+              const defaultModel =
+                PROVIDER_DEFAULT_MODELS[aiProvider].find((m) => m.isDefault) ??
+                PROVIDER_DEFAULT_MODELS[aiProvider][0]
+              update({ aiProvider, aiModel: defaultModel.id })
+            }}
           >
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>
@@ -196,22 +214,27 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
           <label className="field-label">模型</label>
           <select
             className="select"
-            value={settings.selectedModels[settings.activeProvider]}
-            onChange={(e) =>
-              update({
-                selectedModels: {
-                  ...settings.selectedModels,
-                  [settings.activeProvider]: e.target.value
-                }
-              })
-            }
+            value={settings.aiModel}
+            onChange={(e) => update({ aiModel: e.target.value })}
           >
-            {PROVIDER_DEFAULT_MODELS[settings.activeProvider].map((m) => (
+            {PROVIDER_DEFAULT_MODELS[settings.aiProvider].map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
                 {m.isDefault ? '（預設）' : ''}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="field">
+          <label className="field-label">你的棋力（影響 AI 解說深淺）</label>
+          <select
+            className="select"
+            value={settings.userLevel}
+            onChange={(e) => update({ userLevel: e.target.value as AppSettings['userLevel'] })}
+          >
+            <option value="basic">初學</option>
+            <option value="intermediate">中級</option>
+            <option value="advanced">進階</option>
           </select>
         </div>
         <div className="field">
@@ -292,25 +315,74 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
       <section className="card">
         <h3>引擎參數</h3>
         <div className="field">
-          <label className="field-label">搜尋深度：{settings.engineDepth}</label>
+          <label className="field-label">
+            局面分析時間：{(settings.rootAnalysisMovetimeMs / 1000).toFixed(1)} 秒
+          </label>
           <input
             type="range"
-            min={6}
-            max={24}
-            value={settings.engineDepth}
-            onChange={(e) => update({ engineDepth: Number(e.target.value) })}
+            min={1000}
+            max={10000}
+            step={500}
+            value={settings.rootAnalysisMovetimeMs}
+            onChange={(e) => update({ rootAnalysisMovetimeMs: Number(e.target.value) })}
           />
         </div>
         <div className="field">
-          <label className="field-label">候選線數量 (MultiPV)：{settings.engineMultiPv}</label>
+          <label className="field-label">
+            猜測著法評估時間：{(settings.userMoveEvalMovetimeMs / 1000).toFixed(1)} 秒
+          </label>
+          <input
+            type="range"
+            min={500}
+            max={3000}
+            step={100}
+            value={settings.userMoveEvalMovetimeMs}
+            onChange={(e) => update({ userMoveEvalMovetimeMs: Number(e.target.value) })}
+          />
+        </div>
+        <div className="field">
+          <label className="field-label">候選著法數量 (MultiPV)：{settings.multiPv}</label>
           <input
             type="range"
             min={1}
             max={5}
-            value={settings.engineMultiPv}
-            onChange={(e) => update({ engineMultiPv: Number(e.target.value) })}
+            value={settings.multiPv}
+            onChange={(e) => update({ multiPv: Number(e.target.value) })}
           />
         </div>
+      </section>
+
+      <section className="card">
+        <h3>軟體授權</h3>
+        {license === null ? (
+          <p className="muted">查詢授權狀態中…</p>
+        ) : license.activated ? (
+          <>
+            <div className="engine-status ok">
+              ✓ 已啟用（買斷授權）
+              {license.info && (
+                <div className="muted small">
+                  被授權人：{license.info.licensee}　授權編號：
+                  <span className="mono">{license.info.licenseId}</span>
+                  {license.activatedAt &&
+                    `　啟用於 ${new Date(license.activatedAt).toLocaleDateString()}`}
+                </div>
+              )}
+            </div>
+            <div className="row gap">
+              <button className="btn danger" onClick={() => void deactivateLicense()}>
+                解除啟用
+              </button>
+            </div>
+            <p className="muted small">
+              解除啟用只清除本機紀錄；重新輸入同一組 License Key 即可再次啟用。
+            </p>
+          </>
+        ) : (
+          <div className="engine-status warn">
+            ⚠ {license.message ?? '尚未啟用。'}（重新啟動程式後會顯示啟用頁）
+          </div>
+        )}
       </section>
     </div>
   )

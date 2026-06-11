@@ -22,12 +22,12 @@ npm run build    # 型別檢查 + 打包（electron-vite build）
 npm run typecheck# 只跑 tsc 型別檢查（node + web 兩個 project）
 ```
 
-引擎邏輯測試（純函式單元 + 假引擎端對端）：
+測試（規則引擎 + Provider/Registry + License + 引擎契約/e2e，共 181 條）：
 
 ```bash
 # 先編譯假引擎（僅需一次；csc 為 Windows 內建 .NET Framework 編譯器）
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /out:tests\fake-engine.exe tests\FakeEngine.cs
-npx tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts
+npm test   # rules / providers / license / engine 四套全部執行
 ```
 
 > 注意：本機若 `node` 不在 PATH，請先把 `C:\Program Files\nodejs` 加入 PATH。
@@ -42,28 +42,32 @@ src/
       PikafishAdapter.ts     #   以子行程驅動引擎；UCI/UCCI 自動偵測；找不到二進位會回報不可用
       EngineOutputParser.ts  #   解析 UCI/UCCI info/bestmove 行（純函式）
     ai/
-      AIProvider.ts          #   Provider 工廠（依 id 建實例）
-      promptBuilder.ts       #   由引擎資料組 prompt（內含護欄規則）
-      cost.ts                #   依 model_pricing.json 估算成本
+      AIProvider.ts          #   getAIProvider 工廠（§2.17.8：只依名稱回傳 adapter）
+      ModelRegistry.ts       #   模型 id 與定價唯一查詢入口（§2.19）
+      promptBuilder.ts       #   由引擎資料組 prompt（內含護欄規則；禁用 EngineScore.raw）
+      cost.ts                #   TokenCostEstimator；與 ModelRegistry 共讀 model_pricing.json
       providers/
-        AnthropicProvider.ts #   完整實作（@anthropic-ai/sdk）
-        OpenAIProvider.ts    #   stub
-        GeminiProvider.ts    #   stub
+        AnthropicProvider.ts #   @anthropic-ai/sdk；真 SSE streaming
+        OpenAIProvider.ts    #   內建 fetch；streaming 為 §2.17.1 包裝模式
+        GeminiProvider.ts    #   內建 fetch；streaming 為 §2.17.1 包裝模式
+    license/
+      LicenseService.ts      #   買斷授權離線驗證（Ed25519；公鑰內嵌）
     storage/
       StorageService.ts      #   一般 JSON 檔讀寫（userData）
       SecretStore.ts         #   safeStorage 加密金鑰，獨立檔 secrets.enc.json
-      AnalysisSessionStore.ts#   分析工作階段持久化
+      AnalysisSessionStore.ts#   短期分析快取（in-memory + TTL 2h，§2.18）
     ipc/
-      engineAnalysisHandlers.ts   # engine:* 通道
-      aiExplanationHandlers.ts     # ai:* 與 secret:* 通道
+      engineAnalysisHandlers.ts   # engine:* 通道（事件式 + 取消）
+      aiExplanationHandlers.ts     # ai:*（streaming）與 secret:* 通道
+      licenseHandlers.ts           # license:* 通道
   preload/
     index.ts                 # contextBridge 暴露型別安全的 window.api
   renderer/                  # React UI（瀏覽器環境，無 Node 權限）
     index.html
     src/
-      App.tsx                # 三分頁：分析 / 設定 / 錯題本；首啟動改顯示 SetupWizard
+      App.tsx                # 三分頁：分析 / 設定 / 錯題本；未授權鎖 LicensePage、首啟動 SetupWizard
       components/            # BoardEditor / FenInput / XiangqiBoard / AnalysisPanel / GuessModePanel
-      pages/                 # SettingsPage / MistakeBookPage / SetupWizard
+      pages/                 # SettingsPage / MistakeBookPage / SetupWizard / LicensePage
       logic/pieces.ts        # 棋子字形與調色盤
       storage/localSettings.ts  # localStorage（設定 + 錯題本）
   shared/                    # main 與 renderer 共用（純型別與純邏輯）
@@ -77,29 +81,39 @@ src/
 ## 核心型別（src/shared/types）
 
 - `BoardState`：棋盤 10x9、輪走方、FEN、回合計數
-- `EngineAnalysis` / `EngineScore` / `EngineLine`：引擎輸出；mate 分數透過 `scoreToCentipawns` 正規化為極大值
-- `MoveComparisonResult` + `MoveQuality`（Blunder / Mistake / Inaccuracy / OK）
-- `AIExplanationRequest` / `AIExplanationResponse`（含 `groundedOnEngineData` 護欄旗標）
+- `EngineAnalysis` / `EngineScore`（SDS §2.6.1：cp/mate 雙型別、comparableValue、
+  displayText、wasInverted、source；raw 僅 debug）/ `EngineCandidateMove`
+- `MoveComparisonResult` + 六級 `MistakeLevel`（§2.6.4）+ `ConfidenceLevel`
+- `AIExplanationRequest`（§2.17.9：provider/model/apiKey/prompt/metadata，只存在 main）
+  / `AIExplanationResponse`（含 `groundedOnEngineData` 護欄旗標）
 - `MistakeBookEntry` / `UserGuess`
-- `AIProvider` 介面 + `AIProviderConfig` / `AIProviderId`
-- `AppSettings`（一般設定，**不含金鑰**）
-- `ipc.ts`：IPC 通道常數與 `window.api` 形狀
+- `AIProvider` 介面（單次 + `generateExplanationStream`）+ `AIProviderId`
+- `AppSettings`（§2.6.7，**不含金鑰**）
+- `License.ts`：`LicenseInfo` / `LicenseStatus`（買斷授權）
+- `ipc.ts`：IPC 通道常數、所有 payload 型別與 `window.api` 形狀
 
 ## 重要設計原則（務必遵守）
 
-1. **引擎判棋力、AI 只解釋**：`AIExplanationRequest.engineAnalysis` 是唯一事實來源。
-   prompt（`promptBuilder.ts`）明確禁止模型發明不在引擎資料中的戰術。
+1. **引擎判棋力、AI 只解釋**：AnalysisSessionStore 內的 EngineAnalysis 是唯一事實來源
+   （renderer 只回傳 analysisId，不得把分析資料傳回 main 當解釋依據；§2.16.1）。
+   prompt（`promptBuilder.ts`）明確禁止模型發明不在引擎資料中的戰術，
+   且只能用 score.displayText / comparableValue / mateIn，禁用 raw（§2.15.5）。
 2. **金鑰安全**：API 金鑰只走 `SecretStore`（safeStorage 加密，獨立檔），
    **絕不**寫入 `localStorage` 一般設定；renderer 只能 set/has/delete，永遠讀不回明文。
 3. **Pikafish 是本機 UCI 引擎**，不是雲端 API；文件與命名都依此。
-4. **錯誤分級用半開區間且支援負分**（mate 正規化後可能為大負值）：
-   - Blunder：loss > 300cp
-   - Mistake：150 < loss ≤ 300
-   - Inaccuracy：50 < loss ≤ 150
-   - OK：loss ≤ 50
-   confidence 由「離分級邊界的距離」與「是否涉及 mate」決定。
+4. **錯誤分級用 SDS §2.13 半開區間 [a, b)**（單位＝兵/卒，scoreDifference =
+   evalBest − evalUser，皆為原局面行棋方視角）：
+   - < 0.31：acceptable_or_tiny_inaccuracy（含負分；負分不判錯誤）
+   - [0.31, 0.81)：inaccuracy　[0.81, 1.51)：mistake
+   - [1.51, 3.01)：serious_mistake　≥ 3.01：major_blunder
+   - null / NaN / Infinity → unknown；不得修改閾值、不得用 UI 四捨五入值分類。
+   confidence 依 §2.13.6：0 reason→high、1→medium、≥2 或強制條件→low。
 5. **main / renderer 嚴格分離**：`contextIsolation: true`、`nodeIntegration: false`；
    renderer 只透過 `window.api` 與 main 溝通。
+6. **視角反轉只在 PikafishAdapter**：candidate_move 不取負；separate_engine_call
+   必取負（`invertEngineScore`，mate 0 反轉為 +MATE_SCORE）；parser 階段禁止取負。
+7. **買斷授權**：License Key 驗證/儲存只在 main（`LicenseService`）；
+   發行私鑰絕不進版控或安裝檔（`tools/keys/` 已 gitignore）。
 
 ## MVP 範圍（已完成）
 
@@ -162,6 +176,32 @@ src/
     引擎二進位不隨包散布，使用者安裝後自行指定。尚無自訂 icon 與簽章。
   - Provider 測試：`tests/providers.test.ts`（20 條斷言，本機 HTTP mock 驗證
     請求形狀與回應解析）。`npm test` 跑全部三套測試。
+- Stage 8：SDS v0.2 全面對齊 + 買斷授權 License Key
+  （規格書：`docs/SDS_v0_2.docx`，差異分析：`docs/SDS_gap_analysis.md`）。
+  - **資料契約對齊 SDS v0.2**：`EngineScore`（cp/mate、comparableValue、displayText、
+    wasInverted、source；raw 僅 debug）、六級 `MistakeLevel` 半開區間 + §2.13.6
+    confidence、雙階段分析與 `invertEngineScore`（mate 0 反轉為 +MATE_SCORE
+    「殺棋（終局）」）、AppSettings 改 §2.6.7 形狀。
+  - **事件式引擎 IPC**（§2.16）：`engine:analyze-position:start/result/error/cancel`，
+    analysisId 由 main 生成、先存 `AnalysisSessionStore`（TTL 2h + 10 分鐘定時清理）
+    再 reply；取消 = AbortController + UCI `stop` + 500ms 寬限 kill。
+  - **AI 解釋 streaming IPC**（§2.17）：`ai:generate-explanation:start/chunk/done/error/cancel`。
+    Anthropic 真 SSE streaming；OpenAI/Gemini 為 §2.17.1 包裝模式（單一 text_delta + done）。
+    `buildAIExplanationRequest()` 是唯一組 prompt / 注入金鑰入口；
+    錯誤對應 §2.17.6 八種 code。renderer 逐段 append、可取消、錯誤保留 partial text。
+  - **ModelRegistry**（§2.19）：`model_pricing.json` 改 §2.19.3 schema、補齊 §2.19.2
+    全部 11 個模型（每筆帶 lastUpdated/sourceNote；OpenAI/Gemini id 待官方核對）；
+    cost.ts 與 registry 共讀同一份；未知模型丟 `UnsupportedModelError`，不得 fallback。
+  - **買斷授權 License Key**（SDS Q5）：離線 Ed25519 簽章驗證，key 格式
+    `XQA1.<base64url(payload)>.<base64url(sig)>`；公鑰內嵌 `LicenseService`，
+    私鑰只在發行者本機（`tools/keys/`，gitignore）。`license:status/activate/deactivate`
+    IPC；未啟用時 `LicensePage` 鎖主介面（優先於 SetupWizard）；設定頁可查狀態/解除。
+    已啟用 key 存 userData/`license.json`，每次啟動重新驗簽防手改。
+    發行：`npx tsx --tsconfig tsconfig.node.json tools/license-keygen.ts init`（一次性產鑰）、
+    `... issue --licensee "名字"`（簽發）。
+  - 測試共 **181 條**（`npm test`）：rules 49 + providers/registry 37 + license 18 +
+    engine 77（含 §2.14.6 必要單元測試、§2.13 分級邊界、取消機制 e2e；
+    `FakeEngine.cs` 新增 mate-after-move / slow 兩種模式）。
 
 ### 引擎執行前置（使用者需自備）
 
@@ -174,5 +214,8 @@ src/
 - 內含或自動下載 Pikafish 二進位與 `pikafish.nnue`（目前需使用者自備並於設定頁指定）。
 - 猜著模式以點擊棋盤輸入著法（目前需手打 UCI 字串）。
 - PGN／中文記譜（炮二平五）格式匯入（目前支援 UCI 著法序列）。
-- gpt-5.4 / gemini-3.5-flash 官方定價確認後補進 model_pricing.json。
+- OpenAI / Gemini 的 model id（gpt-5.4 等）依 SDS §2.19.2 標示「待官方核對」，
+  正式呼叫前請再向官方 model 列表確認並更新 model_pricing.json。
+- 多輪追問（ai_conversations）context 策略 — SDS v0.2 明列為下一個待補規格。
+- 看不懂局面（MisunderstoodPosition）獨立收藏頁（目前以錯題本涵蓋）。
 - 應用程式 icon 與程式碼簽章（electron-builder 目前用預設 icon、未簽章）。

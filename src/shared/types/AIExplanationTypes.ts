@@ -1,49 +1,46 @@
 /**
- * AI 解釋請求/回應型別 (AI explanation request/response types)
+ * AI 解釋請求/回應型別 — SDS v0.2 §2.17.9
+ *
+ * AIExplanationRequest 由 main process 的 buildAIExplanationRequest() 組裝：
+ * prompt 來自 PromptBuilder（只讀 EngineAnalysis / MoveComparisonResult /
+ * userLevel / explanationStyle，禁止使用 EngineScore.raw），
+ * apiKey 來自 SecretStore。renderer 永遠接觸不到此型別的實例。
  */
 
-import type { PieceColor } from './BoardState'
-import type { EngineAnalysis } from './EngineAnalysis'
-import type { MoveComparisonResult } from './MoveComparisonResult'
 import type { AIProviderId, TokenUsage } from './AIProviderTypes'
+import type { UserLevel } from './Settings'
 
-/** 解釋語言 */
+/** 解釋語言（本專案擴充） */
 export type ExplanationLanguage = 'zh-TW' | 'zh-CN' | 'en'
 
-/**
- * AI 解釋請求。
- * engineAnalysis 為唯一事實來源；LLM 不得發明不在其中的戰術。
- */
+/** 解釋風格（§2.17.3；第一版僅長篇分析） */
+export type ExplanationStyle = 'long_analytical'
+
+/** AI 解釋請求（§2.17.9；只存在於 main process） */
 export interface AIExplanationRequest {
-  /** 局面 FEN */
-  fen: string
-  /** 輪走方 */
-  sideToMove: PieceColor
-  /** 結構化引擎資料（唯一事實來源） */
-  engineAnalysis: EngineAnalysis
-  /** 若是針對某一步的講評，附上比較結果 */
-  comparison?: MoveComparisonResult
-  /** 使用者實際走的著法 (UCI)，選用 */
-  playedMoveUci?: string
-  /** 解釋語言，預設 zh-TW */
-  language?: ExplanationLanguage
-  /** 指定 Provider */
   provider: AIProviderId
-  /** 指定模型 */
   model: string
+  /** 由 SecretStore 注入；不得被 log（§2.11） */
+  apiKey: string
+  /** PromptBuilder 產生的完整 prompt（含防幻覺規則與引擎數據） */
+  prompt: string
+  metadata: {
+    requestId: string
+    analysisId: string
+    userLevel: UserLevel
+    explanationStyle: ExplanationStyle
+  }
 }
 
-/** AI 解釋回應 */
+/** AI 解釋回應（單次模式；streaming 介面見 ipc.ts) */
 export interface AIExplanationResponse {
   /** 解釋文字 */
   text: string
-  /** 使用的 Provider */
   provider: AIProviderId
-  /** 使用的模型 */
   model: string
   /** Token 用量（若 Provider 有回報） */
   usage?: TokenUsage
-  /** 估算成本 (USD) */
+  /** 估算成本 (USD)；無定價資料時為 undefined（顯示「無法估算」） */
   costUsd?: number
   /** 產生時間 (epoch ms) */
   createdAt: number

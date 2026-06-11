@@ -27,7 +27,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const [enginePath, setEnginePath] = useState('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<EngineTestResult | null>(null)
-  const [provider, setProvider] = useState<AIProviderId>(settings.activeProvider)
+  const [provider, setProvider] = useState<AIProviderId>(settings.aiProvider)
   const [apiKey, setApiKey] = useState('')
   const [finishing, setFinishing] = useState(false)
 
@@ -57,8 +57,8 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
       if (trimmed) await window.api.engine.setPath(trimmed)
       const key = apiKey.trim()
       if (key) await window.api.secret.set(provider, key)
-      if (provider !== settings.activeProvider) {
-        const next = { ...settings, activeProvider: provider }
+      if (provider !== settings.aiProvider) {
+        const next = { ...settings, aiProvider: provider }
         saveSettings(next)
         onSettingsChange(next)
       }

@@ -1,73 +1,92 @@
 /**
- * 分析工作階段儲存 (AnalysisSessionStore)
+ * 分析工作階段短期快取 (AnalysisSessionStore) — SDS v0.2 §2.18
  *
- * 保存使用者的分析工作階段（局面 + 引擎分析 + AI 解釋）於 userData 下的 JSON 檔。
- * MVP 階段提供基本 CRUD；錯題本主要存於 renderer 的 localStorage（依 Q2），
- * 此 store 作為主行程側的可選持久化（例如較大的引擎結果快取）。
+ * main process 的短期分析結果儲存層：只保存近期的
+ * EngineAnalysis + MoveComparisonResult，讓 AI 解釋透過 analysisId 取得
+ * canonical data。它不是錯題本、不是永久資料庫，也不是多輪對話儲存層；
+ * 不得儲存 API key（§2.18.6）。
+ *
+ * 清理策略（§2.18.4 兩層）：
+ *  1. 每次 save() 前呼叫 clearExpiredSessions()
+ *  2. app 啟動後以 10 分鐘間隔定時清理（startAnalysisSessionCleanup）
  */
 
-import { randomUUID } from 'node:crypto'
 import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
-import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
-import { StorageService } from './StorageService'
+import type { MoveComparisonResult } from '@shared/types/MoveComparisonResult'
 
+/** TTL：2 小時（§2.18.3） */
+export const DEFAULT_ANALYSIS_SESSION_TTL_MS = 2 * 60 * 60 * 1000
+
+/** 定時清理間隔：10 分鐘（§2.18.4） */
+export const ANALYSIS_SESSION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000
+
+/** 分析工作階段（§2.18.2） */
 export interface AnalysisSession {
-  id: string
-  createdAt: number
-  fen: string
-  engineAnalysis?: EngineAnalysis
-  explanation?: AIExplanationResponse
-  label?: string
+  analysisId: string
+  requestId: string
+  /** ISO 字串 */
+  createdAt: string
+  /** ISO 字串 */
+  expiresAt: string
+  positionFen: string
+  userMove?: string
+  engineAnalysis: EngineAnalysis
+  moveComparison: MoveComparisonResult
 }
 
-interface SessionsFile {
-  sessions: AnalysisSession[]
-  version: number
+/** 介面（§2.18.2） */
+export interface AnalysisSessionStore {
+  save(session: AnalysisSession): Promise<void>
+  get(analysisId: string): Promise<AnalysisSession | null>
+  delete(analysisId: string): Promise<void>
+  clearExpiredSessions(): Promise<void>
 }
 
-const SESSIONS_FILENAME = 'analysis_sessions.json'
+/** analysisId 找不到或過期（§2.18.5） */
+export class AnalysisSessionNotFoundError extends Error {
+  constructor(public readonly analysisId: string) {
+    super(`Analysis session not found or expired: ${analysisId}`)
+    this.name = 'AnalysisSessionNotFoundError'
+  }
+}
 
-export class AnalysisSessionStore {
-  private readonly storage: StorageService
+/** 第一版實作：記憶體 Map + TTL（§2.18.3） */
+export class InMemoryAnalysisSessionStore implements AnalysisSessionStore {
+  private readonly sessions = new Map<string, AnalysisSession>()
 
-  constructor(storage: StorageService = new StorageService()) {
-    this.storage = storage
+  async save(session: AnalysisSession): Promise<void> {
+    await this.clearExpiredSessions() // save() 前先清理（§2.18.4）
+    this.sessions.set(session.analysisId, session)
   }
 
-  list(): AnalysisSession[] {
-    return this.load().sessions
-  }
-
-  get(id: string): AnalysisSession | undefined {
-    return this.load().sessions.find((s) => s.id === id)
-  }
-
-  create(input: Omit<AnalysisSession, 'id' | 'createdAt'>): AnalysisSession {
-    const data = this.load()
-    const session: AnalysisSession = {
-      id: randomUUID(),
-      createdAt: Date.now(),
-      ...input
+  async get(analysisId: string): Promise<AnalysisSession | null> {
+    const session = this.sessions.get(analysisId)
+    if (!session) return null
+    if (Date.now() > Date.parse(session.expiresAt)) {
+      this.sessions.delete(analysisId)
+      return null
     }
-    data.sessions.unshift(session)
-    this.save(data)
     return session
   }
 
-  remove(id: string): void {
-    const data = this.load()
-    data.sessions = data.sessions.filter((s) => s.id !== id)
-    this.save(data)
+  async delete(analysisId: string): Promise<void> {
+    this.sessions.delete(analysisId)
   }
 
-  private load(): SessionsFile {
-    return this.storage.read<SessionsFile>(SESSIONS_FILENAME, {
-      sessions: [],
-      version: 1
-    })
+  async clearExpiredSessions(): Promise<void> {
+    const now = Date.now()
+    for (const [id, s] of this.sessions.entries()) {
+      if (now > Date.parse(s.expiresAt)) this.sessions.delete(id)
+    }
   }
+}
 
-  private save(data: SessionsFile): void {
-    this.storage.write(SESSIONS_FILENAME, data)
-  }
+/** 啟動 10 分鐘定時清理；回傳停止函式 */
+export function startAnalysisSessionCleanup(store: AnalysisSessionStore): () => void {
+  const timer = setInterval(() => {
+    void store.clearExpiredSessions()
+  }, ANALYSIS_SESSION_CLEANUP_INTERVAL_MS)
+  // app 結束時不需要 timer 阻止行程退出
+  timer.unref?.()
+  return () => clearInterval(timer)
 }

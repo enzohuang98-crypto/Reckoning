@@ -1,50 +1,98 @@
 /**
- * IPC 契約型別 (IPC contract types)
+ * IPC 契約型別 (IPC contract types) — SDS v0.2 §2.16、§2.17
  *
  * 定義 main ↔ renderer 之間的通道名稱與 preload 暴露給 renderer 的 API 形狀。
- * renderer 透過 window.api 呼叫，型別由此檔保證一致。
+ *
+ * 設計原則（§2.16.1）：
+ *  - EngineAnalysis 與 MoveComparisonResult 的真相來源在 main process；
+ *    renderer 只接收顯示用資料與 analysisId，不得把分析資料再傳回 main
+ *    作為 AI 解釋依據。
+ *  - API Key 只能在 main process 取得，不暴露給 renderer。
  */
 
 import type {
+  AnalysisConfig,
   EngineAnalysis,
-  EngineAnalysisRequest,
-  EngineProtocol,
-  EvaluateMoveRequest,
-  MoveEvaluation
+  EngineProtocol
 } from './EngineAnalysis'
-import type { AIExplanationRequest, AIExplanationResponse } from './AIExplanationTypes'
-import type { AIProviderId } from './AIProviderTypes'
+import type { MoveComparisonResult } from './MoveComparisonResult'
+import type { AIProviderId, TokenUsage } from './AIProviderTypes'
+import type { ExplanationLanguage, ExplanationStyle } from './AIExplanationTypes'
+import type { UserLevel } from './Settings'
+import type { LicenseStatus } from './License'
 
 /** IPC 通道名稱常數 */
 export const IPC = {
-  // 引擎分析
-  ENGINE_ANALYZE: 'engine:analyze',
+  // 引擎分析（事件式，§2.16.2）
+  ENGINE_ANALYZE_POSITION_START: 'engine:analyze-position:start',
+  ENGINE_ANALYSIS_RESULT: 'engine:analysis-result',
+  ENGINE_ANALYSIS_ERROR: 'engine:analysis-error',
+  ENGINE_ANALYSIS_CANCEL: 'engine:analysis-cancel',
+  // 引擎設定/狀態（invoke）
   ENGINE_STATUS: 'engine:status',
   ENGINE_GET_PATH: 'engine:getPath',
   ENGINE_SET_PATH: 'engine:setPath',
   ENGINE_BROWSE_PATH: 'engine:browsePath',
   ENGINE_TEST: 'engine:test',
-  ENGINE_EVALUATE_MOVE: 'engine:evaluateMove',
-  // AI 解釋
-  AI_EXPLAIN: 'ai:explain',
+  // AI 解釋 streaming（§2.17.2）
+  AI_GENERATE_EXPLANATION_START: 'ai:generate-explanation:start',
+  AI_GENERATE_EXPLANATION_CHUNK: 'ai:generate-explanation:chunk',
+  AI_GENERATE_EXPLANATION_DONE: 'ai:generate-explanation:done',
+  AI_GENERATE_EXPLANATION_ERROR: 'ai:generate-explanation:error',
+  AI_GENERATE_EXPLANATION_CANCEL: 'ai:generate-explanation:cancel',
   // 安全儲存 (SecretStore)
   SECRET_SET: 'secret:set',
   SECRET_HAS: 'secret:has',
   SECRET_DELETE: 'secret:delete',
-  SECRET_IS_AVAILABLE: 'secret:isAvailable'
+  SECRET_IS_AVAILABLE: 'secret:isAvailable',
+  // 買斷授權 (License Key，SDS Q5)
+  LICENSE_STATUS: 'license:status',
+  LICENSE_ACTIVATE: 'license:activate',
+  LICENSE_DEACTIVATE: 'license:deactivate'
 } as const
+
+/* ---------- 引擎分析 payload（§2.16.3） ---------- */
+
+export interface AnalyzePositionStartPayload {
+  /** renderer 生成；analysisId 由 main 生成（§2.16.4） */
+  requestId: string
+  positionFen: string
+  userMove?: string
+  analysisConfig: AnalysisConfig
+}
+
+export interface EngineAnalysisResultPayload {
+  requestId: string
+  analysisId: string
+  engineAnalysis: EngineAnalysis
+  moveComparison: MoveComparisonResult
+}
+
+export type EngineAnalysisErrorCode =
+  | 'invalid_fen'
+  | 'invalid_user_move'
+  | 'engine_not_configured'
+  | 'engine_start_failed'
+  | 'engine_timeout'
+  | 'engine_parse_error'
+  | 'session_store_failed'
+  | 'cancelled'
+  | 'unknown_error'
+
+export interface EngineAnalysisErrorPayload {
+  requestId: string
+  code: EngineAnalysisErrorCode
+  message: string
+}
+
+/* ---------- 引擎狀態 / 測試 ---------- */
 
 /** 引擎可用性狀態 */
 export interface EngineStatus {
-  /** 引擎可執行檔是否就緒 */
   available: boolean
-  /** 引擎名稱 */
   engineName: string
-  /** 若不可用的說明 */
   message?: string
-  /** 目前生效路徑的來源：使用者設定 / 環境變數 / 打包資源 */
   pathSource?: 'user' | 'env' | 'resource' | null
-  /** 目前生效的引擎路徑（若有） */
   resolvedPath?: string | null
   /** 已偵測（或儲存）的引擎協定；null 表示尚未偵測 */
   protocol?: EngineProtocol | null
@@ -52,50 +100,109 @@ export interface EngineStatus {
 
 /** 引擎連線測試結果（engine:test） */
 export interface EngineTestResult {
-  /** 是否成功完成握手（含 isready/readyok） */
   ok: boolean
-  /** 偵測到的協定（成功時） */
   protocol?: EngineProtocol
-  /** 引擎回報的 id name（成功時；無回報則為驅動預設名稱） */
   engineName?: string
-  /** 失敗原因（失敗時） */
   message?: string
 }
 
+/* ---------- AI 解釋 streaming（§2.17.3） ---------- */
+
 /**
- * preload 暴露在 window.api 的 API。
- * renderer 端僅透過這些方法與 main 溝通，從不直接接觸 Node/Electron。
+ * renderer 發起 AI 解釋的 payload。
+ * 依 §2.17.3 不得包含 engineAnalysis / moveComparison；
+ * 分析資料只透過 analysisId 由 main 自 AnalysisSessionStore 查出。
+ * language 為本專案擴充欄位（SDS 未定義）。
  */
+export interface GenerateExplanationStartPayload {
+  requestId: string
+  analysisId: string
+  provider: AIProviderId
+  model: string
+  userLevel: UserLevel
+  explanationStyle: ExplanationStyle
+  language: ExplanationLanguage
+}
+
+export interface GenerateExplanationChunkPayload {
+  requestId: string
+  deltaText: string
+}
+
+export interface GenerateExplanationDonePayload {
+  requestId: string
+  finalText: string
+  usage?: TokenUsage
+  estimatedCostUsd?: number | null
+}
+
+export type AIExplanationErrorCode =
+  | 'missing_api_key'
+  | 'unsupported_model'
+  | 'analysis_session_not_found'
+  | 'provider_error'
+  | 'network_error'
+  | 'rate_limited'
+  | 'cancelled'
+  | 'unknown_error'
+
+export interface GenerateExplanationErrorPayload {
+  requestId: string
+  code: AIExplanationErrorCode
+  message: string
+}
+
+/* ---------- preload API 形狀 ---------- */
+
 export interface RendererApi {
   engine: {
-    analyze(request: EngineAnalysisRequest): Promise<EngineAnalysis>
+    /** 開始分析（事件式）；結果經 onAnalysisResult / onAnalysisError 回傳 */
+    startAnalysis(payload: AnalyzePositionStartPayload): void
+    /** 訂閱分析結果；回傳取消訂閱函式 */
+    onAnalysisResult(listener: (payload: EngineAnalysisResultPayload) => void): () => void
+    /** 訂閱分析錯誤；回傳取消訂閱函式 */
+    onAnalysisError(listener: (payload: EngineAnalysisErrorPayload) => void): () => void
+    /** 取消進行中的分析 */
+    cancelAnalysis(requestId: string): void
     status(): Promise<EngineStatus>
-    /** 取得使用者自訂的引擎路徑（未設定回 null） */
     getPath(): Promise<string | null>
-    /** 設定（或以 null 清除）使用者自訂引擎路徑，回傳更新後狀態 */
     setPath(path: string | null): Promise<EngineStatus>
-    /** 開啟原生檔案選擇器挑選引擎可執行檔；取消回 null（不自動儲存） */
     browsePath(): Promise<string | null>
-    /** 實際啟動引擎做握手測試（自動偵測 UCI/UCCI），回傳結果與版本名 */
     test(): Promise<EngineTestResult>
-    /** 評估單一著法的精確分數（猜著模式用），視角已換算回原局面輪走方 */
-    evaluateMove(request: EvaluateMoveRequest): Promise<MoveEvaluation>
   }
   ai: {
-    explain(request: AIExplanationRequest): Promise<AIExplanationResponse>
+    /** 開始 streaming 生成（§2.17.2）；結果經 onExplanation* 事件回傳 */
+    startExplanation(payload: GenerateExplanationStartPayload): void
+    /** 訂閱部分文字；回傳取消訂閱函式 */
+    onExplanationChunk(
+      listener: (payload: GenerateExplanationChunkPayload) => void
+    ): () => void
+    /** 訂閱完成事件；回傳取消訂閱函式 */
+    onExplanationDone(
+      listener: (payload: GenerateExplanationDonePayload) => void
+    ): () => void
+    /** 訂閱錯誤事件；回傳取消訂閱函式 */
+    onExplanationError(
+      listener: (payload: GenerateExplanationErrorPayload) => void
+    ): () => void
+    /** 取消進行中的生成 */
+    cancelExplanation(requestId: string): void
   }
-  /**
-   * 安全金鑰儲存。renderer 只能寫入/查詢是否存在/刪除，
-   * 永遠無法讀回明文金鑰（金鑰只在 main 行程內解密使用）。
-   */
   secret: {
     set(providerId: AIProviderId, apiKey: string): Promise<{ ok: boolean }>
     has(providerId: AIProviderId): Promise<boolean>
     delete(providerId: AIProviderId): Promise<{ ok: boolean }>
-    /** 作業系統是否支援加密儲存 */
     isAvailable(): Promise<boolean>
   }
+  license: {
+    status(): Promise<LicenseStatus>
+    /** 驗證並啟用 License Key；失敗時回傳 activated=false + message */
+    activate(licenseKey: string): Promise<LicenseStatus>
+    deactivate(): Promise<LicenseStatus>
+  }
 }
+
+export type { TokenUsage }
 
 declare global {
   interface Window {

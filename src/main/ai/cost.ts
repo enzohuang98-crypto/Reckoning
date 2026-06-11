@@ -1,30 +1,21 @@
 /**
- * 成本估算 (Cost estimation)
+ * 成本估算 (TokenCostEstimator) — SDS v0.2 §2.19
  *
- * 依 shared/config/model_pricing.json 估算單次呼叫成本 (USD)。
+ * 與 ModelRegistry 讀同一份 model_pricing.json（§2.19.4）。
+ * 若價格缺失，回傳 undefined（UI 顯示「無法估算」，不得亂填）。
  */
 
-import pricing from '@shared/config/model_pricing.json'
 import type { TokenUsage } from '@shared/types/AIProviderTypes'
+import { modelRegistry } from './ModelRegistry'
 
-interface ModelPrice {
-  provider: string
-  input: number
-  output: number
-}
+export { pricingMeta } from './ModelRegistry'
 
-const models = pricing.models as Record<string, ModelPrice>
-
-/** 估算成本 (USD)。找不到模型時回傳 undefined。 */
+/** 估算成本 (USD)。找不到模型定價時回傳 undefined。 */
 export function estimateCost(model: string, usage: TokenUsage): number | undefined {
-  const price = models[model]
-  if (!price) return undefined
-  const inputCost = (usage.inputTokens / 1_000_000) * price.input
-  const outputCost = (usage.outputTokens / 1_000_000) * price.output
+  const config = modelRegistry.listModels().find((m) => m.model === model)
+  if (!config) return undefined
+  const inputCost = (usage.inputTokens / 1_000_000) * config.pricing.inputPricePerMillionTokens
+  const outputCost =
+    (usage.outputTokens / 1_000_000) * config.pricing.outputPricePerMillionTokens
   return Math.round((inputCost + outputCost) * 1_000_000) / 1_000_000
-}
-
-export const pricingMeta = {
-  lastUpdated: pricing.lastUpdated as string,
-  sourceNote: pricing.sourceNote as string
 }

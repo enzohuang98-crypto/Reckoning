@@ -1,10 +1,11 @@
 /**
- * AI Provider 型別與介面 (AI provider types & interface)
+ * AI Provider 型別與介面 (AI provider types & interface) — SDS v0.2 §2.17
  *
- * 設計原則：Pikafish 負責棋力判斷，LLM 只負責「解釋」結構化引擎資料，
+ * 設計原則：引擎負責棋力判斷，LLM 只負責「解釋」結構化引擎資料，
  * 不得自行發明不在引擎資料中的戰術。
  *
- * 第一版完整實作 Anthropic；OpenAI、Gemini 保留 interface（可為 stub）。
+ * Provider 為無狀態 adapter（§2.17.8 getAIProvider 合約）：
+ * API key 與 prompt 由 AIExplanationRequest 帶入，不存於 provider 實例。
  */
 
 import type { AIExplanationRequest, AIExplanationResponse } from './AIExplanationTypes'
@@ -28,9 +29,9 @@ export interface TokenUsage {
   outputTokens: number
 }
 
-/** 模型資訊 */
+/** 模型資訊（UI 下拉用；定價與完整資料於 SDS Stage 7 移交 ModelRegistry） */
 export interface AIModelInfo {
-  /** 模型 ID，例如 'claude-opus-4-8' */
+  /** 真實 API model id，不得用 "default"（§2.19.4） */
   id: string
   /** 顯示名稱 */
   label: string
@@ -38,53 +39,57 @@ export interface AIModelInfo {
   isDefault?: boolean
 }
 
-/** Provider 設定 */
-export interface AIProviderConfig {
-  providerId: AIProviderId
-  /** API 金鑰（執行時由 SecretStore 安全提供，絕不寫入一般設定） */
-  apiKey: string
-  /** 選用模型 */
-  model: string
-  /** 自訂 base URL（選用） */
-  baseUrl?: string
-  /** 最大輸出 token */
-  maxTokens?: number
-  /** 取樣溫度 */
-  temperature?: number
-}
+/**
+ * Streaming chunk（§2.17.4）。
+ * done chunk 不含 finalText；完整文字由 main process 以 accumulatedText 累積。
+ */
+export type AIExplanationStreamChunk =
+  | { type: 'text_delta'; deltaText: string }
+  | {
+      type: 'done'
+      usage?: TokenUsage
+      estimatedCostUsd?: number | null
+    }
 
 /**
- * AI Provider 介面。
- * 所有 Provider（Anthropic / OpenAI / Gemini）皆實作此介面。
+ * AI Provider 介面（§2.17.4）。
+ * generateExplanationStream 必須接收 AbortSignal 以支援取消；
+ * SDK 不支援 signal 時，adapter 至少要在每次 yield 前檢查 signal.aborted。
+ * 尚未支援真 streaming 的 provider 仍須包裝成相同介面
+ * （先等完整回應，再以單一 text_delta chunk 回傳，最後送 done；§2.17.1）。
  */
 export interface AIProvider {
-  /** Provider 識別碼 */
   readonly id: AIProviderId
-  /** 顯示名稱 */
   readonly displayName: string
-  /** 列出此 Provider 可用模型 */
-  listModels(): AIModelInfo[]
-  /** 是否已正確設定（有金鑰與模型） */
-  isConfigured(): boolean
-  /**
-   * 根據結構化引擎資料產生解釋。
-   * 實作必須以 request.engineAnalysis 為唯一事實來源。
-   */
-  generateExplanation(request: AIExplanationRequest): Promise<AIExplanationResponse>
+  /** 單次模式：根據已組裝的 prompt 產生解釋；request 含 apiKey 與 model */
+  generateExplanation(
+    request: AIExplanationRequest,
+    signal?: AbortSignal
+  ): Promise<AIExplanationResponse>
+  /** Streaming 模式（§2.17.4）；IPC 層唯一使用的入口 */
+  generateExplanationStream(
+    request: AIExplanationRequest,
+    signal: AbortSignal
+  ): AsyncIterable<AIExplanationStreamChunk>
 }
 
-/** 各 Provider 預設模型清單 */
+/** 各 Provider 預設模型清單（依 SDS §2.19.2 模型表） */
 export const PROVIDER_DEFAULT_MODELS: Record<AIProviderId, AIModelInfo[]> = {
   anthropic: [
     { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', isDefault: true },
-    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' }
+    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
+    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
+    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
   ],
   openai: [
     { id: 'gpt-5.4', label: 'GPT-5.4', isDefault: true },
-    { id: 'gpt-4o', label: 'GPT-4o' }
+    { id: 'gpt-5.5', label: 'GPT-5.5' },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+    { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' }
   ],
   gemini: [
     { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', isDefault: true },
-    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' }
+    { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro' },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite' }
   ]
 }
