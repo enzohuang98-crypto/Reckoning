@@ -31,6 +31,9 @@ type SetupState = 'checking' | 'wizard' | 'done'
 /** 買斷授權狀態（SDS Q5）：未啟用時鎖住主介面 */
 type LicenseState = 'checking' | 'locked' | 'ok'
 
+/** 暫時繞過授權鎖定畫面（beta 測試用）；LicenseService 邏輯不變，僅 UI 不強制顯示 LicensePage */
+const LICENSE_GATE_DISABLED = true
+
 function initialBoard(): BoardState {
   const parsed = parseFen(START_FEN)
   if (parsed.valid) return parsed.board
@@ -114,7 +117,7 @@ export function App(): JSX.Element {
   }
 
   // 授權優先於初始設定嚮導：未啟用一律先顯示啟用頁（SDS Q5）
-  if (licenseState === 'locked') {
+  if (licenseState === 'locked' && !LICENSE_GATE_DISABLED) {
     return <LicensePage onActivated={() => setLicenseState('ok')} />
   }
 
