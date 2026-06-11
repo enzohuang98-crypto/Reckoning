@@ -33,6 +33,7 @@ import {
   type EngineProcessControls
 } from '../engine/PikafishAdapter'
 import type { StorageService } from '../storage/StorageService'
+import { logger } from '../Logger'
 import {
   DEFAULT_ANALYSIS_SESSION_TTL_MS,
   type AnalysisSession,
@@ -162,7 +163,8 @@ export function registerEngineAnalysisHandlers(
             engineAnalysis,
             moveComparison
           })
-        } catch {
+        } catch (saveError) {
+          logger.error('AnalysisSessionStore.save 失敗', saveError)
           event.reply(IPC.ENGINE_ANALYSIS_ERROR, {
             requestId,
             code: 'session_store_failed',
@@ -170,7 +172,10 @@ export function registerEngineAnalysisHandlers(
           } satisfies EngineAnalysisErrorPayload)
         }
       } catch (error) {
-        event.reply(IPC.ENGINE_ANALYSIS_ERROR, mapAnalysisError(requestId, error))
+        const payload = mapAnalysisError(requestId, error)
+        // 取消屬正常操作不記 error；其他失敗經 Logger（自動遮蔽敏感字串）記錄
+        if (payload.code !== 'cancelled') logger.error('引擎分析失敗', payload.code, error)
+        event.reply(IPC.ENGINE_ANALYSIS_ERROR, payload)
       } finally {
         activeEngineAnalyses.delete(requestId)
       }

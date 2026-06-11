@@ -34,6 +34,7 @@ import {
 import { getAIProvider } from '../ai/AIProvider'
 import { buildExplanationPrompt } from '../ai/promptBuilder'
 import { modelRegistry, UnsupportedModelError } from '../ai/ModelRegistry'
+import { logger } from '../Logger'
 
 /** API key 缺失（§2.17.9：不得用空字串或 placeholder 繼續呼叫） */
 export class MissingApiKeyError extends Error {
@@ -218,10 +219,12 @@ export function registerAiExplanationHandlers(
         }
       } catch (error) {
         if (!completedNormally) {
-          event.reply(
-            IPC.AI_GENERATE_EXPLANATION_ERROR,
-            mapStreamingErrorToPayload(requestId, error)
-          )
+          const errorPayload = mapStreamingErrorToPayload(requestId, error)
+          // 取消屬正常操作不記 error；其他失敗經 Logger（自動遮蔽 API key 等敏感字串）
+          if (errorPayload.code !== 'cancelled') {
+            logger.error('AI 解釋生成失敗', errorPayload.code, error)
+          }
+          event.reply(IPC.AI_GENERATE_EXPLANATION_ERROR, errorPayload)
         }
       } finally {
         activeExplanationRequests.delete(requestId)

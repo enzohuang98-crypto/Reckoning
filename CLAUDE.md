@@ -22,7 +22,7 @@ npm run build    # 型別檢查 + 打包（electron-vite build）
 npm run typecheck# 只跑 tsc 型別檢查（node + web 兩個 project）
 ```
 
-測試（規則引擎 + Provider/Registry + License + 引擎契約/e2e，共 181 條）：
+測試（規則引擎 + Provider/Registry + License + Logger 遮蔽 + 引擎契約/e2e，共 190 條）：
 
 ```bash
 # 先編譯假引擎（僅需一次；csc 為 Windows 內建 .NET Framework 編譯器）
@@ -38,6 +38,7 @@ npm test   # rules / providers / license / engine 四套全部執行
 src/
   main/                      # Electron 主行程（Node 環境）
     index.ts                 #   進入點：建視窗、註冊 IPC
+    Logger.ts                #   共用 Logger；輸出前自動遮蔽 apiKey/Authorization/token（§2.11）
     engine/
       PikafishAdapter.ts     #   以子行程驅動引擎；UCI/UCCI 自動偵測；找不到二進位會回報不可用
       EngineOutputParser.ts  #   解析 UCI/UCCI info/bestmove 行（純函式）
@@ -199,7 +200,7 @@ src/
     已啟用 key 存 userData/`license.json`，每次啟動重新驗簽防手改。
     發行：`npx tsx --tsconfig tsconfig.node.json tools/license-keygen.ts init`（一次性產鑰）、
     `... issue --licensee "名字"`（簽發）。
-  - 測試共 **181 條**（`npm test`）：rules 49 + providers/registry 37 + license 18 +
+  - 測試共 **190 條**（`npm test`）：rules 49 + providers/registry 37 + license 18 + logger 9 +
     engine 77（含 §2.14.6 必要單元測試、§2.13 分級邊界、取消機制 e2e；
     `FakeEngine.cs` 新增 mate-after-move / slow 兩種模式）。
 
