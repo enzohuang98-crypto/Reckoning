@@ -9,14 +9,25 @@ import { ipcMain } from 'electron'
 import { IPC } from '@shared/types/ipc'
 import type { LicenseStatus } from '@shared/types/License'
 import type { LicenseService } from '../license/LicenseService'
+import { assertTrustedIpcSender } from '../security/IpcSecurity'
+import { normalizeLicenseKey } from '../security/InputValidation'
 
 export function registerLicenseHandlers(licenseService: LicenseService): void {
-  ipcMain.handle(IPC.LICENSE_STATUS, (): LicenseStatus => licenseService.getStatus())
+  ipcMain.handle(IPC.LICENSE_STATUS, (event): LicenseStatus => {
+    assertTrustedIpcSender(event)
+    return licenseService.getStatus()
+  })
 
   ipcMain.handle(
     IPC.LICENSE_ACTIVATE,
-    (_e, licenseKey: string): LicenseStatus => licenseService.activate(String(licenseKey ?? ''))
+    (event, licenseKey: unknown): LicenseStatus => {
+      assertTrustedIpcSender(event)
+      return licenseService.activate(normalizeLicenseKey(licenseKey))
+    }
   )
 
-  ipcMain.handle(IPC.LICENSE_DEACTIVATE, (): LicenseStatus => licenseService.deactivate())
+  ipcMain.handle(IPC.LICENSE_DEACTIVATE, (event): LicenseStatus => {
+    assertTrustedIpcSender(event)
+    return licenseService.deactivate()
+  })
 }

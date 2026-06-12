@@ -20,3 +20,11 @@ nsis:
   createDesktopShortcut: true
 # 不簽章（個人散布）；正式發行前再加 codeSigning 設定
 forceCodeSigning: false
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false

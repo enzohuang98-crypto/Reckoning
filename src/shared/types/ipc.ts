@@ -151,6 +151,7 @@ export interface GenerateExplanationDonePayload {
 }
 
 export type AIExplanationErrorCode =
+  | 'invalid_request'
   | 'missing_api_key'
   | 'unsupported_model'
   | 'analysis_session_not_found'

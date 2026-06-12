@@ -70,7 +70,13 @@ export function SettingsPage({
   }
 
   const saveEnginePath = async (path: string | null): Promise<void> => {
-    const status = await window.api.engine.setPath(path)
+    let status: EngineStatus
+    try {
+      status = await window.api.engine.setPath(path)
+    } catch {
+      setEngineMsg('⚠ 路徑格式無效；請選擇本機磁碟上的引擎可執行檔。')
+      return
+    }
     setEngineStatus(status)
     setEnginePathInput(path ?? '')
     const provided = path !== null && path.trim().length > 0

@@ -39,6 +39,14 @@ import {
   type AnalysisSession,
   type AnalysisSessionStore
 } from '../storage/AnalysisSessionStore'
+import { assertTrustedIpcSender } from '../security/IpcSecurity'
+import {
+  normalizeEnginePath,
+  safeRequestId,
+  sanitizePublicErrorMessage,
+  SecurityValidationError,
+  validateAnalyzePositionPayload
+} from '../security/InputValidation'
 
 /** 引擎設定持久化檔名（userData 下） */
 export const ENGINE_CONFIG_FILE = 'engine-config.json'
@@ -51,10 +59,20 @@ export interface EngineConfig {
 const DEFAULT_ENGINE_CONFIG: EngineConfig = { enginePath: null, engineProtocol: null }
 
 export function loadEngineConfig(storage: StorageService): EngineConfig {
-  return {
-    ...DEFAULT_ENGINE_CONFIG,
-    ...storage.read<EngineConfig>(ENGINE_CONFIG_FILE, DEFAULT_ENGINE_CONFIG)
+  const stored = storage.read<unknown>(ENGINE_CONFIG_FILE, DEFAULT_ENGINE_CONFIG)
+  if (typeof stored !== 'object' || stored === null) return DEFAULT_ENGINE_CONFIG
+  const value = stored as Record<string, unknown>
+  let enginePath: string | null = null
+  try {
+    enginePath = normalizeEnginePath(value.enginePath)
+  } catch {
+    enginePath = null
   }
+  const engineProtocol =
+    value.engineProtocol === 'uci' || value.engineProtocol === 'ucci'
+      ? value.engineProtocol
+      : null
+  return { enginePath, engineProtocol }
 }
 
 /** 進行中分析的取消 handle（§2.16.5） */
@@ -85,12 +103,16 @@ function mapAnalysisError(requestId: string, error: unknown): EngineAnalysisErro
     return { requestId, code: 'cancelled', message: '分析已取消。' }
   }
   if (error instanceof EngineAnalysisError) {
-    return { requestId, code: error.code, message: error.message }
+    return {
+      requestId,
+      code: error.code,
+      message: sanitizePublicErrorMessage(error.message, '引擎分析失敗。')
+    }
   }
   return {
     requestId,
     code: 'unknown_error',
-    message: error instanceof Error ? error.message : '分析發生未知錯誤。'
+    message: '分析發生未知錯誤。'
   }
 }
 
@@ -115,7 +137,33 @@ export function registerEngineAnalysisHandlers(
 
   ipcMain.on(
     IPC.ENGINE_ANALYZE_POSITION_START,
-    async (event, payload: AnalyzePositionStartPayload) => {
+    async (event, rawPayload: unknown) => {
+      try {
+        assertTrustedIpcSender(event)
+      } catch {
+        return
+      }
+      let payload: AnalyzePositionStartPayload
+      try {
+        payload = validateAnalyzePositionPayload(rawPayload)
+      } catch (error) {
+        const validationError =
+          error instanceof SecurityValidationError ? error : null
+        event.reply(IPC.ENGINE_ANALYSIS_ERROR, {
+          requestId: safeRequestId(
+            typeof rawPayload === 'object' && rawPayload !== null
+              ? (rawPayload as Record<string, unknown>).requestId
+              : undefined
+          ),
+          code:
+            validationError?.code === 'invalid_fen' ||
+            validationError?.code === 'invalid_user_move'
+              ? validationError.code
+              : 'invalid_analysis_config',
+          message: validationError?.message ?? '分析請求格式無效。'
+        } satisfies EngineAnalysisErrorPayload)
+        return
+      }
       const { requestId } = payload
       const previous = activeEngineAnalyses.get(requestId)
       if (previous) {
@@ -196,8 +244,19 @@ export function registerEngineAnalysisHandlers(
     }
   )
 
-  ipcMain.on(IPC.ENGINE_ANALYSIS_CANCEL, (_event, payload: { requestId: string }) => {
-    const handle = activeEngineAnalyses.get(payload.requestId)
+  ipcMain.on(IPC.ENGINE_ANALYSIS_CANCEL, (event, payload: unknown) => {
+    try {
+      assertTrustedIpcSender(event)
+    } catch {
+      return
+    }
+    const requestId = safeRequestId(
+      typeof payload === 'object' && payload !== null
+        ? (payload as Record<string, unknown>).requestId
+        : undefined
+    )
+    if (requestId === 'invalid-request') return
+    const handle = activeEngineAnalyses.get(requestId)
     if (!handle) return
     handle.controller.abort()
     handle.sendStop()
@@ -205,12 +264,19 @@ export function registerEngineAnalysisHandlers(
 
   /* ---------- 引擎設定 / 狀態（invoke） ---------- */
 
-  ipcMain.handle(IPC.ENGINE_STATUS, (): EngineStatus => buildStatus(adapter))
+  ipcMain.handle(IPC.ENGINE_STATUS, (event): EngineStatus => {
+    assertTrustedIpcSender(event)
+    return buildStatus(adapter)
+  })
 
-  ipcMain.handle(IPC.ENGINE_GET_PATH, (): string | null => adapter.getUserPath())
+  ipcMain.handle(IPC.ENGINE_GET_PATH, (event): string | null => {
+    assertTrustedIpcSender(event)
+    return adapter.getUserPath()
+  })
 
-  ipcMain.handle(IPC.ENGINE_SET_PATH, (_e, path: string | null): EngineStatus => {
-    const normalized = path && path.trim() ? path.trim() : null
+  ipcMain.handle(IPC.ENGINE_SET_PATH, (event, path: unknown): EngineStatus => {
+    assertTrustedIpcSender(event)
+    const normalized = normalizeEnginePath(path)
     const pathChanged = normalized !== adapter.getUserPath()
     adapter.setUserPath(normalized)
     // 換了引擎檔就重置已知協定，下次連線重新偵測
@@ -219,7 +285,8 @@ export function registerEngineAnalysisHandlers(
     return buildStatus(adapter)
   })
 
-  ipcMain.handle(IPC.ENGINE_BROWSE_PATH, async (): Promise<string | null> => {
+  ipcMain.handle(IPC.ENGINE_BROWSE_PATH, async (event): Promise<string | null> => {
+    assertTrustedIpcSender(event)
     const result = await dialog.showOpenDialog({
       title: '選擇象棋引擎可執行檔',
       properties: ['openFile'],
@@ -229,8 +296,20 @@ export function registerEngineAnalysisHandlers(
           : [{ name: '所有檔案', extensions: ['*'] }]
     })
     if (result.canceled || result.filePaths.length === 0) return null
-    return result.filePaths[0]
+    return normalizeEnginePath(result.filePaths[0])
   })
 
-  ipcMain.handle(IPC.ENGINE_TEST, (): Promise<EngineTestResult> => adapter.test())
+  ipcMain.handle(IPC.ENGINE_TEST, async (event): Promise<EngineTestResult> => {
+    assertTrustedIpcSender(event)
+    const result = await adapter.test()
+    return result.ok
+      ? result
+      : {
+          ...result,
+          message: sanitizePublicErrorMessage(
+            result.message,
+            '引擎連線測試失敗。'
+          )
+        }
+  })
 }

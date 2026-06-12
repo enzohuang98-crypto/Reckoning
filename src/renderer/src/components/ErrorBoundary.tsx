@@ -12,7 +12,11 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Stat
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
-    console.error('Renderer UI error', error, info.componentStack)
+    if (import.meta.env.DEV) {
+      console.error('Renderer UI error', error, info.componentStack)
+    } else {
+      console.error('Renderer UI error')
+    }
   }
 
   render(): React.ReactNode {
@@ -21,7 +25,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Stat
       <div className="fatal-error">
         <h2>介面發生錯誤</h2>
         <p>目前畫面無法繼續顯示。重新載入不會刪除已儲存資料。</p>
-        <pre>{this.state.error.message}</pre>
+        {import.meta.env.DEV ? <pre>{this.state.error.message}</pre> : null}
         <button className="btn" onClick={() => window.location.reload()}>
           重新載入
         </button>

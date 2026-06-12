@@ -22,48 +22,62 @@ import {
   InMemoryAnalysisSessionStore,
   startAnalysisSessionCleanup
 } from './storage/AnalysisSessionStore'
+import {
+  hardenDefaultSession,
+  lockDownWindow,
+  PRODUCTION_RENDERER_URL,
+  registerRendererProtocol
+} from './security/BrowserSecurity'
+import { configureTrustedRendererUrl } from './security/IpcSecurity'
 
 const isDev = !app.isPackaged
 
-function createWindow(): void {
+if (app.isPackaged) {
+  app.commandLine.removeSwitch('remote-debugging-port')
+  app.commandLine.removeSwitch('remote-debugging-pipe')
+}
+
+function getRendererUrl(): string {
+  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
+  if (!isDev || !devServerUrl) return PRODUCTION_RENDERER_URL
+  const url = new URL(devServerUrl)
+  if (
+    url.protocol !== 'http:' ||
+    (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1')
+  ) {
+    throw new Error('Development renderer URL must use localhost over HTTP.')
+  }
+  return url.toString()
+}
+
+function createWindow(rendererUrl: string): void {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    title: '象棋 AI 分析講解',
+    title: '象棋 AI 分析講解 - 啟動中',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      devTools: isDev,
+      webviewTag: false,
+      navigateOnDragDrop: false,
+      spellcheck: false
     }
   })
 
   mainWindow.on('ready-to-show', () => mainWindow.show())
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    let protocol: string
-    try {
-      protocol = new URL(details.url).protocol
-    } catch {
-      return { action: 'deny' }
-    }
-    if (protocol === 'https:' || protocol === 'http:') {
-      void shell.openExternal(details.url)
-    }
-    return { action: 'deny' }
-  })
+  lockDownWindow(mainWindow, rendererUrl, (url) => shell.openExternal(url))
 
   // electron-vite 提供的開發伺服器 URL 環境變數
-  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
-  if (isDev && devServerUrl) {
-    mainWindow.loadURL(devServerUrl)
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  void mainWindow.loadURL(rendererUrl)
 }
 
 function registerIpc(): void {
@@ -83,11 +97,17 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(() => {
+  const rendererUrl = getRendererUrl()
+  if (rendererUrl === PRODUCTION_RENDERER_URL) {
+    registerRendererProtocol(join(__dirname, '../renderer'))
+  }
+  hardenDefaultSession(isDev)
+  configureTrustedRendererUrl(rendererUrl)
   registerIpc()
-  createWindow()
+  createWindow(rendererUrl)
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(rendererUrl)
   })
 })
 

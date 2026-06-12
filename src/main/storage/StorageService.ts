@@ -6,13 +6,19 @@
  */
 
 import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { basename, isAbsolute, resolve } from 'node:path'
 import {
   EMPTY_APP_DATA,
   sanitizeAppData,
   type AppDataSnapshot
 } from '@shared/types/AppData'
+import {
+  MAX_APP_DATA_BYTES,
+  MAX_BACKUP_BYTES,
+  MAX_SETTINGS_FILE_BYTES
+} from '../security/InputValidation'
+import { readJsonFile, writeJsonFileAtomic } from './SecureJsonFile'
 
 export const APP_DATA_FILE = 'app-data.json'
 
@@ -24,44 +30,53 @@ export class StorageService {
   }
 
   private resolve(name: string): string {
-    return join(this.baseDir, name)
+    if (
+      !name ||
+      isAbsolute(name) ||
+      basename(name) !== name ||
+      name === '.' ||
+      name === '..'
+    ) {
+      throw new Error('Invalid storage file name.')
+    }
+    return resolve(this.baseDir, name)
   }
 
   /** 讀取 JSON 檔，不存在時回傳 fallback */
-  read<T>(name: string, fallback: T): T {
+  read<T>(name: string, fallback: T, maxBytes = MAX_SETTINGS_FILE_BYTES): T {
     const path = this.resolve(name)
     if (!existsSync(path)) return fallback
     try {
-      return JSON.parse(readFileSync(path, 'utf8')) as T
+      return readJsonFile<T>(path, maxBytes)
     } catch {
       return fallback
     }
   }
 
   /** 寫入 JSON 檔 */
-  write<T>(name: string, data: T): void {
+  write<T>(name: string, data: T, maxBytes = MAX_SETTINGS_FILE_BYTES): void {
     const path = this.resolve(name)
-    const dir = dirname(path)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(path, JSON.stringify(data, null, 2), { encoding: 'utf8' })
+    writeJsonFileAtomic(path, data, maxBytes)
   }
 
   readAppData(): AppDataSnapshot {
-    return sanitizeAppData(this.read<unknown>(APP_DATA_FILE, EMPTY_APP_DATA))
+    return sanitizeAppData(
+      this.read<unknown>(APP_DATA_FILE, EMPTY_APP_DATA, MAX_APP_DATA_BYTES)
+    )
   }
 
   writeAppData(data: AppDataSnapshot): void {
-    this.write(APP_DATA_FILE, sanitizeAppData(data))
+    this.write(APP_DATA_FILE, sanitizeAppData(data), MAX_APP_DATA_BYTES)
   }
 
   readAbsolute<T>(path: string): T {
-    return JSON.parse(readFileSync(path, 'utf8')) as T
+    if (!isAbsolute(path)) throw new Error('Backup path must be absolute.')
+    return readJsonFile<T>(path, MAX_BACKUP_BYTES)
   }
 
   writeAbsolute<T>(path: string, data: T): void {
-    const dir = dirname(path)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(path, JSON.stringify(data, null, 2), { encoding: 'utf8' })
+    if (!isAbsolute(path)) throw new Error('Backup path must be absolute.')
+    writeJsonFileAtomic(path, data, MAX_BACKUP_BYTES)
   }
 
   /** 檔案是否存在 */

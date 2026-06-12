@@ -9,9 +9,16 @@ import {
 import { mergeAppData, sanitizeAppData, type AppDataSnapshot } from '@shared/types/AppData'
 import type { StorageService } from '../storage/StorageService'
 import { logger } from '../Logger'
+import { assertTrustedIpcSender } from '../security/IpcSecurity'
+import {
+  assertJsonSize,
+  MAX_APP_DATA_BYTES,
+  MAX_BACKUP_BYTES
+} from '../security/InputValidation'
 
 export function registerDataHandlers(storage: StorageService): void {
-  ipcMain.handle(IPC.DATA_LOAD, (): DataLoadResult => {
+  ipcMain.handle(IPC.DATA_LOAD, (event): DataLoadResult => {
+    assertTrustedIpcSender(event)
     try {
       return { ok: true, snapshot: storage.readAppData() }
     } catch (error) {
@@ -22,9 +29,11 @@ export function registerDataHandlers(storage: StorageService): void {
 
   ipcMain.handle(
     IPC.DATA_SAVE,
-    (_event, snapshot: AppDataSnapshot): DataSaveResult => {
+    (event, snapshot: unknown): DataSaveResult => {
+      assertTrustedIpcSender(event)
       try {
-        storage.writeAppData(sanitizeAppData(snapshot))
+        assertJsonSize(snapshot, MAX_APP_DATA_BYTES, '應用程式資料')
+        storage.writeAppData(sanitizeAppData(snapshot) as AppDataSnapshot)
         return { ok: true }
       } catch (error) {
         logger.error('儲存永久資料失敗', error)
@@ -36,7 +45,8 @@ export function registerDataHandlers(storage: StorageService): void {
     }
   )
 
-  ipcMain.handle(IPC.DATA_EXPORT, async (): Promise<DataExportResult> => {
+  ipcMain.handle(IPC.DATA_EXPORT, async (event): Promise<DataExportResult> => {
+    assertTrustedIpcSender(event)
     const result = await dialog.showSaveDialog({
       title: '匯出象棋分析資料',
       defaultPath: `xiangqi-analyzer-backup-${new Date().toISOString().slice(0, 10)}.json`,
@@ -52,7 +62,8 @@ export function registerDataHandlers(storage: StorageService): void {
     }
   })
 
-  ipcMain.handle(IPC.DATA_IMPORT, async (): Promise<DataImportResult> => {
+  ipcMain.handle(IPC.DATA_IMPORT, async (event): Promise<DataImportResult> => {
+    assertTrustedIpcSender(event)
     const result = await dialog.showOpenDialog({
       title: '匯入象棋分析資料',
       properties: ['openFile'],
@@ -63,6 +74,7 @@ export function registerDataHandlers(storage: StorageService): void {
     }
     try {
       const incoming = storage.readAbsolute<unknown>(result.filePaths[0])
+      assertJsonSize(incoming, MAX_BACKUP_BYTES, '備份資料')
       const merged = mergeAppData(storage.readAppData(), incoming)
       storage.writeAppData(merged.snapshot)
       return { ok: true, snapshot: merged.snapshot, summary: merged.summary }

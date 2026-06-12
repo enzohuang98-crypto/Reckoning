@@ -11,9 +11,11 @@
  */
 
 import { app, safeStorage } from 'electron'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
+import { MAX_SECRET_FILE_BYTES } from '../security/InputValidation'
+import { readJsonFile, writeJsonFileAtomic } from './SecureJsonFile'
 
 interface SecretsFile {
   /** providerId → 加密後金鑰 (base64) */
@@ -79,16 +81,31 @@ export class SecretStore {
       return { secrets: {}, version: 1 }
     }
     try {
-      const raw = readFileSync(this.filePath, 'utf8')
-      const parsed = JSON.parse(raw) as SecretsFile
-      if (!parsed.secrets) return { secrets: {}, version: 1 }
-      return parsed
+      const parsed = readJsonFile<unknown>(this.filePath, MAX_SECRET_FILE_BYTES)
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        !('secrets' in parsed) ||
+        typeof parsed.secrets !== 'object' ||
+        parsed.secrets === null
+      ) {
+        return { secrets: {}, version: 1 }
+      }
+      const secrets = Object.fromEntries(
+        Object.entries(parsed.secrets).filter(
+          ([provider, value]) =>
+            ['anthropic', 'openai', 'gemini'].includes(provider) &&
+            typeof value === 'string' &&
+            value.length <= MAX_SECRET_FILE_BYTES
+        )
+      )
+      return { secrets, version: 1 }
     } catch {
       return { secrets: {}, version: 1 }
     }
   }
 
   private write(data: SecretsFile): void {
-    writeFileSync(this.filePath, JSON.stringify(data, null, 2), { encoding: 'utf8' })
+    writeJsonFileAtomic(this.filePath, data, MAX_SECRET_FILE_BYTES)
   }
 }

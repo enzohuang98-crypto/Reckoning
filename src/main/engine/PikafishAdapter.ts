@@ -19,7 +19,7 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { lstatSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   MATE_SCORE,
@@ -37,6 +37,7 @@ import type {
 import { parseFen } from '@shared/logic/fen'
 import { legalMoveCheck } from '@shared/logic/moves'
 import { MultiPvAccumulator, parseBestMove } from './EngineOutputParser'
+import { normalizeEnginePath } from '../security/InputValidation'
 
 /** 帶 IPC 錯誤碼的分析錯誤（§2.16.3 code 對應） */
 export class EngineAnalysisError extends Error {
@@ -69,6 +70,17 @@ const READY_TIMEOUT_MS = 15000
 const CANCEL_GRACE_MS = 500
 /** 搜尋安全逾時的額外緩衝 */
 const SEARCH_TIMEOUT_MARGIN_MS = 15000
+/** 防止異常或惡意引擎持續輸出未換行資料造成記憶體耗盡 */
+const MAX_ENGINE_OUTPUT_BUFFER_CHARS = 1024 * 1024
+
+function isSafeEngineFile(path: string): boolean {
+  try {
+    const info = lstatSync(path)
+    return info.isFile() && !info.isSymbolicLink()
+  } catch {
+    return false
+  }
+}
 
 /**
  * 視角反轉（§2.15.4，含 mate 0 修正）。
@@ -126,14 +138,21 @@ function withSource(score: EngineScore, source: EngineScore['source']): EngineSc
 /** 由環境變數 / 打包資源解析引擎路徑（不含使用者自訂路徑） */
 function resolveBundledEnginePath(): string | null {
   const fromEnv = process.env.PIKAFISH_PATH
-  if (fromEnv && existsSync(fromEnv)) return fromEnv
+  if (fromEnv) {
+    try {
+      const normalized = normalizeEnginePath(fromEnv)
+      if (normalized && isSafeEngineFile(normalized)) return normalized
+    } catch {
+      // 無效或不安全的環境變數路徑不採用
+    }
+  }
 
   const resourceCandidates = [
     join(process.resourcesPath ?? '', 'engine', 'pikafish.exe'),
     join(process.cwd(), 'resources', 'engine', 'pikafish.exe')
   ]
   for (const candidate of resourceCandidates) {
-    if (candidate && existsSync(candidate)) return candidate
+    if (candidate && isSafeEngineFile(candidate)) return candidate
   }
   return null
 }
@@ -220,14 +239,21 @@ export class PikafishAdapter {
   }
 
   resolveEnginePath(): string | null {
-    if (this.userPath && existsSync(this.userPath)) return this.userPath
+    if (this.userPath && isSafeEngineFile(this.userPath)) return this.userPath
     return resolveBundledEnginePath()
   }
 
   pathSource(): EnginePathSource {
-    if (this.userPath && existsSync(this.userPath)) return 'user'
+    if (this.userPath && isSafeEngineFile(this.userPath)) return 'user'
     const fromEnv = process.env.PIKAFISH_PATH
-    if (fromEnv && existsSync(fromEnv)) return 'env'
+    if (fromEnv) {
+      try {
+        const normalized = normalizeEnginePath(fromEnv)
+        if (normalized && isSafeEngineFile(normalized)) return 'env'
+      } catch {
+        // 忽略無效或不安全的環境變數路徑
+      }
+    }
     if (resolveBundledEnginePath()) return 'resource'
     return null
   }
@@ -377,6 +403,15 @@ export class PikafishAdapter {
       child.stdout.setEncoding('utf8')
       child.stdout.on('data', (chunk: string) => {
         buffer += chunk
+        if (buffer.length > MAX_ENGINE_OUTPUT_BUFFER_CHARS) {
+          fail(
+            new EngineAnalysisError(
+              'engine_parse_error',
+              '引擎輸出超過安全限制，已終止該引擎行程。'
+            )
+          )
+          return
+        }
         let idx: number
         while ((idx = buffer.indexOf('\n')) >= 0) {
           const rawLine = buffer.slice(0, idx).trim()

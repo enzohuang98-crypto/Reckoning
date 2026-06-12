@@ -14,3 +14,5 @@ tests/fake-engine.exe
 secrets.enc.json
 # License 發行私鑰（發行者本機保管，絕不 commit）
 tools/keys/
+# 本機代理設定，不屬於產品原始碼
+.claude/

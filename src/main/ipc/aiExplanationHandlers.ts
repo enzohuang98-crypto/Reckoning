@@ -35,6 +35,15 @@ import { getAIProvider } from '../ai/AIProvider'
 import { buildExplanationPrompt } from '../ai/promptBuilder'
 import { modelRegistry, UnsupportedModelError } from '../ai/ModelRegistry'
 import { logger } from '../Logger'
+import { assertTrustedIpcSender } from '../security/IpcSecurity'
+import {
+  MAX_AI_RESPONSE_CHARS,
+  normalizeApiKey,
+  normalizeProviderId,
+  safeRequestId,
+  SecurityValidationError,
+  validateGenerateExplanationPayload
+} from '../security/InputValidation'
 
 /** API key 缺失（§2.17.9：不得用空字串或 placeholder 繼續呼叫） */
 export class MissingApiKeyError extends Error {
@@ -114,6 +123,13 @@ export function mapStreamingErrorToPayload(
       message: '這次分析結果已過期，請重新分析局面後再生成 AI 解釋。'
     }
   }
+  if (error instanceof SecurityValidationError) {
+    return {
+      requestId,
+      code: 'invalid_request',
+      message: error.message
+    }
+  }
   if (error instanceof Error) {
     // Anthropic SDK 取消時丟 APIUserAbortError（非 DOMException）
     if (error.name === 'APIUserAbortError' || error.name === 'AbortError') {
@@ -124,7 +140,7 @@ export function mapStreamingErrorToPayload(
       return {
         requestId,
         code: 'rate_limited',
-        message: `模型呼叫被限流 (rate limit)，請稍後重試。${error.message}`
+        message: '模型呼叫被限流 (rate limit)，請稍後重試。'
       }
     }
     // fetch 網路層失敗（DNS/連線中斷）為 TypeError；SDK 為 APIConnectionError
@@ -136,9 +152,17 @@ export function mapStreamingErrorToPayload(
       }
     }
     if (typeof status === 'number' || /API 錯誤/.test(error.message)) {
-      return { requestId, code: 'provider_error', message: error.message }
+      return {
+        requestId,
+        code: 'provider_error',
+        message: 'AI 服務回報錯誤，請檢查模型與金鑰設定後重試。'
+      }
     }
-    return { requestId, code: 'unknown_error', message: error.message }
+    return {
+      requestId,
+      code: 'unknown_error',
+      message: 'AI 解釋生成發生錯誤。'
+    }
   }
   return {
     requestId,
@@ -152,26 +176,32 @@ export function registerAiExplanationHandlers(
   sessionStore: AnalysisSessionStore
 ): void {
   // ---- SecretStore 通道 ----
-  ipcMain.handle(IPC.SECRET_IS_AVAILABLE, (): boolean =>
-    secretStore.isEncryptionAvailable()
-  )
+  ipcMain.handle(IPC.SECRET_IS_AVAILABLE, (event): boolean => {
+    assertTrustedIpcSender(event)
+    return secretStore.isEncryptionAvailable()
+  })
 
   ipcMain.handle(
     IPC.SECRET_SET,
-    (_e, providerId: AIProviderId, apiKey: string): { ok: boolean } => {
+    (event, rawProviderId: unknown, rawApiKey: unknown): { ok: boolean } => {
+      assertTrustedIpcSender(event)
+      const providerId = normalizeProviderId(rawProviderId)
+      const apiKey = normalizeApiKey(rawApiKey)
       secretStore.setApiKey(providerId, apiKey)
       return { ok: true }
     }
   )
 
-  ipcMain.handle(IPC.SECRET_HAS, (_e, providerId: AIProviderId): boolean =>
-    secretStore.hasApiKey(providerId)
-  )
+  ipcMain.handle(IPC.SECRET_HAS, (event, rawProviderId: unknown): boolean => {
+    assertTrustedIpcSender(event)
+    return secretStore.hasApiKey(normalizeProviderId(rawProviderId))
+  })
 
   ipcMain.handle(
     IPC.SECRET_DELETE,
-    (_e, providerId: AIProviderId): { ok: boolean } => {
-      secretStore.deleteApiKey(providerId)
+    (event, rawProviderId: unknown): { ok: boolean } => {
+      assertTrustedIpcSender(event)
+      secretStore.deleteApiKey(normalizeProviderId(rawProviderId))
       return { ok: true }
     }
   )
@@ -181,7 +211,29 @@ export function registerAiExplanationHandlers(
 
   ipcMain.on(
     IPC.AI_GENERATE_EXPLANATION_START,
-    async (event, payload: GenerateExplanationStartPayload) => {
+    async (event, rawPayload: unknown) => {
+      try {
+        assertTrustedIpcSender(event)
+      } catch {
+        return
+      }
+      let payload: GenerateExplanationStartPayload
+      try {
+        payload = validateGenerateExplanationPayload(rawPayload)
+      } catch (error) {
+        event.reply(
+          IPC.AI_GENERATE_EXPLANATION_ERROR,
+          mapStreamingErrorToPayload(
+            safeRequestId(
+              typeof rawPayload === 'object' && rawPayload !== null
+                ? (rawPayload as Record<string, unknown>).requestId
+                : undefined
+            ),
+            error
+          )
+        )
+        return
+      }
       const { requestId } = payload
       activeExplanationRequests.get(requestId)?.abort()
       const controller = new AbortController()
@@ -204,6 +256,13 @@ export function registerAiExplanationHandlers(
               activeExplanationRequests.get(requestId) !== controller
             ) {
               throw new DOMException('Request cancelled', 'AbortError')
+            }
+            if (
+              typeof chunk.deltaText !== 'string' ||
+              accumulatedText.length + chunk.deltaText.length > MAX_AI_RESPONSE_CHARS
+            ) {
+              controller.abort()
+              throw new SecurityValidationError('AI 回應超過允許大小。')
             }
             accumulatedText += chunk.deltaText
             event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
@@ -250,8 +309,19 @@ export function registerAiExplanationHandlers(
 
   ipcMain.on(
     IPC.AI_GENERATE_EXPLANATION_CANCEL,
-    (_event, payload: { requestId: string }) => {
-      const controller = activeExplanationRequests.get(payload.requestId)
+    (event, payload: unknown) => {
+      try {
+        assertTrustedIpcSender(event)
+      } catch {
+        return
+      }
+      const requestId = safeRequestId(
+        typeof payload === 'object' && payload !== null
+          ? (payload as Record<string, unknown>).requestId
+          : undefined
+      )
+      if (requestId === 'invalid-request') return
+      const controller = activeExplanationRequests.get(requestId)
       if (!controller) return
       controller.abort()
     }
