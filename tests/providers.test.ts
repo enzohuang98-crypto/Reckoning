@@ -7,15 +7,14 @@
  *  - §2.17.9 AIExplanationRequest 新契約（provider/model/apiKey/prompt）
  *  - 請求 URL / 認證 header / body 形狀與回應解析
  *  - §2.17.4 streaming 介面（包裝模式：單一 text_delta + done）與 AbortSignal
- *  - §2.19 ModelRegistry：getModel / hasModel / getDefaultModel / UnsupportedModelError
- *  - 成本估算與 model_pricing.json 一致（§2.19.4）
+ *  - ModelRegistry：getModel / hasModel / getDefaultModel / UnsupportedModelError
+ *  - 價目表移除後 provider 只回報 token 用量
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { OpenAIProvider } from '../src/main/ai/providers/OpenAIProvider'
 import { GeminiProvider } from '../src/main/ai/providers/GeminiProvider'
 import { modelRegistry, UnsupportedModelError } from '../src/main/ai/ModelRegistry'
-import { estimateCost } from '../src/main/ai/cost'
 import type { AIExplanationRequest } from '../src/shared/types/AIExplanationTypes'
 import type { AIExplanationStreamChunk } from '../src/shared/types/AIProviderTypes'
 
@@ -117,22 +116,17 @@ async function collect(
 }
 
 async function main(): Promise<void> {
-  section('ModelRegistry（§2.19）')
+  section('ModelRegistry')
   {
     const sonnet = modelRegistry.getModel('anthropic', 'claude-sonnet-4-6')
-    check('getModel 回傳完整設定', sonnet.pricing.inputPricePerMillionTokens === 3.0 && sonnet.pricing.outputPricePerMillionTokens === 15.0)
-    check('lastUpdated 與 sourceNote 必備（§2.19.4）', sonnet.lastUpdated.length > 0 && sonnet.sourceNote.length > 0)
+    check('getModel 回傳模型目錄資料', sonnet.displayName === 'Claude Sonnet 4.6')
     check('hasModel true', modelRegistry.hasModel('openai', 'gpt-5.4'))
     check('hasModel false（跨 provider 不混用）', !modelRegistry.hasModel('openai', 'claude-sonnet-4-6'))
     check('預設模型：anthropic → claude-sonnet-4-6', modelRegistry.getDefaultModel('anthropic').model === 'claude-sonnet-4-6')
     check('預設模型：openai → gpt-5.4', modelRegistry.getDefaultModel('openai').model === 'gpt-5.4')
     check('預設模型：gemini → gemini-3.5-flash', modelRegistry.getDefaultModel('gemini').model === 'gemini-3.5-flash')
     check('listModels(provider) 過濾', modelRegistry.listModels('gemini').length === 3)
-    check('SDS §2.19.2 共 11 個模型', modelRegistry.listModels().length === 11)
-    check(
-      'gemini-3.1-pro 帶分層定價 contextNote',
-      (modelRegistry.getModel('gemini', 'gemini-3.1-pro').contextNote ?? '').includes('分層')
-    )
+    check('模型目錄共 11 個模型', modelRegistry.listModels().length === 11)
     let err: unknown = null
     try {
       modelRegistry.getModel('openai', 'gpt-邪魔歪道')
@@ -140,14 +134,6 @@ async function main(): Promise<void> {
       err = e
     }
     check('未知模型丟 UnsupportedModelError', err instanceof UnsupportedModelError)
-  }
-
-  section('TokenCostEstimator（§2.19.4：與 registry 同一份定價）')
-  {
-    const usage = { inputTokens: 1_000_000, outputTokens: 1_000_000 }
-    check('claude-sonnet-4-6 = $18/M+M', estimateCost('claude-sonnet-4-6', usage) === 18)
-    check('gpt-5.4 = $17.5/M+M', estimateCost('gpt-5.4', usage) === 17.5)
-    check('未知模型 → undefined（顯示無法估算）', estimateCost('no-such-model', usage) === undefined)
   }
 
   section('OpenAIProvider：成功路徑')
@@ -176,7 +162,6 @@ async function main(): Promise<void> {
     )
     check('回應文字已修剪', res.text === '紅方優勢，建議炮二平五。')
     check('token 用量解析', res.usage?.inputTokens === 100 && res.usage.outputTokens === 50)
-    check('成本估算（gpt-5.4 有定價）', res.costUsd !== undefined && res.costUsd > 0, res.costUsd)
     check('groundedOnEngineData 旗標', res.groundedOnEngineData === true)
   }
 
@@ -203,10 +188,9 @@ async function main(): Promise<void> {
       chunks[0].type === 'text_delta' && chunks[0].deltaText === '分析文字'
     )
     check(
-      'done 帶 usage 與 estimatedCostUsd',
+      'done 帶 token usage',
       chunks[1].type === 'done' &&
-        chunks[1].usage?.inputTokens === 10 &&
-        typeof chunks[1].estimatedCostUsd === 'number'
+        chunks[1].usage?.inputTokens === 10
     )
   }
 
@@ -290,7 +274,6 @@ async function main(): Promise<void> {
     )
     check('回應文字解析', res.text === '黑方應跳馬防守。')
     check('token 用量解析', res.usage?.inputTokens === 80 && res.usage.outputTokens === 30)
-    check('成本估算（gemini-3.5-flash 有定價）', res.costUsd !== undefined && res.costUsd > 0)
   }
 
   section('GeminiProvider：streaming 包裝與空回應防護')

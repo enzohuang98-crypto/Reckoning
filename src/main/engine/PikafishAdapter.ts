@@ -172,6 +172,7 @@ interface SearchResult {
   /** bestmove 著法；(none)/nobestmove 為 null（無合法著法） */
   bestMoveUci: string | null
   engineId: string | null
+  timedOut: boolean
 }
 
 export class PikafishAdapter {
@@ -445,6 +446,7 @@ export class PikafishAdapter {
       let settled = false
       let bestMoveUci: string | null = null
       let searchEnded = false
+      let timedOut = false
       let searchTimer: ReturnType<typeof setTimeout> | null = null
       let graceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -480,7 +482,8 @@ export class PikafishAdapter {
           candidateMoves,
           topScore,
           bestMoveUci,
-          engineId: session.engineId
+          engineId: session.engineId,
+          timedOut
         })
       }
 
@@ -515,6 +518,7 @@ export class PikafishAdapter {
 
       // 安全逾時：停止引擎，保留已取得資料（§2.8 分析 timeout 處理）
       searchTimer = setTimeout(() => {
+        timedOut = true
         session.send('stop')
         finish()
       }, options.movetimeMs + SEARCH_TIMEOUT_MARGIN_MS)
@@ -565,7 +569,25 @@ export class PikafishAdapter {
     if (!parsed.valid) {
       throw new EngineAnalysisError('invalid_fen', `FEN 格式不正確：${parsed.message}`)
     }
+    const canonicalFen = parsed.board.fen
     const sideToMove = parsed.board.sideToMove
+
+    if (
+      !Number.isSafeInteger(config.rootAnalysisMovetimeMs) ||
+      config.rootAnalysisMovetimeMs < 100 ||
+      config.rootAnalysisMovetimeMs > 60_000 ||
+      !Number.isSafeInteger(config.userMoveEvalMovetimeMs) ||
+      config.userMoveEvalMovetimeMs < 100 ||
+      config.userMoveEvalMovetimeMs > 60_000 ||
+      !Number.isSafeInteger(config.multiPv) ||
+      config.multiPv < 1 ||
+      config.multiPv > 20
+    ) {
+      throw new EngineAnalysisError(
+        'invalid_analysis_config',
+        '分析參數無效：時間必須介於 100–60000 毫秒，MultiPV 必須介於 1–20。'
+      )
+    }
 
     const userMove = input.userMove?.trim().toLowerCase() || undefined
     if (userMove) {
@@ -587,7 +609,7 @@ export class PikafishAdapter {
 
     const root = await this.searchPosition({
       enginePath,
-      fen: input.positionFen,
+      fen: canonicalFen,
       movetimeMs: config.rootAnalysisMovetimeMs,
       multiPv: Math.max(1, config.multiPv),
       scoreSource: 'candidate_move',
@@ -615,6 +637,10 @@ export class PikafishAdapter {
     // ---- 第二階段：userMove 評估（§2.15.2） ----
     let scoreAfterUserMove: EngineScore | null = null
     let userMoveEvaluationSource: UserMoveEvaluationSource = 'unavailable'
+    const warnings: string[] = []
+    if (root.timedOut) {
+      warnings.push('分析時間過長，僅保留逾時前取得的資料，結果可能不完整。')
+    }
 
     if (userMove) {
       const matched = candidateMoves.find((c) => c.move === userMove)
@@ -626,7 +652,7 @@ export class PikafishAdapter {
         try {
           const second = await this.searchPosition({
             enginePath,
-            fen: input.positionFen,
+            fen: canonicalFen,
             movesUci: [userMove],
             movetimeMs: config.userMoveEvalMovetimeMs,
             multiPv: 1,
@@ -655,6 +681,9 @@ export class PikafishAdapter {
             scoreAfterUserMove = invertEngineScore(opponentScore)
             userMoveEvaluationSource = 'separate_engine_call'
           }
+          if (second.timedOut) {
+            warnings.push('使用者著法的二次分析逾時，該比較結果可能不完整。')
+          }
         } catch (err) {
           // 取消必須中止整個分析；其他失敗依 §2.15.7 降級為 unavailable
           if (err instanceof DOMException && err.name === 'AbortError') throw err
@@ -666,7 +695,7 @@ export class PikafishAdapter {
     if (signal?.aborted) throw abortError()
 
     return {
-      positionFen: input.positionFen,
+      positionFen: canonicalFen,
       sideToMove,
       userMove,
       bestMove,
@@ -679,7 +708,9 @@ export class PikafishAdapter {
       candidateMoves,
       principalVariation: bestCandidate.principalVariation,
       analysisTimeMs: Date.now() - startedAt,
-      engineName: root.engineId ?? ENGINE_NAME
+      incomplete: warnings.length > 0,
+      warnings,
+      engineName: ENGINE_NAME
     }
   }
 }

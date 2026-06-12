@@ -14,7 +14,6 @@ import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { estimateCost } from '../cost'
 import { extractApiErrorMessage } from '../http'
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
@@ -75,7 +74,6 @@ export class OpenAIProvider implements AIProvider {
       provider: this.id,
       model: request.model,
       usage,
-      costUsd: usage ? estimateCost(request.model, usage) : undefined,
       createdAt: Date.now(),
       groundedOnEngineData: true
     }
@@ -88,10 +86,6 @@ export class OpenAIProvider implements AIProvider {
     const response = await this.generateExplanation(request, signal)
     if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
     yield { type: 'text_delta', deltaText: response.text }
-    yield {
-      type: 'done',
-      usage: response.usage,
-      estimatedCostUsd: response.costUsd ?? null
-    }
+    yield { type: 'done', usage: response.usage }
   }
 }

@@ -54,6 +54,9 @@ export function parseFen(fen: string): FenValidationResult {
   }
 
   const parts = trimmed.split(/\s+/)
+  if (parts.length > 6) {
+    return { valid: false, message: `FEN 欄位過多（最多 6 個，實際 ${parts.length} 個）` }
+  }
   const placement = parts[0]
   const sideField = parts[1] ?? 'w'
   const halfmoveField = parts[4] ?? '0'
@@ -112,8 +115,14 @@ export function parseFen(fen: string): FenValidationResult {
     }
   }
 
-  const halfmoveClock = Number.isFinite(Number(halfmoveField)) ? Number(halfmoveField) : 0
-  const fullmoveNumber = Number.isFinite(Number(fullmoveField)) ? Number(fullmoveField) : 1
+  const halfmoveClock = Number(halfmoveField)
+  if (!Number.isSafeInteger(halfmoveClock) || halfmoveClock < 0) {
+    return { valid: false, message: `半回合計數必須是非負整數，實際為 '${halfmoveField}'` }
+  }
+  const fullmoveNumber = Number(fullmoveField)
+  if (!Number.isSafeInteger(fullmoveNumber) || fullmoveNumber < 1) {
+    return { valid: false, message: `回合數必須是大於 0 的整數，實際為 '${fullmoveField}'` }
+  }
 
   const board: BoardState = {
     grid,

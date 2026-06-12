@@ -121,6 +121,7 @@ export function compareMove(
     evalBest === null || evalUser === null ? null : evalBest - evalUser
 
   const extraReasons: string[] = []
+  extraReasons.push(...analysis.warnings)
   if (!userMove) {
     extraReasons.push('未提供使用者著法')
   } else if (analysis.userMoveEvaluationSource === 'unavailable') {

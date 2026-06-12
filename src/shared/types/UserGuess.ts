@@ -6,6 +6,12 @@
 
 import type { MistakeLevel } from './MoveComparisonResult'
 
+export interface SubmittedGuess {
+  move: string
+  reason?: string
+  submittedAt: number
+}
+
 /** 一次猜著紀錄 */
 export interface UserGuess {
   /** 唯一識別碼 */

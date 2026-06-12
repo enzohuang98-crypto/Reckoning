@@ -86,7 +86,9 @@ function makeAnalysis(patch: Partial<EngineAnalysis>): EngineAnalysis {
       }
     ],
     principalVariation: ['h2e2', 'h9g7'],
-    engineName: 'FakeUCI 1.0',
+    incomplete: false,
+    warnings: [],
+    engineName: 'Pikafish',
     ...patch
   }
 }
@@ -256,7 +258,7 @@ async function main(): Promise<void> {
       'scoreAfterBestMove +0.42（root_analysis）',
       root.scoreAfterBestMove?.displayText === '+0.42' && root.scoreAfterBestMove.source === 'root_analysis'
     )
-    check('engineName 用 id name', root.engineName === 'FakeUCI 1.0')
+    check('EngineAnalysis.engineName 固定為 Pikafish', root.engineName === 'Pikafish')
     check('無 userMove → source unavailable', root.userMoveEvaluationSource === 'unavailable')
 
     // userMove 在候選中（§2.15.3：不取負號）

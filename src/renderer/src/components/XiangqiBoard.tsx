@@ -37,7 +37,7 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
       y1={py(r)}
       x2={px(BOARD_COLS - 1)}
       y2={py(r)}
-      stroke="#5a3a1a"
+      stroke="var(--board-line)"
       strokeWidth={1.5}
     />
   ))
@@ -51,7 +51,7 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
           y1={py(0)}
           x2={px(c)}
           y2={py(BOARD_ROWS - 1)}
-          stroke="#5a3a1a"
+          stroke="var(--board-line)"
           strokeWidth={1.5}
         />
       )
@@ -59,19 +59,19 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
     // 河界：中間斷開
     return (
       <g key={`v${c}`}>
-        <line x1={px(c)} y1={py(0)} x2={px(c)} y2={py(4)} stroke="#5a3a1a" strokeWidth={1.5} />
-        <line x1={px(c)} y1={py(5)} x2={px(c)} y2={py(9)} stroke="#5a3a1a" strokeWidth={1.5} />
+        <line x1={px(c)} y1={py(0)} x2={px(c)} y2={py(4)} stroke="var(--board-line)" strokeWidth={1.5} />
+        <line x1={px(c)} y1={py(5)} x2={px(c)} y2={py(9)} stroke="var(--board-line)" strokeWidth={1.5} />
       </g>
     )
   })
 
   const palaces = [
     // 上方九宮 (黑)
-    <line key="pt1" x1={px(3)} y1={py(0)} x2={px(5)} y2={py(2)} stroke="#5a3a1a" strokeWidth={1.5} />,
-    <line key="pt2" x1={px(5)} y1={py(0)} x2={px(3)} y2={py(2)} stroke="#5a3a1a" strokeWidth={1.5} />,
+    <line key="pt1" x1={px(3)} y1={py(0)} x2={px(5)} y2={py(2)} stroke="var(--board-line)" strokeWidth={1.5} />,
+    <line key="pt2" x1={px(5)} y1={py(0)} x2={px(3)} y2={py(2)} stroke="var(--board-line)" strokeWidth={1.5} />,
     // 下方九宮 (紅)
-    <line key="pb1" x1={px(3)} y1={py(7)} x2={px(5)} y2={py(9)} stroke="#5a3a1a" strokeWidth={1.5} />,
-    <line key="pb2" x1={px(5)} y1={py(7)} x2={px(3)} y2={py(9)} stroke="#5a3a1a" strokeWidth={1.5} />
+    <line key="pb1" x1={px(3)} y1={py(7)} x2={px(5)} y2={py(9)} stroke="var(--board-line)" strokeWidth={1.5} />,
+    <line key="pb2" x1={px(5)} y1={py(7)} x2={px(3)} y2={py(9)} stroke="var(--board-line)" strokeWidth={1.5} />
   ]
 
   const clickTargets: JSX.Element[] = []
@@ -99,8 +99,9 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
             cy={py(r)}
             r={PIECE_R + 3}
             fill="none"
-            stroke="#2e7d32"
+            stroke="var(--jade)"
             strokeWidth={3}
+            className="piece-selection"
           />
         )
       }
@@ -113,9 +114,19 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
               cx={px(c)}
               cy={py(r)}
               r={PIECE_R}
-              fill="#f4e3c1"
-              stroke={isRed ? '#c0392b' : '#1a1a1a'}
-              strokeWidth={2}
+              fill="url(#piece-surface)"
+              stroke={isRed ? 'var(--cinnabar)' : 'var(--ink-piece)'}
+              strokeWidth={2.25}
+              filter="url(#piece-shadow)"
+            />
+            <circle
+              cx={px(c)}
+              cy={py(r)}
+              r={PIECE_R - 4}
+              fill="none"
+              stroke={isRed ? 'var(--cinnabar)' : 'var(--ink-piece)'}
+              strokeWidth={0.8}
+              opacity={0.42}
             />
             <text
               x={px(c)}
@@ -124,7 +135,8 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
               dominantBaseline="central"
               fontSize={26}
               fontWeight={700}
-              fill={isRed ? '#c0392b' : '#1a1a1a'}
+              fill={isRed ? 'var(--cinnabar)' : 'var(--ink-piece)'}
+              className="piece-glyph"
             >
               {pieceGlyph(piece)}
             </text>
@@ -141,8 +153,45 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
       aria-label="象棋棋盤"
-      style={{ background: '#e9c891', borderRadius: 8, border: '2px solid #5a3a1a' }}
+      className="xiangqi-board"
     >
+      <defs>
+        <linearGradient id="board-surface" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#e7c897" />
+          <stop offset="52%" stopColor="#d5ad73" />
+          <stop offset="100%" stopColor="#c69559" />
+        </linearGradient>
+        <radialGradient id="piece-surface" cx="35%" cy="28%" r="75%">
+          <stop offset="0%" stopColor="#fffdf3" />
+          <stop offset="68%" stopColor="#eee3c8" />
+          <stop offset="100%" stopColor="#d1be96" />
+        </radialGradient>
+        <pattern id="wood-grain" width="72" height="72" patternUnits="userSpaceOnUse">
+          <path
+            d="M-8 18 C18 5 42 31 80 13 M-12 48 C20 33 43 60 84 41"
+            fill="none"
+            stroke="#6f4520"
+            strokeWidth="1"
+            opacity="0.08"
+          />
+        </pattern>
+        <filter id="piece-shadow" x="-30%" y="-30%" width="160%" height="170%">
+          <feDropShadow dx="0" dy="3" stdDeviation="2.5" floodColor="#3b210e" floodOpacity="0.38" />
+        </filter>
+      </defs>
+      <rect x="1" y="1" width={WIDTH - 2} height={HEIGHT - 2} rx="14" fill="url(#board-surface)" />
+      <rect x="1" y="1" width={WIDTH - 2} height={HEIGHT - 2} rx="14" fill="url(#wood-grain)" />
+      <rect
+        x="8"
+        y="8"
+        width={WIDTH - 16}
+        height={HEIGHT - 16}
+        rx="10"
+        fill="none"
+        stroke="var(--board-line)"
+        strokeWidth="2"
+        opacity="0.75"
+      />
       {horizontals}
       {verticals}
       {palaces}
@@ -151,8 +200,9 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
         y={(py(4) + py(5)) / 2 + 8}
         textAnchor="middle"
         fontSize={22}
-        fill="#5a3a1a"
-        opacity={0.7}
+        fill="var(--board-line)"
+        opacity={0.76}
+        className="river-label"
       >
         楚河
       </text>
@@ -161,8 +211,9 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
         y={(py(4) + py(5)) / 2 + 8}
         textAnchor="middle"
         fontSize={22}
-        fill="#5a3a1a"
-        opacity={0.7}
+        fill="var(--board-line)"
+        opacity={0.76}
+        className="river-label"
       >
         漢界
       </text>

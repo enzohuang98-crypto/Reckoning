@@ -55,6 +55,12 @@ const api: RendererApi = {
     cancelExplanation: (requestId: string) =>
       ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_CANCEL, { requestId })
   },
+  data: {
+    load: () => ipcRenderer.invoke(IPC.DATA_LOAD),
+    save: (snapshot) => ipcRenderer.invoke(IPC.DATA_SAVE, snapshot),
+    exportBackup: () => ipcRenderer.invoke(IPC.DATA_EXPORT),
+    importBackup: () => ipcRenderer.invoke(IPC.DATA_IMPORT)
+  },
   secret: {
     set: (providerId: AIProviderId, apiKey: string) =>
       ipcRenderer.invoke(IPC.SECRET_SET, providerId, apiKey),

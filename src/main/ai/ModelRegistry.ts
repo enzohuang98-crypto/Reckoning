@@ -1,35 +1,19 @@
 /**
  * 模型註冊表 (ModelRegistry) — SDS v0.2 §2.19
  *
- * 模型 id 與定價的唯一查詢入口。與 TokenCostEstimator（cost.ts）讀同一份
- * model_pricing.json，不得各自寫死價格（§2.19.4）。
+ * 模型 id 白名單的唯一查詢入口。
  * getModel() 找不到時丟 UnsupportedModelError（對應 IPC code "unsupported_model"）。
  */
 
-import pricing from '@shared/config/model_pricing.json'
+import catalog from '@shared/config/model_catalog.json'
+import { isValidModelConfig } from '@shared/logic/ValidationUtils'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
 
-/** 定價（§2.19.1） */
-export interface ModelPricing {
-  inputPricePerMillionTokens: number
-  outputPricePerMillionTokens: number
-  currency: 'USD'
-}
-
-/** 模型設定（§2.19.1） */
+/** 模型設定 */
 export interface AIModelConfig {
   provider: AIProviderId
-  /** 實際 API 呼叫使用的 model id */
   model: string
-  /** UI 顯示名稱 */
   displayName: string
-  pricing: ModelPricing
-  /** 分層定價等備註 */
-  contextNote?: string
-  /** 官方核對日期 (ISO) */
-  lastUpdated: string
-  /** 官方定價頁來源 */
-  sourceNote: string
 }
 
 export class UnsupportedModelError extends Error {
@@ -61,7 +45,7 @@ class JsonModelRegistry implements ModelRegistry {
   private readonly models: AIModelConfig[]
 
   constructor(models: AIModelConfig[]) {
-    this.models = models
+    this.models = models.filter(isValidModelConfig)
   }
 
   getModel(provider: AIProviderId, model: string): AIModelConfig {
@@ -85,12 +69,7 @@ class JsonModelRegistry implements ModelRegistry {
   }
 }
 
-/** 由 model_pricing.json 建立的單例 registry */
+/** 由 model_catalog.json 建立的單例 registry */
 export const modelRegistry: ModelRegistry = new JsonModelRegistry(
-  pricing.models as AIModelConfig[]
+  catalog.models as AIModelConfig[]
 )
-
-export const pricingMeta = {
-  lastUpdated: pricing.lastUpdated as string,
-  sourceNote: pricing.sourceNote as string
-}

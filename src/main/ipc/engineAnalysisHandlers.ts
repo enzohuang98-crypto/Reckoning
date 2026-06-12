@@ -117,6 +117,11 @@ export function registerEngineAnalysisHandlers(
     IPC.ENGINE_ANALYZE_POSITION_START,
     async (event, payload: AnalyzePositionStartPayload) => {
       const { requestId } = payload
+      const previous = activeEngineAnalyses.get(requestId)
+      if (previous) {
+        previous.controller.abort()
+        previous.sendStop()
+      }
       const controller = new AbortController()
       const handle: EngineAnalysisHandle = {
         requestId,
@@ -140,6 +145,9 @@ export function registerEngineAnalysisHandlers(
             }
           }
         )
+        if (controller.signal.aborted || activeEngineAnalyses.get(requestId) !== handle) {
+          throw new DOMException('Analysis cancelled', 'AbortError')
+        }
         const moveComparison = compareMove(engineAnalysis)
 
         // analysisId：兩者都建立後才生成；先 save 再 reply（§2.16.4）
@@ -157,6 +165,10 @@ export function registerEngineAnalysisHandlers(
         }
         try {
           await sessionStore.save(session)
+          if (controller.signal.aborted || activeEngineAnalyses.get(requestId) !== handle) {
+            await sessionStore.delete(analysisId)
+            throw new DOMException('Analysis cancelled', 'AbortError')
+          }
           event.reply(IPC.ENGINE_ANALYSIS_RESULT, {
             requestId,
             analysisId,
@@ -177,7 +189,9 @@ export function registerEngineAnalysisHandlers(
         if (payload.code !== 'cancelled') logger.error('引擎分析失敗', payload.code, error)
         event.reply(IPC.ENGINE_ANALYSIS_ERROR, payload)
       } finally {
-        activeEngineAnalyses.delete(requestId)
+        if (activeEngineAnalyses.get(requestId) === handle) {
+          activeEngineAnalyses.delete(requestId)
+        }
       }
     }
   )
@@ -187,7 +201,6 @@ export function registerEngineAnalysisHandlers(
     if (!handle) return
     handle.controller.abort()
     handle.sendStop()
-    activeEngineAnalyses.delete(payload.requestId)
   })
 
   /* ---------- 引擎設定 / 狀態（invoke） ---------- */

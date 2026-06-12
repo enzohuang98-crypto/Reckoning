@@ -17,6 +17,7 @@ import type { AppSettings } from '@shared/types/Settings'
 import type { EngineStatus } from '@shared/types/ipc'
 import type { LicenseStatus } from '@shared/types/License'
 import { saveSettings } from '../storage/localSettings'
+import type { AppDataSnapshot } from '@shared/types/AppData'
 
 const PATH_SOURCE_LABEL: Record<NonNullable<EngineStatus['pathSource']>, string> = {
   user: '使用者設定',
@@ -29,9 +30,14 @@ const PROVIDERS = ALL_PROVIDER_IDS
 interface Props {
   settings: AppSettings
   onSettingsChange: (settings: AppSettings) => void
+  onDataImported: (snapshot: AppDataSnapshot) => void
 }
 
-export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element {
+export function SettingsPage({
+  settings,
+  onSettingsChange,
+  onDataImported
+}: Props): JSX.Element {
   const [keyInputs, setKeyInputs] = useState<Record<AIProviderId, string>>({
     anthropic: '',
     openai: '',
@@ -44,6 +50,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
   })
   const [encAvailable, setEncAvailable] = useState<boolean | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
+  const [operationError, setOperationError] = useState<string | null>(null)
 
   // 引擎路徑（存於 main 的 StorageService，非 localStorage）
   const [enginePathInput, setEnginePathInput] = useState('')
@@ -108,10 +115,10 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
   const [license, setLicense] = useState<LicenseStatus | null>(null)
 
   useEffect(() => {
-    window.api.secret.isAvailable().then(setEncAvailable)
-    void refreshKeyStatus()
-    void refreshEngine()
-    window.api.license.status().then(setLicense)
+    window.api.secret.isAvailable().then(setEncAvailable).catch(() => setEncAvailable(false))
+    void refreshKeyStatus().catch(() => setOperationError('無法查詢 API Key 狀態。'))
+    void refreshEngine().catch(() => setOperationError('無法查詢引擎狀態。'))
+    window.api.license.status().then(setLicense).catch(() => setLicense(null))
   }, [])
 
   const deactivateLicense = async (): Promise<void> => {
@@ -122,29 +129,75 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
 
   const update = (patch: Partial<AppSettings>): void => {
     const next = { ...settings, ...patch }
-    saveSettings(next)
     onSettingsChange(next)
+    const saved = saveSettings(next)
+    if (!saved.ok) setOperationError(saved.message ?? '設定儲存失敗。')
+    else setOperationError(null)
   }
 
   const saveKey = async (provider: AIProviderId): Promise<void> => {
     const key = keyInputs[provider].trim()
     if (!key) return
-    await window.api.secret.set(provider, key)
-    setKeyInputs({ ...keyInputs, [provider]: '' })
-    setSavedMsg(`${PROVIDER_LABEL[provider]} 金鑰已安全儲存。`)
-    void refreshKeyStatus()
+    try {
+      await window.api.secret.set(provider, key)
+      setKeyInputs({ ...keyInputs, [provider]: '' })
+      setSavedMsg(`${PROVIDER_LABEL[provider]} 金鑰已安全儲存。`)
+      setOperationError(null)
+      void refreshKeyStatus()
+    } catch {
+      setOperationError('無法安全儲存 API Key，系統不會以明文保存。')
+    }
   }
 
   const deleteKey = async (provider: AIProviderId): Promise<void> => {
-    await window.api.secret.delete(provider)
-    setSavedMsg(`${PROVIDER_LABEL[provider]} 金鑰已刪除。`)
-    void refreshKeyStatus()
+    try {
+      await window.api.secret.delete(provider)
+      setSavedMsg(`${PROVIDER_LABEL[provider]} 金鑰已刪除。`)
+      setOperationError(null)
+      void refreshKeyStatus()
+    } catch {
+      setOperationError('API Key 刪除失敗，請稍後重試。')
+    }
+  }
+
+  const exportBackup = async (): Promise<void> => {
+    const result = await window.api.data.exportBackup()
+    if (result.ok) {
+      setSavedMsg(`資料已匯出：${result.filePath}`)
+      setOperationError(null)
+    } else if (!result.cancelled) {
+      setOperationError(result.message ?? '資料匯出失敗。')
+    }
+  }
+
+  const importBackup = async (): Promise<void> => {
+    const result = await window.api.data.importBackup()
+    if (result.ok) {
+      onDataImported(result.snapshot)
+      const total = Object.values(result.summary).reduce((sum, count) => sum + count, 0)
+      setSavedMsg(`匯入完成，共新增 ${total} 筆資料；重複資料已略過。`)
+      setOperationError(null)
+    } else if (!result.cancelled) {
+      setOperationError(result.message ?? '資料匯入失敗。')
+    }
   }
 
   return (
     <div className="settings-page">
-      <h2>設定</h2>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">SYSTEM PREFERENCES</span>
+          <h1>設定</h1>
+          <p>管理本機引擎、AI 模型、資料備份與分析深度。</p>
+        </div>
+        <div className="heading-status">
+          <span className="status-dot" />
+          資料保存在本機
+        </div>
+      </div>
+      {operationError && <div className="error-text">⚠ {operationError}</div>}
 
+      <div className="settings-grid">
       <section className="card">
         <h3>AI Provider 金鑰</h3>
         {encAvailable === false && (
@@ -185,6 +238,21 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
           </div>
         ))}
         {savedMsg && <div className="success-text">{savedMsg}</div>}
+      </section>
+
+      <section className="card">
+        <h3>資料備份與還原</h3>
+        <p className="muted">
+          備份包含錯題本、待理解局面、保存局面、猜著紀錄與 AI 對話；不包含 API Key。
+        </p>
+        <div className="row gap">
+          <button className="btn" onClick={() => void exportBackup()}>
+            匯出 JSON 備份
+          </button>
+          <button className="btn ghost" onClick={() => void importBackup()}>
+            匯入並合併
+          </button>
+        </div>
       </section>
 
       <section className="card">
@@ -384,6 +452,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props): JSX.Element
           </div>
         )}
       </section>
+      </div>
     </div>
   )
 }

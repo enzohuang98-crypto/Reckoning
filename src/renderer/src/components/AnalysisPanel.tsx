@@ -1,16 +1,4 @@
-/**
- * 分析面板 (AnalysisPanel) — SDS v0.2 §2.16、§2.17、§2.5
- *
- * 事件式引擎分析：產生 requestId 送 start，訂閱 result/error，
- * 進行中可取消（main 端 AbortController + UCI stop）。
- * 收到 cancelled 顯示「已取消」而非系統失敗。
- *
- * AI 解說為 streaming（§2.17.7）：只帶 analysisId，逐段 append chunk，
- * done 結束 loading，error 顯示訊息並保留 partial text；
- * 已收到 done 後同一 requestId 的事件一律忽略。
- */
-
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
 import type {
@@ -19,29 +7,58 @@ import type {
 } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { EngineScore } from '@shared/types/EngineAnalysis'
-import { legalMoveCheck } from '@shared/logic/moves'
-import { parseFen } from '@shared/logic/fen'
+import type {
+  AIConversation,
+  ConversationMessage,
+  MisunderstoodPosition
+} from '@shared/types/AppData'
+import type { SubmittedGuess } from '@shared/types/UserGuess'
+import { validateMoveInput } from '@shared/logic/ValidationUtils'
 
 interface Props {
   board: BoardState
   settings: AppSettings
-  /** 使用者猜的著法（來自猜棋區塊；可為空字串） */
-  userMove: string
+  submittedGuess: SubmittedGuess | null
+  conversation: AIConversation | null
+  onConversationChange: (conversation: AIConversation | null) => void
   onResult: (payload: EngineAnalysisResultPayload | null) => void
   onExplanation: (explanation: AIExplanationResponse | null) => void
+  onSaveMisunderstood: (entry: MisunderstoodPosition) => void
 }
 
-/** 只用 displayText 顯示分數（raw 禁止進 UI；SDS §2.15.5） */
+interface PendingAiRequest {
+  question: string | null
+  conversationId: string
+}
+
 function scoreText(score: EngineScore | null): string {
   return score === null ? '—' : score.displayText
+}
+
+function estimateTokens(text: string): number {
+  const ascii = text.replace(/[^\x00-\x7F]/g, '').length
+  const nonAscii = text.length - ascii
+  return Math.max(1, Math.ceil(ascii / 4 + nonAscii / 1.6))
+}
+
+function newMessage(role: ConversationMessage['role'], text: string): ConversationMessage {
+  return {
+    id: crypto.randomUUID(),
+    role,
+    text,
+    createdAt: new Date().toISOString()
+  }
 }
 
 export function AnalysisPanel({
   board,
   settings,
-  userMove,
+  submittedGuess,
+  conversation,
+  onConversationChange,
   onResult,
-  onExplanation
+  onExplanation,
+  onSaveMisunderstood
 }: Props): JSX.Element {
   const [status, setStatus] = useState<EngineStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -52,18 +69,23 @@ export function AnalysisPanel({
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiCancelling, setAiCancelling] = useState(false)
-  /** streaming 中逐段累積的文字（§2.17.7） */
   const [streamingText, setStreamingText] = useState('')
-  /** 進行中分析的 requestId；過時事件一律忽略（§2.17.7 同款規則） */
+  const [followUp, setFollowUp] = useState('')
+  const [collectionReason, setCollectionReason] = useState('')
   const activeRequestId = useRef<string | null>(null)
-  /** 進行中 AI 生成的 requestId；done/error 後同 id 事件忽略（§2.17.7） */
   const activeAiRequestId = useRef<string | null>(null)
-
-  /** 訂閱只建立一次，但 done 事件需要當下的 provider/model 設定 */
+  const pendingAiRequest = useRef<PendingAiRequest | null>(null)
   const settingsRef = useRef(settings)
+  const conversationRef = useRef(conversation)
+  const resultRef = useRef(result)
+
   useEffect(() => {
     settingsRef.current = settings
   }, [settings])
+
+  useEffect(() => {
+    conversationRef.current = conversation
+  }, [conversation])
 
   useEffect(() => {
     window.api.engine
@@ -73,6 +95,29 @@ export function AnalysisPanel({
         setStatus({ available: false, engineName: '引擎', message: '無法查詢引擎狀態' })
       )
   }, [])
+
+  useEffect(() => {
+    if (activeRequestId.current) window.api.engine.cancelAnalysis(activeRequestId.current)
+    if (activeAiRequestId.current) {
+      window.api.ai.cancelExplanation(activeAiRequestId.current)
+    }
+    activeRequestId.current = null
+    activeAiRequestId.current = null
+    pendingAiRequest.current = null
+    setBusy(false)
+    setCancelling(false)
+    setAiBusy(false)
+    setAiCancelling(false)
+    setResult(null)
+    setExplanation(null)
+    setStreamingText('')
+    setFollowUp('')
+    setCollectionReason('')
+    setError(null)
+    setNotice(null)
+    onResult(null)
+    onExplanation(null)
+  }, [board.fen, onConversationChange, onExplanation, onResult])
 
   useEffect(() => {
     const offResult = window.api.engine.onAnalysisResult((payload) => {
@@ -88,21 +133,18 @@ export function AnalysisPanel({
       activeRequestId.current = null
       setBusy(false)
       setCancelling(false)
-      if (payload.code === 'cancelled') {
-        // 取消不是系統失敗（§2.17.7）
-        setNotice('已取消分析。')
-      } else {
-        setError(payload.message)
-      }
+      if (payload.code === 'cancelled') setNotice('已取消分析。')
+      else setError(payload.message)
     })
-    // AI streaming 事件（§2.17.7）
     const offAiChunk = window.api.ai.onExplanationChunk((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
-      setStreamingText((prev) => prev + payload.deltaText)
+      setStreamingText((previous) => previous + payload.deltaText)
     })
     const offAiDone = window.api.ai.onExplanationDone((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
+      const pending = pendingAiRequest.current
       activeAiRequestId.current = null
+      pendingAiRequest.current = null
       setAiBusy(false)
       setAiCancelling(false)
       setStreamingText('')
@@ -111,25 +153,43 @@ export function AnalysisPanel({
         provider: settingsRef.current.aiProvider,
         model: settingsRef.current.aiModel,
         usage: payload.usage,
-        costUsd: payload.estimatedCostUsd ?? undefined,
         createdAt: Date.now(),
         groundedOnEngineData: true
       }
       setExplanation(response)
       onExplanation(response)
+
+      if (pending && resultRef.current) {
+        const now = new Date().toISOString()
+        const current = conversationRef.current
+        const messages =
+          pending.question === null
+            ? [newMessage('assistant', payload.finalText)]
+            : [
+                ...(current?.messages ?? []),
+                newMessage('user', pending.question),
+                newMessage('assistant', payload.finalText)
+              ]
+        const next: AIConversation = {
+          id: pending.conversationId,
+          analysisId: resultRef.current.analysisId,
+          positionFen: resultRef.current.engineAnalysis.positionFen,
+          createdAt: current?.createdAt ?? now,
+          updatedAt: now,
+          messages
+        }
+        conversationRef.current = next
+        onConversationChange(next)
+      }
     })
     const offAiError = window.api.ai.onExplanationError((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
       activeAiRequestId.current = null
+      pendingAiRequest.current = null
       setAiBusy(false)
       setAiCancelling(false)
-      if (payload.code === 'cancelled') {
-        // 取消不是系統失敗（§2.17.7）
-        setNotice('已取消生成。')
-      } else {
-        setError(payload.message)
-      }
-      // partial text 保留在畫面上（streamingText 不清空）
+      if (payload.code === 'cancelled') setNotice('已取消生成。')
+      else setError(payload.message)
     })
     return () => {
       offResult()
@@ -138,9 +198,11 @@ export function AnalysisPanel({
       offAiDone()
       offAiError()
     }
-    // onResult 由 App 提供且穩定；訂閱僅建立一次
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [onConversationChange, onExplanation, onResult])
+
+  useEffect(() => {
+    resultRef.current = result
+  }, [result])
 
   const startAnalysis = (): void => {
     setError(null)
@@ -148,16 +210,12 @@ export function AnalysisPanel({
     setExplanation(null)
     onExplanation(null)
 
-    const trimmedMove = userMove.trim().toLowerCase()
-    if (trimmedMove) {
-      // 送引擎前先做合法性檢查，給出人話錯誤（main 端也會再驗一次）
-      const parsed = parseFen(board.fen)
-      if (parsed.valid) {
-        const check = legalMoveCheck(parsed.board.grid, parsed.board.sideToMove, trimmedMove)
-        if (!check.ok) {
-          setError(`你的猜測著法不合法：${check.message}`)
-          return
-        }
+    const move = submittedGuess?.move ?? ''
+    if (move) {
+      const check = validateMoveInput(board, move)
+      if (!check.ok) {
+        setError(`你的猜測著法不合法：${check.message}`)
+        return
       }
     }
 
@@ -169,7 +227,7 @@ export function AnalysisPanel({
     window.api.engine.startAnalysis({
       requestId,
       positionFen: board.fen,
-      userMove: trimmedMove || undefined,
+      userMove: move || undefined,
       analysisConfig: {
         rootAnalysisMovetimeMs: settings.rootAnalysisMovetimeMs,
         userMoveEvalMovetimeMs: settings.userMoveEvalMovetimeMs,
@@ -184,17 +242,27 @@ export function AnalysisPanel({
     window.api.engine.cancelAnalysis(activeRequestId.current)
   }
 
-  const explain = (): void => {
+  const generateExplanation = (question: string | null, regenerate = false): void => {
     if (!result) return
+    const cleanedQuestion = question?.trim() || null
+    const currentConversation = regenerate ? null : conversationRef.current
+    const conversationId = currentConversation?.id ?? crypto.randomUUID()
     const requestId = crypto.randomUUID()
     activeAiRequestId.current = requestId
+    pendingAiRequest.current = { question: cleanedQuestion, conversationId }
     setAiBusy(true)
     setAiCancelling(false)
     setError(null)
     setNotice(null)
     setStreamingText('')
-    setExplanation(null)
-    onExplanation(null)
+    if (regenerate || cleanedQuestion === null) {
+      setExplanation(null)
+      onExplanation(null)
+      if (regenerate) {
+        conversationRef.current = null
+        onConversationChange(null)
+      }
+    }
     window.api.ai.startExplanation({
       requestId,
       analysisId: result.analysisId,
@@ -202,9 +270,67 @@ export function AnalysisPanel({
       model: settings.aiModel,
       userLevel: settings.userLevel,
       explanationStyle: 'long_analytical',
-      language: settings.language
+      language: settings.language,
+      conversationHistory: currentConversation?.messages,
+      followUpQuestion: cleanedQuestion ?? undefined
     })
   }
+
+  const submitFollowUp = (): void => {
+    const question = followUp.trim()
+    if (!question) return
+    setFollowUp('')
+    generateExplanation(question)
+  }
+
+  const copyExplanation = async (): Promise<void> => {
+    const text = conversation?.messages.length
+      ? conversation.messages
+          .map((message) => `${message.role === 'user' ? '問' : '答'}：${message.text}`)
+          .join('\n\n')
+      : explanation?.text
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setNotice('已複製 AI 解說。')
+    } catch {
+      setError('無法存取剪貼簿，請手動選取文字複製。')
+    }
+  }
+
+  const saveMisunderstood = (): void => {
+    if (!result) return
+    const now = new Date().toISOString()
+    onSaveMisunderstood({
+      id: crypto.randomUUID(),
+      positionFen: result.engineAnalysis.positionFen,
+      reason: collectionReason.trim() || '需要之後再研究',
+      createdAt: now,
+      updatedAt: now,
+      analysisId: result.analysisId,
+      engineAnalysis: result.engineAnalysis,
+      moveComparison: result.moveComparison,
+      explanation: explanation?.text,
+      conversationId: conversation?.id
+    })
+    setCollectionReason('')
+    setNotice('已收藏到「待理解局面」。')
+  }
+
+  const tokenEstimate = useMemo(() => {
+    if (!result) return null
+    const engineText = JSON.stringify({
+      fen: result.engineAnalysis.positionFen,
+      bestMove: result.engineAnalysis.bestMove,
+      candidates: result.engineAnalysis.candidateMoves,
+      comparison: result.moveComparison,
+      conversation: conversation?.messages ?? []
+    })
+    return {
+      input: estimateTokens(engineText),
+      output: conversation ? 700 : 1800
+    }
+  }, [conversation, result])
 
   const cancelExplain = (): void => {
     if (!activeAiRequestId.current) return
@@ -217,7 +343,13 @@ export function AnalysisPanel({
 
   return (
     <div className="analysis-panel">
-      <h3>引擎分析</h3>
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">ENGINE & AI COACH</span>
+          <h3>引擎分析</h3>
+        </div>
+        <span className="panel-number">02</span>
+      </div>
       {status && (
         <div className={`engine-status ${status.available ? 'ok' : 'warn'}`}>
           {status.available
@@ -227,20 +359,22 @@ export function AnalysisPanel({
       )}
 
       <div className="row gap">
-        <button
-          className="btn"
-          onClick={startAnalysis}
-          disabled={busy || aiBusy || !status?.available}
-        >
-          {busy ? '分析中…' : `分析局面（${(settings.rootAnalysisMovetimeMs / 1000).toFixed(1)} 秒）`}
+        <button className="btn" onClick={startAnalysis} disabled={busy || aiBusy || !status?.available}>
+          {busy
+            ? '分析中…'
+            : `分析局面（${(settings.rootAnalysisMovetimeMs / 1000).toFixed(1)} 秒）`}
         </button>
         {busy && (
           <button className="btn ghost" onClick={cancelAnalysis} disabled={cancelling}>
             {cancelling ? '取消中…' : '取消'}
           </button>
         )}
-        <button className="btn ghost" onClick={explain} disabled={busy || aiBusy || !result}>
-          {aiBusy ? '生成中…' : '請 AI 解說'}
+        <button
+          className="btn ghost"
+          onClick={() => generateExplanation(null, explanation !== null)}
+          disabled={busy || aiBusy || !result}
+        >
+          {aiBusy ? '生成中…' : explanation ? '重新生成' : '請 AI 解說'}
         </button>
         {aiBusy && (
           <button className="btn ghost" onClick={cancelExplain} disabled={aiCancelling}>
@@ -249,6 +383,11 @@ export function AnalysisPanel({
         )}
       </div>
 
+      {tokenEstimate && (
+        <div className="muted small">
+          呼叫前 token 粗估：輸入約 {tokenEstimate.input}、輸出上限約 {tokenEstimate.output}。
+        </div>
+      )}
       {error && <div className="error-text">⚠ {error}</div>}
       {notice && <div className="muted" style={{ marginTop: 8 }}>{notice}</div>}
 
@@ -261,16 +400,18 @@ export function AnalysisPanel({
               <span className="muted small">　({(ea.analysisTimeMs / 1000).toFixed(1)}s)</span>
             )}
           </div>
-          {confidence === 'low' && (
+          {(ea.incomplete || confidence === 'low') && (
             <div className="engine-status warn">
-              ⚠ 本次判斷可信度不足：{result?.moveComparison.uncertaintyReasons.join('；')}
+              ⚠ {ea.warnings.length > 0
+                ? ea.warnings.join('；')
+                : `本次判斷可信度不足：${result?.moveComparison.uncertaintyReasons.join('；')}`}
             </div>
           )}
           <ol className="line-list">
-            {ea.candidateMoves.map((c, i) => (
-              <li key={`${i}-${c.move}`}>
-                <span className="mono">{c.move}</span>　{scoreText(c.score)}
-                　<span className="pv">{c.principalVariation.slice(0, 6).join(' ')}</span>
+            {ea.candidateMoves.map((candidate, index) => (
+              <li key={`${index}-${candidate.move}`}>
+                <span className="mono">{candidate.move}</span>　{scoreText(candidate.score)}
+                　<span className="pv">{candidate.principalVariation.slice(0, 6).join(' ')}</span>
               </li>
             ))}
           </ol>
@@ -284,19 +425,59 @@ export function AnalysisPanel({
         </div>
       )}
 
-      {explanation && (
+      {conversation && (
         <div className="ai-explanation">
-          <h4>AI 解說（{explanation.model}）</h4>
-          <p className="explanation-text">{explanation.text}</p>
-          {explanation.usage && (
+          <h4>AI 解說與追問（{settings.aiModel}）</h4>
+          {conversation.messages.map((message) => (
+            <div key={message.id} className={`conversation-message ${message.role}`}>
+              <b>{message.role === 'user' ? '你問' : 'AI 教練'}</b>
+              <p className="explanation-text">{message.text}</p>
+            </div>
+          ))}
+          {explanation?.usage && (
             <div className="usage">
-              token：輸入 {explanation.usage.inputTokens} / 輸出{' '}
-              {explanation.usage.outputTokens}
-              {explanation.costUsd !== undefined
-                ? `　≈ $${explanation.costUsd.toFixed(5)}`
-                : '　成本：無法估算（此模型尚未設定價格）'}
+              token：輸入 {explanation.usage.inputTokens} / 輸出 {explanation.usage.outputTokens}
             </div>
           )}
+          <div className="row gap follow-up-row">
+            <input
+              className="text-input"
+              value={followUp}
+              placeholder="針對這個局面繼續追問…"
+              disabled={aiBusy}
+              onChange={(event) => setFollowUp(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing) submitFollowUp()
+              }}
+            />
+            <button
+              className="btn"
+              onClick={submitFollowUp}
+              disabled={aiBusy || !result || !followUp.trim()}
+            >
+              追問
+            </button>
+            <button className="btn ghost" onClick={() => void copyExplanation()}>
+              複製
+            </button>
+          </div>
+          {!result && (
+            <div className="muted small">請先重新分析此局面，再繼續追問。</div>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <div className="row gap collection-row">
+          <input
+            className="text-input"
+            value={collectionReason}
+            placeholder="收藏原因，例如：看不懂中炮交換"
+            onChange={(event) => setCollectionReason(event.target.value)}
+          />
+          <button className="btn ghost" onClick={saveMisunderstood}>
+            收藏待理解
+          </button>
         </div>
       )}
     </div>

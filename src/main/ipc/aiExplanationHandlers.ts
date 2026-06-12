@@ -4,7 +4,7 @@
  * Streaming 通道（§2.17.2）：
  *   ai:generate-explanation:start  (renderer→main)
  *   ai:generate-explanation:chunk  (main→renderer，逐段文字)
- *   ai:generate-explanation:done   (main→renderer，finalText + usage + cost)
+ *   ai:generate-explanation:done   (main→renderer，finalText + usage)
  *   ai:generate-explanation:error  (main→renderer)
  *   ai:generate-explanation:cancel (renderer→main)
  *
@@ -67,7 +67,9 @@ export async function buildAIExplanationRequest(
     moveComparison: session.moveComparison,
     userLevel: payload.userLevel,
     explanationStyle: payload.explanationStyle,
-    language: payload.language
+    language: payload.language,
+    conversationHistory: payload.conversationHistory,
+    followUpQuestion: payload.followUpQuestion
   })
   return {
     provider: payload.provider,
@@ -181,6 +183,7 @@ export function registerAiExplanationHandlers(
     IPC.AI_GENERATE_EXPLANATION_START,
     async (event, payload: GenerateExplanationStartPayload) => {
       const { requestId } = payload
+      activeExplanationRequests.get(requestId)?.abort()
       const controller = new AbortController()
       activeExplanationRequests.set(requestId, controller)
       let accumulatedText = ''
@@ -196,6 +199,12 @@ export function registerAiExplanationHandlers(
           controller.signal
         )) {
           if (chunk.type === 'text_delta') {
+            if (
+              controller.signal.aborted ||
+              activeExplanationRequests.get(requestId) !== controller
+            ) {
+              throw new DOMException('Request cancelled', 'AbortError')
+            }
             accumulatedText += chunk.deltaText
             event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
               requestId,
@@ -203,12 +212,17 @@ export function registerAiExplanationHandlers(
             })
           }
           if (chunk.type === 'done') {
+            if (
+              controller.signal.aborted ||
+              activeExplanationRequests.get(requestId) !== controller
+            ) {
+              throw new DOMException('Request cancelled', 'AbortError')
+            }
             completedNormally = true
             event.reply(IPC.AI_GENERATE_EXPLANATION_DONE, {
               requestId,
               finalText: accumulatedText,
-              usage: chunk.usage,
-              estimatedCostUsd: chunk.estimatedCostUsd ?? null
+              usage: chunk.usage
             })
             break
           }
@@ -227,7 +241,9 @@ export function registerAiExplanationHandlers(
           event.reply(IPC.AI_GENERATE_EXPLANATION_ERROR, errorPayload)
         }
       } finally {
-        activeExplanationRequests.delete(requestId)
+        if (activeExplanationRequests.get(requestId) === controller) {
+          activeExplanationRequests.delete(requestId)
+        }
       }
     }
   )
@@ -238,7 +254,6 @@ export function registerAiExplanationHandlers(
       const controller = activeExplanationRequests.get(payload.requestId)
       if (!controller) return
       controller.abort()
-      activeExplanationRequests.delete(payload.requestId)
     }
   )
 }

@@ -40,8 +40,6 @@ export interface AIExplanationResponse {
   model: string
   /** Token 用量（若 Provider 有回報） */
   usage?: TokenUsage
-  /** 估算成本 (USD)；無定價資料時為 undefined（顯示「無法估算」） */
-  costUsd?: number
   /** 產生時間 (epoch ms) */
   createdAt: number
   /**

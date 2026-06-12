@@ -20,6 +20,11 @@ import type { AIProviderId, TokenUsage } from './AIProviderTypes'
 import type { ExplanationLanguage, ExplanationStyle } from './AIExplanationTypes'
 import type { UserLevel } from './Settings'
 import type { LicenseStatus } from './License'
+import type {
+  AppDataImportSummary,
+  AppDataSnapshot,
+  ConversationMessage
+} from './AppData'
 
 /** IPC 通道名稱常數 */
 export const IPC = {
@@ -40,6 +45,11 @@ export const IPC = {
   AI_GENERATE_EXPLANATION_DONE: 'ai:generate-explanation:done',
   AI_GENERATE_EXPLANATION_ERROR: 'ai:generate-explanation:error',
   AI_GENERATE_EXPLANATION_CANCEL: 'ai:generate-explanation:cancel',
+  // 永久資料與備份
+  DATA_LOAD: 'data:load',
+  DATA_SAVE: 'data:save',
+  DATA_EXPORT: 'data:export',
+  DATA_IMPORT: 'data:import',
   // 安全儲存 (SecretStore)
   SECRET_SET: 'secret:set',
   SECRET_HAS: 'secret:has',
@@ -70,6 +80,7 @@ export interface EngineAnalysisResultPayload {
 
 export type EngineAnalysisErrorCode =
   | 'invalid_fen'
+  | 'invalid_analysis_config'
   | 'invalid_user_move'
   | 'engine_not_configured'
   | 'engine_start_failed'
@@ -122,6 +133,10 @@ export interface GenerateExplanationStartPayload {
   userLevel: UserLevel
   explanationStyle: ExplanationStyle
   language: ExplanationLanguage
+  /** 同一局面的既有對話，視為不可信的使用者資料 */
+  conversationHistory?: ConversationMessage[]
+  /** 多輪追問內容；未提供時產生初次長篇解說 */
+  followUpQuestion?: string
 }
 
 export interface GenerateExplanationChunkPayload {
@@ -133,7 +148,6 @@ export interface GenerateExplanationDonePayload {
   requestId: string
   finalText: string
   usage?: TokenUsage
-  estimatedCostUsd?: number | null
 }
 
 export type AIExplanationErrorCode =
@@ -151,6 +165,26 @@ export interface GenerateExplanationErrorPayload {
   code: AIExplanationErrorCode
   message: string
 }
+
+/* ---------- 永久資料與備份 ---------- */
+
+export type DataLoadResult =
+  | { ok: true; snapshot: AppDataSnapshot }
+  | { ok: false; message: string }
+
+export type DataSaveResult = { ok: true } | { ok: false; message: string }
+
+export type DataExportResult =
+  | { ok: true; filePath: string }
+  | { ok: false; cancelled?: boolean; message?: string }
+
+export type DataImportResult =
+  | {
+      ok: true
+      snapshot: AppDataSnapshot
+      summary: AppDataImportSummary
+    }
+  | { ok: false; cancelled?: boolean; message?: string }
 
 /* ---------- preload API 形狀 ---------- */
 
@@ -187,6 +221,12 @@ export interface RendererApi {
     ): () => void
     /** 取消進行中的生成 */
     cancelExplanation(requestId: string): void
+  }
+  data: {
+    load(): Promise<DataLoadResult>
+    save(snapshot: AppDataSnapshot): Promise<DataSaveResult>
+    exportBackup(): Promise<DataExportResult>
+    importBackup(): Promise<DataImportResult>
   }
   secret: {
     set(providerId: AIProviderId, apiKey: string): Promise<{ ok: boolean }>

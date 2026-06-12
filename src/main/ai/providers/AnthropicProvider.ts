@@ -15,7 +15,6 @@ import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { estimateCost } from '../cost'
 
 /** 長篇分析輸出上限 */
 const MAX_OUTPUT_TOKENS = 4096
@@ -60,7 +59,6 @@ export class AnthropicProvider implements AIProvider {
       provider: this.id,
       model: request.model,
       usage,
-      costUsd: estimateCost(request.model, usage),
       createdAt: Date.now(),
       groundedOnEngineData: true
     }
@@ -97,10 +95,6 @@ export class AnthropicProvider implements AIProvider {
     }
 
     const usage = { inputTokens, outputTokens }
-    yield {
-      type: 'done',
-      usage,
-      estimatedCostUsd: estimateCost(request.model, usage) ?? null
-    }
+    yield { type: 'done', usage }
   }
 }

@@ -99,11 +99,11 @@ export interface EngineAnalysis {
   candidateMoves: EngineCandidateMove[]
   principalVariation: string[]
   analysisTimeMs?: number
-  /**
-   * SDS 型別為字面值 "Pikafish"；本專案支援 UCCI 引擎（小蟲/旋風/名手/烏雲），
-   * 放寬為 string 以保留引擎回報的 id name（文件化偏差，見 CLAUDE.md）。
-   */
-  engineName: string
+  /** 分析逾時或只取得部分資料時為 true */
+  incomplete: boolean
+  /** 不完整或降級原因，必須呈現給使用者 */
+  warnings: string[]
+  engineName: 'Pikafish'
 }
 
 /** 引擎分析參數（§2.16.3 analysisConfig；預設值見 Settings DEFAULT_APP_SETTINGS） */

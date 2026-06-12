@@ -16,6 +16,7 @@ import {
 } from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
 import { registerLicenseHandlers } from './ipc/licenseHandlers'
+import { registerDataHandlers } from './ipc/dataHandlers'
 import { LicenseService } from './license/LicenseService'
 import {
   InMemoryAnalysisSessionStore,
@@ -44,7 +45,15 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => mainWindow.show())
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    let protocol: string
+    try {
+      protocol = new URL(details.url).protocol
+    } catch {
+      return { action: 'deny' }
+    }
+    if (protocol === 'https:' || protocol === 'http:') {
+      void shell.openExternal(details.url)
+    }
     return { action: 'deny' }
   })
 
@@ -68,6 +77,7 @@ function registerIpc(): void {
   startAnalysisSessionCleanup(sessionStore)
   registerEngineAnalysisHandlers(adapter, storage, sessionStore)
   registerAiExplanationHandlers(secretStore, sessionStore)
+  registerDataHandlers(storage)
   // 買斷授權（SDS Q5）：離線 Ed25519 簽章驗證
   registerLicenseHandlers(new LicenseService(storage))
 }

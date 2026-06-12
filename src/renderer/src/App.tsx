@@ -1,11 +1,4 @@
-/**
- * 應用程式根元件 (App)
- *
- * 三個分頁：分析 / 設定 / 錯題本。
- * 共享 board 與 settings 狀態。
- */
-
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BoardEditor } from './components/BoardEditor'
 import { FenInput } from './components/FenInput'
 import { GameImportPanel } from './components/GameImportPanel'
@@ -15,23 +8,34 @@ import { SettingsPage } from './pages/SettingsPage'
 import { SetupWizard } from './pages/SetupWizard'
 import { LicensePage } from './pages/LicensePage'
 import { MistakeBookPage } from './pages/MistakeBookPage'
+import { MisunderstoodPage } from './pages/MisunderstoodPage'
 import { parseFen } from '@shared/logic/fen'
 import { START_FEN, type BoardState } from '@shared/types/BoardState'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
-import { isSetupCompleted, loadSettings, markSetupCompleted } from './storage/localSettings'
+import {
+  clearLegacyMistakeBook,
+  isSetupCompleted,
+  loadLegacyMistakeBook,
+  loadSettings,
+  markSetupCompleted
+} from './storage/localSettings'
 import type { AppSettings } from '@shared/types/Settings'
 import { ALL_PROVIDER_IDS } from '@shared/types/AIProviderTypes'
+import {
+  EMPTY_APP_DATA,
+  type AIConversation,
+  type AppDataSnapshot,
+  type MisunderstoodPosition,
+  type SavedPosition
+} from '@shared/types/AppData'
+import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
+import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 
-type Tab = 'analyze' | 'settings' | 'mistakes'
-
-/** 初始設定嚮導顯示狀態：checking = 正在查詢既有設定 */
+type Tab = 'analyze' | 'settings' | 'mistakes' | 'misunderstood'
 type SetupState = 'checking' | 'wizard' | 'done'
-
-/** 買斷授權狀態（SDS Q5）：未啟用時鎖住主介面 */
 type LicenseState = 'checking' | 'locked' | 'ok'
 
-/** 暫時繞過授權鎖定畫面（beta 測試用）；LicenseService 邏輯不變，僅 UI 不強制顯示 LicensePage */
 const LICENSE_GATE_DISABLED = true
 
 function initialBoard(): BoardState {
@@ -44,18 +48,87 @@ export function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>('analyze')
   const [board, setBoard] = useState<BoardState>(initialBoard)
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings())
-  /** 使用者猜的著法（看答案前輸入；分析時帶給 main） */
-  const [userMove, setUserMove] = useState('')
-  /** 最近一次分析結果（含 analysisId 與比較） */
+  const [draftMove, setDraftMove] = useState('')
+  const [draftReason, setDraftReason] = useState('')
+  const [submittedGuess, setSubmittedGuess] = useState<SubmittedGuess | null>(null)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
-  /** 最近一次 AI 解說（加入錯題本時保存） */
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
+  const [activeConversation, setActiveConversation] = useState<AIConversation | null>(null)
+  const [appData, setAppData] = useState<AppDataSnapshot>(EMPTY_APP_DATA)
+  const [dataReady, setDataReady] = useState(false)
+  const [dataError, setDataError] = useState<string | null>(null)
   const [setupState, setSetupState] = useState<SetupState>(() =>
     isSetupCompleted() ? 'done' : 'checking'
   )
   const [licenseState, setLicenseState] = useState<LicenseState>('checking')
+  const saveQueue = useRef(Promise.resolve())
+  const pendingConversationId = useRef<string | null>(null)
+  const appDataRef = useRef(appData)
 
-  // 啟動時查授權狀態（main process 離線驗證儲存的 key）
+  useEffect(() => {
+    appDataRef.current = appData
+  }, [appData])
+
+  const saveCurrentData = useCallback((snapshot: AppDataSnapshot): void => {
+    saveQueue.current = saveQueue.current
+      .then(async () => {
+        const saved = await window.api.data.save(snapshot)
+        if (!saved.ok) setDataError(saved.message)
+        else setDataError(null)
+      })
+      .catch(() => {
+        setDataError('儲存失敗，畫面內容仍保留；請稍後重試或匯出備份。')
+      })
+  }, [])
+
+  const updateAppData = useCallback(
+    (updater: (current: AppDataSnapshot) => AppDataSnapshot): void => {
+      const next = updater(appDataRef.current)
+      appDataRef.current = next
+      setAppData(next)
+      if (dataReady) saveCurrentData(next)
+    },
+    [dataReady, saveCurrentData]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const loaded = await window.api.data.load()
+      if (cancelled) return
+      let snapshot = loaded.ok ? loaded.snapshot : EMPTY_APP_DATA
+      if (!loaded.ok) setDataError(loaded.message)
+
+      const legacy = loadLegacyMistakeBook()
+      if (legacy.entries.length > 0) {
+        const existingIds = new Set(snapshot.mistakeBookEntries.map((entry) => entry.id))
+        const additions = legacy.entries.filter((entry) => !existingIds.has(entry.id))
+        if (additions.length > 0) {
+          snapshot = {
+            ...snapshot,
+            mistakeBookEntries: [...snapshot.mistakeBookEntries, ...additions]
+          }
+          const migrated = await window.api.data.save(snapshot)
+          if (migrated.ok) void clearLegacyMistakeBook()
+          else setDataError(migrated.message)
+        }
+      }
+      if (!cancelled) {
+        appDataRef.current = snapshot
+        setAppData(snapshot)
+        setDataReady(true)
+      }
+    })().catch(() => {
+      if (!cancelled) {
+        setDataError('無法讀取本機資料，已使用空白資料。')
+        setDataReady(true)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     window.api.license
@@ -71,29 +144,40 @@ export function App(): JSX.Element {
     }
   }, [])
 
-  // 局面變更（擺棋 / 套用 FEN / 棋譜跳轉）即清除舊結果與猜測，避免比對到錯的局面
   useEffect(() => {
     setResult(null)
     setExplanation(null)
-    setUserMove('')
+    setDraftMove('')
+    setDraftReason('')
+    setSubmittedGuess(null)
+    const conversationId = pendingConversationId.current
+    pendingConversationId.current = null
+    setActiveConversation(
+      conversationId
+        ? appDataRef.current.conversations.find((item) => item.id === conversationId) ?? null
+        : null
+    )
   }, [board.fen])
 
-  // 嚮導觸發條件：未完成過嚮導，且引擎路徑與所有 API 金鑰皆未設定。
-  // 任一已設定（例如舊版升級）視同已完成初始設定，直接標記跳過。
   useEffect(() => {
     if (setupState !== 'checking') return
     let cancelled = false
     void (async () => {
-      const [path, ...hasKeys] = await Promise.all([
-        window.api.engine.getPath(),
-        ...ALL_PROVIDER_IDS.map((p) => window.api.secret.has(p))
-      ])
-      if (cancelled) return
-      if (path || hasKeys.some(Boolean)) {
-        markSetupCompleted()
-        setSetupState('done')
-      } else {
-        setSetupState('wizard')
+      try {
+        const [path, ...hasKeys] = await Promise.all([
+          window.api.engine.getPath(),
+          ...ALL_PROVIDER_IDS.map((provider) => window.api.secret.has(provider))
+        ])
+        if (cancelled) return
+        if (path || hasKeys.some(Boolean)) {
+          const marked = markSetupCompleted()
+          if (!marked.ok) setDataError(marked.message ?? '無法保存初始設定狀態。')
+          setSetupState('done')
+        } else {
+          setSetupState('wizard')
+        }
+      } catch {
+        if (!cancelled) setSetupState('wizard')
       }
     })()
     return () => {
@@ -102,21 +186,111 @@ export function App(): JSX.Element {
   }, [setupState])
 
   const tabs = useMemo(
-    () =>
-      [
-        { id: 'analyze' as const, label: '分析' },
-        { id: 'settings' as const, label: '設定' },
-        { id: 'mistakes' as const, label: '錯題本' }
-      ],
+    () => [
+      { id: 'analyze' as const, label: '分析' },
+      { id: 'mistakes' as const, label: '錯題本' },
+      { id: 'misunderstood' as const, label: '待理解局面' },
+      { id: 'settings' as const, label: '設定' }
+    ],
     []
   )
 
-  if (licenseState === 'checking' || setupState === 'checking') {
-    // 等待查詢授權與既有設定（毫秒級），避免畫面閃爍切換
+  const openPosition = useCallback((fen: string): void => {
+    const parsed = parseFen(fen)
+    if (!parsed.valid) {
+      setDataError(`無法開啟局面：${parsed.message}`)
+      return
+    }
+    setBoard(parsed.board)
+    setTab('analyze')
+  }, [])
+
+  const openMisunderstoodPosition = useCallback(
+    (entry: MisunderstoodPosition): void => {
+      pendingConversationId.current = entry.conversationId ?? null
+      openPosition(entry.positionFen)
+    },
+    [openPosition]
+  )
+
+  const addMistake = useCallback(
+    (entry: MistakeBookEntry): void => {
+      updateAppData((current) => ({
+        ...current,
+        mistakeBookEntries: [
+          entry,
+          ...current.mistakeBookEntries.filter((item) => item.id !== entry.id)
+        ]
+      }))
+    },
+    [updateAppData]
+  )
+
+  const recordGuess = useCallback(
+    (guess: UserGuess): void => {
+      updateAppData((current) => ({
+        ...current,
+        userGuesses: [
+          guess,
+          ...current.userGuesses.filter((item) => item.id !== guess.id)
+        ]
+      }))
+    },
+    [updateAppData]
+  )
+
+  const changeConversation = useCallback(
+    (conversation: AIConversation | null): void => {
+      setActiveConversation(conversation)
+      if (!conversation) return
+      updateAppData((current) => ({
+        ...current,
+        conversations: [
+          conversation,
+          ...current.conversations.filter((item) => item.id !== conversation.id)
+        ]
+      }))
+    },
+    [updateAppData]
+  )
+
+  const saveMisunderstood = useCallback(
+    (entry: MisunderstoodPosition): void => {
+      updateAppData((current) => ({
+        ...current,
+        misunderstoodPositions: [entry, ...current.misunderstoodPositions]
+      }))
+    },
+    [updateAppData]
+  )
+
+  const savePosition = useCallback(
+    (name: string): void => {
+      const now = new Date().toISOString()
+      const position: SavedPosition = {
+        id: crypto.randomUUID(),
+        name,
+        fen: board.fen,
+        createdAt: now,
+        updatedAt: now
+      }
+      updateAppData((current) => ({
+        ...current,
+        savedPositions: [position, ...current.savedPositions]
+      }))
+    },
+    [board.fen, updateAppData]
+  )
+
+  const importData = useCallback((snapshot: AppDataSnapshot): void => {
+    appDataRef.current = snapshot
+    setAppData(snapshot)
+  }, [])
+
+  if (licenseState === 'checking' || setupState === 'checking' || !dataReady) {
     return <div className="app" />
   }
 
-  // 授權優先於初始設定嚮導：未啟用一律先顯示啟用頁（SDS Q5）
   if (licenseState === 'locked' && !LICENSE_GATE_DISABLED) {
     return <LicensePage onActivated={() => setLicenseState('ok')} />
   }
@@ -134,49 +308,123 @@ export function App(): JSX.Element {
   return (
     <div className="app">
       <header className="app-header">
-        <div className="app-title">象棋 AI 分析講解</div>
+        <div className="app-brand">
+          <span className="brand-seal" aria-hidden="true">象</span>
+          <div>
+            <div className="app-title">象理</div>
+            <div className="app-subtitle">Xiangli AI Analysis</div>
+          </div>
+        </div>
         <nav className="app-nav">
-          {tabs.map((t) => (
+          {tabs.map((item) => (
             <button
-              key={t.id}
-              className={`nav-btn ${tab === t.id ? 'active' : ''}`}
-              onClick={() => setTab(t.id)}
+              key={item.id}
+              className={`nav-btn ${tab === item.id ? 'active' : ''}`}
+              onClick={() => setTab(item.id)}
             >
-              {t.label}
+              {item.label}
             </button>
           ))}
         </nav>
       </header>
 
+      {dataError && (
+        <div className="global-storage-error">
+          <span>⚠ {dataError}</span>
+          <button className="btn ghost small" onClick={() => saveCurrentData(appData)}>
+            重試儲存
+          </button>
+        </div>
+      )}
+
       <main className="app-main">
         {tab === 'analyze' && (
-          <div className="analyze-layout">
-            <div className="left-col">
-              <BoardEditor board={board} onChange={setBoard} />
-              <FenInput initialFen={board.fen} onValidBoard={setBoard} />
-              <GameImportPanel board={board} onBoardChange={setBoard} />
+          <div className="analyze-page">
+            <div className="page-heading">
+              <div>
+                <span className="eyebrow">AI ANALYSIS WORKSPACE</span>
+                <h1>局面分析工作台</h1>
+                <p>擺好局面、鎖定你的判斷，再用引擎與 AI 教練逐步複盤。</p>
+              </div>
+              <div className="heading-status">
+                <span className="status-dot" />
+                本機分析模式
+              </div>
             </div>
-            <div className="right-col">
-              <AnalysisPanel
-                board={board}
-                settings={settings}
-                userMove={userMove}
-                onResult={setResult}
-                onExplanation={setExplanation}
-              />
-              <GuessModePanel
-                userMove={userMove}
-                onUserMoveChange={setUserMove}
-                result={result}
-                explanation={explanation}
-              />
+            <div className="analyze-layout">
+              <div className="left-col">
+                <BoardEditor
+                  board={board}
+                  onChange={setBoard}
+                  savedPositions={appData.savedPositions}
+                  onSavePosition={savePosition}
+                  onLoadSavedPosition={(position) => openPosition(position.fen)}
+                  onDeleteSavedPosition={(id) =>
+                    updateAppData((current) => ({
+                      ...current,
+                      savedPositions: current.savedPositions.filter((item) => item.id !== id)
+                    }))
+                  }
+                />
+                <FenInput initialFen={board.fen} onValidBoard={setBoard} />
+                <GameImportPanel board={board} onBoardChange={setBoard} />
+              </div>
+              <div className="right-col">
+                <GuessModePanel
+                  board={board}
+                  draftMove={draftMove}
+                  draftReason={draftReason}
+                  submittedGuess={submittedGuess}
+                  onDraftMoveChange={setDraftMove}
+                  onDraftReasonChange={setDraftReason}
+                  onSubmitGuess={setSubmittedGuess}
+                  onUnlockGuess={() => setSubmittedGuess(null)}
+                  result={result}
+                  explanation={explanation}
+                  onAddMistake={addMistake}
+                  onRecordGuess={recordGuess}
+                />
+                <AnalysisPanel
+                  board={board}
+                  settings={settings}
+                  submittedGuess={submittedGuess}
+                  conversation={activeConversation}
+                  onConversationChange={changeConversation}
+                  onResult={setResult}
+                  onExplanation={setExplanation}
+                  onSaveMisunderstood={saveMisunderstood}
+                />
+              </div>
             </div>
           </div>
         )}
         {tab === 'settings' && (
-          <SettingsPage settings={settings} onSettingsChange={setSettings} />
+          <SettingsPage
+            settings={settings}
+            onSettingsChange={setSettings}
+            onDataImported={importData}
+          />
         )}
-        {tab === 'mistakes' && <MistakeBookPage />}
+        {tab === 'mistakes' && (
+          <MistakeBookPage
+            entries={appData.mistakeBookEntries}
+            onOpenPosition={openPosition}
+            onChange={(entries) =>
+              updateAppData((current) => ({ ...current, mistakeBookEntries: entries }))
+            }
+          />
+        )}
+        {tab === 'misunderstood' && (
+          <MisunderstoodPage
+            entries={appData.misunderstoodPositions}
+            conversations={appData.conversations}
+            onOpenPosition={openMisunderstoodPosition}
+            onChange={(entries) =>
+              updateAppData((current) => ({ ...current, misunderstoodPositions: entries }))
+            }
+            onMoveToMistakeBook={addMistake}
+          />
+        )}
       </main>
     </div>
   )

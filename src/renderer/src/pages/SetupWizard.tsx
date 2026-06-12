@@ -30,6 +30,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const [provider, setProvider] = useState<AIProviderId>(settings.aiProvider)
   const [apiKey, setApiKey] = useState('')
   const [finishing, setFinishing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const browse = async (): Promise<void> => {
     const picked = await window.api.engine.browsePath()
@@ -41,10 +42,13 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const runTest = async (): Promise<void> => {
     setTesting(true)
     setTestResult(null)
+    setError(null)
     try {
       const trimmed = enginePath.trim()
       if (trimmed) await window.api.engine.setPath(trimmed)
       setTestResult(await window.api.engine.test())
+    } catch {
+      setError('引擎測試失敗，請確認檔案路徑與執行權限。')
     } finally {
       setTesting(false)
     }
@@ -52,6 +56,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
 
   const finish = async (): Promise<void> => {
     setFinishing(true)
+    setError(null)
     try {
       const trimmed = enginePath.trim()
       if (trimmed) await window.api.engine.setPath(trimmed)
@@ -59,11 +64,21 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
       if (key) await window.api.secret.set(provider, key)
       if (provider !== settings.aiProvider) {
         const next = { ...settings, aiProvider: provider }
-        saveSettings(next)
+        const saved = saveSettings(next)
+        if (!saved.ok) {
+          setError(saved.message ?? '設定儲存失敗。')
+          return
+        }
         onSettingsChange(next)
       }
-      markSetupCompleted()
+      const marked = markSetupCompleted()
+      if (!marked.ok) {
+        setError(marked.message ?? '無法保存初始設定狀態。')
+        return
+      }
       onComplete()
+    } catch {
+      setError('無法安全儲存設定或 API Key；系統不會以明文保存金鑰。')
     } finally {
       setFinishing(false)
     }
@@ -72,13 +87,24 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   return (
     <div className="setup-wizard">
       <div className="setup-card">
-        <h2>象棋 AI 分析講解 — 初始設定</h2>
-        <p className="muted">
-          兩項皆可留空之後再到「設定」頁補齊，但建議現在完成以啟用完整功能。
-        </p>
+        <div className="setup-brand">
+          <span className="brand-seal large" aria-hidden="true">象</span>
+          <div>
+            <span className="eyebrow">WELCOME TO XIANGLI</span>
+            <h1>建立你的象棋分析工作台</h1>
+            <p>連接本機引擎與 AI 教練，之後也能隨時在「設定」頁調整。</p>
+          </div>
+        </div>
+        {error && <div className="error-text">⚠ {error}</div>}
 
         <section className="card">
-          <h3>📦 引擎設定</h3>
+          <div className="setup-step">
+            <span>01</span>
+            <div>
+              <h3>引擎設定</h3>
+              <p>選擇本機 Pikafish 或相容的 UCI／UCCI 引擎。</p>
+            </div>
+          </div>
           <div className="field">
             <label className="field-label">引擎路徑</label>
             <div className="row gap">
@@ -118,7 +144,13 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
         </section>
 
         <section className="card">
-          <h3>🤖 AI 解說設定</h3>
+          <div className="setup-step">
+            <span>02</span>
+            <div>
+              <h3>AI 解說設定</h3>
+              <p>API Key 只會以作業系統加密後保存在這台電腦。</p>
+            </div>
+          </div>
           <div className="field">
             <label className="field-label">Provider</label>
             <select

@@ -8,6 +8,13 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import {
+  EMPTY_APP_DATA,
+  sanitizeAppData,
+  type AppDataSnapshot
+} from '@shared/types/AppData'
+
+export const APP_DATA_FILE = 'app-data.json'
 
 export class StorageService {
   private readonly baseDir: string
@@ -34,6 +41,24 @@ export class StorageService {
   /** 寫入 JSON 檔 */
   write<T>(name: string, data: T): void {
     const path = this.resolve(name)
+    const dir = dirname(path)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    writeFileSync(path, JSON.stringify(data, null, 2), { encoding: 'utf8' })
+  }
+
+  readAppData(): AppDataSnapshot {
+    return sanitizeAppData(this.read<unknown>(APP_DATA_FILE, EMPTY_APP_DATA))
+  }
+
+  writeAppData(data: AppDataSnapshot): void {
+    this.write(APP_DATA_FILE, sanitizeAppData(data))
+  }
+
+  readAbsolute<T>(path: string): T {
+    return JSON.parse(readFileSync(path, 'utf8')) as T
+  }
+
+  writeAbsolute<T>(path: string, data: T): void {
     const dir = dirname(path)
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     writeFileSync(path, JSON.stringify(data, null, 2), { encoding: 'utf8' })

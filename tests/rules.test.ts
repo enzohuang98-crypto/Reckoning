@@ -43,6 +43,23 @@ function legal(fen: string, move: string): { ok: boolean; message?: string } {
 
 const start = START_FEN
 
+section('FEN 輸入驗證')
+{
+  check('拒絕額外欄位／換行指令', !parseFen(`${START_FEN}\nquit`).valid)
+  check(
+    '拒絕負數 halfmove',
+    !parseFen('3k5/9/9/9/9/9/9/9/9/4K4 w - - -1 1').valid
+  )
+  check(
+    '拒絕小數 halfmove',
+    !parseFen('3k5/9/9/9/9/9/9/9/9/4K4 w - - 1.5 1').valid
+  )
+  check(
+    '拒絕小於 1 的 fullmove',
+    !parseFen('3k5/9/9/9/9/9/9/9/9/4K4 w - - 0 0').valid
+  )
+}
+
 section('開局合法著法')
 check('炮二平五 h2e2', legal(start, 'h2e2').ok)
 check('馬八進七 b0c2', legal(start, 'b0c2').ok)

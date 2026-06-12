@@ -1,27 +1,26 @@
-/**
- * 猜著模式面板 (GuessModePanel) — SDS v0.2 §2.5 猜棋頁
- *
- * 使用者在分析前先輸入猜測著法與理由（看答案前猜），按「分析局面」後
- * 由雙階段分析取得精確比較：candidate fast path 或二次分析（main 端）。
- * 結果顯示錯誤等級（六級）、評估差距、可信度與不確定原因；
- * 緩手以上可一鍵加入錯題本（理由帶入 userNote）。
- */
-
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { BoardState } from '@shared/types/BoardState'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { EngineScore } from '@shared/types/EngineAnalysis'
+import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
+import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
 import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
-import { addMistakeEntry } from '../storage/localSettings'
+import { validateMoveInput } from '@shared/logic/ValidationUtils'
 
 interface Props {
-  /** 猜測著法（由 App 持有，分析時送往 main） */
-  userMove: string
-  onUserMoveChange: (move: string) => void
-  /** 最近一次分析結果（含比較）；尚未分析為 null */
+  board: BoardState
+  draftMove: string
+  draftReason: string
+  submittedGuess: SubmittedGuess | null
+  onDraftMoveChange: (move: string) => void
+  onDraftReasonChange: (reason: string) => void
+  onSubmitGuess: (guess: SubmittedGuess) => void
+  onUnlockGuess: () => void
   result: EngineAnalysisResultPayload | null
-  /** 最近一次 AI 解說（加入錯題本時一併保存） */
   explanation: AIExplanationResponse | null
+  onAddMistake: (entry: MistakeBookEntry) => void
+  onRecordGuess: (guess: UserGuess) => void
 }
 
 const CONFIDENCE_LABEL = { low: '低', medium: '中', high: '高' } as const
@@ -31,17 +30,25 @@ function scoreText(score: EngineScore | null): string {
 }
 
 export function GuessModePanel({
-  userMove,
-  onUserMoveChange,
+  board,
+  draftMove,
+  draftReason,
+  submittedGuess,
+  onDraftMoveChange,
+  onDraftReasonChange,
+  onSubmitGuess,
+  onUnlockGuess,
   result,
-  explanation
+  explanation,
+  onAddMistake,
+  onRecordGuess
 }: Props): JSX.Element {
-  const [reason, setReason] = useState('')
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [savedToBook, setSavedToBook] = useState(false)
+  const recordedAnalysisIds = useRef(new Set<string>())
 
   const comparison = result?.moveComparison ?? null
   const ea = result?.engineAnalysis ?? null
-  /** 只在這次結果確實帶了使用者著法時顯示比較 */
   const hasGuessResult = comparison !== null && comparison.userMove.length > 0
   const isCorrect = hasGuessResult && comparison.userMove === comparison.engineBestMove
   const canSave =
@@ -49,10 +56,54 @@ export function GuessModePanel({
     comparison.mistakeLevel !== 'unknown' &&
     comparison.mistakeLevel !== 'acceptable_or_tiny_inaccuracy'
 
+  useEffect(() => {
+    if (!result || !submittedGuess || !hasGuessResult) return
+    if (recordedAnalysisIds.current.has(result.analysisId)) return
+    recordedAnalysisIds.current.add(result.analysisId)
+    onRecordGuess({
+      id: crypto.randomUUID(),
+      fen: comparison.positionFen,
+      guessMoveUci: comparison.userMove,
+      reason: submittedGuess.reason,
+      bestMoveUci: comparison.engineBestMove,
+      isCorrect,
+      scoreDifference: comparison.scoreDifference,
+      mistakeLevel: comparison.mistakeLevel,
+      createdAt: submittedGuess.submittedAt
+    })
+  }, [
+    comparison,
+    hasGuessResult,
+    isCorrect,
+    onRecordGuess,
+    result,
+    submittedGuess
+  ])
+
+  const submit = (): void => {
+    const move = draftMove.trim().toLowerCase()
+    if (!move) {
+      setSubmitError('請先輸入猜測著法；若只想分析局面，可直接按上方分析按鈕。')
+      return
+    }
+    const check = validateMoveInput(board, move)
+    if (!check.ok) {
+      setSubmitError(`猜測著法不合法：${check.message}`)
+      return
+    }
+    setSubmitError(null)
+    setSavedToBook(false)
+    onSubmitGuess({
+      move,
+      reason: draftReason.trim() || undefined,
+      submittedAt: Date.now()
+    })
+  }
+
   const addToMistakeBook = (): void => {
     if (!comparison || !ea || savedToBook) return
     const now = new Date().toISOString()
-    addMistakeEntry({
+    onAddMistake({
       id: crypto.randomUUID(),
       createdAt: now,
       updatedAt: now,
@@ -68,7 +119,7 @@ export function GuessModePanel({
       uncertaintyReasons: comparison.uncertaintyReasons,
       explanation: explanation?.text ?? '',
       engineAnalysis: ea,
-      userNote: reason.trim() || undefined,
+      userNote: submittedGuess?.reason,
       tags: [],
       understood: false
     })
@@ -77,30 +128,48 @@ export function GuessModePanel({
 
   return (
     <div className="guess-panel">
-      <h3>猜著模式</h3>
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">YOUR JUDGEMENT</span>
+          <h3>猜著模式</h3>
+        </div>
+        <span className="panel-number">01</span>
+      </div>
       <p className="muted small">
-        先輸入你認為的最佳著法（可附理由），再按上方「分析局面」——看答案前先想，
-        學習效果最好。留空則只做引擎分析。
+        先填著法與理由，按「提交猜著」鎖定答案，再執行引擎分析。
       </p>
       <div className="row gap">
         <input
           className="text-input mono"
-          value={userMove}
-          placeholder="你的著法，如 h2e2（可留空）"
-          onChange={(e) => {
-            onUserMoveChange(e.target.value)
-            setSavedToBook(false)
+          value={submittedGuess?.move ?? draftMove}
+          placeholder="你的著法，如 h2e2"
+          disabled={submittedGuess !== null}
+          onChange={(event) => {
+            onDraftMoveChange(event.target.value)
+            setSubmitError(null)
           }}
         />
+        {submittedGuess === null ? (
+          <button className="btn" onClick={submit}>
+            提交猜著
+          </button>
+        ) : (
+          <button className="btn ghost" onClick={onUnlockGuess} disabled={result !== null}>
+            修改猜著
+          </button>
+        )}
       </div>
       <div className="field" style={{ marginTop: 8 }}>
         <input
           className="text-input"
-          value={reason}
-          placeholder="為什麼想走這步？（選填，加入錯題本時會保存）"
-          onChange={(e) => setReason(e.target.value)}
+          value={submittedGuess?.reason ?? draftReason}
+          placeholder="為什麼想走這步？（選填）"
+          disabled={submittedGuess !== null}
+          onChange={(event) => onDraftReasonChange(event.target.value)}
         />
       </div>
+      {submitError && <div className="error-text">⚠ {submitError}</div>}
+      {submittedGuess && !result && <div className="success-text">✓ 猜著已鎖定，可以開始分析。</div>}
 
       {hasGuessResult && (
         <div className={`guess-result ${isCorrect ? 'correct' : 'wrong'}`}>
@@ -127,15 +196,10 @@ export function GuessModePanel({
           {canSave && (
             <div className="row gap" style={{ marginTop: 8 }}>
               <button className="btn small" onClick={addToMistakeBook} disabled={savedToBook}>
-                {savedToBook ? '✓ 已加入錯題本' : '➕ 加入錯題本'}
+                {savedToBook ? '✓ 已加入錯題本' : '加入錯題本'}
               </button>
             </div>
           )}
-        </div>
-      )}
-      {!hasGuessResult && result && userMove.trim() && (
-        <div className="muted small" style={{ marginTop: 8 }}>
-          本次結果未包含猜測比較——著法是在分析開始後才輸入的，請再按一次「分析局面」。
         </div>
       )}
     </div>

@@ -4,8 +4,8 @@
  * 貼上/輸入 FEN 字串，驗證後回呼 BoardState 給上層渲染棋盤。
  */
 
-import { useState } from 'react'
-import { parseFen } from '@shared/logic/fen'
+import { useEffect, useState } from 'react'
+import { validateFenInput } from '@shared/logic/ValidationUtils'
 import { START_FEN, type BoardState } from '@shared/types/BoardState'
 
 interface Props {
@@ -17,8 +17,13 @@ export function FenInput({ initialFen = START_FEN, onValidBoard }: Props): JSX.E
   const [value, setValue] = useState(initialFen)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    setValue(initialFen)
+    setError(null)
+  }, [initialFen])
+
   const apply = (): void => {
-    const result = parseFen(value)
+    const result = validateFenInput(value)
     if (result.valid) {
       setError(null)
       onValidBoard(result.board)
@@ -54,7 +59,7 @@ export function FenInput({ initialFen = START_FEN, onValidBoard }: Props): JSX.E
           onClick={() => {
             setValue(START_FEN)
             setError(null)
-            const result = parseFen(START_FEN)
+            const result = validateFenInput(START_FEN)
             if (result.valid) onValidBoard(result.board)
           }}
         >

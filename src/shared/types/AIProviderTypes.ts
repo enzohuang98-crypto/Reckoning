@@ -48,7 +48,6 @@ export type AIExplanationStreamChunk =
   | {
       type: 'done'
       usage?: TokenUsage
-      estimatedCostUsd?: number | null
     }
 
 /**
