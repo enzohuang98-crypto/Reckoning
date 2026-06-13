@@ -8,7 +8,12 @@
  */
 
 import { parseFen } from '../src/shared/logic/fen'
-import { applyUciMove, legalMoveCheck } from '../src/shared/logic/moves'
+import {
+  applyUciMove,
+  formatUciMove,
+  legalMoveCheck,
+  parseUciMove
+} from '../src/shared/logic/moves'
 import { START_FEN, type BoardState } from '../src/shared/types/BoardState'
 
 let passed = 0
@@ -42,6 +47,24 @@ function legal(fen: string, move: string): { ok: boolean; message?: string } {
 }
 
 const start = START_FEN
+
+section('UCI 座標轉換')
+{
+  const coords = { fromRow: 9, fromCol: 0, toRow: 8, toCol: 0 }
+  check('棋盤座標格式化為 a0a1', formatUciMove(coords) === 'a0a1')
+  const parsed = parseUciMove('a0a1')
+  check(
+    '格式化後可無損解析',
+    parsed?.fromRow === coords.fromRow &&
+      parsed.fromCol === coords.fromCol &&
+      parsed.toRow === coords.toRow &&
+      parsed.toCol === coords.toCol
+  )
+  check(
+    '超出棋盤的座標被拒絕',
+    formatUciMove({ fromRow: 10, fromCol: 0, toRow: 8, toCol: 0 }) === null
+  )
+}
 
 section('FEN 輸入驗證')
 {

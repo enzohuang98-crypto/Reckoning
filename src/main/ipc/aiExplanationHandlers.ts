@@ -39,7 +39,6 @@ import { assertTrustedIpcSender } from '../security/IpcSecurity'
 import {
   MAX_AI_RESPONSE_CHARS,
   normalizeApiKey,
-  normalizeProviderId,
   safeRequestId,
   SecurityValidationError,
   validateGenerateExplanationPayload
@@ -183,25 +182,28 @@ export function registerAiExplanationHandlers(
 
   ipcMain.handle(
     IPC.SECRET_SET,
-    (event, rawProviderId: unknown, rawApiKey: unknown): { ok: boolean } => {
+    (
+      event,
+      rawApiKey: unknown
+    ): { ok: boolean; provider: AIProviderId } => {
       assertTrustedIpcSender(event)
-      const providerId = normalizeProviderId(rawProviderId)
-      const apiKey = normalizeApiKey(rawApiKey)
-      secretStore.setApiKey(providerId, apiKey)
-      return { ok: true }
+      const { provider, apiKey } = normalizeApiKey(rawApiKey)
+      secretStore.setApiKey(provider, apiKey)
+      return { ok: true, provider }
     }
   )
 
-  ipcMain.handle(IPC.SECRET_HAS, (event, rawProviderId: unknown): boolean => {
+  ipcMain.handle(IPC.SECRET_STATUS, (event) => {
     assertTrustedIpcSender(event)
-    return secretStore.hasApiKey(normalizeProviderId(rawProviderId))
+    const provider = secretStore.getActiveProvider()
+    return { configured: provider !== null, provider }
   })
 
   ipcMain.handle(
     IPC.SECRET_DELETE,
-    (event, rawProviderId: unknown): { ok: boolean } => {
+    (event): { ok: boolean } => {
       assertTrustedIpcSender(event)
-      secretStore.deleteApiKey(normalizeProviderId(rawProviderId))
+      secretStore.deleteActiveApiKey()
       return { ok: true }
     }
   )

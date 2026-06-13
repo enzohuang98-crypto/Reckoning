@@ -8,13 +8,15 @@
 
 import { useEffect, useState } from 'react'
 import {
-  ALL_PROVIDER_IDS,
   PROVIDER_DEFAULT_MODELS,
-  PROVIDER_LABEL,
-  type AIProviderId
+  PROVIDER_LABEL
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
-import type { EngineStatus } from '@shared/types/ipc'
+import type {
+  EngineStatus,
+  EngineTestResult,
+  SecretStatus
+} from '@shared/types/ipc'
 import type { LicenseStatus } from '@shared/types/License'
 import { saveSettings } from '../storage/localSettings'
 import type { AppDataSnapshot } from '@shared/types/AppData'
@@ -24,8 +26,6 @@ const PATH_SOURCE_LABEL: Record<NonNullable<EngineStatus['pathSource']>, string>
   env: '環境變數 PIKAFISH_PATH',
   resource: '打包資源'
 }
-
-const PROVIDERS = ALL_PROVIDER_IDS
 
 interface Props {
   settings: AppSettings
@@ -38,15 +38,10 @@ export function SettingsPage({
   onSettingsChange,
   onDataImported
 }: Props): JSX.Element {
-  const [keyInputs, setKeyInputs] = useState<Record<AIProviderId, string>>({
-    anthropic: '',
-    openai: '',
-    gemini: ''
-  })
-  const [hasKey, setHasKey] = useState<Record<AIProviderId, boolean>>({
-    anthropic: false,
-    openai: false,
-    gemini: false
+  const [apiKey, setApiKey] = useState('')
+  const [secretStatus, setSecretStatus] = useState<SecretStatus>({
+    configured: false,
+    provider: null
   })
   const [encAvailable, setEncAvailable] = useState<boolean | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
@@ -55,6 +50,8 @@ export function SettingsPage({
   // 引擎路徑（存於 main 的 StorageService，非 localStorage）
   const [enginePathInput, setEnginePathInput] = useState('')
   const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null)
+  const [engineTest, setEngineTest] = useState<EngineTestResult | null>(null)
+  const [engineTesting, setEngineTesting] = useState(false)
   const [engineMsg, setEngineMsg] = useState<string | null>(null)
   /** 是否已存有使用者自訂路徑（即使該路徑暫時無法解析，也允許清除） */
   const [hasUserPath, setHasUserPath] = useState(false)
@@ -111,10 +108,7 @@ export function SettingsPage({
   }
 
   const refreshKeyStatus = async (): Promise<void> => {
-    const entries = await Promise.all(
-      PROVIDERS.map(async (p) => [p, await window.api.secret.has(p)] as const)
-    )
-    setHasKey(Object.fromEntries(entries) as Record<AIProviderId, boolean>)
+    setSecretStatus(await window.api.secret.status())
   }
 
   // 買斷授權狀態（SDS Q5）
@@ -141,28 +135,50 @@ export function SettingsPage({
     else setOperationError(null)
   }
 
-  const saveKey = async (provider: AIProviderId): Promise<void> => {
-    const key = keyInputs[provider].trim()
+  const saveKey = async (): Promise<void> => {
+    const key = apiKey.trim()
     if (!key) return
     try {
-      await window.api.secret.set(provider, key)
-      setKeyInputs({ ...keyInputs, [provider]: '' })
-      setSavedMsg(`${PROVIDER_LABEL[provider]} 金鑰已安全儲存。`)
+      const result = await window.api.secret.set(key)
+      const defaultModel =
+        PROVIDER_DEFAULT_MODELS[result.provider].find((model) => model.isDefault) ??
+        PROVIDER_DEFAULT_MODELS[result.provider][0]
+      update({ aiProvider: result.provider, aiModel: defaultModel.id })
+      setApiKey('')
+      setSecretStatus({ configured: true, provider: result.provider })
+      setSavedMsg(`${PROVIDER_LABEL[result.provider]} 金鑰已安全儲存並設為使用中。`)
       setOperationError(null)
-      void refreshKeyStatus()
     } catch {
-      setOperationError('無法安全儲存 API Key，系統不會以明文保存。')
+      setOperationError(
+        '無法辨識或安全儲存 API Key。支援 Claude（sk-ant-）、Gemini（AIza）與 OpenAI（sk-）。'
+      )
     }
   }
 
-  const deleteKey = async (provider: AIProviderId): Promise<void> => {
+  const deleteKey = async (): Promise<void> => {
     try {
-      await window.api.secret.delete(provider)
-      setSavedMsg(`${PROVIDER_LABEL[provider]} 金鑰已刪除。`)
+      await window.api.secret.delete()
+      setSecretStatus({ configured: false, provider: null })
+      setSavedMsg('API Key 已刪除。')
       setOperationError(null)
-      void refreshKeyStatus()
     } catch {
       setOperationError('API Key 刪除失敗，請稍後重試。')
+    }
+  }
+
+  const testEngine = async (): Promise<void> => {
+    setEngineTesting(true)
+    setEngineTest(null)
+    try {
+      const result = await window.api.engine.test()
+      setEngineTest(result)
+      if (result.ok) {
+        await refreshEngine()
+      }
+    } catch {
+      setEngineTest({ ok: false, message: '引擎測試失敗，請確認路徑與執行權限。' })
+    } finally {
+      setEngineTesting(false)
     }
   }
 
@@ -205,44 +221,45 @@ export function SettingsPage({
 
       <div className="settings-grid">
       <section className="card">
-        <h3>AI Provider 金鑰</h3>
+        <h3>AI API Key</h3>
         {encAvailable === false && (
           <div className="error-text">
             ⚠ 此系統不支援安全加密儲存，將拒絕保存金鑰以保護安全。
           </div>
         )}
         <p className="muted">
-          金鑰以作業系統加密 (safeStorage) 儲存於本機，永不寫入一般設定或上傳。
+          同一欄位支援 Claude、Gemini 與 OpenAI；系統會依金鑰前綴自動辨識並切換
+          Provider。金鑰以作業系統加密 (safeStorage) 儲存於本機。
         </p>
-        {PROVIDERS.map((provider) => (
-          <div key={provider} className="key-row">
-            <div className="key-head">
-              <b>{PROVIDER_LABEL[provider]}</b>
-              <span className={`badge ${hasKey[provider] ? 'on' : 'off'}`}>
-                {hasKey[provider] ? '已設定' : '未設定'}
-              </span>
-            </div>
-            <div className="row gap">
-              <input
-                className="text-input"
-                type="password"
-                placeholder={`輸入 ${PROVIDER_LABEL[provider]} API Key`}
-                value={keyInputs[provider]}
-                onChange={(e) =>
-                  setKeyInputs({ ...keyInputs, [provider]: e.target.value })
-                }
-              />
-              <button className="btn" onClick={() => saveKey(provider)}>
-                儲存
-              </button>
-              {hasKey[provider] && (
-                <button className="btn danger" onClick={() => deleteKey(provider)}>
-                  刪除
-                </button>
-              )}
-            </div>
+        <div className="key-row">
+          <div className="key-head">
+            <b>
+              {secretStatus.provider
+                ? `目前：${PROVIDER_LABEL[secretStatus.provider]}`
+                : '尚未設定'}
+            </b>
+            <span className={`badge ${secretStatus.configured ? 'on' : 'off'}`}>
+              {secretStatus.configured ? '已設定' : '未設定'}
+            </span>
           </div>
-        ))}
+          <div className="row gap">
+            <input
+              className="text-input"
+              type="password"
+              placeholder="貼上 Claude、Gemini 或 OpenAI API Key"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+            />
+            <button className="btn" onClick={() => void saveKey()}>
+              儲存
+            </button>
+            {secretStatus.configured && (
+              <button className="btn danger" onClick={() => void deleteKey()}>
+                刪除
+              </button>
+            )}
+          </div>
+        </div>
         {savedMsg && <div className="success-text">{savedMsg}</div>}
       </section>
 
@@ -265,24 +282,9 @@ export function SettingsPage({
         <h3>模型與解說</h3>
         <div className="field">
           <label className="field-label">使用中的 Provider</label>
-          <select
-            className="select"
-            value={settings.aiProvider}
-            onChange={(e) => {
-              const aiProvider = e.target.value as AIProviderId
-              // 切換 Provider 時改用該家預設模型（不得用 "default" 字串）
-              const defaultModel =
-                PROVIDER_DEFAULT_MODELS[aiProvider].find((m) => m.isDefault) ??
-                PROVIDER_DEFAULT_MODELS[aiProvider][0]
-              update({ aiProvider, aiModel: defaultModel.id })
-            }}
-          >
-            {PROVIDERS.map((p) => (
-              <option key={p} value={p}>
-                {PROVIDER_LABEL[p]}
-              </option>
-            ))}
-          </select>
+          <div className="engine-status ok">
+            {PROVIDER_LABEL[settings.aiProvider]}（由 API Key 自動選擇）
+          </div>
         </div>
         <div className="field">
           <label className="field-label">模型</label>
@@ -373,6 +375,9 @@ export function SettingsPage({
           <button className="btn ghost" onClick={() => void refreshEngine()}>
             重新偵測
           </button>
+          <button className="btn ghost" onClick={() => void testEngine()} disabled={engineTesting}>
+            {engineTesting ? '測試中…' : '實際搜尋測試'}
+          </button>
           {hasUserPath && (
             <button className="btn danger" onClick={() => saveEnginePath(null)}>
               清除自訂路徑
@@ -383,6 +388,21 @@ export function SettingsPage({
           <div className={engineMsg.startsWith('✓') ? 'success-text' : 'error-text'}>
             {engineMsg}
           </div>
+        )}
+        {engineTest && (
+          <div className={engineTest.ok ? 'success-text' : 'error-text'}>
+            {engineTest.ok
+              ? `✓ 搜尋成功：${engineTest.engineName ?? 'Pikafish'}${
+                  engineTest.protocol ? `（${engineTest.protocol.toUpperCase()}）` : ''
+                }`
+              : `⚠ ${engineTest.message ?? '引擎測試失敗。'}`}
+          </div>
+        )}
+        {engineTest?.diagnostics && engineTest.diagnostics.length > 0 && (
+          <details className="raw-engine-analysis">
+            <summary>查看測試原始輸出</summary>
+            <pre>{engineTest.diagnostics.join('\n')}</pre>
+          </details>
         )}
       </section>
 

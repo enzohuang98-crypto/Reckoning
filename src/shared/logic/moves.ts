@@ -61,6 +61,30 @@ export function parseUciMove(move: string): MoveCoords | null {
   return coords
 }
 
+/** 將 grid 座標格式化為 UCI 著法；座標超出棋盤時回傳 null。 */
+export function formatUciMove(coords: MoveCoords): string | null {
+  const values = [coords.fromRow, coords.fromCol, coords.toRow, coords.toCol]
+  if (
+    values.some((value) => !Number.isInteger(value)) ||
+    coords.fromRow < 0 ||
+    coords.fromRow >= BOARD_ROWS ||
+    coords.toRow < 0 ||
+    coords.toRow >= BOARD_ROWS ||
+    coords.fromCol < 0 ||
+    coords.fromCol >= BOARD_COLS ||
+    coords.toCol < 0 ||
+    coords.toCol >= BOARD_COLS
+  ) {
+    return null
+  }
+  const colToFile = (col: number): string =>
+    String.fromCharCode('a'.charCodeAt(0) + col)
+  const rowToRank = (row: number): string => String(BOARD_ROWS - 1 - row)
+  return `${colToFile(coords.fromCol)}${rowToRank(coords.fromRow)}${colToFile(
+    coords.toCol
+  )}${rowToRank(coords.toRow)}`
+}
+
 /** 基本著法檢查結果 */
 export type MoveCheckResult = { ok: true } | { ok: false; message: string }
 

@@ -8,9 +8,8 @@
 
 import { useState } from 'react'
 import {
-  ALL_PROVIDER_IDS,
+  PROVIDER_DEFAULT_MODELS,
   PROVIDER_LABEL,
-  type AIProviderId
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type { EngineTestResult } from '@shared/types/ipc'
@@ -27,7 +26,6 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const [enginePath, setEnginePath] = useState('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<EngineTestResult | null>(null)
-  const [provider, setProvider] = useState<AIProviderId>(settings.aiProvider)
   const [apiKey, setApiKey] = useState('')
   const [finishing, setFinishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -61,9 +59,16 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
       const trimmed = enginePath.trim()
       if (trimmed) await window.api.engine.setPath(trimmed)
       const key = apiKey.trim()
-      if (key) await window.api.secret.set(provider, key)
-      if (provider !== settings.aiProvider) {
-        const next = { ...settings, aiProvider: provider }
+      const keyResult = key ? await window.api.secret.set(key) : null
+      if (keyResult) {
+        const defaultModel =
+          PROVIDER_DEFAULT_MODELS[keyResult.provider].find((model) => model.isDefault) ??
+          PROVIDER_DEFAULT_MODELS[keyResult.provider][0]
+        const next = {
+          ...settings,
+          aiProvider: keyResult.provider,
+          aiModel: defaultModel.id
+        }
         const saved = saveSettings(next)
         if (!saved.ok) {
           setError(saved.message ?? '設定儲存失敗。')
@@ -141,6 +146,12 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
                 <span className="error-text">⚠ {testResult.message ?? '測試失敗'}</span>
               ))}
           </div>
+          {testResult?.diagnostics && testResult.diagnostics.length > 0 && (
+            <details className="raw-engine-analysis">
+              <summary>查看測試原始輸出</summary>
+              <pre>{testResult.diagnostics.join('\n')}</pre>
+            </details>
+          )}
         </section>
 
         <section className="card">
@@ -152,30 +163,17 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
             </div>
           </div>
           <div className="field">
-            <label className="field-label">Provider</label>
-            <select
-              className="select"
-              value={provider}
-              onChange={(e) => setProvider(e.target.value as AIProviderId)}
-            >
-              {ALL_PROVIDER_IDS.map((p) => (
-                <option key={p} value={p}>
-                  {PROVIDER_LABEL[p]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
             <label className="field-label">API Key</label>
             <input
               className="text-input"
               type="password"
-              placeholder={provider === 'anthropic' ? 'sk-ant-…' : '輸入 API Key'}
+              placeholder="貼上 Claude、Gemini 或 OpenAI API Key"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
             <p className="muted small">
-              金鑰以作業系統加密 (safeStorage) 儲存於本機，永不寫入一般設定或上傳。
+              系統會自動辨識 {PROVIDER_LABEL.anthropic}、{PROVIDER_LABEL.gemini} 或{' '}
+              {PROVIDER_LABEL.openai}。金鑰以作業系統加密 (safeStorage) 儲存於本機。
             </p>
           </div>
         </section>

@@ -18,7 +18,6 @@ import {
   type GenerateExplanationStartPayload,
   type RendererApi
 } from '@shared/types/ipc'
-import type { AIProviderId } from '@shared/types/AIProviderTypes'
 
 /** 包裝 main→renderer 事件為「訂閱 + 取消訂閱」形式 */
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -62,11 +61,9 @@ const api: RendererApi = {
     importBackup: () => ipcRenderer.invoke(IPC.DATA_IMPORT)
   },
   secret: {
-    set: (providerId: AIProviderId, apiKey: string) =>
-      ipcRenderer.invoke(IPC.SECRET_SET, providerId, apiKey),
-    has: (providerId: AIProviderId) => ipcRenderer.invoke(IPC.SECRET_HAS, providerId),
-    delete: (providerId: AIProviderId) =>
-      ipcRenderer.invoke(IPC.SECRET_DELETE, providerId),
+    set: (apiKey: string) => ipcRenderer.invoke(IPC.SECRET_SET, apiKey),
+    status: () => ipcRenderer.invoke(IPC.SECRET_STATUS),
+    delete: () => ipcRenderer.invoke(IPC.SECRET_DELETE),
     isAvailable: () => ipcRenderer.invoke(IPC.SECRET_IS_AVAILABLE)
   },
   license: {

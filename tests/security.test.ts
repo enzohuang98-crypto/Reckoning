@@ -133,6 +133,22 @@ check(
   rejects(() => normalizeApiKey('sk-valid-value\nInjected: yes'), SecurityValidationError)
 )
 check(
+  '單一 API Key 欄位自動辨識 Claude',
+  normalizeApiKey('sk-ant-test-value').provider === 'anthropic'
+)
+check(
+  '單一 API Key 欄位自動辨識 Gemini',
+  normalizeApiKey('AIza-test-value').provider === 'gemini'
+)
+check(
+  '單一 API Key 欄位自動辨識 OpenAI',
+  normalizeApiKey('sk-test-value').provider === 'openai'
+)
+check(
+  '未知 API Key 格式被拒絕',
+  rejects(() => normalizeApiKey('unknown-key'), SecurityValidationError)
+)
+check(
   '相對引擎路徑被拒絕',
   rejects(() => normalizeEnginePath('engine.exe', 'win32'), SecurityValidationError)
 )

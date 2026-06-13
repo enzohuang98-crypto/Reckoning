@@ -79,6 +79,11 @@ export type UserMoveEvaluationSource =
   | 'separate_engine_call'
   | 'unavailable'
 
+export interface EngineRawAnalysis {
+  root: string[]
+  userMove?: string[]
+}
+
 /**
  * 引擎分析結果（§2.6.3）。
  * 所有 evaluation 欄位皆為「原局面行棋方視角」（§2.15.8、附錄 A.3）。
@@ -104,6 +109,8 @@ export interface EngineAnalysis {
   /** 不完整或降級原因，必須呈現給使用者 */
   warnings: string[]
   engineName: 'Pikafish'
+  /** 原始協定輸出只供使用者檢視與除錯，不參與評分或 AI prompt。 */
+  rawAnalysis?: EngineRawAnalysis
 }
 
 /** 引擎分析參數（§2.16.3 analysisConfig；預設值見 Settings DEFAULT_APP_SETTINGS） */

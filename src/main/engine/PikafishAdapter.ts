@@ -20,7 +20,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { lstatSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   MATE_SCORE,
   type AnalysisConfig,
@@ -36,6 +36,7 @@ import type {
 } from '@shared/types/ipc'
 import { parseFen } from '@shared/logic/fen'
 import { legalMoveCheck } from '@shared/logic/moves'
+import { START_FEN } from '@shared/types/BoardState'
 import { MultiPvAccumulator, parseBestMove } from './EngineOutputParser'
 import { normalizeEnginePath } from '../security/InputValidation'
 
@@ -43,7 +44,8 @@ import { normalizeEnginePath } from '../security/InputValidation'
 export class EngineAnalysisError extends Error {
   constructor(
     public readonly code: EngineAnalysisErrorCode,
-    message: string
+    message: string,
+    public readonly diagnostics: string[] = []
   ) {
     super(message)
     this.name = 'EngineAnalysisError'
@@ -72,6 +74,15 @@ const CANCEL_GRACE_MS = 500
 const SEARCH_TIMEOUT_MARGIN_MS = 15000
 /** 防止異常或惡意引擎持續輸出未換行資料造成記憶體耗盡 */
 const MAX_ENGINE_OUTPUT_BUFFER_CHARS = 1024 * 1024
+const MAX_RAW_ANALYSIS_LINES = 300
+const MAX_RAW_ANALYSIS_LINE_CHARS = 2000
+
+function sanitizeEngineLine(line: string): string {
+  return line
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, MAX_RAW_ANALYSIS_LINE_CHARS)
+}
 
 function isSafeEngineFile(path: string): boolean {
   try {
@@ -191,6 +202,8 @@ interface SearchResult {
   /** bestmove 著法；(none)/nobestmove 為 null（無合法著法） */
   bestMoveUci: string | null
   engineId: string | null
+  protocol: EngineProtocol
+  rawLines: string[]
   timedOut: boolean
 }
 
@@ -281,7 +294,8 @@ export class PikafishAdapter {
     return new Promise<ReadySession>((resolve, reject) => {
       let child: ChildProcessWithoutNullStreams
       try {
-        child = spawn(enginePath, [], { windowsHide: true })
+        // Pikafish 預設從目前工作目錄載入 pikafish.nnue。
+        child = spawn(enginePath, [], { cwd: dirname(enginePath), windowsHide: true })
       } catch (err) {
         reject(
           new EngineAnalysisError('engine_start_failed', `無法啟動引擎：${String(err)}`)
@@ -470,6 +484,13 @@ export class PikafishAdapter {
 
     const session = await this.spawnAndHandshake(options.enginePath, options.multiPv)
     const accumulator = new MultiPvAccumulator(options.scoreSource)
+    const rawLines: string[] = []
+
+    const recordRawLine = (line: string): void => {
+      if (rawLines.length >= MAX_RAW_ANALYSIS_LINES) return
+      const sanitized = sanitizeEngineLine(line)
+      if (sanitized) rawLines.push(sanitized)
+    }
 
     // 回報目前子行程控制，供 IPC 取消 handle 使用（§2.16.5）
     options.onControls?.({
@@ -508,7 +529,8 @@ export class PikafishAdapter {
           reject(
             new EngineAnalysisError(
               'engine_parse_error',
-              '引擎未回傳任何候選線（可能引擎異常或輸出無法解析）'
+              '引擎未回傳任何候選線（可能引擎異常或輸出無法解析）',
+              rawLines
             )
           )
           return
@@ -518,6 +540,8 @@ export class PikafishAdapter {
           topScore,
           bestMoveUci,
           engineId: session.engineId,
+          protocol: session.protocol,
+          rawLines,
           timedOut
         })
       }
@@ -533,6 +557,7 @@ export class PikafishAdapter {
 
       session.setExitHandler(finish)
       session.setLineHandler((line) => {
+        recordRawLine(line)
         accumulator.ingestLine(line)
         // bestmove xxx / bestmove (none)（UCI）、nobestmove（UCCI）都代表搜尋結束
         if (line.startsWith('bestmove') || line.startsWith('nobestmove')) {
@@ -568,16 +593,32 @@ export class PikafishAdapter {
       return { ok: false, message: '找不到引擎執行檔。請指定引擎路徑後再測試。' }
     }
     try {
-      const session = await this.spawnAndHandshake(enginePath, null)
-      const result: EngineTestResult = {
-        ok: true,
-        protocol: session.protocol,
-        engineName: session.engineId ?? ENGINE_NAME
+      const search = await this.searchPosition({
+        enginePath,
+        fen: START_FEN,
+        movetimeMs: 250,
+        multiPv: 1,
+        scoreSource: 'candidate_move'
+      })
+      if (!search.bestMoveUci || search.candidateMoves.length === 0) {
+        return {
+          ok: false,
+          message: '引擎已連線，但短搜尋沒有回傳可用著法。',
+          diagnostics: search.rawLines
+        }
       }
-      session.dispose()
-      return result
+      return {
+        ok: true,
+        protocol: search.protocol,
+        engineName: search.engineId ?? ENGINE_NAME,
+        diagnostics: search.rawLines
+      }
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+        diagnostics: err instanceof EngineAnalysisError ? err.diagnostics : undefined
+      }
     }
   }
 
@@ -672,6 +713,7 @@ export class PikafishAdapter {
     // ---- 第二階段：userMove 評估（§2.15.2） ----
     let scoreAfterUserMove: EngineScore | null = null
     let userMoveEvaluationSource: UserMoveEvaluationSource = 'unavailable'
+    let userMoveRawLines: string[] | undefined
     const warnings: string[] = []
     if (root.timedOut) {
       warnings.push('分析時間過長，僅保留逾時前取得的資料，結果可能不完整。')
@@ -695,6 +737,7 @@ export class PikafishAdapter {
             signal,
             onControls: registerControls('user_move_analysis')
           })
+          userMoveRawLines = second.rawLines
           // 取對手視角最佳分數後反轉；無任何分數但搜尋正常結束
           //（bestmove (none)/nobestmove）= 對方已無著法 = userMove 將死對方
           const opponentScore =
@@ -745,7 +788,11 @@ export class PikafishAdapter {
       analysisTimeMs: Date.now() - startedAt,
       incomplete: warnings.length > 0,
       warnings,
-      engineName: ENGINE_NAME
+      engineName: ENGINE_NAME,
+      rawAnalysis: {
+        root: root.rawLines,
+        userMove: userMoveRawLines
+      }
     }
   }
 }

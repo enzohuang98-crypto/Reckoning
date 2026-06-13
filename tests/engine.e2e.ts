@@ -248,6 +248,7 @@ async function main(): Promise<void> {
     check('test() 成功', t.ok, t)
     check('偵測為 uci', t.protocol === 'uci')
     check('回報 id name', t.engineName === 'FakeUCI 1.0', t.engineName)
+    check('test() 執行短搜尋並保留原始輸出', Boolean(t.diagnostics?.some((line) => line.startsWith('info '))))
     check('偵測回呼觸發', detectedProtocol === 'uci')
 
     // 無 userMove
@@ -259,6 +260,10 @@ async function main(): Promise<void> {
       root.scoreAfterBestMove?.displayText === '+0.42' && root.scoreAfterBestMove.source === 'root_analysis'
     )
     check('EngineAnalysis.engineName 固定為 Pikafish', root.engineName === 'Pikafish')
+    check(
+      'EngineAnalysis 保留 Pikafish 原始分析',
+      Boolean(root.rawAnalysis?.root.some((line) => line.startsWith('info ')))
+    )
     check('無 userMove → source unavailable', root.userMoveEvaluationSource === 'unavailable')
 
     // userMove 在候選中（§2.15.3：不取負號）
@@ -273,6 +278,7 @@ async function main(): Promise<void> {
     // userMove 不在候選中（§2.15.3：二次分析取負號）
     const sep = await adapter.analyzePosition({ positionFen: START_FEN, userMove: 'g3g4' }, config)
     check('二次分析：source=separate_engine_call', sep.userMoveEvaluationSource === 'separate_engine_call')
+    check('二次分析保留原始輸出', Boolean(sep.rawAnalysis?.userMove?.length))
     check(
       '對手視角 +0.42 反轉為 -0.42',
       sep.scoreAfterUserMove?.type === 'cp' &&

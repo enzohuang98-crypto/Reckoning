@@ -20,6 +20,7 @@ import { readJsonFile, writeJsonFileAtomic } from './SecureJsonFile'
 interface SecretsFile {
   /** providerId → 加密後金鑰 (base64) */
   secrets: Record<string, string>
+  activeProvider?: AIProviderId | null
   version: number
 }
 
@@ -44,8 +45,20 @@ export class SecretStore {
     }
     const data = this.read()
     const encrypted = safeStorage.encryptString(apiKey).toString('base64')
-    data.secrets[providerId] = encrypted
+    data.secrets = { [providerId]: encrypted }
+    data.activeProvider = providerId
+    data.version = 2
     this.write(data)
+  }
+
+  getActiveProvider(): AIProviderId | null {
+    const data = this.read()
+    if (data.activeProvider && this.hasEncryptedKey(data, data.activeProvider)) {
+      return data.activeProvider
+    }
+    return (['anthropic', 'openai', 'gemini'] as AIProviderId[]).find((provider) =>
+      this.hasEncryptedKey(data, provider)
+    ) ?? null
   }
 
   /** 是否已存有某 Provider 的金鑰 */
@@ -73,7 +86,23 @@ export class SecretStore {
   deleteApiKey(providerId: AIProviderId): void {
     const data = this.read()
     delete data.secrets[providerId]
+    if (data.activeProvider === providerId) data.activeProvider = null
     this.write(data)
+  }
+
+  deleteActiveApiKey(): void {
+    const data = this.read()
+    data.secrets = {}
+    data.activeProvider = null
+    data.version = 2
+    this.write(data)
+  }
+
+  private hasEncryptedKey(data: SecretsFile, providerId: AIProviderId): boolean {
+    return (
+      typeof data.secrets[providerId] === 'string' &&
+      data.secrets[providerId].length > 0
+    )
   }
 
   private read(): SecretsFile {
@@ -99,7 +128,14 @@ export class SecretStore {
             value.length <= MAX_SECRET_FILE_BYTES
         )
       )
-      return { secrets, version: 1 }
+      const activeProvider =
+        'activeProvider' in parsed &&
+        (parsed.activeProvider === 'anthropic' ||
+          parsed.activeProvider === 'openai' ||
+          parsed.activeProvider === 'gemini')
+          ? parsed.activeProvider
+          : null
+      return { secrets, activeProvider, version: 2 }
     } catch {
       return { secrets: {}, version: 1 }
     }

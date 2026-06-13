@@ -702,6 +702,38 @@ input[type="range"] {
   background: rgba(0, 0, 0, 0.18);
 }
 
+.raw-engine-analysis {
+  margin-top: 12px;
+  border: 1px solid rgba(244, 241, 230, 0.1);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.raw-engine-analysis summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  color: var(--ivory-soft);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.raw-engine-analysis h5 {
+  margin: 8px 12px 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.raw-engine-analysis pre {
+  max-height: 280px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px 12px 12px;
+  color: #bfd0b4;
+  font: 11px/1.55 Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .result-head {
   margin-bottom: 11px;
   color: var(--ivory-soft);

@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path'
 import { parseFen } from '@shared/logic/fen'
+import { detectApiKeyProvider } from '@shared/logic/ApiKeyProvider'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
 import type { AnalyzePositionStartPayload, GenerateExplanationStartPayload } from '@shared/types/ipc'
 import type { ConversationMessage } from '@shared/types/AppData'
@@ -79,12 +80,21 @@ export function normalizeProviderId(value: unknown): AIProviderId {
   return value as AIProviderId
 }
 
-export function normalizeApiKey(value: unknown): string {
+export function normalizeApiKey(value: unknown): {
+  provider: AIProviderId
+  apiKey: string
+} {
   const apiKey = boundedString(value, 'API key', MAX_API_KEY_LENGTH)
   if (/[\r\n]/.test(apiKey)) {
     throw new SecurityValidationError('API key 格式無效。')
   }
-  return apiKey
+  const detected = detectApiKeyProvider(apiKey)
+  if (!detected) {
+    throw new SecurityValidationError(
+      '無法辨識 API Key。支援 Claude（sk-ant-）、Gemini（AIza）與 OpenAI（sk-）。'
+    )
+  }
+  return { provider: detected.provider, apiKey: detected.normalizedKey }
 }
 
 export function normalizeLicenseKey(value: unknown): string {

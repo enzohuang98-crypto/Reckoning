@@ -106,7 +106,8 @@ function mapAnalysisError(requestId: string, error: unknown): EngineAnalysisErro
     return {
       requestId,
       code: error.code,
-      message: sanitizePublicErrorMessage(error.message, '引擎分析失敗。')
+      message: sanitizePublicErrorMessage(error.message, '引擎分析失敗。'),
+      diagnostics: error.diagnostics
     }
   }
   return {

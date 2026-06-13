@@ -11,6 +11,7 @@ import { XiangqiBoard } from './XiangqiBoard'
 import { PIECE_PALETTE, makePiece } from '../logic/pieces'
 import { serializeFen } from '@shared/logic/fen'
 import { createEmptyGrid } from '@shared/logic/fen'
+import { applyUciMove, formatUciMove } from '@shared/logic/moves'
 import type { BoardState, PieceColor, PieceType } from '@shared/types/BoardState'
 import type { SavedPosition } from '@shared/types/AppData'
 
@@ -38,10 +39,12 @@ export function BoardEditor({
 }: Props): JSX.Element {
   const [tool, setTool] = useState<Tool>({ kind: 'move' })
   const [selected, setSelected] = useState<[number, number] | null>(null)
+  const [moveError, setMoveError] = useState<string | null>(null)
   const [positionName, setPositionName] = useState('')
 
   const selectTool = (next: Tool): void => {
     setSelected(null)
+    setMoveError(null)
     setTool((current) => {
       if (
         current.kind === next.kind &&
@@ -58,6 +61,7 @@ export function BoardEditor({
 
   useEffect(() => {
     setSelected(null)
+    setMoveError(null)
   }, [board.fen])
 
   useEffect(() => {
@@ -65,6 +69,7 @@ export function BoardEditor({
       if (event.key === 'Escape') {
         setSelected(null)
         setTool({ kind: 'move' })
+        setMoveError(null)
       }
     }
     window.addEventListener('keydown', cancelSelection)
@@ -82,17 +87,39 @@ export function BoardEditor({
     const grid = board.grid.map((r) => r.slice())
     if (tool.kind === 'move') {
       if (!selected) {
-        if (grid[row][col]) setSelected([row, col])
+        const piece = grid[row][col]
+        if (!piece) {
+          setMoveError('請先選擇要移動的棋子。')
+        } else if (piece.color !== board.sideToMove) {
+          setMoveError(`現在輪到${board.sideToMove === 'red' ? '紅' : '黑'}方走。`)
+        } else {
+          setSelected([row, col])
+          setMoveError(null)
+        }
         return
       }
       const [fromRow, fromCol] = selected
       if (fromRow === row && fromCol === col) {
         setSelected(null)
+        setMoveError(null)
         return
       }
-      grid[row][col] = grid[fromRow][fromCol]
-      grid[fromRow][fromCol] = null
+      const target = grid[row][col]
+      if (target?.color === board.sideToMove) {
+        setSelected([row, col])
+        setMoveError(null)
+        return
+      }
+      const move = formatUciMove({ fromRow, fromCol, toRow: row, toCol: col })
+      const result = move ? applyUciMove(board, move) : null
+      if (!result || !result.valid) {
+        setMoveError(result?.message ?? '棋盤座標無效。')
+        return
+      }
       setSelected(null)
+      setMoveError(null)
+      onChange(result.board)
+      return
     } else if (tool.kind === 'erase') {
       grid[row][col] = null
     } else {
@@ -108,6 +135,7 @@ export function BoardEditor({
   const clearBoard = (): void => {
     setSelected(null)
     setTool({ kind: 'move' })
+    setMoveError(null)
     reserialize({ ...board, grid: createEmptyGrid(), halfmoveClock: 0, fullmoveNumber: 1 })
   }
 
@@ -181,6 +209,7 @@ export function BoardEditor({
                 ? '點擊棋盤上的棋子即可清除；再次點擊「清除棋子」可退出。'
                 : '點擊棋盤可放置或替換棋子；再次點擊目前棋子可退出。'}
           </p>
+          {moveError && <div className="error-text small">{moveError}</div>}
         </div>
         {renderPalette('red')}
         {renderPalette('black')}

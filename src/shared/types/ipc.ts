@@ -52,7 +52,7 @@ export const IPC = {
   DATA_IMPORT: 'data:import',
   // 安全儲存 (SecretStore)
   SECRET_SET: 'secret:set',
-  SECRET_HAS: 'secret:has',
+  SECRET_STATUS: 'secret:status',
   SECRET_DELETE: 'secret:delete',
   SECRET_IS_AVAILABLE: 'secret:isAvailable',
   // 買斷授權 (License Key，SDS Q5)
@@ -94,6 +94,7 @@ export interface EngineAnalysisErrorPayload {
   requestId: string
   code: EngineAnalysisErrorCode
   message: string
+  diagnostics?: string[]
 }
 
 /* ---------- 引擎狀態 / 測試 ---------- */
@@ -115,6 +116,12 @@ export interface EngineTestResult {
   protocol?: EngineProtocol
   engineName?: string
   message?: string
+  diagnostics?: string[]
+}
+
+export interface SecretStatus {
+  configured: boolean
+  provider: AIProviderId | null
 }
 
 /* ---------- AI 解釋 streaming（§2.17.3） ---------- */
@@ -230,9 +237,9 @@ export interface RendererApi {
     importBackup(): Promise<DataImportResult>
   }
   secret: {
-    set(providerId: AIProviderId, apiKey: string): Promise<{ ok: boolean }>
-    has(providerId: AIProviderId): Promise<boolean>
-    delete(providerId: AIProviderId): Promise<{ ok: boolean }>
+    set(apiKey: string): Promise<{ ok: boolean; provider: AIProviderId }>
+    status(): Promise<SecretStatus>
+    delete(): Promise<{ ok: boolean }>
     isAvailable(): Promise<boolean>
   }
   license: {

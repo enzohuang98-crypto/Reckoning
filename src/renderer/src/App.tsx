@@ -18,10 +18,11 @@ import {
   isSetupCompleted,
   loadLegacyMistakeBook,
   loadSettings,
-  markSetupCompleted
+  markSetupCompleted,
+  saveSettings
 } from './storage/localSettings'
 import type { AppSettings } from '@shared/types/Settings'
-import { ALL_PROVIDER_IDS } from '@shared/types/AIProviderTypes'
+import { PROVIDER_DEFAULT_MODELS } from '@shared/types/AIProviderTypes'
 import {
   EMPTY_APP_DATA,
   type AIConversation,
@@ -68,6 +69,33 @@ export function App(): JSX.Element {
   useEffect(() => {
     appDataRef.current = appData
   }, [appData])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api.secret
+      .status()
+      .then((status) => {
+        if (cancelled || !status.provider || status.provider === settings.aiProvider) return
+        const defaultModel =
+          PROVIDER_DEFAULT_MODELS[status.provider].find((model) => model.isDefault) ??
+          PROVIDER_DEFAULT_MODELS[status.provider][0]
+        const next = {
+          ...settings,
+          aiProvider: status.provider,
+          aiModel: defaultModel.id
+        }
+        const saved = saveSettings(next)
+        if (!saved.ok) {
+          setDataError(saved.message ?? '無法同步 API Key 的 Provider 設定。')
+          return
+        }
+        setSettings(next)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const saveCurrentData = useCallback((snapshot: AppDataSnapshot): void => {
     saveQueue.current = saveQueue.current
@@ -164,12 +192,12 @@ export function App(): JSX.Element {
     let cancelled = false
     void (async () => {
       try {
-        const [path, ...hasKeys] = await Promise.all([
+        const [path, secretStatus] = await Promise.all([
           window.api.engine.getPath(),
-          ...ALL_PROVIDER_IDS.map((provider) => window.api.secret.has(provider))
+          window.api.secret.status()
         ])
         if (cancelled) return
-        if (path || hasKeys.some(Boolean)) {
+        if (path || secretStatus.configured) {
           const marked = markSetupCompleted()
           if (!marked.ok) setDataError(marked.message ?? '無法保存初始設定狀態。')
           setSetupState('done')

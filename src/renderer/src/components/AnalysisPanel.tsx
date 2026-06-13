@@ -64,6 +64,7 @@ export function AnalysisPanel({
   const [busy, setBusy] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [engineDiagnostics, setEngineDiagnostics] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
@@ -88,12 +89,28 @@ export function AnalysisPanel({
   }, [conversation])
 
   useEffect(() => {
-    window.api.engine
-      .status()
-      .then(setStatus)
-      .catch(() =>
+    void (async () => {
+      try {
+        const current = await window.api.engine.status()
+        if (!current.available) {
+          setStatus(current)
+          return
+        }
+        const test = await window.api.engine.test()
+        setEngineDiagnostics(test.diagnostics ?? [])
+        setStatus(
+          test.ok
+            ? { ...current, protocol: test.protocol ?? current.protocol }
+            : {
+                ...current,
+                available: false,
+                message: test.message ?? '引擎無法完成搜尋測試。'
+              }
+        )
+      } catch {
         setStatus({ available: false, engineName: '引擎', message: '無法查詢引擎狀態' })
-      )
+      }
+    })()
   }, [])
 
   useEffect(() => {
@@ -114,6 +131,7 @@ export function AnalysisPanel({
     setFollowUp('')
     setCollectionReason('')
     setError(null)
+    setEngineDiagnostics([])
     setNotice(null)
     onResult(null)
     onExplanation(null)
@@ -134,7 +152,10 @@ export function AnalysisPanel({
       setBusy(false)
       setCancelling(false)
       if (payload.code === 'cancelled') setNotice('已取消分析。')
-      else setError(payload.message)
+      else {
+        setError(payload.message)
+        setEngineDiagnostics(payload.diagnostics ?? [])
+      }
     })
     const offAiChunk = window.api.ai.onExplanationChunk((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
@@ -206,6 +227,7 @@ export function AnalysisPanel({
 
   const startAnalysis = (): void => {
     setError(null)
+    setEngineDiagnostics([])
     setNotice(null)
     setExplanation(null)
     onExplanation(null)
@@ -389,6 +411,12 @@ export function AnalysisPanel({
         </div>
       )}
       {error && <div className="error-text">⚠ {error}</div>}
+      {engineDiagnostics.length > 0 && (
+        <details className="raw-engine-analysis">
+          <summary>查看 Pikafish 診斷輸出</summary>
+          <pre>{engineDiagnostics.join('\n')}</pre>
+        </details>
+      )}
       {notice && <div className="muted" style={{ marginTop: 8 }}>{notice}</div>}
 
       {ea && (
@@ -415,6 +443,19 @@ export function AnalysisPanel({
               </li>
             ))}
           </ol>
+          {ea.rawAnalysis && (
+            <details className="raw-engine-analysis">
+              <summary>查看 Pikafish 原始分析</summary>
+              <h5>主局面分析</h5>
+              <pre>{ea.rawAnalysis.root.join('\n') || '（沒有原始輸出）'}</pre>
+              {ea.rawAnalysis.userMove && (
+                <>
+                  <h5>猜測著法二次分析</h5>
+                  <pre>{ea.rawAnalysis.userMove.join('\n') || '（沒有原始輸出）'}</pre>
+                </>
+              )}
+            </details>
+          )}
         </div>
       )}
 
