@@ -240,19 +240,33 @@ export function BoardEditor({
               : '點棋子後再點目的地即可走棋'}
           </span>
         </div>
-        <div className="row gap">
-          {guessSelectionActive && (
-            <button className="btn ghost" onClick={onGuessSelectionCancel}>
-              取消選擇
+        <div className="board-toolbar-actions">
+          <div className="board-history-toolbar" aria-label="棋盤歷史">
+            <span className="toolbar-history-label">棋盤歷史</span>
+            <button className="btn ghost small" onClick={onUndo} disabled={!canUndo}>
+              悔棋
             </button>
-          )}
-          <button
-            className="btn ghost board-tools-toggle"
-            onClick={() => setToolsOpen((current) => !current)}
-            aria-expanded={toolsOpen}
-          >
-            {toolsOpen ? '收起擺棋工具' : '擺棋工具'}
-          </button>
+            <button className="btn ghost small" onClick={onRedo} disabled={!canRedo}>
+              下一步
+            </button>
+            <button className="btn ghost small" onClick={onRestoreOriginal}>
+              還原原始棋盤
+            </button>
+          </div>
+          <div className="row gap">
+            {guessSelectionActive && (
+              <button className="btn ghost" onClick={onGuessSelectionCancel}>
+                取消選擇
+              </button>
+            )}
+            <button
+              className="btn ghost board-tools-toggle"
+              onClick={() => setToolsOpen((current) => !current)}
+              aria-expanded={toolsOpen}
+            >
+              {toolsOpen ? '收起擺棋工具' : '擺棋工具'}
+            </button>
+          </div>
         </div>
       </div>
       <div className="board-wrap">
@@ -261,26 +275,12 @@ export function BoardEditor({
       {toolsOpen && <div className="editor-controls">
         <div className="panel-heading compact">
           <div>
-            <span className="eyebrow">BOARD TOOLS</span>
+            <span className="eyebrow">進階棋盤設定</span>
             <h3>擺棋工具</h3>
           </div>
           <span className={`tool-indicator ${tool.kind}`}>
             {tool.kind === 'move' ? '移動' : tool.kind === 'erase' ? '清除' : '放置'}
           </span>
-        </div>
-        <div className="palette-group board-history-controls">
-          <span className="palette-label">棋盤歷史</span>
-          <div className="row gap">
-            <button className="btn ghost" onClick={onUndo} disabled={!canUndo}>
-              悔棋
-            </button>
-            <button className="btn ghost" onClick={onRedo} disabled={!canRedo}>
-              下一步
-            </button>
-            <button className="btn ghost" onClick={onRestoreOriginal}>
-              還原原始棋盤
-            </button>
-          </div>
         </div>
         <div className="palette-group">
           <div className="row gap">

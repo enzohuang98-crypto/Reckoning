@@ -326,6 +326,7 @@ summary:focus-visible {
   grid-column: 1 / -1;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 14px;
 }
 
@@ -338,6 +339,38 @@ summary:focus-visible {
 
 .board-tools-toggle {
   min-width: 112px;
+}
+
+.board-toolbar-actions,
+.board-history-toolbar {
+  display: flex;
+  align-items: center;
+}
+
+.board-toolbar-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.board-history-toolbar {
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel-soft);
+}
+
+.toolbar-history-label {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+}
+
+.board-history-toolbar .btn {
+  min-height: 30px;
 }
 
 .board-wrap {
@@ -1483,6 +1516,11 @@ summary {
     align-items: flex-start;
   }
 
+  .board-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .settings-grid,
   .mistake-list,
   .right-col,
@@ -1697,6 +1735,15 @@ summary:focus-visible {
 
 .board-editor-toolbar {
   min-height: 38px;
+}
+
+.board-history-toolbar {
+  border-color: #dce7df;
+  background: #f5f8f6;
+}
+
+.toolbar-history-label {
+  color: #6f8076;
 }
 
 .board-wrap {
@@ -2067,5 +2114,10 @@ summary {
   .board-editor,
   .board-editor.tools-open {
     grid-template-columns: 1fr;
+  }
+
+  .board-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }

@@ -528,8 +528,8 @@ export function AnalysisPanel({
     <div className="analysis-panel">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">ENGINE & AI COACH</span>
-          <h3>引擎分析</h3>
+          <span className="eyebrow">即時分析與解說</span>
+          <h3>引擎與 AI 教練</h3>
         </div>
         <span className="panel-number">02</span>
       </div>

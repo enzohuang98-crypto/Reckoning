@@ -144,8 +144,8 @@ export function GuessModePanel({
     <div className="guess-panel">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">YOUR JUDGEMENT</span>
-          <h3>猜著模式</h3>
+          <span className="eyebrow">先想再看答案</span>
+          <h3>你的著法</h3>
         </div>
         <span className="panel-number">01</span>
       </div>
