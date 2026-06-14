@@ -7,6 +7,10 @@ import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
 import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
 import { validateMoveInput } from '@shared/logic/ValidationUtils'
+import {
+  formatChineseMove,
+  formatChineseScore
+} from '@shared/logic/ChineseNotation'
 
 interface Props {
   board: BoardState
@@ -26,7 +30,7 @@ interface Props {
 const CONFIDENCE_LABEL = { low: '低', medium: '中', high: '高' } as const
 
 function scoreText(score: EngineScore | null): string {
-  return score === null ? '—' : score.displayText
+  return formatChineseScore(score)
 }
 
 export function GuessModePanel({
@@ -83,7 +87,7 @@ export function GuessModePanel({
   const submit = (): void => {
     const move = draftMove.trim().toLowerCase()
     if (!move) {
-      setSubmitError('請先輸入猜測著法；若只想分析局面，可直接按上方分析按鈕。')
+      setSubmitError('請先輸入猜測著法；若只想看局面分析，系統會自動顯示。')
       return
     }
     const check = validateMoveInput(board, move)
@@ -136,7 +140,7 @@ export function GuessModePanel({
         <span className="panel-number">01</span>
       </div>
       <p className="muted small">
-        先填著法與理由，按「提交猜著」鎖定答案，再執行引擎分析。
+        先填著法與理由，按「提交猜著」鎖定答案；系統會自動重新分析。
       </p>
       <div className="row gap">
         <input
@@ -169,13 +173,15 @@ export function GuessModePanel({
         />
       </div>
       {submitError && <div className="error-text">⚠ {submitError}</div>}
-      {submittedGuess && !result && <div className="success-text">✓ 猜著已鎖定，可以開始分析。</div>}
+      {submittedGuess && !result && <div className="success-text">✓ 猜著已鎖定，正在自動分析。</div>}
 
       {hasGuessResult && (
         <div className={`guess-result ${isCorrect ? 'correct' : 'wrong'}`}>
           {isCorrect
             ? '✓ 猜中引擎最佳著法！'
-            : `引擎最佳：${comparison.engineBestMove}　你的著法：${comparison.userMove}`}
+            : `引擎最佳：${ea?.displayBestMove ?? '無法辨識著法'}　你的著法：${
+                formatChineseMove(board, comparison.userMove) ?? '無法辨識著法'
+              }`}
           <div>
             等級：<b>{MISTAKE_LEVEL_LABELS[comparison.mistakeLevel]}</b>
             　評估差距：

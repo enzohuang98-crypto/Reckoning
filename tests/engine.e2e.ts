@@ -254,6 +254,7 @@ async function main(): Promise<void> {
     // 無 userMove
     const root = await adapter.analyzePosition({ positionFen: START_FEN }, config)
     check('最佳著法 h2e2', root.bestMove === 'h2e2')
+    check('最佳著法轉為中文炮二平五', root.displayBestMove === '炮二平五')
     check('MultiPV 兩條候選', root.candidateMoves.length === 2, root.candidateMoves.length)
     check(
       'scoreAfterBestMove +0.42（root_analysis）',
@@ -263,6 +264,11 @@ async function main(): Promise<void> {
     check(
       'EngineAnalysis 保留 Pikafish 原始分析',
       Boolean(root.rawAnalysis?.root.some((line) => line.startsWith('info ')))
+    )
+    check(
+      '候選著法與主要變例皆提供中文顯示',
+      root.candidateMoves[0].displayMove === '炮二平五' &&
+        root.candidateMoves[0].displayPrincipalVariation?.[1] === '馬8進7'
     )
     check('無 userMove → source unavailable', root.userMoveEvaluationSource === 'unavailable')
 
@@ -278,6 +284,7 @@ async function main(): Promise<void> {
     // userMove 不在候選中（§2.15.3：二次分析取負號）
     const sep = await adapter.analyzePosition({ positionFen: START_FEN, userMove: 'g3g4' }, config)
     check('二次分析：source=separate_engine_call', sep.userMoveEvaluationSource === 'separate_engine_call')
+    check('使用者著法轉為中文兵三進一', sep.displayUserMove === '兵三進一')
     check('二次分析保留原始輸出', Boolean(sep.rawAnalysis?.userMove?.length))
     check(
       '對手視角 +0.42 反轉為 -0.42',

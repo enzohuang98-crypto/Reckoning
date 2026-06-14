@@ -15,6 +15,16 @@ import {
   parseUciMove
 } from '../src/shared/logic/moves'
 import { START_FEN, type BoardState } from '../src/shared/types/BoardState'
+import {
+  commitBoard,
+  createBoardTimeline,
+  redoBoard,
+  undoBoard
+} from '../src/shared/logic/BoardTimeline'
+import {
+  formatChineseMove,
+  formatChineseVariation
+} from '../src/shared/logic/ChineseNotation'
 
 let passed = 0
 let failed = 0
@@ -64,6 +74,39 @@ section('UCI 座標轉換')
     '超出棋盤的座標被拒絕',
     formatUciMove({ fromRow: 10, fromCol: 0, toRow: 8, toCol: 0 }) === null
   )
+}
+
+section('中文象棋著法')
+{
+  const startBoard = board(START_FEN)
+  check('炮二平五', formatChineseMove(startBoard, 'h2e2') === '炮二平五')
+  check('馬八進七', formatChineseMove(startBoard, 'b0c2') === '馬八進七')
+  check('車九進一', formatChineseMove(startBoard, 'a0a1') === '車九進一')
+  check('黑方馬8進7', formatChineseMove(startBoard, 'h9g7') === '馬8進7')
+  check(
+    '主要變例逐手轉為中文',
+    formatChineseVariation(startBoard, ['h2e2', 'h9g7']).join('、') ===
+      '炮二平五、馬8進7'
+  )
+}
+
+section('棋盤悔棋與下一步')
+{
+  const startBoard = board(START_FEN)
+  const moved = applyUciMove(startBoard, 'h2e2')
+  if (!moved.valid) {
+    check('建立測試著法', false, moved.message)
+  } else {
+    const committed = commitBoard(createBoardTimeline(startBoard), moved.board)
+    check('走棋後可悔棋', undoBoard(committed).entries[0].fen === START_FEN)
+    const undone = undoBoard(committed)
+    check('悔棋後可下一步', redoBoard(undone).entries[1].fen === moved.board.fen)
+    const branchedMove = applyUciMove(startBoard, 'b0c2')
+    if (branchedMove.valid) {
+      const branched = commitBoard(undone, branchedMove.board)
+      check('悔棋後走新著會清除舊的下一步', branched.entries.length === 2)
+    }
+  }
 }
 
 section('FEN 輸入驗證')

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
 import type {
@@ -14,6 +14,7 @@ import type {
 } from '@shared/types/AppData'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
 import { validateMoveInput } from '@shared/logic/ValidationUtils'
+import { formatChineseScore } from '@shared/logic/ChineseNotation'
 
 interface Props {
   board: BoardState
@@ -32,7 +33,20 @@ interface PendingAiRequest {
 }
 
 function scoreText(score: EngineScore | null): string {
-  return score === null ? '—' : score.displayText
+  return formatChineseScore(score)
+}
+
+function hasBothKings(board: BoardState): boolean {
+  let red = false
+  let black = false
+  for (const row of board.grid) {
+    for (const piece of row) {
+      if (piece?.type !== 'king') continue
+      if (piece.color === 'red') red = true
+      else black = true
+    }
+  }
+  return red && black
 }
 
 function estimateTokens(text: string): number {
@@ -97,7 +111,7 @@ export function AnalysisPanel({
           return
         }
         const test = await window.api.engine.test()
-        setEngineDiagnostics(test.diagnostics ?? [])
+        setEngineDiagnostics(test.ok ? [] : test.diagnostics ?? [])
         setStatus(
           test.ok
             ? { ...current, protocol: test.protocol ?? current.protocol }
@@ -225,7 +239,14 @@ export function AnalysisPanel({
     resultRef.current = result
   }, [result])
 
-  const startAnalysis = (): void => {
+  const startAnalysis = useCallback((automatic = false): void => {
+    if (!hasBothKings(board)) {
+      if (!automatic) setError('棋盤需要同時有紅帥與黑將才能分析。')
+      return
+    }
+    if (activeRequestId.current) {
+      window.api.engine.cancelAnalysis(activeRequestId.current)
+    }
     setError(null)
     setEngineDiagnostics([])
     setNotice(null)
@@ -256,7 +277,21 @@ export function AnalysisPanel({
         multiPv: settings.multiPv
       }
     })
-  }
+  }, [
+    board,
+    onExplanation,
+    onResult,
+    settings.multiPv,
+    settings.rootAnalysisMovetimeMs,
+    settings.userMoveEvalMovetimeMs,
+    submittedGuess?.move
+  ])
+
+  useEffect(() => {
+    if (!status?.available || !hasBothKings(board)) return
+    const timer = window.setTimeout(() => startAnalysis(true), 450)
+    return () => window.clearTimeout(timer)
+  }, [board.fen, startAnalysis, status?.available, submittedGuess?.move])
 
   const cancelAnalysis = (): void => {
     if (!activeRequestId.current) return
@@ -381,10 +416,14 @@ export function AnalysisPanel({
       )}
 
       <div className="row gap">
-        <button className="btn" onClick={startAnalysis} disabled={busy || aiBusy || !status?.available}>
+        <button
+          className="btn"
+          onClick={() => startAnalysis(false)}
+          disabled={busy || aiBusy || !status?.available || !hasBothKings(board)}
+        >
           {busy
             ? '分析中…'
-            : `分析局面（${(settings.rootAnalysisMovetimeMs / 1000).toFixed(1)} 秒）`}
+            : '立即重新分析'}
         </button>
         {busy && (
           <button className="btn ghost" onClick={cancelAnalysis} disabled={cancelling}>
@@ -404,6 +443,13 @@ export function AnalysisPanel({
           </button>
         )}
       </div>
+      <div className="muted small auto-analysis-note">
+        {busy
+          ? '局面已變更，正在自動更新分析結果。'
+          : `自動分析已開啟，每次局面變更後約 ${(
+              settings.rootAnalysisMovetimeMs / 1000
+            ).toFixed(1)} 秒更新。`}
+      </div>
 
       {tokenEstimate && (
         <div className="muted small">
@@ -422,7 +468,8 @@ export function AnalysisPanel({
       {ea && (
         <div className="analysis-result">
           <div className="result-head">
-            最佳著法 <b>{ea.bestMove}</b>　評估 {scoreText(ea.scoreAfterBestMove)}
+            最佳著法 <b>{ea.displayBestMove ?? '無法辨識著法'}</b>　評估{' '}
+            {scoreText(ea.scoreAfterBestMove)}
             　深度 {ea.depth ?? '—'}
             {ea.analysisTimeMs !== undefined && (
               <span className="muted small">　({(ea.analysisTimeMs / 1000).toFixed(1)}s)</span>
@@ -438,8 +485,12 @@ export function AnalysisPanel({
           <ol className="line-list">
             {ea.candidateMoves.map((candidate, index) => (
               <li key={`${index}-${candidate.move}`}>
-                <span className="mono">{candidate.move}</span>　{scoreText(candidate.score)}
-                　<span className="pv">{candidate.principalVariation.slice(0, 6).join(' ')}</span>
+                <b>{candidate.displayMove ?? '無法辨識著法'}</b>　{scoreText(candidate.score)}
+                　<span className="pv">
+                  {(candidate.displayPrincipalVariation ?? [])
+                    .slice(0, 6)
+                    .join('、')}
+                </span>
               </li>
             ))}
           </ol>

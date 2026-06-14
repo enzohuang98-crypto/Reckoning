@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
+import { parseFen } from '@shared/logic/fen'
+import { formatChineseMove } from '@shared/logic/ChineseNotation'
 
 interface Props {
   entries: MistakeBookEntry[]
@@ -9,6 +11,14 @@ interface Props {
 }
 
 const CONFIDENCE_LABEL = { low: '低', medium: '中', high: '高' } as const
+
+function localizedMove(fen: string, move: string, stored?: string): string {
+  if (stored) return stored
+  const parsed = parseFen(fen)
+  return parsed.valid
+    ? formatChineseMove(parsed.board, move) ?? '無法辨識著法'
+    : '無法辨識著法'
+}
 
 export function MistakeBookPage({
   entries,
@@ -87,7 +97,14 @@ export function MistakeBookPage({
                 <code className="mono">{entry.positionFen}</code>
               </div>
               <div className="mistake-body">
-                你走 <b>{entry.userMove}</b> → 最佳 <b>{entry.engineBestMove}</b>
+                你走 <b>{localizedMove(entry.positionFen, entry.userMove)}</b> → 最佳{' '}
+                <b>
+                  {localizedMove(
+                    entry.positionFen,
+                    entry.engineBestMove,
+                    entry.engineAnalysis.displayBestMove
+                  )}
+                </b>
                 　評估差距{' '}
                 {entry.scoreDifference === null
                   ? '無法計算'
@@ -135,7 +152,13 @@ export function MistakeBookPage({
                 <div className="muted small">
                   深度 {entry.engineAnalysis.depth ?? '—'}；候選著法：{' '}
                   {entry.engineAnalysis.candidateMoves
-                    .map((candidate) => candidate.move)
+                    .map((candidate) =>
+                      localizedMove(
+                        entry.positionFen,
+                        candidate.move,
+                        candidate.displayMove
+                      )
+                    )
                     .join('、') || '無'}
                 </div>
               </details>

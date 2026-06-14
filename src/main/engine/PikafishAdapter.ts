@@ -36,6 +36,10 @@ import type {
 } from '@shared/types/ipc'
 import { parseFen } from '@shared/logic/fen'
 import { legalMoveCheck } from '@shared/logic/moves'
+import {
+  formatChineseMove,
+  formatChineseVariation
+} from '@shared/logic/ChineseNotation'
 import { START_FEN } from '@shared/types/BoardState'
 import { MultiPvAccumulator, parseBestMove } from './EngineOutputParser'
 import { normalizeEnginePath } from '../security/InputValidation'
@@ -694,7 +698,15 @@ export class PikafishAdapter {
     })
     if (signal?.aborted) throw abortError()
 
-    const candidateMoves = root.candidateMoves
+    const candidateMoves = root.candidateMoves.map((candidate) => ({
+      ...candidate,
+      displayMove:
+        formatChineseMove(parsed.board, candidate.move) ?? '無法辨識著法',
+      displayPrincipalVariation: formatChineseVariation(
+        parsed.board,
+        candidate.principalVariation
+      )
+    }))
     const bestCandidate = candidateMoves[0]
     const bestMove = root.bestMoveUci ?? bestCandidate?.move ?? null
     if (!bestMove || !bestCandidate) {
@@ -776,7 +788,12 @@ export class PikafishAdapter {
       positionFen: canonicalFen,
       sideToMove,
       userMove,
+      displayUserMove: userMove
+        ? formatChineseMove(parsed.board, userMove) ?? '無法辨識著法'
+        : undefined,
       bestMove,
+      displayBestMove:
+        formatChineseMove(parsed.board, bestMove) ?? '無法辨識著法',
       scoreAfterUserMove,
       scoreAfterBestMove,
       evaluationAfterUserMove: scoreAfterUserMove?.comparableValue ?? null,
@@ -785,6 +802,9 @@ export class PikafishAdapter {
       depth: bestCandidate.depth,
       candidateMoves,
       principalVariation: bestCandidate.principalVariation,
+      displayPrincipalVariation:
+        bestCandidate.displayPrincipalVariation ??
+        formatChineseVariation(parsed.board, bestCandidate.principalVariation),
       analysisTimeMs: Date.now() - startedAt,
       incomplete: warnings.length > 0,
       warnings,

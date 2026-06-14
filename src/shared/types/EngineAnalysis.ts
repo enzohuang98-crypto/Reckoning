@@ -71,6 +71,7 @@ export interface EngineCandidateMove {
   evaluation: number | null
   depth: number | null
   principalVariation: string[]
+  displayPrincipalVariation?: string[]
 }
 
 /** scoreAfterUserMove 的來源標示（§2.6.3） */
@@ -92,7 +93,9 @@ export interface EngineAnalysis {
   positionFen: string
   sideToMove: PieceColor
   userMove?: string
+  displayUserMove?: string
   bestMove: string
+  displayBestMove?: string
   scoreAfterUserMove: EngineScore | null
   scoreAfterBestMove: EngineScore | null
   /** 由 scoreAfterUserMove.comparableValue 派生（§2.14.5） */
@@ -103,6 +106,7 @@ export interface EngineAnalysis {
   depth: number | null
   candidateMoves: EngineCandidateMove[]
   principalVariation: string[]
+  displayPrincipalVariation?: string[]
   analysisTimeMs?: number
   /** 分析逾時或只取得部分資料時為 true */
   incomplete: boolean

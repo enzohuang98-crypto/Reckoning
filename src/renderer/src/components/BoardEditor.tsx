@@ -18,6 +18,11 @@ import type { SavedPosition } from '@shared/types/AppData'
 interface Props {
   board: BoardState
   onChange: (board: BoardState) => void
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
+  onRestoreOriginal: () => void
   savedPositions: SavedPosition[]
   onSavePosition: (name: string) => void
   onLoadSavedPosition: (position: SavedPosition) => void
@@ -32,6 +37,11 @@ type Tool =
 export function BoardEditor({
   board,
   onChange,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  onRestoreOriginal,
   savedPositions,
   onSavePosition,
   onLoadSavedPosition,
@@ -181,6 +191,20 @@ export function BoardEditor({
           <span className={`tool-indicator ${tool.kind}`}>
             {tool.kind === 'move' ? '移動' : tool.kind === 'erase' ? '清除' : '放置'}
           </span>
+        </div>
+        <div className="palette-group board-history-controls">
+          <span className="palette-label">棋盤歷史</span>
+          <div className="row gap">
+            <button className="btn ghost" onClick={onUndo} disabled={!canUndo}>
+              悔棋
+            </button>
+            <button className="btn ghost" onClick={onRedo} disabled={!canRedo}>
+              下一步
+            </button>
+            <button className="btn ghost" onClick={onRestoreOriginal}>
+              還原原始棋盤
+            </button>
+          </div>
         </div>
         <div className="palette-group">
           <div className="row gap">

@@ -10,6 +10,12 @@ import { LicensePage } from './pages/LicensePage'
 import { MistakeBookPage } from './pages/MistakeBookPage'
 import { MisunderstoodPage } from './pages/MisunderstoodPage'
 import { parseFen } from '@shared/logic/fen'
+import {
+  commitBoard,
+  createBoardTimeline,
+  redoBoard,
+  undoBoard
+} from '@shared/logic/BoardTimeline'
 import { START_FEN, type BoardState } from '@shared/types/BoardState'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
@@ -47,7 +53,10 @@ function initialBoard(): BoardState {
 
 export function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>('analyze')
-  const [board, setBoard] = useState<BoardState>(initialBoard)
+  const [boardTimeline, setBoardTimeline] = useState(() =>
+    createBoardTimeline(initialBoard())
+  )
+  const board = boardTimeline.entries[boardTimeline.index]
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings())
   const [draftMove, setDraftMove] = useState('')
   const [draftReason, setDraftReason] = useState('')
@@ -65,6 +74,22 @@ export function App(): JSX.Element {
   const saveQueue = useRef(Promise.resolve())
   const pendingConversationId = useRef<string | null>(null)
   const appDataRef = useRef(appData)
+
+  const changeBoard = useCallback((next: BoardState): void => {
+    setBoardTimeline((current) => commitBoard(current, next))
+  }, [])
+
+  const undoCurrentBoard = useCallback((): void => {
+    setBoardTimeline((current) => undoBoard(current))
+  }, [])
+
+  const redoCurrentBoard = useCallback((): void => {
+    setBoardTimeline((current) => redoBoard(current))
+  }, [])
+
+  const restoreOriginalBoard = useCallback((): void => {
+    changeBoard(initialBoard())
+  }, [changeBoard])
 
   useEffect(() => {
     appDataRef.current = appData
@@ -229,9 +254,9 @@ export function App(): JSX.Element {
       setDataError(`無法開啟局面：${parsed.message}`)
       return
     }
-    setBoard(parsed.board)
+    changeBoard(parsed.board)
     setTab('analyze')
-  }, [])
+  }, [changeBoard])
 
   const openMisunderstoodPosition = useCallback(
     (entry: MisunderstoodPosition): void => {
@@ -372,7 +397,7 @@ export function App(): JSX.Element {
               <div>
                 <span className="eyebrow">AI ANALYSIS WORKSPACE</span>
                 <h1>局面分析工作台</h1>
-                <p>擺好局面、鎖定你的判斷，再用引擎與 AI 教練逐步複盤。</p>
+                <p>每次走棋後自動更新分析，也可悔棋、前進並隨時還原標準開局。</p>
               </div>
               <div className="heading-status">
                 <span className="status-dot" />
@@ -383,7 +408,12 @@ export function App(): JSX.Element {
               <div className="left-col">
                 <BoardEditor
                   board={board}
-                  onChange={setBoard}
+                  onChange={changeBoard}
+                  canUndo={boardTimeline.index > 0}
+                  canRedo={boardTimeline.index < boardTimeline.entries.length - 1}
+                  onUndo={undoCurrentBoard}
+                  onRedo={redoCurrentBoard}
+                  onRestoreOriginal={restoreOriginalBoard}
                   savedPositions={appData.savedPositions}
                   onSavePosition={savePosition}
                   onLoadSavedPosition={(position) => openPosition(position.fen)}
@@ -394,8 +424,8 @@ export function App(): JSX.Element {
                     }))
                   }
                 />
-                <FenInput initialFen={board.fen} onValidBoard={setBoard} />
-                <GameImportPanel board={board} onBoardChange={setBoard} />
+                <FenInput initialFen={board.fen} onValidBoard={changeBoard} />
+                <GameImportPanel board={board} onBoardChange={changeBoard} />
               </div>
               <div className="right-col">
                 <GuessModePanel

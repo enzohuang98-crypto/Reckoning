@@ -476,6 +476,15 @@ summary:focus-visible {
   line-height: 1.55;
 }
 
+.board-history-controls .btn {
+  flex: 1 1 auto;
+}
+
+.auto-analysis-note {
+  margin-top: 9px;
+  color: #bcd98a;
+}
+
 .fen-output {
   display: block;
   max-height: 66px;

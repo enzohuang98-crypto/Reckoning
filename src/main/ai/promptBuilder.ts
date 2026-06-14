@@ -75,23 +75,32 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
   lines.push(`局面 FEN：${ea.positionFen}`)
   lines.push(`輪走方：${ea.sideToMove === 'red' ? '紅方' : '黑方'}`)
   lines.push(`引擎：${ea.engineName}　搜尋深度：${ea.depth ?? '（無資料）'}`)
-  lines.push(`引擎最佳著法：${ea.bestMove}　走後評估：${scoreText(ea.scoreAfterBestMove)}（原局面行棋方視角，正值對行棋方有利）`)
+  lines.push(`引擎最佳著法：${ea.displayBestMove ?? ea.bestMove}　走後評估：${scoreText(ea.scoreAfterBestMove)}（原局面行棋方視角，正值對行棋方有利）`)
   if (ea.principalVariation.length > 0) {
-    lines.push(`主要變例：${ea.principalVariation.slice(0, 12).join(' ')}`)
+    lines.push(
+      `主要變例：${(ea.displayPrincipalVariation ?? ea.principalVariation)
+        .slice(0, 12)
+        .join('、')}`
+    )
   }
   lines.push('候選著法（由強到弱）：')
   ea.candidateMoves.forEach((c, i) => {
     lines.push(
-      `  ${i + 1}. ${c.move}　評估 ${scoreText(c.score)}　變例：${c.principalVariation
+      `  ${i + 1}. ${c.displayMove ?? c.move}　評估 ${scoreText(c.score)}　變例：${(
+        c.displayPrincipalVariation ?? c.principalVariation
+      )
         .slice(0, 8)
-        .join(' ')}`
+        .join('、')}`
     )
   })
 
   if (ea.userMove) {
     lines.push('')
     lines.push('【使用者著法比較】')
-    lines.push(`使用者著法：${ea.userMove}　走後評估：${scoreText(ea.scoreAfterUserMove)}`)
+    const userCandidate = ea.candidateMoves.find((candidate) => candidate.move === ea.userMove)
+    lines.push(
+      `使用者著法：${ea.displayUserMove ?? userCandidate?.displayMove ?? '無法辨識著法'}　走後評估：${scoreText(ea.scoreAfterUserMove)}`
+    )
     lines.push(
       `評估差距：${
         mc.scoreDifference === null ? '無法計算' : mc.scoreDifference.toFixed(2)
