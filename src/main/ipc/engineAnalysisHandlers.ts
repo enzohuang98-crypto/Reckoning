@@ -22,6 +22,7 @@ import {
   IPC,
   type AnalyzePositionStartPayload,
   type EngineAnalysisErrorPayload,
+  type EngineAnalysisProgressPayload,
   type EngineStatus,
   type EngineTestResult
 } from '@shared/types/ipc'
@@ -180,6 +181,27 @@ export function registerEngineAnalysisHandlers(
         killEngine: () => undefined
       }
       activeEngineAnalyses.set(requestId, handle)
+      const analysisStartedAt = Date.now()
+      const sendProgress = (
+        progress: Omit<EngineAnalysisProgressPayload, 'requestId'>
+      ): void => {
+        if (
+          controller.signal.aborted ||
+          activeEngineAnalyses.get(requestId) !== handle
+        ) {
+          return
+        }
+        event.reply(IPC.ENGINE_ANALYSIS_PROGRESS, { requestId, ...progress })
+      }
+      sendProgress({
+        phase: 'preparing_engine',
+        elapsedMs: 0,
+        targetMs: null,
+        percent: 2,
+        depth: null,
+        score: null,
+        displayPrincipalVariation: []
+      })
 
       try {
         const engineAnalysis = await adapter.analyzePosition(
@@ -191,6 +213,34 @@ export function registerEngineAnalysisHandlers(
               handle.phase = phase
               handle.sendStop = controls.sendStop
               handle.killEngine = controls.killEngine
+              sendProgress({
+                phase,
+                elapsedMs: 0,
+                targetMs:
+                  phase === 'root_analysis'
+                    ? payload.analysisConfig.rootAnalysisMovetimeMs
+                    : payload.analysisConfig.userMoveEvalMovetimeMs,
+                percent: phase === 'root_analysis' ? 5 : 68,
+                depth: null,
+                score: null,
+                displayPrincipalVariation: []
+              })
+            },
+            onProgress: (progress) => {
+              const ratio = Math.min(
+                1,
+                progress.elapsedMs / Math.max(1, progress.targetMs)
+              )
+              const percent =
+                progress.phase === 'root_analysis'
+                  ? Math.round(
+                      5 + ratio * (payload.userMove ? 60 : 88)
+                    )
+                  : Math.round(68 + ratio * 27)
+              sendProgress({
+                ...progress,
+                percent: Math.min(95, percent)
+              })
             }
           }
         )
@@ -198,6 +248,17 @@ export function registerEngineAnalysisHandlers(
           throw new DOMException('Analysis cancelled', 'AbortError')
         }
         const moveComparison = compareMove(engineAnalysis)
+        sendProgress({
+          phase: 'finalizing',
+          elapsedMs: Date.now() - analysisStartedAt,
+          targetMs: null,
+          percent: 98,
+          depth: engineAnalysis.depth,
+          score: engineAnalysis.scoreAfterBestMove,
+          displayMove: engineAnalysis.displayBestMove,
+          displayPrincipalVariation:
+            engineAnalysis.displayPrincipalVariation ?? []
+        })
 
         // analysisId：兩者都建立後才生成；先 save 再 reply（§2.16.4）
         const analysisId = randomUUID()

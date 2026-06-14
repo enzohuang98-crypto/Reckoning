@@ -21,6 +21,9 @@ interface Props {
   onDraftReasonChange: (reason: string) => void
   onSubmitGuess: (guess: SubmittedGuess) => void
   onUnlockGuess: () => void
+  selectionActive: boolean
+  onBeginMoveSelection: () => void
+  onCancelMoveSelection: () => void
   result: EngineAnalysisResultPayload | null
   explanation: AIExplanationResponse | null
   onAddMistake: (entry: MistakeBookEntry) => void
@@ -42,6 +45,9 @@ export function GuessModePanel({
   onDraftReasonChange,
   onSubmitGuess,
   onUnlockGuess,
+  selectionActive,
+  onBeginMoveSelection,
+  onCancelMoveSelection,
   result,
   explanation,
   onAddMistake,
@@ -59,6 +65,10 @@ export function GuessModePanel({
     hasGuessResult &&
     comparison.mistakeLevel !== 'unknown' &&
     comparison.mistakeLevel !== 'acceptable_or_tiny_inaccuracy'
+  const selectedMove = submittedGuess?.move ?? draftMove
+  const selectedMoveText = selectedMove
+    ? formatChineseMove(board, selectedMove) ?? '無法辨識著法'
+    : ''
 
   useEffect(() => {
     if (!result || !submittedGuess || !hasGuessResult) return
@@ -140,19 +150,33 @@ export function GuessModePanel({
         <span className="panel-number">01</span>
       </div>
       <p className="muted small">
-        先填著法與理由，按「提交猜著」鎖定答案；系統會自動重新分析。
+        點「你的著法」後，直接在棋盤依序點選棋子與目的地，再提交鎖定答案。
       </p>
       <div className="row gap">
         <input
-          className="text-input mono"
-          value={submittedGuess?.move ?? draftMove}
-          placeholder="你的著法，如 h2e2"
+          className={`text-input guess-move-picker ${selectionActive ? 'active' : ''}`}
+          value={selectedMoveText}
+          placeholder="你的著法：點此後到棋盤選擇"
           disabled={submittedGuess !== null}
-          onChange={(event) => {
-            onDraftMoveChange(event.target.value)
+          readOnly
+          aria-label="你的著法"
+          onClick={() => {
+            if (submittedGuess === null) onBeginMoveSelection()
             setSubmitError(null)
           }}
         />
+        {submittedGuess === null && draftMove && (
+          <button
+            className="btn ghost"
+            onClick={() => {
+              onDraftMoveChange('')
+              onCancelMoveSelection()
+              setSubmitError(null)
+            }}
+          >
+            清除
+          </button>
+        )}
         {submittedGuess === null ? (
           <button className="btn" onClick={submit}>
             提交猜著
@@ -163,6 +187,11 @@ export function GuessModePanel({
           </button>
         )}
       </div>
+      {selectionActive && (
+        <div className="guess-selection-note">
+          請到棋盤先點選要走的棋子，再點目的地；選擇過程不會改變棋盤。
+        </div>
+      )}
       <div className="field" style={{ marginTop: 8 }}>
         <input
           className="text-input"

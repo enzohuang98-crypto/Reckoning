@@ -35,13 +35,17 @@ import type {
   EngineTestResult
 } from '@shared/types/ipc'
 import { parseFen } from '@shared/logic/fen'
-import { legalMoveCheck } from '@shared/logic/moves'
+import { applyUciMove, legalMoveCheck } from '@shared/logic/moves'
 import {
   formatChineseMove,
   formatChineseVariation
 } from '@shared/logic/ChineseNotation'
 import { START_FEN } from '@shared/types/BoardState'
-import { MultiPvAccumulator, parseBestMove } from './EngineOutputParser'
+import {
+  MultiPvAccumulator,
+  parseBestMove,
+  parseInfoLine
+} from './EngineOutputParser'
 import { normalizeEnginePath } from '../security/InputValidation'
 
 /** 帶 IPC 錯誤碼的分析錯誤（§2.16.3 code 對應） */
@@ -185,6 +189,25 @@ export interface EngineProcessControls {
   sendStop: () => void
   /** 強制終止子程序 */
   killEngine: () => void
+}
+
+export interface EngineLiveAnalysisProgress {
+  phase: AnalysisPhase
+  elapsedMs: number
+  targetMs: number
+  depth: number | null
+  score: EngineScore | null
+  displayMove?: string
+  displayPrincipalVariation: string[]
+}
+
+interface SearchProgress {
+  elapsedMs: number
+  targetMs: number
+  depth: number | null
+  score: EngineScore | null
+  move?: string
+  principalVariation: string[]
 }
 
 /** 握手完成、可收發指令的引擎工作階段 */
@@ -483,12 +506,15 @@ export class PikafishAdapter {
     scoreSource: 'candidate_move' | 'separate_engine_call'
     signal?: AbortSignal
     onControls?: (controls: { sendStop: () => void; killEngine: () => void }) => void
+    onProgress?: (progress: SearchProgress) => void
   }): Promise<SearchResult> {
     if (options.signal?.aborted) throw abortError()
 
+    const searchStartedAt = Date.now()
     const session = await this.spawnAndHandshake(options.enginePath, options.multiPv)
     const accumulator = new MultiPvAccumulator(options.scoreSource)
     const rawLines: string[] = []
+    let lastProgressAt = 0
 
     const recordRawLine = (line: string): void => {
       if (rawLines.length >= MAX_RAW_ANALYSIS_LINES) return
@@ -563,6 +589,22 @@ export class PikafishAdapter {
       session.setLineHandler((line) => {
         recordRawLine(line)
         accumulator.ingestLine(line)
+        const parsed = parseInfoLine(line, options.scoreSource)
+        const now = Date.now()
+        if (
+          parsed?.multipv === 1 &&
+          (lastProgressAt === 0 || now - lastProgressAt >= 80)
+        ) {
+          lastProgressAt = now
+          options.onProgress?.({
+            elapsedMs: now - searchStartedAt,
+            targetMs: options.movetimeMs,
+            depth: parsed.depth,
+            score: parsed.score,
+            move: parsed.pv[0],
+            principalVariation: parsed.pv
+          })
+        }
         // bestmove xxx / bestmove (none)（UCI）、nobestmove（UCCI）都代表搜尋結束
         if (line.startsWith('bestmove') || line.startsWith('nobestmove')) {
           searchEnded = true
@@ -635,6 +677,8 @@ export class PikafishAdapter {
       signal?: AbortSignal
       /** 每個階段開始時回報目前子行程的控制（供 IPC 取消 handle 使用） */
       onPhase?: (phase: AnalysisPhase, controls: EngineProcessControls) => void
+      /** 搜尋期間持續回報目前深度、評估與主要變例 */
+      onProgress?: (progress: EngineLiveAnalysisProgress) => void
     }
   ): Promise<EngineAnalysis> {
     const enginePath = this.resolveEnginePath()
@@ -686,6 +730,27 @@ export class PikafishAdapter {
       (c: { sendStop: () => void; killEngine: () => void }): void => {
         options?.onPhase?.(phase, { phase, ...c })
       }
+    const forwardProgress =
+      (phase: AnalysisPhase, progressBoard: typeof parsed.board) =>
+      (progress: SearchProgress): void => {
+        options?.onProgress?.({
+          phase,
+          elapsedMs: progress.elapsedMs,
+          targetMs: progress.targetMs,
+          depth: progress.depth,
+          score:
+            phase === 'user_move_analysis' && progress.score
+              ? invertEngineScore(progress.score)
+              : progress.score,
+          displayMove: progress.move
+            ? formatChineseMove(progressBoard, progress.move) ?? '無法辨識著法'
+            : undefined,
+          displayPrincipalVariation: formatChineseVariation(
+            progressBoard,
+            progress.principalVariation
+          )
+        })
+      }
 
     const root = await this.searchPosition({
       enginePath,
@@ -694,7 +759,8 @@ export class PikafishAdapter {
       multiPv: Math.max(1, config.multiPv),
       scoreSource: 'candidate_move',
       signal,
-      onControls: registerControls('root_analysis')
+      onControls: registerControls('root_analysis'),
+      onProgress: forwardProgress('root_analysis', parsed.board)
     })
     if (signal?.aborted) throw abortError()
 
@@ -739,6 +805,8 @@ export class PikafishAdapter {
         userMoveEvaluationSource = matched.score !== null ? 'candidate_move' : 'unavailable'
       } else {
         try {
+          const moved = applyUciMove(parsed.board, userMove)
+          const userMoveBoard = moved.valid ? moved.board : parsed.board
           const second = await this.searchPosition({
             enginePath,
             fen: canonicalFen,
@@ -747,7 +815,8 @@ export class PikafishAdapter {
             multiPv: 1,
             scoreSource: 'separate_engine_call',
             signal,
-            onControls: registerControls('user_move_analysis')
+            onControls: registerControls('user_move_analysis'),
+            onProgress: forwardProgress('user_move_analysis', userMoveBoard)
           })
           userMoveRawLines = second.rawLines
           // 取對手視角最佳分數後反轉；無任何分數但搜尋正常結束

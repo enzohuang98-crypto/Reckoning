@@ -13,7 +13,8 @@
 import type {
   AnalysisConfig,
   EngineAnalysis,
-  EngineProtocol
+  EngineProtocol,
+  EngineScore
 } from './EngineAnalysis'
 import type { MoveComparisonResult } from './MoveComparisonResult'
 import type { AIProviderId, TokenUsage } from './AIProviderTypes'
@@ -30,6 +31,7 @@ import type {
 export const IPC = {
   // 引擎分析（事件式，§2.16.2）
   ENGINE_ANALYZE_POSITION_START: 'engine:analyze-position:start',
+  ENGINE_ANALYSIS_PROGRESS: 'engine:analysis-progress',
   ENGINE_ANALYSIS_RESULT: 'engine:analysis-result',
   ENGINE_ANALYSIS_ERROR: 'engine:analysis-error',
   ENGINE_ANALYSIS_CANCEL: 'engine:analysis-cancel',
@@ -76,6 +78,24 @@ export interface EngineAnalysisResultPayload {
   analysisId: string
   engineAnalysis: EngineAnalysis
   moveComparison: MoveComparisonResult
+}
+
+export type EngineAnalysisProgressPhase =
+  | 'preparing_engine'
+  | 'root_analysis'
+  | 'user_move_analysis'
+  | 'finalizing'
+
+export interface EngineAnalysisProgressPayload {
+  requestId: string
+  phase: EngineAnalysisProgressPhase
+  elapsedMs: number
+  targetMs: number | null
+  percent: number
+  depth: number | null
+  score: EngineScore | null
+  displayMove?: string
+  displayPrincipalVariation: string[]
 }
 
 export type EngineAnalysisErrorCode =
@@ -202,6 +222,10 @@ export interface RendererApi {
     startAnalysis(payload: AnalyzePositionStartPayload): void
     /** 訂閱分析結果；回傳取消訂閱函式 */
     onAnalysisResult(listener: (payload: EngineAnalysisResultPayload) => void): () => void
+    /** 訂閱搜尋中的即時深度、評估與主要變例 */
+    onAnalysisProgress(
+      listener: (payload: EngineAnalysisProgressPayload) => void
+    ): () => void
     /** 訂閱分析錯誤；回傳取消訂閱函式 */
     onAnalysisError(listener: (payload: EngineAnalysisErrorPayload) => void): () => void
     /** 取消進行中的分析 */

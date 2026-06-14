@@ -61,6 +61,7 @@ export function App(): JSX.Element {
   const [draftMove, setDraftMove] = useState('')
   const [draftReason, setDraftReason] = useState('')
   const [submittedGuess, setSubmittedGuess] = useState<SubmittedGuess | null>(null)
+  const [guessSelectionActive, setGuessSelectionActive] = useState(false)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
   const [activeConversation, setActiveConversation] = useState<AIConversation | null>(null)
@@ -203,6 +204,7 @@ export function App(): JSX.Element {
     setDraftMove('')
     setDraftReason('')
     setSubmittedGuess(null)
+    setGuessSelectionActive(false)
     const conversationId = pendingConversationId.current
     pendingConversationId.current = null
     setActiveConversation(
@@ -414,6 +416,12 @@ export function App(): JSX.Element {
                   onUndo={undoCurrentBoard}
                   onRedo={redoCurrentBoard}
                   onRestoreOriginal={restoreOriginalBoard}
+                  guessSelectionActive={guessSelectionActive}
+                  onGuessMoveSelected={(move) => {
+                    setDraftMove(move)
+                    setGuessSelectionActive(false)
+                  }}
+                  onGuessSelectionCancel={() => setGuessSelectionActive(false)}
                   savedPositions={appData.savedPositions}
                   onSavePosition={savePosition}
                   onLoadSavedPosition={(position) => openPosition(position.fen)}
@@ -436,7 +444,13 @@ export function App(): JSX.Element {
                   onDraftMoveChange={setDraftMove}
                   onDraftReasonChange={setDraftReason}
                   onSubmitGuess={setSubmittedGuess}
-                  onUnlockGuess={() => setSubmittedGuess(null)}
+                  onUnlockGuess={() => {
+                    setSubmittedGuess(null)
+                    setGuessSelectionActive(false)
+                  }}
+                  selectionActive={guessSelectionActive}
+                  onBeginMoveSelection={() => setGuessSelectionActive(true)}
+                  onCancelMoveSelection={() => setGuessSelectionActive(false)}
                   result={result}
                   explanation={explanation}
                   onAddMistake={addMistake}

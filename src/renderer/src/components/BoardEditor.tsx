@@ -23,6 +23,9 @@ interface Props {
   onUndo: () => void
   onRedo: () => void
   onRestoreOriginal: () => void
+  guessSelectionActive: boolean
+  onGuessMoveSelected: (move: string) => void
+  onGuessSelectionCancel: () => void
   savedPositions: SavedPosition[]
   onSavePosition: (name: string) => void
   onLoadSavedPosition: (position: SavedPosition) => void
@@ -42,6 +45,9 @@ export function BoardEditor({
   onUndo,
   onRedo,
   onRestoreOriginal,
+  guessSelectionActive,
+  onGuessMoveSelected,
+  onGuessSelectionCancel,
   savedPositions,
   onSavePosition,
   onLoadSavedPosition,
@@ -51,6 +57,7 @@ export function BoardEditor({
   const [selected, setSelected] = useState<[number, number] | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
   const [positionName, setPositionName] = useState('')
+  const [toolsOpen, setToolsOpen] = useState(false)
 
   const selectTool = (next: Tool): void => {
     setSelected(null)
@@ -72,7 +79,7 @@ export function BoardEditor({
   useEffect(() => {
     setSelected(null)
     setMoveError(null)
-  }, [board.fen])
+  }, [board.fen, guessSelectionActive])
 
   useEffect(() => {
     const cancelSelection = (event: KeyboardEvent): void => {
@@ -80,11 +87,12 @@ export function BoardEditor({
         setSelected(null)
         setTool({ kind: 'move' })
         setMoveError(null)
+        if (guessSelectionActive) onGuessSelectionCancel()
       }
     }
     window.addEventListener('keydown', cancelSelection)
     return () => window.removeEventListener('keydown', cancelSelection)
-  }, [])
+  }, [guessSelectionActive, onGuessSelectionCancel])
 
   const reserialize = (next: BoardState): void => {
     onChange({
@@ -95,6 +103,48 @@ export function BoardEditor({
 
   const handleCellClick = (row: number, col: number): void => {
     const grid = board.grid.map((r) => r.slice())
+    if (guessSelectionActive) {
+      if (!selected) {
+        const piece = grid[row][col]
+        if (!piece) {
+          setMoveError('請先點選你想走的棋子。')
+        } else if (piece.color !== board.sideToMove) {
+          setMoveError(`現在輪到${board.sideToMove === 'red' ? '紅' : '黑'}方走。`)
+        } else {
+          setSelected([row, col])
+          setMoveError(null)
+        }
+        return
+      }
+
+      const [fromRow, fromCol] = selected
+      if (fromRow === row && fromCol === col) {
+        setSelected(null)
+        setMoveError(null)
+        return
+      }
+      const target = grid[row][col]
+      if (target?.color === board.sideToMove) {
+        setSelected([row, col])
+        setMoveError(null)
+        return
+      }
+      const move = formatUciMove({ fromRow, fromCol, toRow: row, toCol: col })
+      if (!move) {
+        setMoveError('你的著法不合法：棋盤座標無效。')
+        return
+      }
+      const result = applyUciMove(board, move)
+      if (!result.valid) {
+        setMoveError(`你的著法不合法：${result.message}`)
+        return
+      }
+      setSelected(null)
+      setMoveError(null)
+      onGuessMoveSelected(move)
+      return
+    }
+
     if (tool.kind === 'move') {
       if (!selected) {
         const piece = grid[row][col]
@@ -178,11 +228,37 @@ export function BoardEditor({
   )
 
   return (
-    <div className="board-editor">
+    <div className={`board-editor ${toolsOpen ? 'tools-open' : ''}`}>
+      <div className="board-editor-toolbar">
+        <div>
+          <b>{guessSelectionActive ? '正在選擇你的著法' : '象棋棋盤'}</b>
+          <span className="muted small">
+            {guessSelectionActive
+              ? selected
+                ? '已選起點，請點目的地'
+                : '請先點棋子，再點目的地'
+              : '點棋子後再點目的地即可走棋'}
+          </span>
+        </div>
+        <div className="row gap">
+          {guessSelectionActive && (
+            <button className="btn ghost" onClick={onGuessSelectionCancel}>
+              取消選擇
+            </button>
+          )}
+          <button
+            className="btn ghost board-tools-toggle"
+            onClick={() => setToolsOpen((current) => !current)}
+            aria-expanded={toolsOpen}
+          >
+            {toolsOpen ? '收起擺棋工具' : '擺棋工具'}
+          </button>
+        </div>
+      </div>
       <div className="board-wrap">
         <XiangqiBoard grid={board.grid} selected={selected} onCellClick={handleCellClick} />
       </div>
-      <div className="editor-controls">
+      {toolsOpen && <div className="editor-controls">
         <div className="panel-heading compact">
           <div>
             <span className="eyebrow">BOARD TOOLS</span>
@@ -292,7 +368,7 @@ export function BoardEditor({
           <span className="palette-label">目前 FEN</span>
           <code className="fen-output">{board.fen}</code>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
 import type {
+  EngineAnalysisProgressPayload,
   EngineAnalysisResultPayload,
   EngineStatus
 } from '@shared/types/ipc'
@@ -32,6 +33,9 @@ interface PendingAiRequest {
   conversationId: string
 }
 
+const AUTO_ROOT_ANALYSIS_MAX_MS = 1500
+const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 700
+
 function scoreText(score: EngineScore | null): string {
   return formatChineseScore(score)
 }
@@ -47,6 +51,19 @@ function hasBothKings(board: BoardState): boolean {
     }
   }
   return red && black
+}
+
+function progressPhaseText(phase: EngineAnalysisProgressPayload['phase']): string {
+  switch (phase) {
+    case 'preparing_engine':
+      return '正在啟動 Pikafish'
+    case 'root_analysis':
+      return '正在分析目前局面'
+    case 'user_move_analysis':
+      return '正在驗證你的著法'
+    case 'finalizing':
+      return '正在整理分析結果'
+  }
 }
 
 function estimateTokens(text: string): number {
@@ -76,6 +93,7 @@ export function AnalysisPanel({
 }: Props): JSX.Element {
   const [status, setStatus] = useState<EngineStatus | null>(null)
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<EngineAnalysisProgressPayload | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [engineDiagnostics, setEngineDiagnostics] = useState<string[]>([])
@@ -136,6 +154,7 @@ export function AnalysisPanel({
     activeAiRequestId.current = null
     pendingAiRequest.current = null
     setBusy(false)
+    setProgress(null)
     setCancelling(false)
     setAiBusy(false)
     setAiCancelling(false)
@@ -152,10 +171,15 @@ export function AnalysisPanel({
   }, [board.fen, onConversationChange, onExplanation, onResult])
 
   useEffect(() => {
+    const offProgress = window.api.engine.onAnalysisProgress((payload) => {
+      if (payload.requestId !== activeRequestId.current) return
+      setProgress(payload)
+    })
     const offResult = window.api.engine.onAnalysisResult((payload) => {
       if (payload.requestId !== activeRequestId.current) return
       activeRequestId.current = null
       setBusy(false)
+      setProgress(null)
       setCancelling(false)
       setResult(payload)
       onResult(payload)
@@ -164,6 +188,7 @@ export function AnalysisPanel({
       if (payload.requestId !== activeRequestId.current) return
       activeRequestId.current = null
       setBusy(false)
+      setProgress(null)
       setCancelling(false)
       if (payload.code === 'cancelled') setNotice('已取消分析。')
       else {
@@ -227,6 +252,7 @@ export function AnalysisPanel({
       else setError(payload.message)
     })
     return () => {
+      offProgress()
       offResult()
       offError()
       offAiChunk()
@@ -265,6 +291,16 @@ export function AnalysisPanel({
     const requestId = crypto.randomUUID()
     activeRequestId.current = requestId
     setBusy(true)
+    setProgress({
+      requestId,
+      phase: 'preparing_engine',
+      elapsedMs: 0,
+      targetMs: null,
+      percent: 2,
+      depth: null,
+      score: null,
+      displayPrincipalVariation: []
+    })
     setResult(null)
     onResult(null)
     window.api.engine.startAnalysis({
@@ -272,8 +308,15 @@ export function AnalysisPanel({
       positionFen: board.fen,
       userMove: move || undefined,
       analysisConfig: {
-        rootAnalysisMovetimeMs: settings.rootAnalysisMovetimeMs,
-        userMoveEvalMovetimeMs: settings.userMoveEvalMovetimeMs,
+        rootAnalysisMovetimeMs: automatic
+          ? Math.min(settings.rootAnalysisMovetimeMs, AUTO_ROOT_ANALYSIS_MAX_MS)
+          : settings.rootAnalysisMovetimeMs,
+        userMoveEvalMovetimeMs: automatic
+          ? Math.min(
+              settings.userMoveEvalMovetimeMs,
+              AUTO_USER_MOVE_ANALYSIS_MAX_MS
+            )
+          : settings.userMoveEvalMovetimeMs,
         multiPv: settings.multiPv
       }
     })
@@ -446,10 +489,57 @@ export function AnalysisPanel({
       <div className="muted small auto-analysis-note">
         {busy
           ? '局面已變更，正在自動更新分析結果。'
-          : `自動分析已開啟，每次局面變更後約 ${(
-              settings.rootAnalysisMovetimeMs / 1000
-            ).toFixed(1)} 秒更新。`}
+          : `自動分析已開啟（快速模式），每次局面變更最多思考 ${(
+              Math.min(
+                settings.rootAnalysisMovetimeMs,
+                AUTO_ROOT_ANALYSIS_MAX_MS
+              ) / 1000
+            ).toFixed(1)} 秒；「立即重新分析」會使用完整設定時間。`}
       </div>
+
+      {busy && progress && (
+        <div className="live-analysis" aria-live="polite">
+          <div className="live-analysis-head">
+            <div>
+              <b>{progressPhaseText(progress.phase)}</b>
+              <span className="muted small">
+                {progress.depth !== null ? `深度 ${progress.depth}` : '等待引擎資料'}
+                {progress.elapsedMs > 0
+                  ? `　已進行 ${(progress.elapsedMs / 1000).toFixed(1)} 秒`
+                  : ''}
+              </span>
+            </div>
+            <strong>{progress.percent}%</strong>
+          </div>
+          <div
+            className="analysis-progress-track"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress.percent}
+          >
+            <span style={{ width: `${progress.percent}%` }} />
+          </div>
+          {(progress.displayMove || progress.displayPrincipalVariation.length > 0) && (
+            <div className="live-analysis-line">
+              {progress.displayMove && (
+                <span>
+                  {progress.phase === 'user_move_analysis'
+                    ? '對手目前最佳回應'
+                    : '目前首選'}{' '}
+                  <b>{progress.displayMove}</b>
+                </span>
+              )}
+              {progress.score && <span>{scoreText(progress.score)}</span>}
+              {progress.displayPrincipalVariation.length > 0 && (
+                <span className="pv">
+                  主要變例：{progress.displayPrincipalVariation.slice(0, 6).join('、')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {tokenEstimate && (
         <div className="muted small">

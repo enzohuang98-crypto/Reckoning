@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import {
   EngineAnalysisError,
+  type EngineLiveAnalysisProgress,
   PikafishAdapter,
   invertEngineScore
 } from '../src/main/engine/PikafishAdapter'
@@ -252,7 +253,22 @@ async function main(): Promise<void> {
     check('偵測回呼觸發', detectedProtocol === 'uci')
 
     // 無 userMove
-    const root = await adapter.analyzePosition({ positionFen: START_FEN }, config)
+    const progressEvents: EngineLiveAnalysisProgress[] = []
+    const root = await adapter.analyzePosition(
+      { positionFen: START_FEN },
+      config,
+      { onProgress: (progress) => progressEvents.push(progress) }
+    )
+    check(
+      '搜尋期間回報即時深度與中文主要變例',
+      progressEvents.some(
+        (progress) =>
+          progress.phase === 'root_analysis' &&
+          progress.depth === 10 &&
+          progress.displayMove === '炮二平五' &&
+          progress.displayPrincipalVariation[1] === '馬8進7'
+      )
+    )
     check('最佳著法 h2e2', root.bestMove === 'h2e2')
     check('最佳著法轉為中文炮二平五', root.displayBestMove === '炮二平五')
     check('MultiPV 兩條候選', root.candidateMoves.length === 2, root.candidateMoves.length)

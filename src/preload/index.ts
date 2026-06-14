@@ -11,6 +11,7 @@ import {
   IPC,
   type AnalyzePositionStartPayload,
   type EngineAnalysisErrorPayload,
+  type EngineAnalysisProgressPayload,
   type EngineAnalysisResultPayload,
   type GenerateExplanationChunkPayload,
   type GenerateExplanationDonePayload,
@@ -30,6 +31,8 @@ const api: RendererApi = {
   engine: {
     startAnalysis: (payload: AnalyzePositionStartPayload) =>
       ipcRenderer.send(IPC.ENGINE_ANALYZE_POSITION_START, payload),
+    onAnalysisProgress: (listener: (payload: EngineAnalysisProgressPayload) => void) =>
+      subscribe(IPC.ENGINE_ANALYSIS_PROGRESS, listener),
     onAnalysisResult: (listener: (payload: EngineAnalysisResultPayload) => void) =>
       subscribe(IPC.ENGINE_ANALYSIS_RESULT, listener),
     onAnalysisError: (listener: (payload: EngineAnalysisErrorPayload) => void) =>
