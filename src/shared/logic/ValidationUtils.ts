@@ -49,7 +49,61 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
       3_000,
       fallback.userMoveEvalMovetimeMs
     ),
-    multiPv: clampInteger(candidate.multiPv, 1, 5, fallback.multiPv)
+    multiPv: clampInteger(candidate.multiPv, 1, 5, fallback.multiPv),
+    crossEngineEnabled:
+      typeof candidate.crossEngineEnabled === 'boolean'
+        ? candidate.crossEngineEnabled
+        : fallback.crossEngineEnabled,
+    harnessAnswerMode:
+      candidate.harnessAnswerMode === 'focused' ||
+      candidate.harnessAnswerMode === 'research'
+        ? candidate.harnessAnswerMode
+        : fallback.harnessAnswerMode,
+    harnessAutoRun:
+      typeof candidate.harnessAutoRun === 'boolean'
+        ? candidate.harnessAutoRun
+        : fallback.harnessAutoRun,
+    harnessReuseEvidence:
+      typeof candidate.harnessReuseEvidence === 'boolean'
+        ? candidate.harnessReuseEvidence
+        : fallback.harnessReuseEvidence,
+    harnessEngineTimeMs: clampInteger(
+      candidate.harnessEngineTimeMs,
+      3_000,
+      60_000,
+      fallback.harnessEngineTimeMs
+    ),
+    harnessMaxEngineRounds: clampInteger(
+      candidate.harnessMaxEngineRounds,
+      1,
+      10,
+      fallback.harnessMaxEngineRounds
+    ),
+    harnessResearchMaxModelCalls: clampInteger(
+      candidate.harnessResearchMaxModelCalls,
+      2,
+      10,
+      fallback.harnessResearchMaxModelCalls
+    ),
+    harnessResearchMaxOutputTokens: clampInteger(
+      candidate.harnessResearchMaxOutputTokens,
+      500,
+      20_000,
+      fallback.harnessResearchMaxOutputTokens
+    ),
+    harnessFocusedMaxModelCalls: clampInteger(
+      candidate.harnessFocusedMaxModelCalls,
+      2,
+      10,
+      fallback.harnessFocusedMaxModelCalls
+    ),
+    harnessFocusedMaxOutputTokens: clampInteger(
+      candidate.harnessFocusedMaxOutputTokens,
+      500,
+      20_000,
+      fallback.harnessFocusedMaxOutputTokens
+    ),
+    version: fallback.version
   }
 }
 

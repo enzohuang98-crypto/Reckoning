@@ -24,6 +24,15 @@ const LANGUAGES = new Set(['zh-TW', 'zh-CN', 'en'])
 const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const MOVE_PATTERN = /^[a-i][0-9][a-i][0-9]$/
+const ENGINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
+
+function optionalEngineId(value: unknown, field: string): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (typeof value !== 'string' || !ENGINE_ID_PATTERN.test(value)) {
+    throw new SecurityValidationError(`${field} 格式無效。`)
+  }
+  return value
+}
 
 export class SecurityValidationError extends Error {
   constructor(
@@ -182,6 +191,11 @@ export function validateAnalyzePositionPayload(value: unknown): AnalyzePositionS
 
   return {
     requestId,
+    engineId: optionalEngineId(value.engineId, '主引擎識別碼'),
+    verificationEngineId: optionalEngineId(
+      value.verificationEngineId,
+      '複核引擎識別碼'
+    ),
     positionFen: parsed.board.fen,
     userMove,
     analysisConfig: {
@@ -245,6 +259,49 @@ export function validateGenerateExplanationPayload(
           MAX_CONVERSATION_TEXT_LENGTH,
           true
         )
+  const attachedMove =
+    value.attachedMove === undefined || value.attachedMove === null || value.attachedMove === ''
+      ? undefined
+      : boundedString(value.attachedMove, '附加著法', 4).toLowerCase()
+  if (attachedMove && !MOVE_PATTERN.test(attachedMove)) {
+    throw new SecurityValidationError('附加著法格式無效。')
+  }
+  const answerMode =
+    value.answerMode === 'focused' || value.answerMode === 'research'
+      ? value.answerMode
+      : undefined
+  let budget: GenerateExplanationStartPayload['budget']
+  if (value.budget !== undefined) {
+    if (!isRecord(value.budget)) {
+      throw new SecurityValidationError('Harness 預算格式無效。')
+    }
+    const engineTimeMs = value.budget.engineTimeMs
+    const maxEngineRounds = value.budget.maxEngineRounds
+    const maxModelCalls = value.budget.maxModelCalls
+    const maxOutputTokens = value.budget.maxOutputTokens
+    if (
+      !Number.isSafeInteger(engineTimeMs) ||
+      (engineTimeMs as number) < 3000 ||
+      (engineTimeMs as number) > 60_000 ||
+      !Number.isSafeInteger(maxEngineRounds) ||
+      (maxEngineRounds as number) < 1 ||
+      (maxEngineRounds as number) > 3 ||
+      !Number.isSafeInteger(maxModelCalls) ||
+      (maxModelCalls as number) < 2 ||
+      (maxModelCalls as number) > 10 ||
+      !Number.isSafeInteger(maxOutputTokens) ||
+      (maxOutputTokens as number) < 500 ||
+      (maxOutputTokens as number) > 20_000
+    ) {
+      throw new SecurityValidationError('Harness 預算超出允許範圍。')
+    }
+    budget = {
+      engineTimeMs: engineTimeMs as number,
+      maxEngineRounds: maxEngineRounds as number,
+      maxModelCalls: maxModelCalls as number,
+      maxOutputTokens: maxOutputTokens as number
+    }
+  }
 
   return {
     requestId,
@@ -255,6 +312,15 @@ export function validateGenerateExplanationPayload(
     explanationStyle: 'long_analytical',
     language: value.language as GenerateExplanationStartPayload['language'],
     conversationHistory,
-    followUpQuestion
+    followUpQuestion,
+    attachedMove,
+    answerMode,
+    budget,
+    engineId: optionalEngineId(value.engineId, '主引擎識別碼'),
+    verificationEngineId: optionalEngineId(
+      value.verificationEngineId,
+      '複核引擎識別碼'
+    ),
+    reuseEvidence: value.reuseEvidence === true
   }
 }

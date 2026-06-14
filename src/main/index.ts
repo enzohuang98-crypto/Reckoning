@@ -7,13 +7,10 @@
 
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
-import { PikafishAdapter } from './engine/PikafishAdapter'
+import { EngineRegistryService } from './engine/EngineRegistryService'
 import { SecretStore } from './storage/SecretStore'
 import { StorageService } from './storage/StorageService'
-import {
-  loadEngineConfig,
-  registerEngineAnalysisHandlers
-} from './ipc/engineAnalysisHandlers'
+import { registerEngineAnalysisHandlers } from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
 import { registerLicenseHandlers } from './ipc/licenseHandlers'
 import { registerDataHandlers } from './ipc/dataHandlers'
@@ -82,15 +79,13 @@ function createWindow(rendererUrl: string): void {
 
 function registerIpc(): void {
   const storage = new StorageService()
-  // 啟動時讀取使用者指定的引擎路徑與先前偵測到的協定（若有）注入 adapter
-  const engineConfig = loadEngineConfig(storage)
-  const adapter = new PikafishAdapter(engineConfig.enginePath, engineConfig.engineProtocol)
+  const engineRegistry = new EngineRegistryService(storage)
   const secretStore = new SecretStore()
   // 短期分析快取（SDS §2.18）：in-memory + TTL，啟動 10 分鐘定時清理
   const sessionStore = new InMemoryAnalysisSessionStore()
   startAnalysisSessionCleanup(sessionStore)
-  registerEngineAnalysisHandlers(adapter, storage, sessionStore)
-  registerAiExplanationHandlers(secretStore, sessionStore)
+  registerEngineAnalysisHandlers(engineRegistry, sessionStore)
+  registerAiExplanationHandlers(secretStore, sessionStore, engineRegistry, storage)
   registerDataHandlers(storage)
   // 買斷授權（SDS Q5）：離線 Ed25519 簽章驗證
   registerLicenseHandlers(new LicenseService(storage))

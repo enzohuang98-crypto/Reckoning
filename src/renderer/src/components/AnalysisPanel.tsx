@@ -9,6 +9,13 @@ import type {
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { EngineScore } from '@shared/types/EngineAnalysis'
 import type {
+  EngineRegistrySnapshot
+} from '@shared/types/EngineRegistry'
+import type {
+  HarnessEvidence,
+  HarnessProgressPayload
+} from '@shared/types/Harness'
+import type {
   AIConversation,
   ConversationMessage,
   MisunderstoodPosition
@@ -56,7 +63,7 @@ function hasBothKings(board: BoardState): boolean {
 function progressPhaseText(phase: EngineAnalysisProgressPayload['phase']): string {
   switch (phase) {
     case 'preparing_engine':
-      return '正在啟動 Pikafish'
+      return '正在啟動象棋引擎'
     case 'root_analysis':
       return '正在分析目前局面'
     case 'user_move_analysis':
@@ -105,6 +112,20 @@ export function AnalysisPanel({
   const [streamingText, setStreamingText] = useState('')
   const [followUp, setFollowUp] = useState('')
   const [collectionReason, setCollectionReason] = useState('')
+  const [engineRegistry, setEngineRegistry] = useState<EngineRegistrySnapshot>({
+    installations: [],
+    activeEngineId: null,
+    verificationEngineId: null
+  })
+  const [primaryEngineId, setPrimaryEngineId] = useState<string | null>(null)
+  const [verificationEngineId, setVerificationEngineId] = useState<string | null>(
+    null
+  )
+  const [harnessProgress, setHarnessProgress] =
+    useState<HarnessProgressPayload | null>(null)
+  const [harnessEvidence, setHarnessEvidence] = useState<HarnessEvidence[]>([])
+  const [harnessWarnings, setHarnessWarnings] = useState<string[]>([])
+  const [traceId, setTraceId] = useState<string | null>(null)
   const activeRequestId = useRef<string | null>(null)
   const activeAiRequestId = useRef<string | null>(null)
   const pendingAiRequest = useRef<PendingAiRequest | null>(null)
@@ -123,6 +144,10 @@ export function AnalysisPanel({
   useEffect(() => {
     void (async () => {
       try {
+        const registry = await window.api.engine.listInstallations()
+        setEngineRegistry(registry)
+        setPrimaryEngineId(registry.activeEngineId)
+        setVerificationEngineId(registry.verificationEngineId)
         const current = await window.api.engine.status()
         if (!current.available) {
           setStatus(current)
@@ -163,6 +188,10 @@ export function AnalysisPanel({
     setStreamingText('')
     setFollowUp('')
     setCollectionReason('')
+    setHarnessProgress(null)
+    setHarnessEvidence([])
+    setHarnessWarnings([])
+    setTraceId(null)
     setError(null)
     setEngineDiagnostics([])
     setNotice(null)
@@ -200,6 +229,10 @@ export function AnalysisPanel({
       if (payload.requestId !== activeAiRequestId.current) return
       setStreamingText((previous) => previous + payload.deltaText)
     })
+    const offHarnessProgress = window.api.ai.onHarnessProgress((payload) => {
+      if (payload.requestId !== activeAiRequestId.current) return
+      setHarnessProgress(payload)
+    })
     const offAiDone = window.api.ai.onExplanationDone((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
       const pending = pendingAiRequest.current
@@ -207,7 +240,11 @@ export function AnalysisPanel({
       pendingAiRequest.current = null
       setAiBusy(false)
       setAiCancelling(false)
+      setHarnessProgress(null)
       setStreamingText('')
+      setHarnessEvidence(payload.evidence ?? [])
+      setHarnessWarnings(payload.warnings ?? [])
+      setTraceId(payload.traceId ?? null)
       const response: AIExplanationResponse = {
         text: payload.finalText,
         provider: settingsRef.current.aiProvider,
@@ -248,6 +285,7 @@ export function AnalysisPanel({
       pendingAiRequest.current = null
       setAiBusy(false)
       setAiCancelling(false)
+      setHarnessProgress(null)
       if (payload.code === 'cancelled') setNotice('已取消生成。')
       else setError(payload.message)
     })
@@ -256,6 +294,7 @@ export function AnalysisPanel({
       offResult()
       offError()
       offAiChunk()
+      offHarnessProgress()
       offAiDone()
       offAiError()
     }
@@ -305,6 +344,11 @@ export function AnalysisPanel({
     onResult(null)
     window.api.engine.startAnalysis({
       requestId,
+      engineId: primaryEngineId ?? undefined,
+      verificationEngineId:
+        settings.crossEngineEnabled && verificationEngineId
+          ? verificationEngineId
+          : undefined,
       positionFen: board.fen,
       userMove: move || undefined,
       analysisConfig: {
@@ -325,9 +369,12 @@ export function AnalysisPanel({
     onExplanation,
     onResult,
     settings.multiPv,
+    settings.crossEngineEnabled,
     settings.rootAnalysisMovetimeMs,
     settings.userMoveEvalMovetimeMs,
-    submittedGuess?.move
+    submittedGuess?.move,
+    primaryEngineId,
+    verificationEngineId
   ])
 
   useEffect(() => {
@@ -355,6 +402,10 @@ export function AnalysisPanel({
     setError(null)
     setNotice(null)
     setStreamingText('')
+    setHarnessProgress(null)
+    setHarnessEvidence([])
+    setHarnessWarnings([])
+    setTraceId(null)
     if (regenerate || cleanedQuestion === null) {
       setExplanation(null)
       onExplanation(null)
@@ -372,9 +423,41 @@ export function AnalysisPanel({
       explanationStyle: 'long_analytical',
       language: settings.language,
       conversationHistory: currentConversation?.messages,
-      followUpQuestion: cleanedQuestion ?? undefined
+      followUpQuestion: cleanedQuestion ?? undefined,
+      attachedMove: submittedGuess?.move,
+      answerMode: settings.harnessAnswerMode,
+      budget: {
+        engineTimeMs: settings.harnessEngineTimeMs,
+        maxEngineRounds: settings.harnessMaxEngineRounds,
+        maxModelCalls:
+          settings.harnessAnswerMode === 'research'
+            ? settings.harnessResearchMaxModelCalls
+            : settings.harnessFocusedMaxModelCalls,
+        maxOutputTokens:
+          settings.harnessAnswerMode === 'research'
+            ? settings.harnessResearchMaxOutputTokens
+            : settings.harnessFocusedMaxOutputTokens
+      },
+      engineId: primaryEngineId ?? undefined,
+      verificationEngineId:
+        settings.crossEngineEnabled && verificationEngineId
+          ? verificationEngineId
+          : undefined,
+      reuseEvidence: settings.harnessReuseEvidence
     })
   }
+
+  useEffect(() => {
+    if (
+      settings.harnessAutoRun &&
+      result &&
+      !aiBusy &&
+      !explanation &&
+      !conversationRef.current
+    ) {
+      generateExplanation(null)
+    }
+  }, [result?.analysisId, settings.harnessAutoRun])
 
   const submitFollowUp = (): void => {
     const question = followUp.trim()
@@ -455,6 +538,67 @@ export function AnalysisPanel({
           {status.available
             ? `✓ ${status.engineName} 就緒`
             : `⚠ ${status.message ?? `${status.engineName} 未就緒`}`}
+        </div>
+      )}
+      {engineRegistry.installations.length > 0 && (
+        <div className="analysis-engine-selectors">
+          <div className="field">
+            <label className="field-label">本次主引擎</label>
+            <select
+              className="select"
+              value={primaryEngineId ?? ''}
+              disabled={busy || aiBusy}
+              onChange={async (event) => {
+                const id = event.target.value
+                setPrimaryEngineId(id)
+                if (verificationEngineId === id) setVerificationEngineId(null)
+                setEngineRegistry(
+                  await window.api.engine.selectInstallation(
+                    id,
+                    verificationEngineId === id ? null : verificationEngineId
+                  )
+                )
+                setStatus(await window.api.engine.status())
+              }}
+            >
+              {engineRegistry.installations.map((engine) => (
+                <option key={engine.id} value={engine.id}>
+                  {engine.displayName}{engine.verified ? '' : '（未驗證）'}
+                </option>
+              ))}
+            </select>
+          </div>
+          {settings.crossEngineEnabled && (
+            <div className="field">
+              <label className="field-label">本次複核引擎</label>
+              <select
+                className="select"
+                value={verificationEngineId ?? ''}
+                disabled={busy || aiBusy}
+                onChange={async (event) => {
+                  const id = event.target.value || null
+                  setVerificationEngineId(id)
+                  if (primaryEngineId) {
+                    setEngineRegistry(
+                      await window.api.engine.selectInstallation(
+                        primaryEngineId,
+                        id
+                      )
+                    )
+                  }
+                }}
+              >
+                <option value="">不複核</option>
+                {engineRegistry.installations
+                  .filter((engine) => engine.id !== primaryEngineId)
+                  .map((engine) => (
+                    <option key={engine.id} value={engine.id}>
+                      {engine.displayName}{engine.verified ? '' : '（未驗證）'}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -541,6 +685,25 @@ export function AnalysisPanel({
         </div>
       )}
 
+      {aiBusy && harnessProgress && (
+        <div className="harness-progress" aria-live="polite">
+          <div className="live-analysis-head">
+            <div>
+              <b>{harnessProgress.message}</b>
+              <span className="muted small">
+                階段：{harnessProgress.phase} · 模型呼叫{' '}
+                {harnessProgress.modelCallsUsed} · 引擎輪數{' '}
+                {harnessProgress.engineRoundsUsed} · 證據{' '}
+                {harnessProgress.evidenceCount}
+              </span>
+            </div>
+            <span className="badge on">
+              {settings.harnessAnswerMode === 'research' ? '完整研究' : '聚焦回答'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {tokenEstimate && (
         <div className="muted small">
           呼叫前 token 粗估：輸入約 {tokenEstimate.input}、輸出上限約 {tokenEstimate.output}。
@@ -549,7 +712,7 @@ export function AnalysisPanel({
       {error && <div className="error-text">⚠ {error}</div>}
       {engineDiagnostics.length > 0 && (
         <details className="raw-engine-analysis">
-          <summary>查看 Pikafish 診斷輸出</summary>
+          <summary>查看引擎診斷輸出</summary>
           <pre>{engineDiagnostics.join('\n')}</pre>
         </details>
       )}
@@ -572,6 +735,11 @@ export function AnalysisPanel({
                 : `本次判斷可信度不足：${result?.moveComparison.uncertaintyReasons.join('；')}`}
             </div>
           )}
+          {result?.engineDisagreement && (
+            <div className="engine-status warn">
+              主引擎與複核引擎判斷不同；系統保留兩份結果，不會平均分數。
+            </div>
+          )}
           <ol className="line-list">
             {ea.candidateMoves.map((candidate, index) => (
               <li key={`${index}-${candidate.move}`}>
@@ -586,7 +754,7 @@ export function AnalysisPanel({
           </ol>
           {ea.rawAnalysis && (
             <details className="raw-engine-analysis">
-              <summary>查看 Pikafish 原始分析</summary>
+              <summary>查看 {ea.engineName} 原始分析</summary>
               <h5>主局面分析</h5>
               <pre>{ea.rawAnalysis.root.join('\n') || '（沒有原始輸出）'}</pre>
               {ea.rawAnalysis.userMove && (
@@ -595,6 +763,17 @@ export function AnalysisPanel({
                   <pre>{ea.rawAnalysis.userMove.join('\n') || '（沒有原始輸出）'}</pre>
                 </>
               )}
+            </details>
+          )}
+          {result?.verificationEngineAnalysis?.rawAnalysis && (
+            <details className="raw-engine-analysis">
+              <summary>
+                查看 {result.verificationEngineAnalysis.engineName} 複核原始分析
+              </summary>
+              <pre>
+                {result.verificationEngineAnalysis.rawAnalysis.root.join('\n') ||
+                  '（沒有原始輸出）'}
+              </pre>
             </details>
           )}
         </div>
@@ -643,9 +822,65 @@ export function AnalysisPanel({
               複製
             </button>
           </div>
+          {submittedGuess?.move && (
+            <div className="muted small">
+              追問會附加棋盤上選取的著法：
+              {ea?.displayUserMove ?? '目前選取著法'}
+            </div>
+          )}
           {!result && (
             <div className="muted small">請先重新分析此局面，再繼續追問。</div>
           )}
+        </div>
+      )}
+
+      {harnessWarnings.length > 0 && (
+        <div className="engine-status warn">
+          {harnessWarnings.join('；')}
+        </div>
+      )}
+
+      {harnessEvidence.length > 0 && (
+        <details className="harness-evidence">
+          <summary>展開 AI 解說證據（{harnessEvidence.length} 筆）</summary>
+          {harnessEvidence.map((item) => (
+            <div className="evidence-card" key={item.id}>
+              <b>
+                [{item.id}] {item.engineName} · {item.purpose}
+              </b>
+              <div className="muted small">
+                深度 {item.depth ?? '—'} · 評估 {scoreText(item.score)}
+              </div>
+              <div>
+                主線：{item.displayPrincipalVariation.slice(0, 8).join('、') || '無'}
+              </div>
+            </div>
+          ))}
+        </details>
+      )}
+
+      {traceId && (
+        <div className="harness-feedback">
+          <span className="muted small">這次解說是否有幫助？</span>
+          {(
+            [
+              ['helpful', '有幫助'],
+              ['unclear', '不清楚'],
+              ['incorrect', '內容不正確'],
+              ['missing_evidence', '證據不足']
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              className="btn ghost"
+              key={value}
+              onClick={async () => {
+                await window.api.ai.setHarnessFeedback(traceId, value)
+                setNotice('已記錄這次 Harness 回饋。')
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       )}
 

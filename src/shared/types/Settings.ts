@@ -7,6 +7,7 @@
 
 import type { AIProviderId } from './AIProviderTypes'
 import type { ExplanationLanguage } from './AIExplanationTypes'
+import type { HarnessAnswerMode } from './Harness'
 
 /** 使用者棋力（§2.6.7），影響 AI 解說深淺 */
 export type UserLevel = 'basic' | 'intermediate' | 'advanced'
@@ -27,7 +28,17 @@ export interface AppSettings {
   userLevel: UserLevel
   /** 解說語言（本專案擴充，SDS 未定義） */
   language: ExplanationLanguage
-  /** schema 版本（v2 = SDS v0.2 形狀） */
+  crossEngineEnabled: boolean
+  harnessAnswerMode: HarnessAnswerMode
+  harnessAutoRun: boolean
+  harnessReuseEvidence: boolean
+  harnessEngineTimeMs: number
+  harnessMaxEngineRounds: number
+  harnessResearchMaxModelCalls: number
+  harnessResearchMaxOutputTokens: number
+  harnessFocusedMaxModelCalls: number
+  harnessFocusedMaxOutputTokens: number
+  /** schema 版本 */
   version: number
 }
 
@@ -40,5 +51,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   aiModel: 'claude-sonnet-4-6',
   userLevel: 'intermediate',
   language: 'zh-TW',
-  version: 2
+  crossEngineEnabled: false,
+  harnessAnswerMode: 'research',
+  harnessAutoRun: false,
+  harnessReuseEvidence: false,
+  harnessEngineTimeMs: 10_000,
+  harnessMaxEngineRounds: 3,
+  harnessResearchMaxModelCalls: 6,
+  harnessResearchMaxOutputTokens: 10_000,
+  harnessFocusedMaxModelCalls: 4,
+  harnessFocusedMaxOutputTokens: 4_000,
+  version: 3
 }

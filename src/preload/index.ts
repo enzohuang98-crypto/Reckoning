@@ -19,6 +19,7 @@ import {
   type GenerateExplanationStartPayload,
   type RendererApi
 } from '@shared/types/ipc'
+import type { HarnessProgressPayload } from '@shared/types/Harness'
 
 /** 包裝 main→renderer 事件為「訂閱 + 取消訂閱」形式 */
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -43,7 +44,16 @@ const api: RendererApi = {
     getPath: () => ipcRenderer.invoke(IPC.ENGINE_GET_PATH),
     setPath: (path: string | null) => ipcRenderer.invoke(IPC.ENGINE_SET_PATH, path),
     browsePath: () => ipcRenderer.invoke(IPC.ENGINE_BROWSE_PATH),
-    test: () => ipcRenderer.invoke(IPC.ENGINE_TEST)
+    test: () => ipcRenderer.invoke(IPC.ENGINE_TEST),
+    listInstallations: () => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_LIST),
+    addInstallation: (input) => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_ADD, input),
+    removeInstallation: (id) => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_REMOVE, id),
+    selectInstallation: (activeEngineId, verificationEngineId) =>
+      ipcRenderer.invoke(IPC.ENGINE_REGISTRY_SELECT, {
+        activeEngineId,
+        verificationEngineId
+      }),
+    testInstallation: (id) => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_TEST, id)
   },
   ai: {
     startExplanation: (payload: GenerateExplanationStartPayload) =>
@@ -54,6 +64,13 @@ const api: RendererApi = {
       subscribe(IPC.AI_GENERATE_EXPLANATION_DONE, listener),
     onExplanationError: (listener: (payload: GenerateExplanationErrorPayload) => void) =>
       subscribe(IPC.AI_GENERATE_EXPLANATION_ERROR, listener),
+    onHarnessProgress: (listener: (payload: HarnessProgressPayload) => void) =>
+      subscribe(IPC.AI_HARNESS_PROGRESS, listener),
+    listHarnessTraces: () => ipcRenderer.invoke(IPC.AI_HARNESS_TRACE_LIST),
+    clearHarnessTraces: () => ipcRenderer.invoke(IPC.AI_HARNESS_TRACE_CLEAR),
+    exportHarnessTraces: () => ipcRenderer.invoke(IPC.AI_HARNESS_TRACE_EXPORT),
+    setHarnessFeedback: (traceId, feedback) =>
+      ipcRenderer.invoke(IPC.AI_HARNESS_TRACE_FEEDBACK, { traceId, feedback }),
     cancelExplanation: (requestId: string) =>
       ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_CANCEL, { requestId })
   },

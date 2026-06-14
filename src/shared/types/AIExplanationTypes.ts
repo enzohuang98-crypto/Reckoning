@@ -24,6 +24,8 @@ export interface AIExplanationRequest {
   apiKey: string
   /** PromptBuilder 產生的完整 prompt（含防幻覺規則與引擎數據） */
   prompt: string
+  /** 本次模型呼叫的輸出上限。 */
+  maxOutputTokens?: number
   metadata: {
     requestId: string
     analysisId: string

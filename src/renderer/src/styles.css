@@ -1093,6 +1093,91 @@ button.badge {
   grid-row: span 2;
 }
 
+.engine-install-list {
+  display: grid;
+  gap: 9px;
+  margin: 14px 0;
+}
+
+.engine-install-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.engine-install-item .badge {
+  margin-left: 8px;
+}
+
+.engine-install-item > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.engine-add-box,
+.engine-selection-grid,
+.settings-number-grid,
+.analysis-engine-selectors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.engine-add-box {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 9px 0;
+  color: var(--ivory-soft);
+  font-size: 12px;
+}
+
+.analysis-engine-selectors {
+  margin: 11px 0;
+}
+
+.harness-progress,
+.harness-evidence {
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid rgba(120, 156, 49, 0.24);
+  border-radius: 12px;
+  background: rgba(120, 156, 49, 0.07);
+}
+
+.evidence-card {
+  margin-top: 9px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.16);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.harness-feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.explanation-text {
+  white-space: pre-wrap;
+}
+
 .game-nav {
   margin-top: 11px;
 }
@@ -1400,8 +1485,17 @@ summary {
 
   .settings-grid,
   .mistake-list,
-  .right-col {
+  .right-col,
+  .engine-add-box,
+  .engine-selection-grid,
+  .settings-number-grid,
+  .analysis-engine-selectors {
     grid-template-columns: 1fr;
+  }
+
+  .engine-install-item {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .settings-grid .card:nth-child(1),

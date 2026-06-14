@@ -26,6 +26,17 @@ import type {
   AppDataSnapshot,
   ConversationMessage
 } from './AppData'
+import type {
+  EngineInstallation,
+  EngineProfileId,
+  EngineRegistrySnapshot
+} from './EngineRegistry'
+import type {
+  HarnessAnswerMode,
+  HarnessBudget,
+  HarnessEvidence,
+  HarnessProgressPayload
+} from './Harness'
 
 /** IPC 通道名稱常數 */
 export const IPC = {
@@ -41,12 +52,22 @@ export const IPC = {
   ENGINE_SET_PATH: 'engine:setPath',
   ENGINE_BROWSE_PATH: 'engine:browsePath',
   ENGINE_TEST: 'engine:test',
+  ENGINE_REGISTRY_LIST: 'engine:registry:list',
+  ENGINE_REGISTRY_ADD: 'engine:registry:add',
+  ENGINE_REGISTRY_REMOVE: 'engine:registry:remove',
+  ENGINE_REGISTRY_SELECT: 'engine:registry:select',
+  ENGINE_REGISTRY_TEST: 'engine:registry:test',
   // AI 解釋 streaming（§2.17.2）
   AI_GENERATE_EXPLANATION_START: 'ai:generate-explanation:start',
   AI_GENERATE_EXPLANATION_CHUNK: 'ai:generate-explanation:chunk',
   AI_GENERATE_EXPLANATION_DONE: 'ai:generate-explanation:done',
   AI_GENERATE_EXPLANATION_ERROR: 'ai:generate-explanation:error',
   AI_GENERATE_EXPLANATION_CANCEL: 'ai:generate-explanation:cancel',
+  AI_HARNESS_PROGRESS: 'ai:harness:progress',
+  AI_HARNESS_TRACE_LIST: 'ai:harness:trace:list',
+  AI_HARNESS_TRACE_CLEAR: 'ai:harness:trace:clear',
+  AI_HARNESS_TRACE_EXPORT: 'ai:harness:trace:export',
+  AI_HARNESS_TRACE_FEEDBACK: 'ai:harness:trace:feedback',
   // 永久資料與備份
   DATA_LOAD: 'data:load',
   DATA_SAVE: 'data:save',
@@ -68,6 +89,8 @@ export const IPC = {
 export interface AnalyzePositionStartPayload {
   /** renderer 生成；analysisId 由 main 生成（§2.16.4） */
   requestId: string
+  engineId?: string
+  verificationEngineId?: string
   positionFen: string
   userMove?: string
   analysisConfig: AnalysisConfig
@@ -77,6 +100,8 @@ export interface EngineAnalysisResultPayload {
   requestId: string
   analysisId: string
   engineAnalysis: EngineAnalysis
+  verificationEngineAnalysis?: EngineAnalysis
+  engineDisagreement?: boolean
   moveComparison: MoveComparisonResult
 }
 
@@ -121,6 +146,7 @@ export interface EngineAnalysisErrorPayload {
 
 /** 引擎可用性狀態 */
 export interface EngineStatus {
+  engineId?: string
   available: boolean
   engineName: string
   message?: string
@@ -137,6 +163,11 @@ export interface EngineTestResult {
   engineName?: string
   message?: string
   diagnostics?: string[]
+  capabilities?: {
+    multiPv: boolean
+    configurableThreads: boolean
+    configurableHash: boolean
+  }
 }
 
 export interface SecretStatus {
@@ -164,6 +195,12 @@ export interface GenerateExplanationStartPayload {
   conversationHistory?: ConversationMessage[]
   /** 多輪追問內容；未提供時產生初次長篇解說 */
   followUpQuestion?: string
+  attachedMove?: string
+  answerMode?: HarnessAnswerMode
+  budget?: HarnessBudget
+  engineId?: string
+  verificationEngineId?: string
+  reuseEvidence?: boolean
 }
 
 export interface GenerateExplanationChunkPayload {
@@ -175,6 +212,10 @@ export interface GenerateExplanationDonePayload {
   requestId: string
   finalText: string
   usage?: TokenUsage
+  evidence?: HarnessEvidence[]
+  warnings?: string[]
+  traceId?: string
+  clarificationRequired?: boolean
 }
 
 export type AIExplanationErrorCode =
@@ -214,6 +255,10 @@ export type DataImportResult =
     }
   | { ok: false; cancelled?: boolean; message?: string }
 
+export type HarnessTraceExportResult =
+  | { ok: true; filePath: string }
+  | { ok: false; cancelled?: boolean; message?: string }
+
 /* ---------- preload API 形狀 ---------- */
 
 export interface RendererApi {
@@ -235,6 +280,18 @@ export interface RendererApi {
     setPath(path: string | null): Promise<EngineStatus>
     browsePath(): Promise<string | null>
     test(): Promise<EngineTestResult>
+    listInstallations(): Promise<EngineRegistrySnapshot>
+    addInstallation(input: {
+      profileId: EngineProfileId
+      displayName?: string
+      executablePath: string
+    }): Promise<EngineInstallation>
+    removeInstallation(id: string): Promise<EngineRegistrySnapshot>
+    selectInstallation(
+      activeEngineId: string,
+      verificationEngineId?: string | null
+    ): Promise<EngineRegistrySnapshot>
+    testInstallation(id: string): Promise<EngineTestResult>
   }
   ai: {
     /** 開始 streaming 生成（§2.17.2）；結果經 onExplanation* 事件回傳 */
@@ -251,6 +308,16 @@ export interface RendererApi {
     onExplanationError(
       listener: (payload: GenerateExplanationErrorPayload) => void
     ): () => void
+    onHarnessProgress(
+      listener: (payload: HarnessProgressPayload) => void
+    ): () => void
+    listHarnessTraces(): Promise<import('./Harness').HarnessTrace[]>
+    clearHarnessTraces(): Promise<{ ok: true }>
+    exportHarnessTraces(): Promise<HarnessTraceExportResult>
+    setHarnessFeedback(
+      traceId: string,
+      feedback: NonNullable<import('./Harness').HarnessTrace['feedback']>
+    ): Promise<{ ok: true }>
     /** 取消進行中的生成 */
     cancelExplanation(requestId: string): void
   }

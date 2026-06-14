@@ -276,7 +276,11 @@ async function main(): Promise<void> {
       'scoreAfterBestMove +0.42（root_analysis）',
       root.scoreAfterBestMove?.displayText === '+0.42' && root.scoreAfterBestMove.source === 'root_analysis'
     )
-    check('EngineAnalysis.engineName 固定為 Pikafish', root.engineName === 'Pikafish')
+    check(
+      'EngineAnalysis.engineName 使用握手偵測名稱',
+      root.engineName === 'FakeUCI 1.0',
+      root.engineName
+    )
     check(
       'EngineAnalysis 保留 Pikafish 原始分析',
       Boolean(root.rawAnalysis?.root.some((line) => line.startsWith('info ')))

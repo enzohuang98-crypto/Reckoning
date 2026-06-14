@@ -13,19 +13,17 @@ import {
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type {
-  EngineStatus,
   EngineTestResult,
   SecretStatus
 } from '@shared/types/ipc'
 import type { LicenseStatus } from '@shared/types/License'
+import {
+  ENGINE_PROFILES,
+  type EngineProfileId,
+  type EngineRegistrySnapshot
+} from '@shared/types/EngineRegistry'
 import { saveSettings } from '../storage/localSettings'
 import type { AppDataSnapshot } from '@shared/types/AppData'
-
-const PATH_SOURCE_LABEL: Record<NonNullable<EngineStatus['pathSource']>, string> = {
-  user: '使用者設定',
-  env: '環境變數 PIKAFISH_PATH',
-  resource: '打包資源'
-}
 
 interface Props {
   settings: AppSettings
@@ -48,63 +46,48 @@ export function SettingsPage({
   const [operationError, setOperationError] = useState<string | null>(null)
 
   // 引擎路徑（存於 main 的 StorageService，非 localStorage）
-  const [enginePathInput, setEnginePathInput] = useState('')
-  const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null)
   const [engineTest, setEngineTest] = useState<EngineTestResult | null>(null)
-  const [engineTesting, setEngineTesting] = useState(false)
   const [engineMsg, setEngineMsg] = useState<string | null>(null)
-  /** 是否已存有使用者自訂路徑（即使該路徑暫時無法解析，也允許清除） */
-  const [hasUserPath, setHasUserPath] = useState(false)
+  const [engineRegistry, setEngineRegistry] = useState<EngineRegistrySnapshot>({
+    installations: [],
+    activeEngineId: null,
+    verificationEngineId: null
+  })
+  const [newEngineProfile, setNewEngineProfile] =
+    useState<EngineProfileId>('pikafish')
+  const [newEngineName, setNewEngineName] = useState('')
+  const [newEnginePath, setNewEnginePath] = useState('')
+  const [testingEngineId, setTestingEngineId] = useState<string | null>(null)
+  const [traceCount, setTraceCount] = useState(0)
 
   const refreshEngine = async (): Promise<void> => {
-    const [path, status] = await Promise.all([
-      window.api.engine.getPath(),
-      window.api.engine.status()
-    ])
-    setEnginePathInput(path ?? '')
-    setHasUserPath(path !== null && path.trim().length > 0)
-    setEngineStatus(status)
+    const registry = await window.api.engine.listInstallations()
+    setEngineRegistry(registry)
   }
 
-  const saveEnginePath = async (path: string | null): Promise<void> => {
-    let status: EngineStatus
-    try {
-      status = await window.api.engine.setPath(path)
-    } catch {
-      setEngineMsg('⚠ 路徑格式無效；請選擇本機磁碟上的引擎可執行檔。')
+  const browseNewEngine = async (): Promise<void> => {
+    const picked = await window.api.engine.browsePath()
+    if (picked) setNewEnginePath(picked)
+  }
+
+  const addEngine = async (): Promise<void> => {
+    if (!newEnginePath.trim()) {
+      setEngineMsg('請先選擇本機引擎 EXE。')
       return
     }
-    setEngineStatus(status)
-    setEnginePathInput(path ?? '')
-    const provided = path !== null && path.trim().length > 0
-    setHasUserPath(provided)
-
-    let msg: string
-    if (provided && status.pathSource !== 'user') {
-      // 指定了路徑，但實際生效來源不是它（檔案不存在 / 解析失敗）
-      msg = status.available
-        ? `⚠ 找不到指定的檔案，目前改用「${
-            status.pathSource ? PATH_SOURCE_LABEL[status.pathSource] : '無'
-          }」。請確認路徑是否正確。`
-        : `⚠ ${status.message ?? '指定的路徑無法使用。'}`
-    } else if (provided) {
-      msg = '✓ 已套用使用者指定的引擎路徑。'
-    } else {
-      // 清除自訂路徑
-      msg = status.available
-        ? `✓ 已清除自訂路徑，改用「${
-            status.pathSource ? PATH_SOURCE_LABEL[status.pathSource] : '無'
-          }」。`
-        : '已清除自訂路徑。目前未偵測到可用引擎。'
+    try {
+      const installation = await window.api.engine.addInstallation({
+        profileId: newEngineProfile,
+        displayName: newEngineName.trim() || undefined,
+        executablePath: newEnginePath.trim()
+      })
+      setNewEngineName('')
+      setNewEnginePath('')
+      setEngineMsg(`已加入 ${installation.displayName}，實際通過搜尋測試後才會標示已驗證。`)
+      await refreshEngine()
+    } catch {
+      setEngineMsg('無法加入引擎，請確認是本機磁碟上的 EXE 絕對路徑。')
     }
-    setEngineMsg(msg)
-  }
-
-  const browseEnginePath = async (): Promise<void> => {
-    const picked = await window.api.engine.browsePath()
-    if (!picked) return
-    setEnginePathInput(picked)
-    await saveEnginePath(picked)
   }
 
   const refreshKeyStatus = async (): Promise<void> => {
@@ -119,6 +102,10 @@ export function SettingsPage({
     void refreshKeyStatus().catch(() => setOperationError('無法查詢 API Key 狀態。'))
     void refreshEngine().catch(() => setOperationError('無法查詢引擎狀態。'))
     window.api.license.status().then(setLicense).catch(() => setLicense(null))
+    window.api.ai
+      .listHarnessTraces()
+      .then((traces) => setTraceCount(traces.length))
+      .catch(() => setTraceCount(0))
   }, [])
 
   const deactivateLicense = async (): Promise<void> => {
@@ -166,11 +153,13 @@ export function SettingsPage({
     }
   }
 
-  const testEngine = async (): Promise<void> => {
-    setEngineTesting(true)
+  const testEngine = async (id?: string): Promise<void> => {
+    setTestingEngineId(id ?? null)
     setEngineTest(null)
     try {
-      const result = await window.api.engine.test()
+      const result = id
+        ? await window.api.engine.testInstallation(id)
+        : await window.api.engine.test()
       setEngineTest(result)
       if (result.ok) {
         await refreshEngine()
@@ -178,8 +167,34 @@ export function SettingsPage({
     } catch {
       setEngineTest({ ok: false, message: '引擎測試失敗，請確認路徑與執行權限。' })
     } finally {
-      setEngineTesting(false)
+      setTestingEngineId(null)
     }
+  }
+
+  const selectEngines = async (
+    activeEngineId: string,
+    verificationEngineId: string | null = engineRegistry.verificationEngineId
+  ): Promise<void> => {
+    try {
+      const next = await window.api.engine.selectInstallation(
+        activeEngineId,
+        verificationEngineId === activeEngineId ? null : verificationEngineId
+      )
+      setEngineRegistry(next)
+    } catch {
+      setEngineMsg('主引擎與複核引擎必須是不同的已加入引擎。')
+    }
+  }
+
+  const clearHarnessTraces = async (): Promise<void> => {
+    await window.api.ai.clearHarnessTraces()
+    setTraceCount(0)
+    setSavedMsg('Harness 診斷紀錄已清除。')
+  }
+
+  const exportHarnessTraces = async (): Promise<void> => {
+    const result = await window.api.ai.exportHarnessTraces()
+    if (result.ok) setSavedMsg(`Harness 診斷紀錄已匯出：${result.filePath}`)
   }
 
   const exportBackup = async (): Promise<void> => {
@@ -330,69 +345,157 @@ export function SettingsPage({
       </section>
 
       <section className="card">
-        <h3>Pikafish 引擎</h3>
+        <h3>本機象棋引擎</h3>
         <p className="muted">
-          指定本機 Pikafish 可執行檔路徑。優先序：此處設定 &gt; 環境變數 PIKAFISH_PATH &gt;
-          打包資源。路徑安全儲存於本機設定檔（非金鑰），重啟後自動沿用。
+          軟體不附帶第三方引擎。請加入你合法取得的 UCI／UCCI
+          引擎；只有實際完成握手與短搜尋的項目才標示「已驗證」。
         </p>
-        {engineStatus && (
-          <div className={`engine-status ${engineStatus.available ? 'ok' : 'warn'}`}>
-            {engineStatus.available
-              ? `✓ ${engineStatus.engineName} 就緒（來源：${
-                  engineStatus.pathSource
-                    ? PATH_SOURCE_LABEL[engineStatus.pathSource]
-                    : '無'
-                }${
-                  engineStatus.protocol
-                    ? `，協定：${engineStatus.protocol.toUpperCase()}`
-                    : ''
-                }）`
-              : `⚠ ${engineStatus.message ?? `${engineStatus.engineName} 未就緒`}`}
-            {engineStatus.resolvedPath && (
-              <div className="mono muted small">{engineStatus.resolvedPath}</div>
-            )}
+        <div className="engine-install-list">
+          {engineRegistry.installations.length === 0 && (
+            <div className="engine-status warn">尚未加入任何引擎。</div>
+          )}
+          {engineRegistry.installations.map((engine) => (
+            <div className="engine-install-item" key={engine.id}>
+              <div>
+                <b>{engine.detectedName ?? engine.displayName}</b>
+                <span className={`badge ${engine.verified ? 'on' : 'off'}`}>
+                  {engine.verified ? '已驗證' : '未驗證'}
+                </span>
+                <div className="muted small">
+                  {engine.protocol?.toUpperCase() ?? '自動偵測'} ·{' '}
+                  {ENGINE_PROFILES.find((profile) => profile.id === engine.profileId)
+                    ?.label ?? '自訂引擎'}
+                </div>
+                <div className="mono muted small">{engine.executablePath}</div>
+                {engine.lastError && (
+                  <div className="error-text small">{engine.lastError}</div>
+                )}
+              </div>
+              <div className="row gap">
+                <button
+                  className="btn ghost"
+                  disabled={testingEngineId === engine.id}
+                  onClick={() => void testEngine(engine.id)}
+                >
+                  {testingEngineId === engine.id ? '測試中…' : '連線與搜尋測試'}
+                </button>
+                <button
+                  className="btn danger"
+                  onClick={async () => {
+                    setEngineRegistry(
+                      await window.api.engine.removeInstallation(engine.id)
+                    )
+                  }}
+                >
+                  移除
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {engineRegistry.installations.length > 0 && (
+          <div className="engine-selection-grid">
+            <div className="field">
+              <label className="field-label">預設主引擎</label>
+              <select
+                className="select"
+                value={engineRegistry.activeEngineId ?? ''}
+                onChange={(event) => void selectEngines(event.target.value)}
+              >
+                {engineRegistry.installations.map((engine) => (
+                  <option value={engine.id} key={engine.id}>
+                    {engine.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label className="field-label">預設複核引擎（可不選）</label>
+              <select
+                className="select"
+                value={engineRegistry.verificationEngineId ?? ''}
+                onChange={(event) =>
+                  void selectEngines(
+                    engineRegistry.activeEngineId ?? '',
+                    event.target.value || null
+                  )
+                }
+              >
+                <option value="">不使用複核引擎</option>
+                {engineRegistry.installations
+                  .filter((engine) => engine.id !== engineRegistry.activeEngineId)
+                  .map((engine) => (
+                    <option value={engine.id} key={engine.id}>
+                      {engine.displayName}
+                    </option>
+                  ))}
+              </select>
+            </div>
           </div>
         )}
+
+        <div className="engine-add-box">
+          <div className="field">
+            <label className="field-label">新增引擎類型</label>
+            <select
+              className="select"
+              value={newEngineProfile}
+              onChange={(event) =>
+                setNewEngineProfile(event.target.value as EngineProfileId)
+              }
+            >
+              {ENGINE_PROFILES.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.label}
+                </option>
+              ))}
+            </select>
+            <div className="muted small">
+              {
+                ENGINE_PROFILES.find((profile) => profile.id === newEngineProfile)
+                  ?.description
+              }
+            </div>
+          </div>
+          <div className="field">
+            <label className="field-label">顯示名稱（可留空）</label>
+            <input
+              className="text-input"
+              value={newEngineName}
+              onChange={(event) => setNewEngineName(event.target.value)}
+              placeholder="例如：我的旋風引擎"
+            />
+          </div>
+        </div>
         <div className="field">
-          <label className="field-label">引擎可執行檔路徑</label>
+          <label className="field-label">引擎 EXE</label>
           <div className="row gap">
             <input
               className="text-input"
               type="text"
-              placeholder="例如 C:\\Tools\\pikafish\\pikafish.exe"
-              value={enginePathInput}
-              onChange={(e) => setEnginePathInput(e.target.value)}
+              placeholder="例如 C:\\Engines\\engine.exe"
+              value={newEnginePath}
+              onChange={(event) => setNewEnginePath(event.target.value)}
             />
-            <button className="btn ghost" onClick={browseEnginePath}>
+            <button className="btn ghost" onClick={() => void browseNewEngine()}>
               瀏覽…
             </button>
           </div>
         </div>
         <div className="row gap">
-          <button className="btn" onClick={() => saveEnginePath(enginePathInput)}>
-            儲存並套用
-          </button>
+          <button className="btn" onClick={() => void addEngine()}>加入引擎</button>
           <button className="btn ghost" onClick={() => void refreshEngine()}>
-            重新偵測
+            重新整理
           </button>
-          <button className="btn ghost" onClick={() => void testEngine()} disabled={engineTesting}>
-            {engineTesting ? '測試中…' : '實際搜尋測試'}
-          </button>
-          {hasUserPath && (
-            <button className="btn danger" onClick={() => saveEnginePath(null)}>
-              清除自訂路徑
-            </button>
-          )}
         </div>
         {engineMsg && (
-          <div className={engineMsg.startsWith('✓') ? 'success-text' : 'error-text'}>
-            {engineMsg}
-          </div>
+          <div className="muted" style={{ marginTop: 8 }}>{engineMsg}</div>
         )}
         {engineTest && (
           <div className={engineTest.ok ? 'success-text' : 'error-text'}>
             {engineTest.ok
-              ? `✓ 搜尋成功：${engineTest.engineName ?? 'Pikafish'}${
+              ? `✓ 搜尋成功：${engineTest.engineName ?? '象棋引擎'}${
                   engineTest.protocol ? `（${engineTest.protocol.toUpperCase()}）` : ''
                 }`
               : `⚠ ${engineTest.message ?? '引擎測試失敗。'}`}
@@ -443,6 +546,177 @@ export function SettingsPage({
             value={settings.multiPv}
             onChange={(e) => update({ multiPv: Number(e.target.value) })}
           />
+        </div>
+      </section>
+
+      <section className="card">
+        <h3>AI 解說 Harness</h3>
+        <p className="muted">
+          Harness 會先規劃可驗證的引擎任務，再撰寫、檢查證據並最多修復一次。
+          模型不會直接控制引擎程序，也不會把未驗證的棋力判斷當成答案。
+        </p>
+        <div className="field">
+          <label className="field-label">預設回答模式</label>
+          <select
+            className="select"
+            value={settings.harnessAnswerMode}
+            onChange={(event) =>
+              update({
+                harnessAnswerMode: event.target
+                  .value as AppSettings['harnessAnswerMode']
+              })
+            }
+          >
+            <option value="research">完整研究</option>
+            <option value="focused">聚焦回答</option>
+          </select>
+        </div>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={settings.harnessAutoRun}
+            onChange={(event) => update({ harnessAutoRun: event.target.checked })}
+          />
+          引擎分析完成後自動執行 AI Harness
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={settings.harnessReuseEvidence}
+            onChange={(event) =>
+              update({ harnessReuseEvidence: event.target.checked })
+            }
+          />
+          追問優先沿用既有證據（預設關閉；關閉時會重新驗證）
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={settings.crossEngineEnabled}
+            onChange={(event) =>
+              update({ crossEngineEnabled: event.target.checked })
+            }
+          />
+          啟用複核引擎（需先在上方選擇另一個引擎）
+        </label>
+        <div className="settings-number-grid">
+          <div className="field">
+            <label className="field-label">每輪引擎研究秒數（3–60）</label>
+            <input
+              className="text-input"
+              type="number"
+              min={3}
+              max={60}
+              value={settings.harnessEngineTimeMs / 1000}
+              onChange={(event) =>
+                update({
+                  harnessEngineTimeMs:
+                    Math.max(3, Math.min(60, Number(event.target.value))) * 1000
+                })
+              }
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">最多引擎輪數（1–3）</label>
+            <input
+              className="text-input"
+              type="number"
+              min={1}
+              max={3}
+              value={settings.harnessMaxEngineRounds}
+              onChange={(event) =>
+                update({
+                  harnessMaxEngineRounds: Math.max(
+                    1,
+                    Math.min(3, Number(event.target.value))
+                  )
+                })
+              }
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">完整研究模型呼叫（2–10）</label>
+            <input
+              className="text-input"
+              type="number"
+              min={2}
+              max={10}
+              value={settings.harnessResearchMaxModelCalls}
+              onChange={(event) =>
+                update({
+                  harnessResearchMaxModelCalls: Math.max(
+                    2,
+                    Math.min(10, Number(event.target.value))
+                  )
+                })
+              }
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">完整研究輸出 token（500–20000）</label>
+            <input
+              className="text-input"
+              type="number"
+              min={500}
+              max={20000}
+              step={500}
+              value={settings.harnessResearchMaxOutputTokens}
+              onChange={(event) =>
+                update({
+                  harnessResearchMaxOutputTokens: Math.max(
+                    500,
+                    Math.min(20000, Number(event.target.value))
+                  )
+                })
+              }
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">聚焦回答模型呼叫（2–10）</label>
+            <input
+              className="text-input"
+              type="number"
+              min={2}
+              max={10}
+              value={settings.harnessFocusedMaxModelCalls}
+              onChange={(event) =>
+                update({
+                  harnessFocusedMaxModelCalls: Math.max(
+                    2,
+                    Math.min(10, Number(event.target.value))
+                  )
+                })
+              }
+            />
+          </div>
+          <div className="field">
+            <label className="field-label">聚焦回答輸出 token（500–20000）</label>
+            <input
+              className="text-input"
+              type="number"
+              min={500}
+              max={20000}
+              step={500}
+              value={settings.harnessFocusedMaxOutputTokens}
+              onChange={(event) =>
+                update({
+                  harnessFocusedMaxOutputTokens: Math.max(
+                    500,
+                    Math.min(20000, Number(event.target.value))
+                  )
+                })
+              }
+            />
+          </div>
+        </div>
+        <div className="row gap">
+          <span className="muted">本機診斷紀錄：{traceCount} 筆</span>
+          <button className="btn ghost" onClick={() => void exportHarnessTraces()}>
+            匯出診斷
+          </button>
+          <button className="btn danger" onClick={() => void clearHarnessTraces()}>
+            清除紀錄
+          </button>
         </div>
       </section>
 

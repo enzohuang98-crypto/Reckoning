@@ -109,6 +109,17 @@ check(
     SecurityValidationError
   )
 )
+check(
+  '含控制字元的引擎識別碼被拒絕',
+  rejects(
+    () =>
+      validateAnalyzePositionPayload({
+        ...analysisPayload,
+        engineId: 'engine\nquit'
+      }),
+    SecurityValidationError
+  )
+)
 
 const aiPayload = validateGenerateExplanationPayload({
   requestId: 'ai-1',

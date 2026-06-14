@@ -46,7 +46,7 @@ export class OpenAIProvider implements AIProvider {
       },
       body: JSON.stringify({
         model: request.model,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
         temperature: 0.3,
         messages: [{ role: 'user', content: request.prompt }]
       })

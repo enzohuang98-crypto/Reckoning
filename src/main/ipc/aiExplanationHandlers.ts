@@ -18,7 +18,7 @@
  * API key 不得被 log（§2.11）。
  */
 
-import { ipcMain } from 'electron'
+import { dialog, ipcMain } from 'electron'
 import {
   IPC,
   type GenerateExplanationErrorPayload,
@@ -32,6 +32,7 @@ import {
   type AnalysisSessionStore
 } from '../storage/AnalysisSessionStore'
 import { getAIProvider } from '../ai/AIProvider'
+import { runExplanationHarness } from '../ai/HarnessOrchestrator'
 import { buildExplanationPrompt } from '../ai/promptBuilder'
 import { modelRegistry, UnsupportedModelError } from '../ai/ModelRegistry'
 import { logger } from '../Logger'
@@ -43,6 +44,9 @@ import {
   SecurityValidationError,
   validateGenerateExplanationPayload
 } from '../security/InputValidation'
+import type { EngineRegistryService } from '../engine/EngineRegistryService'
+import type { StorageService } from '../storage/StorageService'
+import { HarnessTraceStore } from '../storage/HarnessTraceStore'
 
 /** API key 缺失（§2.17.9：不得用空字串或 placeholder 繼續呼叫） */
 export class MissingApiKeyError extends Error {
@@ -172,8 +176,11 @@ export function mapStreamingErrorToPayload(
 
 export function registerAiExplanationHandlers(
   secretStore: SecretStore,
-  sessionStore: AnalysisSessionStore
+  sessionStore: AnalysisSessionStore,
+  engineRegistry: EngineRegistryService,
+  storage: StorageService
 ): void {
+  const traceStore = new HarnessTraceStore(storage)
   // ---- SecretStore 通道 ----
   ipcMain.handle(IPC.SECRET_IS_AVAILABLE, (event): boolean => {
     assertTrustedIpcSender(event)
@@ -192,6 +199,63 @@ export function registerAiExplanationHandlers(
       return { ok: true, provider }
     }
   )
+
+  ipcMain.handle(IPC.AI_HARNESS_TRACE_LIST, (event) => {
+    assertTrustedIpcSender(event)
+    return traceStore.list()
+  })
+
+  ipcMain.handle(IPC.AI_HARNESS_TRACE_CLEAR, (event) => {
+    assertTrustedIpcSender(event)
+    traceStore.clear()
+    return { ok: true as const }
+  })
+
+  ipcMain.handle(IPC.AI_HARNESS_TRACE_EXPORT, async (event) => {
+    assertTrustedIpcSender(event)
+    const result = await dialog.showSaveDialog({
+      title: '匯出 Harness 診斷紀錄',
+      defaultPath: `xiangqi-harness-traces-${new Date()
+        .toISOString()
+        .slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) {
+      return { ok: false as const, cancelled: true }
+    }
+    storage.writeAbsolute(result.filePath, {
+      exportedAt: new Date().toISOString(),
+      traces: traceStore.list()
+    })
+    return { ok: true as const, filePath: result.filePath }
+  })
+
+  ipcMain.handle(IPC.AI_HARNESS_TRACE_FEEDBACK, (event, raw: unknown) => {
+    assertTrustedIpcSender(event)
+    if (typeof raw !== 'object' || raw === null) {
+      throw new SecurityValidationError('回饋格式無效。')
+    }
+    const value = raw as Record<string, unknown>
+    const allowed = new Set([
+      'helpful',
+      'unclear',
+      'incorrect',
+      'missing_evidence'
+    ])
+    if (
+      typeof value.traceId !== 'string' ||
+      value.traceId.length > 128 ||
+      typeof value.feedback !== 'string' ||
+      !allowed.has(value.feedback)
+    ) {
+      throw new SecurityValidationError('回饋格式無效。')
+    }
+    traceStore.setFeedback(
+      value.traceId,
+      value.feedback as 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
+    )
+    return { ok: true as const }
+  })
 
   ipcMain.handle(IPC.SECRET_STATUS, (event) => {
     assertTrustedIpcSender(event)
@@ -240,58 +304,52 @@ export function registerAiExplanationHandlers(
       activeExplanationRequests.get(requestId)?.abort()
       const controller = new AbortController()
       activeExplanationRequests.set(requestId, controller)
-      let accumulatedText = ''
       let completedNormally = false
       try {
         const provider = getAIProvider(payload.provider)
-        const request = await buildAIExplanationRequest(payload, {
-          secretStore,
-          analysisSessionStore: sessionStore
+        const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
+        const apiKey = secretStore.getApiKey(payload.provider)
+        if (!apiKey) throw new MissingApiKeyError(payload.provider)
+        const session = await sessionStore.get(payload.analysisId)
+        if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
+        const result = await runExplanationHarness(payload, {
+          provider,
+          apiKey,
+          model: modelConfig.model,
+          session,
+          registry: engineRegistry,
+          traceStore,
+          signal: controller.signal,
+          onProgress: (progress) => {
+            event.reply(IPC.AI_HARNESS_PROGRESS, {
+              requestId,
+              ...progress
+            })
+          }
         })
-        for await (const chunk of provider.generateExplanationStream(
-          request,
-          controller.signal
-        )) {
-          if (chunk.type === 'text_delta') {
-            if (
-              controller.signal.aborted ||
-              activeExplanationRequests.get(requestId) !== controller
-            ) {
-              throw new DOMException('Request cancelled', 'AbortError')
-            }
-            if (
-              typeof chunk.deltaText !== 'string' ||
-              accumulatedText.length + chunk.deltaText.length > MAX_AI_RESPONSE_CHARS
-            ) {
-              controller.abort()
-              throw new SecurityValidationError('AI 回應超過允許大小。')
-            }
-            accumulatedText += chunk.deltaText
-            event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
-              requestId,
-              deltaText: chunk.deltaText
-            })
-          }
-          if (chunk.type === 'done') {
-            if (
-              controller.signal.aborted ||
-              activeExplanationRequests.get(requestId) !== controller
-            ) {
-              throw new DOMException('Request cancelled', 'AbortError')
-            }
-            completedNormally = true
-            event.reply(IPC.AI_GENERATE_EXPLANATION_DONE, {
-              requestId,
-              finalText: accumulatedText,
-              usage: chunk.usage
-            })
-            break
-          }
-          // abort 檢查必須放在 chunk 處理之後，避免 done 與 cancelled 同送（§2.17.5）
-          if (controller.signal.aborted) {
-            throw new DOMException('Request cancelled', 'AbortError')
-          }
+        if (
+          controller.signal.aborted ||
+          activeExplanationRequests.get(requestId) !== controller
+        ) {
+          throw new DOMException('Request cancelled', 'AbortError')
         }
+        if (result.finalText.length > MAX_AI_RESPONSE_CHARS) {
+          throw new SecurityValidationError('AI 回應超過允許大小。')
+        }
+        event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
+          requestId,
+          deltaText: result.finalText
+        })
+        completedNormally = true
+        event.reply(IPC.AI_GENERATE_EXPLANATION_DONE, {
+          requestId,
+          finalText: result.finalText,
+          usage: result.usage,
+          evidence: result.evidence,
+          warnings: result.warnings,
+          traceId: result.traceId,
+          clarificationRequired: result.clarificationRequired
+        })
       } catch (error) {
         if (!completedNormally) {
           const errorPayload = mapStreamingErrorToPayload(requestId, error)

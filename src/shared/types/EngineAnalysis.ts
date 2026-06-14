@@ -112,7 +112,8 @@ export interface EngineAnalysis {
   incomplete: boolean
   /** 不完整或降級原因，必須呈現給使用者 */
   warnings: string[]
-  engineName: 'Pikafish'
+  engineId?: string
+  engineName: string
   /** 原始協定輸出只供使用者檢視與除錯，不參與評分或 AI prompt。 */
   rawAnalysis?: EngineRawAnalysis
 }

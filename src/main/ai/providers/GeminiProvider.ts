@@ -49,7 +49,7 @@ export class GeminiProvider implements AIProvider {
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
           generationConfig: {
-            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            maxOutputTokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
             temperature: 0.3
           }
         })

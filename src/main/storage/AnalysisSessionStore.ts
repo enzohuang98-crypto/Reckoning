@@ -30,7 +30,11 @@ export interface AnalysisSession {
   expiresAt: string
   positionFen: string
   userMove?: string
+  primaryEngineId?: string
+  verificationEngineId?: string
   engineAnalysis: EngineAnalysis
+  verificationEngineAnalysis?: EngineAnalysis
+  engineDisagreement?: boolean
   moveComparison: MoveComparisonResult
 }
 

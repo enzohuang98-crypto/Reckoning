@@ -64,7 +64,7 @@ function abortError(): DOMException {
   return new DOMException('Analysis cancelled', 'AbortError')
 }
 
-const ENGINE_NAME = 'Pikafish'
+const DEFAULT_ENGINE_NAME = '象棋引擎'
 
 /** 各協定的握手指令與完成標記 */
 const PROTOCOL_HANDSHAKE: Record<EngineProtocol, { greet: string; ok: string }> = {
@@ -237,18 +237,21 @@ interface SearchResult {
 export class PikafishAdapter {
   private userPath: string | null
   private knownProtocol: EngineProtocol | null
+  private detectedEngineName: string | null = null
   private protocolListener: ((protocol: EngineProtocol) => void) | null = null
 
   constructor(
     userPath: string | null = null,
-    knownProtocol: EngineProtocol | null = null
+    knownProtocol: EngineProtocol | null = null,
+    private readonly fallbackName: string = DEFAULT_ENGINE_NAME,
+    private readonly installationId?: string
   ) {
     this.userPath = userPath
     this.knownProtocol = knownProtocol
   }
 
   get engineName(): string {
-    return ENGINE_NAME
+    return this.detectedEngineName ?? this.fallbackName
   }
 
   setUserPath(path: string | null): void {
@@ -653,10 +656,11 @@ export class PikafishAdapter {
           diagnostics: search.rawLines
         }
       }
+      this.detectedEngineName = search.engineId ?? this.fallbackName
       return {
         ok: true,
         protocol: search.protocol,
-        engineName: search.engineId ?? ENGINE_NAME,
+        engineName: this.detectedEngineName,
         diagnostics: search.rawLines
       }
     } catch (err) {
@@ -763,6 +767,7 @@ export class PikafishAdapter {
       onProgress: forwardProgress('root_analysis', parsed.board)
     })
     if (signal?.aborted) throw abortError()
+    this.detectedEngineName = root.engineId ?? this.fallbackName
 
     const candidateMoves = root.candidateMoves.map((candidate) => ({
       ...candidate,
@@ -877,7 +882,8 @@ export class PikafishAdapter {
       analysisTimeMs: Date.now() - startedAt,
       incomplete: warnings.length > 0,
       warnings,
-      engineName: ENGINE_NAME,
+      engineId: this.installationId,
+      engineName: this.detectedEngineName,
       rawAnalysis: {
         root: root.rawLines,
         userMove: userMoveRawLines

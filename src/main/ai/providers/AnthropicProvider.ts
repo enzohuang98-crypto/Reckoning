@@ -36,7 +36,7 @@ export class AnthropicProvider implements AIProvider {
     const message = await this.client(request.apiKey).messages.create(
       {
         model: request.model,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
         temperature: 0.3,
         messages: [{ role: 'user', content: request.prompt }]
       },
@@ -71,7 +71,7 @@ export class AnthropicProvider implements AIProvider {
     const stream = await this.client(request.apiKey).messages.create(
       {
         model: request.model,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
         temperature: 0.3,
         stream: true,
         messages: [{ role: 'user', content: request.prompt }]
