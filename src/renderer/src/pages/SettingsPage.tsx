@@ -24,6 +24,7 @@ import {
 } from '@shared/types/EngineRegistry'
 import { saveSettings } from '../storage/localSettings'
 import type { AppDataSnapshot } from '@shared/types/AppData'
+import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 
 interface Props {
   settings: AppSettings
@@ -59,6 +60,8 @@ export function SettingsPage({
   const [newEnginePath, setNewEnginePath] = useState('')
   const [testingEngineId, setTestingEngineId] = useState<string | null>(null)
   const [traceCount, setTraceCount] = useState(0)
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
+  const [updateBusy, setUpdateBusy] = useState(false)
 
   const refreshEngine = async (): Promise<void> => {
     const registry = await window.api.engine.listInstallations()
@@ -98,20 +101,36 @@ export function SettingsPage({
   const [license, setLicense] = useState<LicenseStatus | null>(null)
 
   useEffect(() => {
+    const unsubscribeUpdate = window.api.update.onChanged(setUpdateStatus)
     window.api.secret.isAvailable().then(setEncAvailable).catch(() => setEncAvailable(false))
     void refreshKeyStatus().catch(() => setOperationError('無法查詢 API Key 狀態。'))
     void refreshEngine().catch(() => setOperationError('無法查詢引擎狀態。'))
     window.api.license.status().then(setLicense).catch(() => setLicense(null))
+    window.api.update.status().then(setUpdateStatus).catch(() => setUpdateStatus(null))
     window.api.ai
       .listHarnessTraces()
       .then((traces) => setTraceCount(traces.length))
       .catch(() => setTraceCount(0))
+    return unsubscribeUpdate
   }, [])
 
   const deactivateLicense = async (): Promise<void> => {
     const status = await window.api.license.deactivate()
     setLicense(status)
     // 解除後主介面會在下次啟動時要求重新輸入 License Key
+  }
+
+  const runUpdateAction = async (
+    action: () => Promise<AppUpdateStatus>
+  ): Promise<void> => {
+    setUpdateBusy(true)
+    try {
+      setUpdateStatus(await action())
+    } catch {
+      setOperationError('更新操作失敗，請稍後再試。')
+    } finally {
+      setUpdateBusy(false)
+    }
   }
 
   const update = (patch: Partial<AppSettings>): void => {
@@ -718,6 +737,74 @@ export function SettingsPage({
             清除紀錄
           </button>
         </div>
+      </section>
+
+      <section className="card">
+        <h3>版本與自動更新</h3>
+        {updateStatus === null ? (
+          <p className="muted">正在讀取版本資訊…</p>
+        ) : (
+          <>
+            <p className="muted">
+              目前版本：<span className="mono">{updateStatus.currentVersion}</span>
+              {updateStatus.availableVersion &&
+                `　可用版本：${updateStatus.availableVersion}`}
+            </p>
+            <div
+              className={`engine-status ${
+                updateStatus.phase === 'error' ||
+                updateStatus.phase === 'unconfigured'
+                  ? 'warn'
+                  : 'ok'
+              }`}
+            >
+              {updateStatus.message}
+            </div>
+            {updateStatus.phase === 'downloading' && (
+              <progress
+                className="update-progress"
+                max={100}
+                value={updateStatus.downloadPercent ?? 0}
+              />
+            )}
+            <div className="row gap">
+              <button
+                className="btn ghost"
+                disabled={
+                  updateBusy ||
+                  !updateStatus.automaticChecksEnabled ||
+                  updateStatus.phase === 'checking' ||
+                  updateStatus.phase === 'downloading'
+                }
+                onClick={() => void runUpdateAction(() => window.api.update.check())}
+              >
+                {updateStatus.phase === 'checking' ? '檢查中…' : '立即檢查'}
+              </button>
+              {updateStatus.phase === 'available' && (
+                <button
+                  className="btn"
+                  disabled={updateBusy}
+                  onClick={() =>
+                    void runUpdateAction(() => window.api.update.download())
+                  }
+                >
+                  下載更新
+                </button>
+              )}
+              {updateStatus.phase === 'downloaded' && (
+                <button
+                  className="btn"
+                  disabled={updateBusy}
+                  onClick={() =>
+                    void runUpdateAction(() => window.api.update.install())
+                  }
+                >
+                  重新啟動並安裝
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="card">

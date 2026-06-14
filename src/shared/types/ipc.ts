@@ -37,6 +37,7 @@ import type {
   HarnessEvidence,
   HarnessProgressPayload
 } from './Harness'
+import type { AppUpdateStatus } from './AppUpdate'
 
 /** IPC 通道名稱常數 */
 export const IPC = {
@@ -81,7 +82,13 @@ export const IPC = {
   // 買斷授權 (License Key，SDS Q5)
   LICENSE_STATUS: 'license:status',
   LICENSE_ACTIVATE: 'license:activate',
-  LICENSE_DEACTIVATE: 'license:deactivate'
+  LICENSE_DEACTIVATE: 'license:deactivate',
+  // 應用程式更新
+  APP_UPDATE_STATUS: 'app-update:status',
+  APP_UPDATE_CHECK: 'app-update:check',
+  APP_UPDATE_DOWNLOAD: 'app-update:download',
+  APP_UPDATE_INSTALL: 'app-update:install',
+  APP_UPDATE_CHANGED: 'app-update:changed'
 } as const
 
 /* ---------- 引擎分析 payload（§2.16.3） ---------- */
@@ -338,6 +345,13 @@ export interface RendererApi {
     /** 驗證並啟用 License Key；失敗時回傳 activated=false + message */
     activate(licenseKey: string): Promise<LicenseStatus>
     deactivate(): Promise<LicenseStatus>
+  }
+  update: {
+    status(): Promise<AppUpdateStatus>
+    check(): Promise<AppUpdateStatus>
+    download(): Promise<AppUpdateStatus>
+    install(): Promise<AppUpdateStatus>
+    onChanged(listener: (status: AppUpdateStatus) => void): () => void
   }
 }
 

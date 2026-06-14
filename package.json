@@ -1,6 +1,6 @@
 {
   "name": "xiangqi-analyzer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "象棋 AI 分析講解軟體 — Pikafish 引擎 + LLM 結構化解釋 (MVP)",
   "main": "./out/main/index.js",
   "author": "xiangqi-analyzer",
@@ -17,10 +17,12 @@
     "test": "tsx --tsconfig tsconfig.node.json tests/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/license.test.ts && tsx --tsconfig tsconfig.node.json tests/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security.test.ts && tsx --tsconfig tsconfig.node.json tests/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts",
     "security:check": "tsx --tsconfig tsconfig.node.json tests/security.test.ts",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "dist:update": "npm run build && electron-builder --config electron-builder.publish.cjs --publish never"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1"
+    "@anthropic-ai/sdk": "^0.32.1",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

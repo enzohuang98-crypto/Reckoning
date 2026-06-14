@@ -26,8 +26,13 @@ import {
   registerRendererProtocol
 } from './security/BrowserSecurity'
 import { configureTrustedRendererUrl } from './security/IpcSecurity'
+import { AppUpdaterService } from './update/AppUpdaterService'
 
 const isDev = !app.isPackaged
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.xiangqi.analyzer')
+}
 
 if (app.isPackaged) {
   app.commandLine.removeSwitch('remote-debugging-port')
@@ -55,6 +60,9 @@ function createWindow(rendererUrl: string): void {
     minHeight: 700,
     show: false,
     title: '象棋 AI 分析講解 - 啟動中',
+    icon: app.isPackaged
+      ? join(process.resourcesPath, 'icon.png')
+      : join(process.cwd(), 'build/icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -77,7 +85,7 @@ function createWindow(rendererUrl: string): void {
   void mainWindow.loadURL(rendererUrl)
 }
 
-function registerIpc(): void {
+function registerIpc(): AppUpdaterService {
   const storage = new StorageService()
   const engineRegistry = new EngineRegistryService(storage)
   const secretStore = new SecretStore()
@@ -89,6 +97,9 @@ function registerIpc(): void {
   registerDataHandlers(storage)
   // 買斷授權（SDS Q5）：離線 Ed25519 簽章驗證
   registerLicenseHandlers(new LicenseService(storage))
+  const appUpdater = new AppUpdaterService()
+  appUpdater.registerIpc()
+  return appUpdater
 }
 
 app.whenReady().then(() => {
@@ -98,8 +109,9 @@ app.whenReady().then(() => {
   }
   hardenDefaultSession(isDev)
   configureTrustedRendererUrl(rendererUrl)
-  registerIpc()
+  const appUpdater = registerIpc()
   createWindow(rendererUrl)
+  appUpdater.startAutomaticCheck()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(rendererUrl)

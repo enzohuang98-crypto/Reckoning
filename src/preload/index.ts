@@ -20,6 +20,7 @@ import {
   type RendererApi
 } from '@shared/types/ipc'
 import type { HarnessProgressPayload } from '@shared/types/Harness'
+import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 
 /** 包裝 main→renderer 事件為「訂閱 + 取消訂閱」形式 */
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -90,6 +91,14 @@ const api: RendererApi = {
     status: () => ipcRenderer.invoke(IPC.LICENSE_STATUS),
     activate: (licenseKey: string) => ipcRenderer.invoke(IPC.LICENSE_ACTIVATE, licenseKey),
     deactivate: () => ipcRenderer.invoke(IPC.LICENSE_DEACTIVATE)
+  },
+  update: {
+    status: () => ipcRenderer.invoke(IPC.APP_UPDATE_STATUS),
+    check: () => ipcRenderer.invoke(IPC.APP_UPDATE_CHECK),
+    download: () => ipcRenderer.invoke(IPC.APP_UPDATE_DOWNLOAD),
+    install: () => ipcRenderer.invoke(IPC.APP_UPDATE_INSTALL),
+    onChanged: (listener: (status: AppUpdateStatus) => void) =>
+      subscribe(IPC.APP_UPDATE_CHANGED, listener)
   }
 }
 
