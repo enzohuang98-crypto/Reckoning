@@ -367,7 +367,7 @@ export function App(): JSX.Element {
           <span className="brand-seal" aria-hidden="true">象</span>
           <div>
             <div className="app-title">象理</div>
-            <div className="app-subtitle">Xiangli AI Analysis</div>
+            <div className="app-subtitle">本機象棋研究工具</div>
           </div>
         </div>
         <nav className="app-nav">
@@ -397,7 +397,7 @@ export function App(): JSX.Element {
           <div className="analyze-page">
             <div className="page-heading">
               <div>
-                <span className="eyebrow">AI ANALYSIS WORKSPACE</span>
+                <span className="eyebrow">棋盤 · 引擎 · AI 教練</span>
                 <h1>局面分析工作台</h1>
                 <p>每次走棋後自動更新分析，也可悔棋、前進並隨時還原標準開局。</p>
               </div>

@@ -157,26 +157,26 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
     >
       <defs>
         <linearGradient id="board-surface" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#e7c897" />
-          <stop offset="52%" stopColor="#d5ad73" />
-          <stop offset="100%" stopColor="#c69559" />
+          <stop offset="0%" stopColor="#f4dfb6" />
+          <stop offset="52%" stopColor="#e9c990" />
+          <stop offset="100%" stopColor="#d9b274" />
         </linearGradient>
         <radialGradient id="piece-surface" cx="35%" cy="28%" r="75%">
-          <stop offset="0%" stopColor="#fffdf3" />
-          <stop offset="68%" stopColor="#eee3c8" />
-          <stop offset="100%" stopColor="#d1be96" />
+          <stop offset="0%" stopColor="#fffef8" />
+          <stop offset="68%" stopColor="#f4ead3" />
+          <stop offset="100%" stopColor="#dac59c" />
         </radialGradient>
         <pattern id="wood-grain" width="72" height="72" patternUnits="userSpaceOnUse">
           <path
             d="M-8 18 C18 5 42 31 80 13 M-12 48 C20 33 43 60 84 41"
             fill="none"
-            stroke="#6f4520"
+            stroke="#7a5530"
             strokeWidth="1"
             opacity="0.08"
           />
         </pattern>
         <filter id="piece-shadow" x="-30%" y="-30%" width="160%" height="170%">
-          <feDropShadow dx="0" dy="3" stdDeviation="2.5" floodColor="#3b210e" floodOpacity="0.38" />
+          <feDropShadow dx="0" dy="3" stdDeviation="2.5" floodColor="#5b3a1f" floodOpacity="0.28" />
         </filter>
       </defs>
       <rect x="1" y="1" width={WIDTH - 2} height={HEIGHT - 2} rx="14" fill="url(#board-surface)" />
