@@ -64,6 +64,7 @@ export const IPC = {
   AI_GENERATE_EXPLANATION_DONE: 'ai:generate-explanation:done',
   AI_GENERATE_EXPLANATION_ERROR: 'ai:generate-explanation:error',
   AI_GENERATE_EXPLANATION_CANCEL: 'ai:generate-explanation:cancel',
+  AI_HARNESS_CONTINUE: 'ai:harness:continue',
   AI_HARNESS_PROGRESS: 'ai:harness:progress',
   AI_HARNESS_TRACE_LIST: 'ai:harness:trace:list',
   AI_HARNESS_TRACE_CLEAR: 'ai:harness:trace:clear',
@@ -327,6 +328,8 @@ export interface RendererApi {
     ): Promise<{ ok: true }>
     /** 取消進行中的生成 */
     cancelExplanation(requestId: string): void
+    /** Harness 停滯等待時，允許繼續加深研究 */
+    continueExplanation(requestId: string): void
   }
   data: {
     load(): Promise<DataLoadResult>

@@ -2,9 +2,8 @@
  * AI 解釋 prompt 建構器 (PromptBuilder) — SDS v0.2 §2.17.9、§2.15.5
  *
  * 只讀取 EngineAnalysis、MoveComparisonResult、userLevel、explanationStyle；
- * 不得讀取 API key、EngineScore.raw、renderer UI state 或 SecretStore。
- * 分數只能使用 score.type、score.displayText、score.comparableValue、
- * （mate 時）score.mateIn。
+ * 不得讀取 API key、renderer UI state 或 SecretStore。
+ * EngineScore.raw 只作為引擎原始分數證據，不得用來推導棋理或錯誤等級。
  *
  * 設計鐵則：LLM 只能解釋引擎提供的資料，不得發明不在引擎資料中的戰術。
  */
@@ -31,9 +30,9 @@ const USER_LEVEL_GUIDANCE: Record<UserLevel, string> = {
     '讀者是進階棋手：可直接討論細部變例、子力交換得失與局面型態，不需解釋基本術語。'
 }
 
-/** 分數顯示（只用 displayText；§2.15.5） */
+/** 原樣保留引擎分數，只供證據查核。 */
 function scoreText(score: EngineScore | null): string {
-  return score === null ? '（無資料）' : score.displayText
+  return score === null ? '（無資料）' : score.raw
 }
 
 export interface BuildExplanationPromptInput {
@@ -67,7 +66,7 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
   lines.push('1. 你只能根據下方「引擎分析數據」解釋；引擎（本機 UCI 象棋引擎）是唯一棋力來源。')
   lines.push('2. 不得發明、臆測任何不在引擎數據中的戰術、殺法、勝勢或計畫。')
   lines.push('3. 若數據不足以支持某結論，必須明說資料不足，不可假裝確定。')
-  lines.push('4. 可信度為 low 時，開頭必須提醒讀者本次判斷的不確定性。')
+  lines.push('4. 禁止用分數高低、評估差距或可信度代替棋理與盤面因果。')
   lines.push(`5. ${USER_LEVEL_GUIDANCE[userLevel]}`)
   lines.push('')
 
@@ -108,12 +107,7 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
           .join('、')}`
       )
     }
-    lines.push(
-      `評估差距：${
-        mc.scoreDifference === null ? '無法計算' : mc.scoreDifference.toFixed(2)
-      }　錯誤等級：${MISTAKE_LEVEL_LABELS[mc.mistakeLevel]}`
-    )
-    lines.push(`可信度：${mc.confidence}`)
+    lines.push(`錯誤等級：${MISTAKE_LEVEL_LABELS[mc.mistakeLevel]}`)
     if (mc.uncertaintyReasons.length > 0) {
       lines.push(`不確定原因：${mc.uncertaintyReasons.join('；')}`)
     }
@@ -137,13 +131,15 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
 
   lines.push('【寫作要求】')
   lines.push('請撰寫一篇結構完整的長篇分析，包含：')
-  lines.push('1. 局面總評：目前形勢對哪方有利、優勢大小（依引擎評估）。')
+  lines.push('1. 局面總評：依引擎主線說明雙方目前的部署、威脅與限制。')
   lines.push('2. 最佳著法解析：引擎為何推薦此著，主要變例中雙方的應對脈絡。')
-  lines.push('3. 候選著法比較：各候選著法的評估差異說明。')
+  lines.push('3. 候選著法比較：比較各著法的目的、對手回應與具體盤面後果，不以分數差異代替原因。')
   if (ea.userMove) {
-    lines.push('4. 問：為什麼我的著法會被判為這個等級？答：比較評分差距、最佳主線與使用者著法後續主線，具體說明失去什麼；不可只重複「分數較差」。')
-    lines.push('5. 問：走了我的著法後，雙方接下來怎麼走？答：依使用者著法後續主線逐手說明至少 4 個半回合；資料較短時明確說明引擎只提供到哪裡。')
-    lines.push('6. 問：下次遇到類似局面要先問自己什麼？答：給出 2 至 4 個可操作的思考問題。')
+    lines.push('4. 問：最佳著法想做什麼？答：先解釋具體戰略目的。')
+    lines.push('5. 問：我的著法錯失什麼？答：說明為什麼不好，以及對手如何利用。')
+    lines.push('6. 問：後續主線與具體後果是什麼？答：逐手解釋到失去先手、棋子受限、王區變弱、陣形變差、讓對手完成部署或明確戰術後果出現。')
+    lines.push('7. 問：兩種著法完整比較後差在哪裡？答：禁止用分數高低代替原因。')
+    lines.push('8. 問：下次遇到類似局面要先問自己什麼？答：給出 2 至 4 個可操作的思考問題。')
   } else {
     lines.push('4. 問：最佳著法之後怎麼走？答：依主要變例逐手說明至少 4 個半回合；資料較短時明確說明。')
     lines.push('5. 問：下次遇到類似局面要先問自己什麼？答：給出 2 至 4 個可操作的思考問題。')

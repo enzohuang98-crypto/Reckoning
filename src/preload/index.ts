@@ -73,7 +73,9 @@ const api: RendererApi = {
     setHarnessFeedback: (traceId, feedback) =>
       ipcRenderer.invoke(IPC.AI_HARNESS_TRACE_FEEDBACK, { traceId, feedback }),
     cancelExplanation: (requestId: string) =>
-      ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_CANCEL, { requestId })
+      ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_CANCEL, { requestId }),
+    continueExplanation: (requestId: string) =>
+      ipcRenderer.send(IPC.AI_HARNESS_CONTINUE, { requestId })
   },
   data: {
     load: () => ipcRenderer.invoke(IPC.DATA_LOAD),

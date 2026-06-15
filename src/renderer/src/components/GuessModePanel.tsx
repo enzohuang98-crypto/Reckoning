@@ -2,15 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import type { BoardState } from '@shared/types/BoardState'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
-import type { EngineScore } from '@shared/types/EngineAnalysis'
 import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
 import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
 import { validateMoveInput } from '@shared/logic/ValidationUtils'
-import {
-  formatChineseMove,
-  formatChineseScore
-} from '@shared/logic/ChineseNotation'
+import { formatChineseMove } from '@shared/logic/ChineseNotation'
 
 interface Props {
   board: BoardState
@@ -28,12 +24,6 @@ interface Props {
   explanation: AIExplanationResponse | null
   onAddMistake: (entry: MistakeBookEntry) => void
   onRecordGuess: (guess: UserGuess) => void
-}
-
-const CONFIDENCE_LABEL = { low: '低', medium: '中', high: '高' } as const
-
-function scoreText(score: EngineScore | null): string {
-  return formatChineseScore(score)
 }
 
 export function GuessModePanel({
@@ -213,19 +203,14 @@ export function GuessModePanel({
               }`}
           <div>
             等級：<b>{MISTAKE_LEVEL_LABELS[comparison.mistakeLevel]}</b>
-            　評估差距：
-            {comparison.scoreDifference === null
-              ? '無法計算'
-              : comparison.scoreDifference.toFixed(2)}
-            　可信度：{CONFIDENCE_LABEL[comparison.confidence]}
           </div>
-          <div className="muted small">
-            你的著法後 {scoreText(ea?.scoreAfterUserMove ?? null)}　最佳著法後{' '}
-            {scoreText(ea?.scoreAfterBestMove ?? null)}（原局面行棋方視角）
+          <div className="muted small guess-engine-line">
+            最佳主線｜原始分數：{ea?.scoreAfterBestMove?.raw ?? '無'}｜
+            {ea?.displayPrincipalVariation?.slice(0, 8).join('、') || '無主線'}
           </div>
           {(ea?.displayUserMovePrincipalVariation ?? []).length > 1 && (
-            <div className="muted small">
-              你的著法後續：
+            <div className="muted small guess-engine-line">
+              你的著法主線｜原始分數：{ea?.scoreAfterUserMove?.raw ?? '無'}｜
               {ea?.displayUserMovePrincipalVariation?.slice(0, 8).join('、')}
             </div>
           )}

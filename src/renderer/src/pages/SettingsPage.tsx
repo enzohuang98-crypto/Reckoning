@@ -571,8 +571,8 @@ export function SettingsPage({
       <section className="card">
         <h3>AI 解說 Harness</h3>
         <p className="muted">
-          Harness 會先規劃可驗證的引擎任務，再撰寫、檢查證據並最多修復一次。
-          模型不會直接控制引擎程序，也不會把未驗證的棋力判斷當成答案。
+          Harness 會持續加深最佳著法與你的著法，直到驗證至少兩項具體後果。
+          超過 20 秒後每 5 秒更新進度；連續 60 秒沒有新深度或變例時，會讓你選擇繼續或取消。
         </p>
         <div className="field">
           <label className="field-label">預設回答模式</label>
@@ -620,51 +620,33 @@ export function SettingsPage({
         </label>
         <div className="settings-number-grid">
           <div className="field">
-            <label className="field-label">每輪引擎研究秒數（3–60）</label>
+            <label className="field-label">每輪起始研究秒數（20–60）</label>
             <input
               className="text-input"
               type="number"
-              min={3}
+              min={20}
               max={60}
               value={settings.harnessEngineTimeMs / 1000}
               onChange={(event) =>
                 update({
                   harnessEngineTimeMs:
-                    Math.max(3, Math.min(60, Number(event.target.value))) * 1000
+                    Math.max(20, Math.min(60, Number(event.target.value))) * 1000
                 })
               }
             />
           </div>
           <div className="field">
-            <label className="field-label">最多引擎輪數（1–3）</label>
+            <label className="field-label">每批完整研究模型呼叫（3–10）</label>
             <input
               className="text-input"
               type="number"
-              min={1}
-              max={3}
-              value={settings.harnessMaxEngineRounds}
-              onChange={(event) =>
-                update({
-                  harnessMaxEngineRounds: Math.max(
-                    1,
-                    Math.min(3, Number(event.target.value))
-                  )
-                })
-              }
-            />
-          </div>
-          <div className="field">
-            <label className="field-label">完整研究模型呼叫（2–10）</label>
-            <input
-              className="text-input"
-              type="number"
-              min={2}
+              min={3}
               max={10}
               value={settings.harnessResearchMaxModelCalls}
               onChange={(event) =>
                 update({
                   harnessResearchMaxModelCalls: Math.max(
-                    2,
+                    3,
                     Math.min(10, Number(event.target.value))
                   )
                 })
@@ -691,17 +673,17 @@ export function SettingsPage({
             />
           </div>
           <div className="field">
-            <label className="field-label">聚焦回答模型呼叫（2–10）</label>
+            <label className="field-label">每批聚焦回答模型呼叫（3–10）</label>
             <input
               className="text-input"
               type="number"
-              min={2}
+              min={3}
               max={10}
               value={settings.harnessFocusedMaxModelCalls}
               onChange={(event) =>
                 update({
                   harnessFocusedMaxModelCalls: Math.max(
-                    2,
+                    3,
                     Math.min(10, Number(event.target.value))
                   )
                 })

@@ -55,7 +55,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   harnessAnswerMode: 'research',
   harnessAutoRun: false,
   harnessReuseEvidence: false,
-  harnessEngineTimeMs: 10_000,
+  harnessEngineTimeMs: 20_000,
   harnessMaxEngineRounds: 3,
   harnessResearchMaxModelCalls: 6,
   harnessResearchMaxOutputTokens: 10_000,

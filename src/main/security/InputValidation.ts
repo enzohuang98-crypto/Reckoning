@@ -287,7 +287,7 @@ export function validateGenerateExplanationPayload(
       (maxEngineRounds as number) < 1 ||
       (maxEngineRounds as number) > 3 ||
       !Number.isSafeInteger(maxModelCalls) ||
-      (maxModelCalls as number) < 2 ||
+      (maxModelCalls as number) < 3 ||
       (maxModelCalls as number) > 10 ||
       !Number.isSafeInteger(maxOutputTokens) ||
       (maxOutputTokens as number) < 500 ||

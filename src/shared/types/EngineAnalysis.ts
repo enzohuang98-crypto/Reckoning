@@ -7,8 +7,8 @@
  *
  * 重要規則：
  *  - 分數不得只存裸數字（§2.6.1）；EngineScore 保留語義、顯示文字與來源。
- *  - raw 僅供 debug 與追蹤，不得被 UI、PromptBuilder、MoveComparisonService
- *    或分級邏輯使用（§2.6.1、§2.15.5）。
+ *  - raw 可在 UI 與 PromptBuilder 中原樣顯示作為證據，但不得被
+ *    MoveComparisonService、分級邏輯或棋理解釋使用（§2.6.1、§2.15.5）。
  *  - 不得讓 Infinity / -Infinity 進入 EngineScore（§2.14.1）。
  */
 
@@ -40,7 +40,7 @@ export type EngineScore =
       readonly value: number
       /** 給 MoveComparisonService 比較用 */
       readonly comparableValue: number
-      /** 原始 UCI 字串，僅供 debug；禁止進 UI / PromptBuilder / 分級邏輯 */
+      /** 原始 UCI 字串；可供顯示與查核，禁止用於分級或棋理推導 */
       readonly raw: string
       /** UI 顯示文字，如 +1.20 */
       readonly displayText: string

@@ -69,7 +69,7 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
         : fallback.harnessReuseEvidence,
     harnessEngineTimeMs: clampInteger(
       candidate.harnessEngineTimeMs,
-      3_000,
+      20_000,
       60_000,
       fallback.harnessEngineTimeMs
     ),
@@ -81,7 +81,7 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
     ),
     harnessResearchMaxModelCalls: clampInteger(
       candidate.harnessResearchMaxModelCalls,
-      2,
+      3,
       10,
       fallback.harnessResearchMaxModelCalls
     ),
@@ -93,7 +93,7 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
     ),
     harnessFocusedMaxModelCalls: clampInteger(
       candidate.harnessFocusedMaxModelCalls,
-      2,
+      3,
       10,
       fallback.harnessFocusedMaxModelCalls
     ),

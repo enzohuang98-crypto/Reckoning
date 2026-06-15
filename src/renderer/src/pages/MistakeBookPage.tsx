@@ -10,8 +10,6 @@ interface Props {
   onOpenPosition: (fen: string) => void
 }
 
-const CONFIDENCE_LABEL = { low: '低', medium: '中', high: '高' } as const
-
 function localizedMove(fen: string, move: string, stored?: string): string {
   if (stored) return stored
   const parsed = parseFen(fen)
@@ -105,11 +103,6 @@ export function MistakeBookPage({
                     entry.engineAnalysis.displayBestMove
                   )}
                 </b>
-                　評估差距{' '}
-                {entry.scoreDifference === null
-                  ? '無法計算'
-                  : entry.scoreDifference.toFixed(2)}
-                　可信度 {CONFIDENCE_LABEL[entry.confidence]}
               </div>
               <label className="field">
                 <span className="field-label">筆記</span>

@@ -7,6 +7,8 @@ export type HarnessPhase =
   | 'planning'
   | 'engine_research'
   | 'cross_verification'
+  | 'consequence_review'
+  | 'waiting_for_user'
   | 'writing'
   | 'validating'
   | 'repairing'
@@ -40,6 +42,11 @@ export interface HarnessProgressPayload {
   modelCallsUsed: number
   engineRoundsUsed: number
   evidenceCount: number
+  elapsedMs?: number
+  depth?: number | null
+  displayPrincipalVariation?: string[]
+  verifiedConsequenceCount?: number
+  awaitingDecision?: boolean
 }
 
 export interface HarnessClaim {

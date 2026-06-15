@@ -274,6 +274,7 @@ export function registerAiExplanationHandlers(
 
   // ---- AI 解釋 streaming（§2.17.5 最終版 loop） ----
   const activeExplanationRequests = new Map<string, AbortController>()
+  const activeHarnessContinuations = new Map<string, () => void>()
 
   ipcMain.on(
     IPC.AI_GENERATE_EXPLANATION_START,
@@ -325,7 +326,20 @@ export function registerAiExplanationHandlers(
               requestId,
               ...progress
             })
-          }
+          },
+          waitForContinuation: () =>
+            new Promise<void>((resolve, reject) => {
+              const onAbort = (): void => {
+                activeHarnessContinuations.delete(requestId)
+                reject(new DOMException('Request cancelled', 'AbortError'))
+              }
+              controller.signal.addEventListener('abort', onAbort, { once: true })
+              activeHarnessContinuations.set(requestId, () => {
+                controller.signal.removeEventListener('abort', onAbort)
+                activeHarnessContinuations.delete(requestId)
+                resolve()
+              })
+            })
         })
         if (
           controller.signal.aborted ||
@@ -360,6 +374,7 @@ export function registerAiExplanationHandlers(
           event.reply(IPC.AI_GENERATE_EXPLANATION_ERROR, errorPayload)
         }
       } finally {
+        activeHarnessContinuations.delete(requestId)
         if (activeExplanationRequests.get(requestId) === controller) {
           activeExplanationRequests.delete(requestId)
         }
@@ -386,4 +401,19 @@ export function registerAiExplanationHandlers(
       controller.abort()
     }
   )
+
+  ipcMain.on(IPC.AI_HARNESS_CONTINUE, (event, payload: unknown) => {
+    try {
+      assertTrustedIpcSender(event)
+    } catch {
+      return
+    }
+    const requestId = safeRequestId(
+      typeof payload === 'object' && payload !== null
+        ? (payload as Record<string, unknown>).requestId
+        : undefined
+    )
+    if (requestId === 'invalid-request') return
+    activeHarnessContinuations.get(requestId)?.()
+  })
 }

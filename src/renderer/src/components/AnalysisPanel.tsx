@@ -7,7 +7,6 @@ import type {
   EngineStatus
 } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
-import type { EngineScore } from '@shared/types/EngineAnalysis'
 import type {
   EngineRegistrySnapshot
 } from '@shared/types/EngineRegistry'
@@ -22,7 +21,6 @@ import type {
 } from '@shared/types/AppData'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
 import { validateMoveInput } from '@shared/logic/ValidationUtils'
-import { formatChineseScore } from '@shared/logic/ChineseNotation'
 
 interface Props {
   board: BoardState
@@ -42,10 +40,6 @@ interface PendingAiRequest {
 
 const AUTO_ROOT_ANALYSIS_MAX_MS = 1500
 const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 700
-
-function scoreText(score: EngineScore | null): string {
-  return formatChineseScore(score)
-}
 
 function hasBothKings(board: BoardState): boolean {
   let red = false
@@ -521,6 +515,14 @@ export function AnalysisPanel({
     window.api.ai.cancelExplanation(activeAiRequestId.current)
   }
 
+  const continueExplain = (): void => {
+    if (!activeAiRequestId.current) return
+    window.api.ai.continueExplanation(activeAiRequestId.current)
+    setHarnessProgress((current) =>
+      current ? { ...current, awaitingDecision: false } : current
+    )
+  }
+
   const ea = result?.engineAnalysis ?? null
   const confidence = result?.moveComparison.confidence
 
@@ -674,7 +676,7 @@ export function AnalysisPanel({
                   <b>{progress.displayMove}</b>
                 </span>
               )}
-              {progress.score && <span>{scoreText(progress.score)}</span>}
+              {progress.score && <span>原始分數 {progress.score.raw}</span>}
               {progress.displayPrincipalVariation.length > 0 && (
                 <span className="pv">
                   主要變例：{progress.displayPrincipalVariation.slice(0, 6).join('、')}
@@ -695,12 +697,35 @@ export function AnalysisPanel({
                 {harnessProgress.modelCallsUsed} · 引擎輪數{' '}
                 {harnessProgress.engineRoundsUsed} · 證據{' '}
                 {harnessProgress.evidenceCount}
+                {harnessProgress.elapsedMs !== undefined
+                  ? ` · 已進行 ${Math.floor(harnessProgress.elapsedMs / 1000)} 秒`
+                  : ''}
+                {harnessProgress.depth !== undefined
+                  ? ` · 深度 ${harnessProgress.depth ?? '—'}`
+                  : ''}
+                {` · 已確認 ${harnessProgress.verifiedConsequenceCount ?? 0} 項具體後果`}
               </span>
             </div>
             <span className="badge on">
               {settings.harnessAnswerMode === 'research' ? '完整研究' : '聚焦回答'}
             </span>
           </div>
+          {(harnessProgress.displayPrincipalVariation ?? []).length > 0 && (
+            <div className="muted small harness-current-line">
+              目前比較主線：
+              {harnessProgress.displayPrincipalVariation?.join('、')}
+            </div>
+          )}
+          {harnessProgress.awaitingDecision && (
+            <div className="row gap harness-decision">
+              <button className="btn" onClick={continueExplain}>
+                繼續分析
+              </button>
+              <button className="btn ghost" onClick={cancelExplain}>
+                取消
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -721,8 +746,8 @@ export function AnalysisPanel({
       {ea && (
         <div className="analysis-result">
           <div className="result-head">
-            最佳著法 <b>{ea.displayBestMove ?? '無法辨識著法'}</b>　評估{' '}
-            {scoreText(ea.scoreAfterBestMove)}
+            最佳著法 <b>{ea.displayBestMove ?? '無法辨識著法'}</b>　原始分數{' '}
+            {ea.scoreAfterBestMove?.raw ?? '無'}
             　深度 {ea.depth ?? '—'}
             {ea.analysisTimeMs !== undefined && (
               <span className="muted small">　({(ea.analysisTimeMs / 1000).toFixed(1)}s)</span>
@@ -732,7 +757,7 @@ export function AnalysisPanel({
             <div className="engine-status warn">
               ⚠ {ea.warnings.length > 0
                 ? ea.warnings.join('；')
-                : `本次判斷可信度不足：${result?.moveComparison.uncertaintyReasons.join('；')}`}
+                : `本次引擎資料不足：${result?.moveComparison.uncertaintyReasons.join('；')}`}
             </div>
           )}
           {result?.engineDisagreement && (
@@ -743,7 +768,8 @@ export function AnalysisPanel({
           <ol className="line-list">
             {ea.candidateMoves.map((candidate, index) => (
               <li key={`${index}-${candidate.move}`}>
-                <b>{candidate.displayMove ?? '無法辨識著法'}</b>　{scoreText(candidate.score)}
+                <b>{candidate.displayMove ?? '無法辨識著法'}</b>　原始分數{' '}
+                {candidate.score?.raw ?? '無'}
                 　<span className="pv">
                   {(candidate.displayPrincipalVariation ?? [])
                     .slice(0, 6)
@@ -849,7 +875,7 @@ export function AnalysisPanel({
                 [{item.id}] {item.engineName} · {item.purpose}
               </b>
               <div className="muted small">
-                深度 {item.depth ?? '—'} · 評估 {scoreText(item.score)}
+                深度 {item.depth ?? '—'} · 原始分數 {item.score?.raw ?? '無'}
               </div>
               <div>
                 主線：{item.displayPrincipalVariation.slice(0, 8).join('、') || '無'}
