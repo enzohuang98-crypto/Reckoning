@@ -103,6 +103,12 @@ export interface EngineAnalysis {
   /** 由 scoreAfterBestMove.comparableValue 派生（§2.14.5） */
   evaluationAfterBestMove: number | null
   userMoveEvaluationSource: UserMoveEvaluationSource
+  /**
+   * 使用者著法後的引擎主線。第一手固定是 userMove，後面接對手最佳回應。
+   * 這是結構化資料，可供 UI 與 AI 解釋使用；不得由 rawAnalysis 反向解析。
+   */
+  userMovePrincipalVariation?: string[]
+  displayUserMovePrincipalVariation?: string[]
   depth: number | null
   candidateMoves: EngineCandidateMove[]
   principalVariation: string[]

@@ -796,6 +796,8 @@ export class PikafishAdapter {
     // ---- 第二階段：userMove 評估（§2.15.2） ----
     let scoreAfterUserMove: EngineScore | null = null
     let userMoveEvaluationSource: UserMoveEvaluationSource = 'unavailable'
+    let userMovePrincipalVariation: string[] | undefined
+    let displayUserMovePrincipalVariation: string[] | undefined
     let userMoveRawLines: string[] | undefined
     const warnings: string[] = []
     if (root.timedOut) {
@@ -808,6 +810,10 @@ export class PikafishAdapter {
         // candidate fast path：已是原局面視角，不取負號（§2.15.3）
         scoreAfterUserMove = matched.score
         userMoveEvaluationSource = matched.score !== null ? 'candidate_move' : 'unavailable'
+        userMovePrincipalVariation = matched.principalVariation
+        displayUserMovePrincipalVariation =
+          matched.displayPrincipalVariation ??
+          formatChineseVariation(parsed.board, matched.principalVariation)
       } else {
         try {
           const moved = applyUciMove(parsed.board, userMove)
@@ -824,6 +830,12 @@ export class PikafishAdapter {
             onProgress: forwardProgress('user_move_analysis', userMoveBoard)
           })
           userMoveRawLines = second.rawLines
+          const opponentLine = second.candidateMoves[0]?.principalVariation ?? []
+          userMovePrincipalVariation = [userMove, ...opponentLine]
+          displayUserMovePrincipalVariation = formatChineseVariation(
+            parsed.board,
+            userMovePrincipalVariation
+          )
           // 取對手視角最佳分數後反轉；無任何分數但搜尋正常結束
           //（bestmove (none)/nobestmove）= 對方已無著法 = userMove 將死對方
           const opponentScore =
@@ -873,6 +885,8 @@ export class PikafishAdapter {
       evaluationAfterUserMove: scoreAfterUserMove?.comparableValue ?? null,
       evaluationAfterBestMove: scoreAfterBestMove?.comparableValue ?? null,
       userMoveEvaluationSource: userMove ? userMoveEvaluationSource : 'unavailable',
+      userMovePrincipalVariation,
+      displayUserMovePrincipalVariation,
       depth: bestCandidate.depth,
       candidateMoves,
       principalVariation: bestCandidate.principalVariation,

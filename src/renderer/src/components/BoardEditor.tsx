@@ -6,7 +6,7 @@
  * 可切換輪走方。每次變更即時重算 FEN 回呼上層。
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { XiangqiBoard } from './XiangqiBoard'
 import { PIECE_PALETTE, makePiece } from '../logic/pieces'
 import { serializeFen } from '@shared/logic/fen'
@@ -76,10 +76,16 @@ export function BoardEditor({
     })
   }
 
+  useLayoutEffect(() => {
+    setSelected(null)
+    setMoveError(null)
+    setTool({ kind: 'move' })
+  }, [board.fen])
+
   useEffect(() => {
     setSelected(null)
     setMoveError(null)
-  }, [board.fen, guessSelectionActive])
+  }, [guessSelectionActive])
 
   useEffect(() => {
     const cancelSelection = (event: KeyboardEvent): void => {

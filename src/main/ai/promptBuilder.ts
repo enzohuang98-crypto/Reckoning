@@ -101,6 +101,13 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
     lines.push(
       `使用者著法：${ea.displayUserMove ?? userCandidate?.displayMove ?? '無法辨識著法'}　走後評估：${scoreText(ea.scoreAfterUserMove)}`
     )
+    if ((ea.displayUserMovePrincipalVariation ?? []).length > 0) {
+      lines.push(
+        `使用者著法後續主線：${ea.displayUserMovePrincipalVariation
+          ?.slice(0, 12)
+          .join('、')}`
+      )
+    }
     lines.push(
       `評估差距：${
         mc.scoreDifference === null ? '無法計算' : mc.scoreDifference.toFixed(2)
@@ -134,10 +141,12 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
   lines.push('2. 最佳著法解析：引擎為何推薦此著，主要變例中雙方的應對脈絡。')
   lines.push('3. 候選著法比較：各候選著法的評估差異說明。')
   if (ea.userMove) {
-    lines.push('4. 使用者著法講評：與最佳著法的差距、屬於哪個錯誤等級、依據引擎變例說明差在哪裡。')
-    lines.push('5. 學習要點：從這個局面可以帶走的具體心得。')
+    lines.push('4. 問：為什麼我的著法會被判為這個等級？答：比較評分差距、最佳主線與使用者著法後續主線，具體說明失去什麼；不可只重複「分數較差」。')
+    lines.push('5. 問：走了我的著法後，雙方接下來怎麼走？答：依使用者著法後續主線逐手說明至少 4 個半回合；資料較短時明確說明引擎只提供到哪裡。')
+    lines.push('6. 問：下次遇到類似局面要先問自己什麼？答：給出 2 至 4 個可操作的思考問題。')
   } else {
-    lines.push('4. 學習要點：從這個局面可以帶走的具體心得。')
+    lines.push('4. 問：最佳著法之後怎麼走？答：依主要變例逐手說明至少 4 個半回合；資料較短時明確說明。')
+    lines.push('5. 問：下次遇到類似局面要先問自己什麼？答：給出 2 至 4 個可操作的思考問題。')
   }
   return lines.join('\n')
 }

@@ -300,12 +300,23 @@ async function main(): Promise<void> {
       inCand.scoreAfterUserMove?.displayText === '+0.15' && inCand.scoreAfterUserMove.wasInverted === false
     )
     check('evaluation 派生一致（§2.14.5）', inCand.evaluationAfterUserMove === inCand.scoreAfterUserMove?.comparableValue)
+    check(
+      '候選 fast path 保留使用者著法後續主線',
+      inCand.userMovePrincipalVariation?.[0] === 'b2e2' &&
+        inCand.displayUserMovePrincipalVariation?.[0] === '炮八平五'
+    )
 
     // userMove 不在候選中（§2.15.3：二次分析取負號）
     const sep = await adapter.analyzePosition({ positionFen: START_FEN, userMove: 'g3g4' }, config)
     check('二次分析：source=separate_engine_call', sep.userMoveEvaluationSource === 'separate_engine_call')
     check('使用者著法轉為中文兵三進一', sep.displayUserMove === '兵三進一')
     check('二次分析保留原始輸出', Boolean(sep.rawAnalysis?.userMove?.length))
+    check(
+      '二次分析主線以使用者著法開頭並接續對手回應',
+      sep.userMovePrincipalVariation?.[0] === 'g3g4' &&
+        sep.userMovePrincipalVariation.length > 1 &&
+        sep.displayUserMovePrincipalVariation?.[0] === '兵三進一'
+    )
     check(
       '對手視角 +0.42 反轉為 -0.42',
       sep.scoreAfterUserMove?.type === 'cp' &&

@@ -76,17 +76,32 @@ export function App(): JSX.Element {
   const pendingConversationId = useRef<string | null>(null)
   const appDataRef = useRef(appData)
 
-  const changeBoard = useCallback((next: BoardState): void => {
-    setBoardTimeline((current) => commitBoard(current, next))
+  const resetPositionInteraction = useCallback((): void => {
+    setResult(null)
+    setExplanation(null)
+    setDraftMove('')
+    setDraftReason('')
+    setSubmittedGuess(null)
+    setGuessSelectionActive(false)
   }, [])
+
+  const changeBoard = useCallback(
+    (next: BoardState): void => {
+      resetPositionInteraction()
+      setBoardTimeline((current) => commitBoard(current, next))
+    },
+    [resetPositionInteraction]
+  )
 
   const undoCurrentBoard = useCallback((): void => {
+    resetPositionInteraction()
     setBoardTimeline((current) => undoBoard(current))
-  }, [])
+  }, [resetPositionInteraction])
 
   const redoCurrentBoard = useCallback((): void => {
+    resetPositionInteraction()
     setBoardTimeline((current) => redoBoard(current))
-  }, [])
+  }, [resetPositionInteraction])
 
   const restoreOriginalBoard = useCallback((): void => {
     changeBoard(initialBoard())

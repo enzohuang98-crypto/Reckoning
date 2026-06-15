@@ -223,6 +223,12 @@ export function GuessModePanel({
             你的著法後 {scoreText(ea?.scoreAfterUserMove ?? null)}　最佳著法後{' '}
             {scoreText(ea?.scoreAfterBestMove ?? null)}（原局面行棋方視角）
           </div>
+          {(ea?.displayUserMovePrincipalVariation ?? []).length > 1 && (
+            <div className="muted small">
+              你的著法後續：
+              {ea?.displayUserMovePrincipalVariation?.slice(0, 8).join('、')}
+            </div>
+          )}
           {comparison.uncertaintyReasons.length > 0 && (
             <div className="muted small">
               不確定原因：{comparison.uncertaintyReasons.join('；')}
