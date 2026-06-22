@@ -1,6 +1,6 @@
 {
   "name": "xiangqi-analyzer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "象棋 AI 分析講解軟體 — Pikafish 引擎 + LLM 結構化解釋 (MVP)",
   "main": "./out/main/index.js",
   "author": "xiangqi-analyzer",
@@ -18,7 +18,9 @@
     "security:check": "tsx --tsconfig tsconfig.node.json tests/security.test.ts",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:update": "npm run build && electron-builder --config electron-builder.publish.cjs --publish never"
+    "dist:update": "npm run build && electron-builder --config electron-builder.publish.cjs --publish never",
+    "dist:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-github-update.ps1",
+    "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/publish-github-update.ps1"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
