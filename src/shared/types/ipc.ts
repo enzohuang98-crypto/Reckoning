@@ -126,6 +126,9 @@ export interface EngineAnalysisProgressPayload {
   targetMs: number | null
   percent: number
   depth: number | null
+  selDepth?: number | null
+  nodes?: number | null
+  nps?: number | null
   score: EngineScore | null
   displayMove?: string
   displayPrincipalVariation: string[]

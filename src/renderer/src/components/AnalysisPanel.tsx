@@ -38,8 +38,22 @@ interface PendingAiRequest {
   conversationId: string
 }
 
+interface EngineThoughtEntry {
+  id: string
+  phase: EngineAnalysisProgressPayload['phase']
+  elapsedMs: number
+  depth: number | null
+  selDepth?: number | null
+  nodes?: number | null
+  nps?: number | null
+  scoreRaw: string | null
+  displayMove?: string
+  displayPrincipalVariation: string[]
+}
+
 const AUTO_ROOT_ANALYSIS_MAX_MS = 1500
 const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 700
+const MAX_ENGINE_THOUGHTS = 24
 
 function hasBothKings(board: BoardState): boolean {
   let red = false
@@ -82,6 +96,24 @@ function newMessage(role: ConversationMessage['role'], text: string): Conversati
   }
 }
 
+function formatLargeNumber(value?: number | null): string | null {
+  if (value === undefined || value === null) return null
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return String(value)
+}
+
+function thoughtSignature(entry: EngineThoughtEntry): string {
+  return [
+    entry.phase,
+    entry.depth ?? 'none',
+    entry.selDepth ?? 'none',
+    entry.scoreRaw ?? 'none',
+    entry.displayMove ?? 'none',
+    entry.displayPrincipalVariation.join('|')
+  ].join('::')
+}
+
 export function AnalysisPanel({
   board,
   settings,
@@ -95,6 +127,7 @@ export function AnalysisPanel({
   const [status, setStatus] = useState<EngineStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<EngineAnalysisProgressPayload | null>(null)
+  const [engineThoughts, setEngineThoughts] = useState<EngineThoughtEntry[]>([])
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [engineDiagnostics, setEngineDiagnostics] = useState<string[]>([])
@@ -174,6 +207,7 @@ export function AnalysisPanel({
     pendingAiRequest.current = null
     setBusy(false)
     setProgress(null)
+    setEngineThoughts([])
     setCancelling(false)
     setAiBusy(false)
     setAiCancelling(false)
@@ -197,6 +231,34 @@ export function AnalysisPanel({
     const offProgress = window.api.engine.onAnalysisProgress((payload) => {
       if (payload.requestId !== activeRequestId.current) return
       setProgress(payload)
+      if (
+        payload.phase === 'preparing_engine' ||
+        (payload.depth === null &&
+          payload.score === null &&
+          !payload.displayMove &&
+          payload.displayPrincipalVariation.length === 0)
+      ) {
+        return
+      }
+      const entry: EngineThoughtEntry = {
+        id: crypto.randomUUID(),
+        phase: payload.phase,
+        elapsedMs: payload.elapsedMs,
+        depth: payload.depth,
+        selDepth: payload.selDepth,
+        nodes: payload.nodes,
+        nps: payload.nps,
+        scoreRaw: payload.score?.raw ?? null,
+        displayMove: payload.displayMove,
+        displayPrincipalVariation: payload.displayPrincipalVariation
+      }
+      setEngineThoughts((previous) => {
+        const last = previous[previous.length - 1]
+        if (last && thoughtSignature(last) === thoughtSignature(entry)) {
+          return previous
+        }
+        return [...previous, entry].slice(-MAX_ENGINE_THOUGHTS)
+      })
     })
     const offResult = window.api.engine.onAnalysisResult((payload) => {
       if (payload.requestId !== activeRequestId.current) return
@@ -334,6 +396,7 @@ export function AnalysisPanel({
       score: null,
       displayPrincipalVariation: []
     })
+    setEngineThoughts([])
     setResult(null)
     onResult(null)
     window.api.engine.startAnalysis({
@@ -650,9 +713,14 @@ export function AnalysisPanel({
               <b>{progressPhaseText(progress.phase)}</b>
               <span className="muted small">
                 {progress.depth !== null ? `深度 ${progress.depth}` : '等待引擎資料'}
+                {progress.selDepth !== undefined && progress.selDepth !== null
+                  ? ` / 選擇深度 ${progress.selDepth}`
+                  : ''}
                 {progress.elapsedMs > 0
                   ? `　已進行 ${(progress.elapsedMs / 1000).toFixed(1)} 秒`
                   : ''}
+                {progress.nodes ? `　節點 ${formatLargeNumber(progress.nodes)}` : ''}
+                {progress.nps ? `　速度 ${formatLargeNumber(progress.nps)}/s` : ''}
               </span>
             </div>
             <strong>{progress.percent}%</strong>
@@ -685,6 +753,55 @@ export function AnalysisPanel({
             </div>
           )}
         </div>
+      )}
+
+      {(busy || engineThoughts.length > 0) && (
+        <details className="engine-thinking" open={busy}>
+          <summary>
+            即時引擎思考動態
+            <span className="muted small">　最新 {engineThoughts.length} 筆深度變化</span>
+          </summary>
+          {engineThoughts.length === 0 ? (
+            <div className="muted small engine-thinking-empty">
+              等待引擎回傳深度、分數與主線。
+            </div>
+          ) : (
+            <ol className="engine-thinking-list">
+              {engineThoughts
+                .slice()
+                .reverse()
+                .map((item) => (
+                  <li key={item.id}>
+                    <div className="engine-thinking-meta">
+                      <b>{progressPhaseText(item.phase)}</b>
+                      <span>{(item.elapsedMs / 1000).toFixed(1)}s</span>
+                      <span>深度 {item.depth ?? '—'}</span>
+                      {item.selDepth !== undefined && item.selDepth !== null && (
+                        <span>選擇深度 {item.selDepth}</span>
+                      )}
+                      {item.scoreRaw && <span>原始分數 {item.scoreRaw}</span>}
+                      {item.nodes !== undefined && item.nodes !== null && (
+                        <span>節點 {formatLargeNumber(item.nodes)}</span>
+                      )}
+                      {item.nps !== undefined && item.nps !== null && (
+                        <span>速度 {formatLargeNumber(item.nps)}/s</span>
+                      )}
+                    </div>
+                    <div className="engine-thinking-line">
+                      {item.displayMove && (
+                        <span>
+                          目前首選 <b>{item.displayMove}</b>
+                        </span>
+                      )}
+                      <span className="pv">
+                        {item.displayPrincipalVariation.slice(0, 10).join('、') || '尚無主線'}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+            </ol>
+          )}
+        </details>
       )}
 
       {aiBusy && harnessProgress && (

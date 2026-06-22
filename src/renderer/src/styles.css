@@ -598,6 +598,62 @@ summary:focus-visible {
   line-height: 1.55;
 }
 
+.engine-thinking {
+  margin-top: 12px;
+  border: 1px solid rgba(120, 156, 49, 0.24);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.engine-thinking summary {
+  padding: 11px 13px;
+}
+
+.engine-thinking-empty {
+  padding: 0 13px 13px;
+}
+
+.engine-thinking-list {
+  display: grid;
+  max-height: 280px;
+  margin: 0;
+  padding: 0 13px 13px;
+  overflow: auto;
+  gap: 8px;
+  list-style: none;
+}
+
+.engine-thinking-list li {
+  padding: 10px;
+  border: 1px solid rgba(244, 241, 230, 0.08);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.engine-thinking-meta,
+.engine-thinking-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+}
+
+.engine-thinking-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.engine-thinking-meta b {
+  color: var(--ivory-soft);
+}
+
+.engine-thinking-line {
+  margin-top: 6px;
+  color: var(--ivory-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .guess-move-picker {
   cursor: pointer;
 }
@@ -1852,6 +1908,21 @@ summary:focus-visible {
 }
 
 .live-analysis-line {
+  color: #405b4d;
+}
+
+.engine-thinking {
+  border-color: #d8e6dd;
+  background: #f8fbf9;
+}
+
+.engine-thinking-list li {
+  border-color: #e2ebe6;
+  background: #fff;
+}
+
+.engine-thinking-meta b,
+.engine-thinking-line {
   color: #405b4d;
 }
 

@@ -121,9 +121,10 @@ async function main(): Promise<void> {
 
   section('EngineOutputParser：parseInfoLine / parseBestMove')
   {
-    const uciLine = parseInfoLine('info depth 12 multipv 2 score cp -37 nodes 5000 pv h2e2 h9g7')
+    const uciLine = parseInfoLine('info depth 12 seldepth 18 multipv 2 score cp -37 nodes 5000 nps 250000 pv h2e2 h9g7')
     check('UCI score cp 解析', uciLine?.score?.type === 'cp' && uciLine.score.cp === -37, uciLine)
     check('multipv / depth / pv', uciLine?.multipv === 2 && uciLine.depth === 12 && uciLine.pv.join(' ') === 'h2e2 h9g7')
+    check('即時思考統計欄位解析', uciLine?.selDepth === 18 && uciLine.nodes === 5000 && uciLine.nps === 250000)
     const mateLine = parseInfoLine('info depth 9 score mate -4 pv a0a1')
     check('UCI score mate 解析', mateLine?.score?.type === 'mate' && mateLine.score.mateIn === -4)
     const ucciLine = parseInfoLine('info depth 6 score 4 pv b0c2 b9c7')

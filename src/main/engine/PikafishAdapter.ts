@@ -196,6 +196,9 @@ export interface EngineLiveAnalysisProgress {
   elapsedMs: number
   targetMs: number
   depth: number | null
+  selDepth?: number | null
+  nodes?: number | null
+  nps?: number | null
   score: EngineScore | null
   displayMove?: string
   displayPrincipalVariation: string[]
@@ -205,6 +208,9 @@ interface SearchProgress {
   elapsedMs: number
   targetMs: number
   depth: number | null
+  selDepth: number | null
+  nodes: number | null
+  nps: number | null
   score: EngineScore | null
   move?: string
   principalVariation: string[]
@@ -603,6 +609,9 @@ export class PikafishAdapter {
             elapsedMs: now - searchStartedAt,
             targetMs: options.movetimeMs,
             depth: parsed.depth,
+            selDepth: parsed.selDepth,
+            nodes: parsed.nodes,
+            nps: parsed.nps,
             score: parsed.score,
             move: parsed.pv[0],
             principalVariation: parsed.pv
@@ -742,6 +751,9 @@ export class PikafishAdapter {
           elapsedMs: progress.elapsedMs,
           targetMs: progress.targetMs,
           depth: progress.depth,
+          selDepth: progress.selDepth,
+          nodes: progress.nodes,
+          nps: progress.nps,
           score:
             phase === 'user_move_analysis' && progress.score
               ? invertEngineScore(progress.score)

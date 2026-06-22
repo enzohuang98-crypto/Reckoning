@@ -79,6 +79,10 @@ export function convertMateScore(
 export interface ParsedInfoLine {
   multipv: number
   depth: number | null
+  selDepth: number | null
+  timeMs: number | null
+  nodes: number | null
+  nps: number | null
   /** 解析失敗或缺失為 null（§2.14.6「無效 score」） */
   score: EngineScore | null
   pv: string[]
@@ -97,6 +101,10 @@ export function parseInfoLine(
   const tokens = trimmed.split(/\s+/)
 
   let depth: number | null = null
+  let selDepth: number | null = null
+  let timeMs: number | null = null
+  let nodes: number | null = null
+  let nps: number | null = null
   let multipv = 1
   let score: EngineScore | null = null
   let pv: string[] = []
@@ -107,6 +115,30 @@ export function parseInfoLine(
       case 'depth': {
         const d = Number(tokens[i + 1])
         if (Number.isFinite(d)) depth = d
+        i += 1
+        break
+      }
+      case 'seldepth': {
+        const d = Number(tokens[i + 1])
+        if (Number.isFinite(d)) selDepth = d
+        i += 1
+        break
+      }
+      case 'time': {
+        const t = Number(tokens[i + 1])
+        if (Number.isFinite(t)) timeMs = t
+        i += 1
+        break
+      }
+      case 'nodes': {
+        const n = Number(tokens[i + 1])
+        if (Number.isFinite(n)) nodes = n
+        i += 1
+        break
+      }
+      case 'nps': {
+        const n = Number(tokens[i + 1])
+        if (Number.isFinite(n)) nps = n
         i += 1
         break
       }
@@ -144,7 +176,7 @@ export function parseInfoLine(
   }
 
   if (score === null && pv.length === 0) return null
-  return { multipv, depth, score, pv }
+  return { multipv, depth, selDepth, timeMs, nodes, nps, score, pv }
 }
 
 /** 從 `bestmove xxxx [ponder yyyy]` 取出最佳著法；(none)/nobestmove 回 null */
