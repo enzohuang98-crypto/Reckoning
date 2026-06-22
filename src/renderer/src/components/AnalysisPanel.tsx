@@ -588,6 +588,23 @@ export function AnalysisPanel({
 
   const ea = result?.engineAnalysis ?? null
   const confidence = result?.moveComparison.confidence
+  const canAnalyze = Boolean(status?.available && hasBothKings(board) && !busy && !aiBusy)
+  const analysisBlockedReason = !hasBothKings(board)
+    ? '棋盤需要同時有紅帥與黑將才能分析。'
+    : !status?.available
+      ? '請先到設定頁完成本機引擎設定。'
+      : aiBusy
+        ? 'AI 正在解說，完成或取消後才能重新分析。'
+        : busy
+          ? '引擎正在分析中。'
+          : null
+  const aiBlockedReason = !result
+    ? '請先等引擎分析完成，再請 AI 解說。'
+    : busy
+      ? '引擎分析中，完成後才能解說。'
+      : aiBusy
+        ? 'AI 正在生成解說。'
+        : null
 
   return (
     <div className="analysis-panel">
@@ -667,43 +684,62 @@ export function AnalysisPanel({
         </div>
       )}
 
-      <div className="row gap">
-        <button
-          className="btn"
-          onClick={() => startAnalysis(false)}
-          disabled={busy || aiBusy || !status?.available || !hasBothKings(board)}
-        >
-          {busy
-            ? '分析中…'
-            : '立即重新分析'}
-        </button>
-        {busy && (
-          <button className="btn ghost" onClick={cancelAnalysis} disabled={cancelling}>
-            {cancelling ? '取消中…' : '取消'}
+      <div className="analysis-action-card">
+        <div>
+          <b>下一步</b>
+          <p className="muted small">
+            {result
+              ? '可以查看候選著法、加入待理解，或請 AI 用中文解釋。'
+              : busy
+                ? '正在讀取引擎結果，先觀察即時思考動態。'
+                : '可直接重新分析目前棋盤，或先在左側選一個你的著法。'}
+          </p>
+        </div>
+        <div className="row gap analysis-actions">
+          <button
+            className="btn"
+            onClick={() => startAnalysis(false)}
+            disabled={!canAnalyze}
+            title={analysisBlockedReason ?? undefined}
+          >
+            {busy ? '分析中…' : '立即重新分析'}
           </button>
-        )}
-        <button
-          className="btn ghost"
-          onClick={() => generateExplanation(null, explanation !== null)}
-          disabled={busy || aiBusy || !result}
-        >
-          {aiBusy ? '生成中…' : explanation ? '重新生成' : '請 AI 解說'}
-        </button>
-        {aiBusy && (
-          <button className="btn ghost" onClick={cancelExplain} disabled={aiCancelling}>
-            {aiCancelling ? '取消中…' : '取消生成'}
+          {busy && (
+            <button className="btn ghost" onClick={cancelAnalysis} disabled={cancelling}>
+              {cancelling ? '取消中…' : '取消'}
+            </button>
+          )}
+          <button
+            className="btn ghost"
+            onClick={() => generateExplanation(null, explanation !== null)}
+            disabled={Boolean(aiBlockedReason)}
+            title={aiBlockedReason ?? undefined}
+          >
+            {aiBusy ? '生成中…' : explanation ? '重新生成' : '請 AI 解說'}
           </button>
-        )}
+          {aiBusy && (
+            <button className="btn ghost" onClick={cancelExplain} disabled={aiCancelling}>
+              {aiCancelling ? '取消中…' : '取消生成'}
+            </button>
+          )}
+        </div>
       </div>
-      <div className="muted small auto-analysis-note">
-        {busy
-          ? '局面已變更，正在自動更新分析結果。'
-          : `自動分析已開啟（快速模式），每次局面變更最多思考 ${(
-              Math.min(
-                settings.rootAnalysisMovetimeMs,
-                AUTO_ROOT_ANALYSIS_MAX_MS
-              ) / 1000
-            ).toFixed(1)} 秒；「立即重新分析」會使用完整設定時間。`}
+      <div className="analysis-helper-strip">
+        <span>
+          {busy
+            ? '局面已變更，正在自動更新分析結果。'
+            : `自動分析已開啟：快速模式最多 ${(
+                Math.min(
+                  settings.rootAnalysisMovetimeMs,
+                  AUTO_ROOT_ANALYSIS_MAX_MS
+                ) / 1000
+              ).toFixed(1)} 秒；手動重跑會使用完整設定時間。`}
+        </span>
+        {(analysisBlockedReason || aiBlockedReason) && !busy && (
+          <span className="muted small">
+            {analysisBlockedReason ?? aiBlockedReason}
+          </span>
+        )}
       </div>
 
       {busy && progress && (
@@ -869,6 +905,20 @@ export function AnalysisPanel({
             {ea.analysisTimeMs !== undefined && (
               <span className="muted small">　({(ea.analysisTimeMs / 1000).toFixed(1)}s)</span>
             )}
+          </div>
+          <div className="analysis-summary-grid">
+            <div>
+              <span className="muted small">最佳著法</span>
+              <b>{ea.displayBestMove ?? '無法辨識著法'}</b>
+            </div>
+            <div>
+              <span className="muted small">原始分數</span>
+              <b>{ea.scoreAfterBestMove?.raw ?? '無'}</b>
+            </div>
+            <div>
+              <span className="muted small">搜尋深度</span>
+              <b>{ea.depth ?? '—'}</b>
+            </div>
           </div>
           {(ea.incomplete || confidence === 'low') && (
             <div className="engine-status warn">

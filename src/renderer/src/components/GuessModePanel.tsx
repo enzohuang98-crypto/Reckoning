@@ -142,6 +142,11 @@ export function GuessModePanel({
       <p className="muted small">
         點「你的著法」後，直接在棋盤依序點選棋子與目的地，再提交鎖定答案。
       </p>
+      <div className="guess-steps" aria-label="猜著流程">
+        <span className={draftMove || submittedGuess ? 'done' : 'active'}>1 選著法</span>
+        <span className={submittedGuess ? 'done' : draftMove ? 'active' : ''}>2 提交猜著</span>
+        <span className={hasGuessResult ? 'done' : submittedGuess ? 'active' : ''}>3 看比較</span>
+      </div>
       <div className="row gap">
         <input
           className={`text-input guess-move-picker ${selectionActive ? 'active' : ''}`}
@@ -177,6 +182,11 @@ export function GuessModePanel({
           </button>
         )}
       </div>
+      {submittedGuess !== null && result !== null && (
+        <div className="muted small guess-lock-note">
+          已完成本次比較；若要改猜著，請先在棋盤走新局面或重新開始測試，避免新舊分析混在一起。
+        </div>
+      )}
       {selectionActive && (
         <div className="guess-selection-note">
           請到棋盤先點選要走的棋子，再點目的地；選擇過程不會改變棋盤。

@@ -541,6 +541,36 @@ summary:focus-visible {
   color: #bcd98a;
 }
 
+.analysis-action-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(120, 156, 49, 0.22);
+  border-radius: 12px;
+  background: rgba(120, 156, 49, 0.07);
+}
+
+.analysis-action-card p {
+  margin: 3px 0 0;
+}
+
+.analysis-actions {
+  justify-content: flex-end;
+}
+
+.analysis-helper-strip {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  color: #bcd98a;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .live-analysis {
   margin-top: 13px;
   padding: 13px;
@@ -900,6 +930,32 @@ input[type="range"] {
   background: rgba(0, 0, 0, 0.18);
 }
 
+.analysis-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.analysis-summary-grid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(244, 241, 230, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.analysis-summary-grid b {
+  overflow: hidden;
+  color: var(--ivory);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .raw-engine-analysis {
   margin-top: 12px;
   border: 1px solid rgba(244, 241, 230, 0.1);
@@ -993,6 +1049,42 @@ input[type="range"] {
   border: 1px solid transparent;
   border-radius: 11px;
   line-height: 1.7;
+}
+
+.guess-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.guess-steps span {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11px;
+  font-weight: 750;
+  text-align: center;
+}
+
+.guess-steps span.active {
+  color: #efc87e;
+  border-color: rgba(226, 180, 97, 0.26);
+  background: rgba(226, 180, 97, 0.09);
+}
+
+.guess-steps span.done {
+  color: #b8d781;
+  border-color: rgba(120, 156, 49, 0.25);
+  background: rgba(120, 156, 49, 0.1);
+}
+
+.guess-lock-note {
+  margin-top: 8px;
+  line-height: 1.5;
 }
 
 .guess-result.correct {
@@ -1590,8 +1682,20 @@ summary {
   .engine-add-box,
   .engine-selection-grid,
   .settings-number-grid,
-  .analysis-engine-selectors {
+  .analysis-engine-selectors,
+  .analysis-summary-grid,
+  .guess-steps {
     grid-template-columns: 1fr;
+  }
+
+  .analysis-action-card,
+  .analysis-helper-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .analysis-actions {
+    justify-content: flex-start;
   }
 
   .engine-install-item {
@@ -1885,6 +1989,15 @@ summary:focus-visible {
   color: #34795b;
 }
 
+.analysis-action-card {
+  border-color: #d8e6dd;
+  background: #f7fbf8;
+}
+
+.analysis-helper-strip {
+  color: #34795b;
+}
+
 .live-analysis,
 .harness-progress,
 .harness-evidence {
@@ -1950,6 +2063,15 @@ summary:focus-visible {
 .fatal-error pre {
   color: #50645a;
   background: #f6f8f6;
+}
+
+.analysis-summary-grid > div {
+  border-color: #e2ebe6;
+  background: #fff;
+}
+
+.analysis-summary-grid b {
+  color: #263d31;
 }
 
 .fen-output {
@@ -2057,6 +2179,23 @@ input[type="range"] {
 
 .guess-result.correct {
   border-color: #c9dfd1;
+  background: #edf7f0;
+}
+
+.guess-steps span {
+  border-color: #dce6df;
+  background: #fff;
+}
+
+.guess-steps span.active {
+  color: #926426;
+  border-color: #ead9bc;
+  background: #fff8eb;
+}
+
+.guess-steps span.done {
+  color: #2f7557;
+  border-color: #cce1d3;
   background: #edf7f0;
 }
 
