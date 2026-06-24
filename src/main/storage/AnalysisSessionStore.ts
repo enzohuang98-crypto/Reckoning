@@ -19,6 +19,7 @@ export const DEFAULT_ANALYSIS_SESSION_TTL_MS = 2 * 60 * 60 * 1000
 
 /** 定時清理間隔：10 分鐘（§2.18.4） */
 export const ANALYSIS_SESSION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000
+export const MAX_ANALYSIS_SESSIONS = 100
 
 /** 分析工作階段（§2.18.2） */
 export interface AnalysisSession {
@@ -61,6 +62,7 @@ export class InMemoryAnalysisSessionStore implements AnalysisSessionStore {
   async save(session: AnalysisSession): Promise<void> {
     await this.clearExpiredSessions() // save() 前先清理（§2.18.4）
     this.sessions.set(session.analysisId, session)
+    this.trimOldestSessions()
   }
 
   async get(analysisId: string): Promise<AnalysisSession | null> {
@@ -81,6 +83,17 @@ export class InMemoryAnalysisSessionStore implements AnalysisSessionStore {
     const now = Date.now()
     for (const [id, s] of this.sessions.entries()) {
       if (now > Date.parse(s.expiresAt)) this.sessions.delete(id)
+    }
+    this.trimOldestSessions()
+  }
+
+  private trimOldestSessions(): void {
+    if (this.sessions.size <= MAX_ANALYSIS_SESSIONS) return
+    const ordered = [...this.sessions.entries()].sort(
+      ([, a], [, b]) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
+    )
+    for (const [id] of ordered.slice(0, this.sessions.size - MAX_ANALYSIS_SESSIONS)) {
+      this.sessions.delete(id)
     }
   }
 }

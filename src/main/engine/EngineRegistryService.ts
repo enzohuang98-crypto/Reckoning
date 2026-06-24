@@ -9,10 +9,14 @@ import {
 } from '@shared/types/EngineRegistry'
 import type { EngineProtocol } from '@shared/types/EngineAnalysis'
 import type { StorageService } from '../storage/StorageService'
+import { normalizeEnginePath } from '../security/InputValidation'
 import { PikafishAdapter } from './PikafishAdapter'
 
 export const ENGINE_REGISTRY_FILE = 'engine-registry.json'
 const LEGACY_ENGINE_CONFIG_FILE = 'engine-config.json'
+const ENGINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
+const MAX_ENGINE_NAME_LENGTH = 80
+const MAX_ENGINE_ERROR_LENGTH = 500
 
 interface LegacyEngineConfig {
   enginePath?: unknown
@@ -31,14 +35,52 @@ function isProtocol(value: unknown): value is EngineProtocol {
   return value === 'uci' || value === 'ucci'
 }
 
+function boundedDisplayString(
+  value: unknown,
+  fallback: string,
+  maxLength = MAX_ENGINE_NAME_LENGTH
+): string {
+  if (typeof value !== 'string') return fallback
+  const normalized = value
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, maxLength)
+  return normalized || fallback
+}
+
+function sanitizeCapabilities(value: unknown): EngineCapabilities {
+  const base = defaultCapabilities()
+  if (typeof value !== 'object' || value === null) return base
+  const raw = value as Partial<EngineCapabilities>
+  return {
+    multiPv: typeof raw.multiPv === 'boolean' ? raw.multiPv : base.multiPv,
+    configurableThreads:
+      typeof raw.configurableThreads === 'boolean'
+        ? raw.configurableThreads
+        : base.configurableThreads,
+    configurableHash:
+      typeof raw.configurableHash === 'boolean'
+        ? raw.configurableHash
+        : base.configurableHash
+  }
+}
+
 function sanitizeInstallation(value: unknown): EngineInstallation | null {
   if (typeof value !== 'object' || value === null) return null
   const item = value as Partial<EngineInstallation>
   if (
     typeof item.id !== 'string' ||
-    typeof item.displayName !== 'string' ||
+    !ENGINE_ID_PATTERN.test(item.id) ||
     typeof item.executablePath !== 'string'
   ) {
+    return null
+  }
+  let executablePath: string
+  try {
+    const normalized = normalizeEnginePath(item.executablePath)
+    if (!normalized) return null
+    executablePath = normalized
+  } catch {
     return null
   }
   const profileId: EngineProfileId =
@@ -50,24 +92,26 @@ function sanitizeInstallation(value: unknown): EngineInstallation | null {
     item.profileId === 'custom'
       ? item.profileId
       : 'custom'
+  const profile = getEngineProfile(profileId)
   return {
     id: item.id,
     profileId,
-    displayName: item.displayName.trim() || getEngineProfile(profileId).label,
-    executablePath: item.executablePath,
+    displayName: boundedDisplayString(item.displayName, profile.label),
+    executablePath,
     protocol: isProtocol(item.protocol) ? item.protocol : null,
-    detectedName: typeof item.detectedName === 'string' ? item.detectedName : null,
+    detectedName:
+      typeof item.detectedName === 'string'
+        ? boundedDisplayString(item.detectedName, profile.label)
+        : null,
     enabled: item.enabled !== false,
     verified: item.verified === true,
-    capabilities: {
-      ...defaultCapabilities(),
-      ...(typeof item.capabilities === 'object' && item.capabilities !== null
-        ? item.capabilities
-        : {})
-    },
+    capabilities: sanitizeCapabilities(item.capabilities),
     lastTestedAt:
       typeof item.lastTestedAt === 'string' ? item.lastTestedAt : undefined,
-    lastError: typeof item.lastError === 'string' ? item.lastError : undefined
+    lastError:
+      typeof item.lastError === 'string'
+        ? boundedDisplayString(item.lastError, '', MAX_ENGINE_ERROR_LENGTH) || undefined
+        : undefined
   }
 }
 
@@ -116,11 +160,19 @@ export class EngineRegistryService {
     if (typeof legacy.enginePath !== 'string' || !legacy.enginePath.trim()) {
       return EMPTY_ENGINE_REGISTRY
     }
+    let executablePath: string
+    try {
+      const normalized = normalizeEnginePath(legacy.enginePath)
+      if (!normalized) return EMPTY_ENGINE_REGISTRY
+      executablePath = normalized
+    } catch {
+      return EMPTY_ENGINE_REGISTRY
+    }
     const installation: EngineInstallation = {
       id: randomUUID(),
       profileId: 'pikafish',
       displayName: 'Pikafish',
-      executablePath: legacy.enginePath,
+      executablePath,
       protocol: isProtocol(legacy.engineProtocol) ? legacy.engineProtocol : null,
       detectedName: null,
       enabled: true,

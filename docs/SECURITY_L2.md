@@ -27,6 +27,14 @@
 | 打包 | 關閉 RunAsNode、NODE_OPTIONS、Node CLI inspect、file protocol 額外權限；開啟 cookie 加密、ASAR 完整性及 only-load-from-ASAR |
 | 驗證 | `tests/security.test.ts` 覆蓋 URL、路徑穿越、IPC payload、大小限制、原子寫入與靜態安全設定 |
 
+## 2026-06-24 hardening additions
+
+- Dependency baseline: `npm audit --audit-level=moderate` must report 0 vulnerabilities before release.
+- Engine registry hardening: engine paths loaded from existing JSON files are re-normalized with the same rules as new user input; unsafe UNC paths, relative paths, control characters, invalid ids, and malformed capability values are dropped.
+- Packaged engine resolution: production builds no longer search `process.cwd()/resources/engine/pikafish.exe`; cwd fallback is allowed only in development.
+- Backup import hygiene: imported AppData recursively strips secret-like keys such as `apiKey`, `token`, `secret`, `password`, `authorization`, and `licenseKey`.
+- Resource exhaustion guardrails: concurrent engine analysis and AI explanation requests are capped, and in-memory analysis sessions are capped at 100 with oldest-session eviction.
+
 ## 信任與剩餘風險
 
 - 使用者自行選擇的象棋引擎是受信任的本機可執行檔。本程式會隔離 renderer，但不會沙箱第三方引擎程序；只應使用可信來源與已驗證雜湊的引擎。
@@ -40,7 +48,7 @@
 2. `npm test`
 3. `npm run build`
 4. 確認建置後 CSP 不含 `unsafe-eval`，且 production `connect-src` 為 `none`
-5. `npm audit --omit=dev --audit-level=high`
+5. `npm run security:audit`
 6. `npm run dist`
 7. 正式公開發行時驗證安裝檔簽章與 SHA-256
 

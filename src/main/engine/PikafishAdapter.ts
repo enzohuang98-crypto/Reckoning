@@ -101,6 +101,22 @@ function isSafeEngineFile(path: string): boolean {
   }
 }
 
+function safeNormalizeEnginePath(path: string | null | undefined): string | null {
+  if (!path) return null
+  try {
+    return normalizeEnginePath(path)
+  } catch {
+    return null
+  }
+}
+
+function isDevelopmentRuntime(): boolean {
+  return (
+    process.env.NODE_ENV === 'development' ||
+    typeof process.env.ELECTRON_RENDERER_URL === 'string'
+  )
+}
+
 /**
  * 視角反轉（§2.15.4，含 mate 0 修正）。
  * 二次分析的局面行棋方已換邊，分數須取負號轉回原局面行棋方視角。
@@ -166,10 +182,13 @@ function resolveBundledEnginePath(): string | null {
     }
   }
 
-  const resourceCandidates = [
-    join(process.resourcesPath ?? '', 'engine', 'pikafish.exe'),
-    join(process.cwd(), 'resources', 'engine', 'pikafish.exe')
-  ]
+  const resourceCandidates: string[] = []
+  if (typeof process.resourcesPath === 'string' && process.resourcesPath.trim()) {
+    resourceCandidates.push(join(process.resourcesPath, 'engine', 'pikafish.exe'))
+  }
+  if (isDevelopmentRuntime()) {
+    resourceCandidates.push(join(process.cwd(), 'resources', 'engine', 'pikafish.exe'))
+  }
   for (const candidate of resourceCandidates) {
     if (candidate && isSafeEngineFile(candidate)) return candidate
   }
@@ -252,7 +271,7 @@ export class PikafishAdapter {
     private readonly fallbackName: string = DEFAULT_ENGINE_NAME,
     private readonly installationId?: string
   ) {
-    this.userPath = userPath
+    this.userPath = safeNormalizeEnginePath(userPath)
     this.knownProtocol = knownProtocol
   }
 
@@ -261,8 +280,7 @@ export class PikafishAdapter {
   }
 
   setUserPath(path: string | null): void {
-    const trimmed = path?.trim()
-    this.userPath = trimmed ? trimmed : null
+    this.userPath = safeNormalizeEnginePath(path)
   }
 
   getUserPath(): string | null {

@@ -43,6 +43,7 @@ const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   enginePath: null,
   engineProtocol: null
 }
+const MAX_ACTIVE_ANALYSES = 3
 
 // Kept for backwards-compatible tests and migration tooling.
 export function loadEngineConfig(storage: StorageService): EngineConfig {
@@ -197,6 +198,14 @@ export function registerEngineAnalysisHandlers(
         : null
 
       const previous = activeAnalyses.get(payload.requestId)
+      if (!previous && activeAnalyses.size >= MAX_ACTIVE_ANALYSES) {
+        event.reply(IPC.ENGINE_ANALYSIS_ERROR, {
+          requestId: payload.requestId,
+          code: 'too_many_requests',
+          message: '同時分析工作過多，請等目前分析完成後再試。'
+        } satisfies EngineAnalysisErrorPayload)
+        return
+      }
       if (previous) {
         previous.controller.abort()
         for (const controls of previous.controls) controls.sendStop()

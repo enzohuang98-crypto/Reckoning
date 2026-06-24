@@ -1,4 +1,4 @@
-import { isAbsolute } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 import { parseFen } from '@shared/logic/fen'
 import { detectApiKeyProvider } from '@shared/logic/ApiKeyProvider'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
@@ -116,19 +116,23 @@ export function normalizeEnginePath(
 ): string | null {
   if (value === null || value === undefined || value === '') return null
   const enginePath = boundedString(value, '引擎路徑', MAX_ENGINE_PATH_LENGTH)
+  if (/[\u0000-\u001f\u007f]/.test(enginePath)) {
+    throw new SecurityValidationError('引擎路徑含有不允許的控制字元。')
+  }
   if (!isAbsolute(enginePath)) {
     throw new SecurityValidationError('引擎路徑必須是絕對路徑。')
   }
+  const normalized = resolve(enginePath)
   if (
     platform === 'win32' &&
-    (enginePath.startsWith('\\\\') || enginePath.startsWith('//'))
+    (normalized.startsWith('\\\\') || normalized.startsWith('//'))
   ) {
     throw new SecurityValidationError('引擎必須位於本機磁碟，不允許網路共享路徑。')
   }
-  if (platform === 'win32' && !enginePath.toLowerCase().endsWith('.exe')) {
+  if (platform === 'win32' && !normalized.toLowerCase().endsWith('.exe')) {
     throw new SecurityValidationError('Windows 引擎必須是 .exe 可執行檔。')
   }
-  return enginePath
+  return normalized
 }
 
 export function assertJsonSize(value: unknown, maxBytes: number, label: string): void {

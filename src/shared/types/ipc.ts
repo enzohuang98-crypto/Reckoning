@@ -143,6 +143,7 @@ export type EngineAnalysisErrorCode =
   | 'engine_timeout'
   | 'engine_parse_error'
   | 'session_store_failed'
+  | 'too_many_requests'
   | 'cancelled'
   | 'unknown_error'
 
@@ -237,6 +238,7 @@ export type AIExplanationErrorCode =
   | 'provider_error'
   | 'network_error'
   | 'rate_limited'
+  | 'too_many_requests'
   | 'cancelled'
   | 'unknown_error'
 

@@ -76,11 +76,29 @@ function hasString(value: Record<string, unknown>, key: string): boolean {
   return typeof value[key] === 'string'
 }
 
+const SENSITIVE_FIELD_PATTERN =
+  /^(apiKey|api_key|token|secret|password|authorization|licenseKey)$/i
+
+function stripSensitiveFields<T>(value: T, depth = 0): T {
+  if (depth > 8) return value
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSensitiveFields(item, depth + 1)) as T
+  }
+  if (!isRecord(value)) return value
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !SENSITIVE_FIELD_PATTERN.test(key))
+      .map(([key, item]) => [key, stripSensitiveFields(item, depth + 1)])
+  ) as T
+}
+
 function sanitizeArray<T>(
   value: unknown,
   isValid: (entry: unknown) => entry is T
 ): T[] {
-  return Array.isArray(value) ? value.filter(isValid).slice(0, 5000) : []
+  return Array.isArray(value)
+    ? value.filter(isValid).slice(0, 5000).map((entry) => stripSensitiveFields(entry))
+    : []
 }
 
 function isMistakeBookEntry(value: unknown): value is MistakeBookEntry {

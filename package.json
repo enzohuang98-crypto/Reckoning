@@ -1,6 +1,6 @@
 {
   "name": "xiangqi-analyzer",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "象棋 AI 分析講解軟體 — Pikafish 引擎 + LLM 結構化解釋 (MVP)",
   "main": "./out/main/index.js",
   "author": "xiangqi-analyzer",
@@ -14,8 +14,9 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "tsx --tsconfig tsconfig.node.json tests/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/license.test.ts && tsx --tsconfig tsconfig.node.json tests/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security.test.ts && tsx --tsconfig tsconfig.node.json tests/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts",
+    "test": "tsx --tsconfig tsconfig.node.json tests/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/license.test.ts && tsx --tsconfig tsconfig.node.json tests/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security.test.ts && tsx --tsconfig tsconfig.node.json tests/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts",
     "security:check": "tsx --tsconfig tsconfig.node.json tests/security.test.ts",
+    "security:audit": "npm audit --audit-level=moderate",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "dist:update": "npm run build && electron-builder --config electron-builder.publish.cjs --publish never",
@@ -23,21 +24,25 @@
     "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/publish-github-update.ps1"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
+    "@anthropic-ai/sdk": "^0.105.0",
     "electron-updater": "^6.8.9"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "form-data": "^4.0.6"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.2.1",
-    "electron-builder": "^26.15.2",
-    "electron-vite": "^2.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tsx": "^4.22.4",
-    "typescript": "^5.7.2",
-    "vite": "^5.4.11"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.5"
   }
 }

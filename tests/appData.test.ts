@@ -18,26 +18,42 @@ function check(name: string, condition: boolean): void {
   }
 }
 
-console.log('\n## AppData 永久資料與備份')
+console.log('\n## AppData persistence and backup')
 
 const sanitized = sanitizeAppData({
   schemaVersion: 999,
   savedPositions: [
     {
       id: 'p1',
-      name: '測試局面',
+      name: 'Test position',
       fen: '9/9/9/9/9/9/9/9/9/9 w - - 0 1',
       createdAt: '2026-06-12T00:00:00.000Z',
-      updatedAt: '2026-06-12T00:00:00.000Z'
+      updatedAt: '2026-06-12T00:00:00.000Z',
+      apiKey: 'should-not-survive'
     },
     { invalid: true }
+  ],
+  misunderstoodPositions: [
+    {
+      id: 'm1',
+      positionFen: '9/9/9/9/9/9/9/9/9/9 w - - 0 1',
+      reason: 'test',
+      createdAt: '2026-06-12T00:00:00.000Z',
+      updatedAt: '2026-06-12T00:00:00.000Z',
+      engineAnalysis: {
+        bestMove: 'a0a1',
+        nested: { token: 'nested-secret' }
+      }
+    }
   ],
   mistakeBookEntries: 'invalid'
 })
 
-check('匯入時固定目前 schemaVersion', sanitized.schemaVersion === APP_DATA_SCHEMA_VERSION)
-check('無效陣列內容被略過', sanitized.savedPositions.length === 1)
-check('錯誤型別回復空陣列', sanitized.mistakeBookEntries.length === 0)
+check('import pins current schemaVersion', sanitized.schemaVersion === APP_DATA_SCHEMA_VERSION)
+check('invalid array entries are skipped', sanitized.savedPositions.length === 1)
+check('wrong collection type falls back to empty array', sanitized.mistakeBookEntries.length === 0)
+check('import sanitizer strips top-level apiKey fields', !JSON.stringify(sanitized).includes('should-not-survive'))
+check('import sanitizer strips nested token fields', !JSON.stringify(sanitized).includes('nested-secret'))
 
 const merged = mergeAppData(
   sanitized,
@@ -47,7 +63,7 @@ const merged = mergeAppData(
       sanitized.savedPositions[0],
       {
         id: 'p2',
-        name: '第二局面',
+        name: 'Second position',
         fen: '9/9/9/9/9/9/9/9/9/9 b - - 0 1',
         createdAt: '2026-06-12T00:00:00.000Z',
         updatedAt: '2026-06-12T00:00:00.000Z'
@@ -56,9 +72,9 @@ const merged = mergeAppData(
   }
 )
 
-check('重複保存局面不重複匯入', merged.summary.savedPositions === 1)
-check('合併後保留原資料並加入新資料', merged.snapshot.savedPositions.length === 2)
-check('備份結構不含 API Key 欄位', !JSON.stringify(merged.snapshot).includes('apiKey'))
+check('duplicate saved positions are not imported twice', merged.summary.savedPositions === 1)
+check('merge keeps old data and adds new data', merged.snapshot.savedPositions.length === 2)
+check('backup snapshot does not contain API Key field names', !JSON.stringify(merged.snapshot).includes('apiKey'))
 
-console.log(`結果：${passed} 通過，${failed} 失敗`)
+console.log(`Result: ${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

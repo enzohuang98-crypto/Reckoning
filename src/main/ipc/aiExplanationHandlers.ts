@@ -275,6 +275,7 @@ export function registerAiExplanationHandlers(
   // ---- AI 解釋 streaming（§2.17.5 最終版 loop） ----
   const activeExplanationRequests = new Map<string, AbortController>()
   const activeHarnessContinuations = new Map<string, () => void>()
+  const MAX_ACTIVE_EXPLANATION_REQUESTS = 2
 
   ipcMain.on(
     IPC.AI_GENERATE_EXPLANATION_START,
@@ -302,7 +303,16 @@ export function registerAiExplanationHandlers(
         return
       }
       const { requestId } = payload
-      activeExplanationRequests.get(requestId)?.abort()
+      const previous = activeExplanationRequests.get(requestId)
+      if (!previous && activeExplanationRequests.size >= MAX_ACTIVE_EXPLANATION_REQUESTS) {
+        event.reply(IPC.AI_GENERATE_EXPLANATION_ERROR, {
+          requestId,
+          code: 'too_many_requests',
+          message: '同時 AI 解說工作過多，請等目前工作完成後再試。'
+        } satisfies GenerateExplanationErrorPayload)
+        return
+      }
+      previous?.abort()
       const controller = new AbortController()
       activeExplanationRequests.set(requestId, controller)
       let completedNormally = false

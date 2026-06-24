@@ -69,5 +69,58 @@ const migrated = new EngineRegistryService(legacyStorage as never).list()
 check('舊版單一路徑會遷移為 Pikafish 安裝項目', migrated.installations.length === 1)
 check('遷移不會錯誤標示為已驗證', migrated.installations[0]?.verified === false)
 
+const tamperedStorage = new FakeStorage()
+tamperedStorage.values.set('engine-registry.json', {
+  installations: [
+    {
+      id: 'bad',
+      profileId: 'pikafish',
+      displayName: 'Remote engine',
+      executablePath: '\\\\server\\share\\engine.exe',
+      protocol: 'uci',
+      detectedName: null,
+      enabled: true,
+      verified: true,
+      capabilities: { multiPv: true, configurableThreads: false, configurableHash: false }
+    }
+  ],
+  activeEngineId: 'bad',
+  verificationEngineId: null
+})
+const tampered = new EngineRegistryService(tamperedStorage as never).list()
+check('讀取既有登錄檔時會丟棄不安全的網路共享引擎路徑', tampered.installations.length === 0)
+
+const dirtyStorage = new FakeStorage()
+dirtyStorage.values.set('engine-registry.json', {
+  installations: [
+    {
+      id: 'engine_1',
+      profileId: 'cyclone',
+      displayName: 'Cyclone\nInjected',
+      executablePath: 'C:\\Engines\\..\\Engines\\cyclone.exe',
+      protocol: 'ucci',
+      detectedName: 'Detected\rName',
+      enabled: true,
+      verified: true,
+      capabilities: { multiPv: 'yes', configurableThreads: true, configurableHash: 'no' },
+      lastError: `x${'!'.repeat(800)}`
+    }
+  ],
+  activeEngineId: 'engine_1',
+  verificationEngineId: null
+})
+const dirty = new EngineRegistryService(dirtyStorage as never).list()
+check('讀取既有登錄檔時會正規化本機引擎路徑', dirty.installations[0]?.executablePath === 'C:\\Engines\\cyclone.exe')
+check('讀取既有登錄檔時會移除顯示名稱控制字元', dirty.installations[0]?.displayName === 'CycloneInjected')
+check('讀取既有登錄檔時會清洗 capabilities 型別', dirty.installations[0]?.capabilities.configurableThreads === true && dirty.installations[0]?.capabilities.configurableHash === false)
+
+const unsafeLegacyStorage = new FakeStorage()
+unsafeLegacyStorage.values.set('engine-config.json', {
+  enginePath: '\\\\server\\share\\legacy.exe',
+  engineProtocol: 'uci'
+})
+const unsafeMigrated = new EngineRegistryService(unsafeLegacyStorage as never).list()
+check('舊版單一路徑遷移會拒絕不安全路徑', unsafeMigrated.installations.length === 0)
+
 console.log(`結果：${passed} 通過，${failed} 失敗`)
 if (failed > 0) process.exitCode = 1

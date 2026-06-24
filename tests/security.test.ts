@@ -26,6 +26,7 @@ import {
   SecureFileError,
   writeJsonFileAtomic
 } from '../src/main/storage/SecureJsonFile'
+import { PikafishAdapter } from '../src/main/engine/PikafishAdapter'
 
 let passed = 0
 let failed = 0
@@ -171,6 +172,15 @@ check(
   )
 )
 check(
+  '含控制字元的引擎路徑被拒絕',
+  rejects(() => normalizeEnginePath('C:\\Engines\\bad\nengine.exe', 'win32'), SecurityValidationError)
+)
+check(
+  '引擎路徑會正規化 dot-segment',
+  normalizeEnginePath('C:\\Engines\\..\\Engines\\pikafish.exe', 'win32') ===
+    'C:\\Engines\\pikafish.exe'
+)
+check(
   '過大 JSON payload 被拒絕',
   rejects(() => assertJsonSize({ text: 'x'.repeat(1024) }, 128, '測試'), SecurityValidationError)
 )
@@ -194,6 +204,39 @@ try {
   )
 } finally {
   rmSync(tempDir, { recursive: true, force: true })
+}
+
+const originalCwd = process.cwd()
+const originalRendererUrl = process.env.ELECTRON_RENDERER_URL
+const originalNodeEnv = process.env.NODE_ENV
+const originalPikafishPath = process.env.PIKAFISH_PATH
+const cwdEngineDir = mkdtempSync(join(tmpdir(), 'xqa-cwd-engine-'))
+try {
+  const fakeEngineDir = join(cwdEngineDir, 'resources', 'engine')
+  writeJsonFileAtomic(join(fakeEngineDir, 'placeholder.json'), { ok: true }, 1024)
+  writeFileSync(join(fakeEngineDir, 'pikafish.exe'), '', 'utf8')
+  delete process.env.ELECTRON_RENDERER_URL
+  delete process.env.NODE_ENV
+  delete process.env.PIKAFISH_PATH
+  process.chdir(cwdEngineDir)
+  check(
+    '正式執行環境不從目前工作目錄載入預設引擎',
+    new PikafishAdapter().resolveEnginePath() === null
+  )
+  process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
+  check(
+    '開發環境才允許從目前工作目錄載入測試引擎',
+    new PikafishAdapter().resolveEnginePath() === join(fakeEngineDir, 'pikafish.exe')
+  )
+} finally {
+  process.chdir(originalCwd)
+  if (originalRendererUrl === undefined) delete process.env.ELECTRON_RENDERER_URL
+  else process.env.ELECTRON_RENDERER_URL = originalRendererUrl
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = originalNodeEnv
+  if (originalPikafishPath === undefined) delete process.env.PIKAFISH_PATH
+  else process.env.PIKAFISH_PATH = originalPikafishPath
+  rmSync(cwdEngineDir, { recursive: true, force: true })
 }
 
 const mainSource = readFileSync(resolve('src/main/index.ts'), 'utf8')
