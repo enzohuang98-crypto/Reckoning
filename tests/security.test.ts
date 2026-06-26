@@ -240,6 +240,10 @@ try {
 }
 
 const mainSource = readFileSync(resolve('src/main/index.ts'), 'utf8')
+const browserSecuritySource = readFileSync(
+  resolve('src/main/security/BrowserSecurity.ts'),
+  'utf8'
+)
 const builderConfig = readFileSync(resolve('electron-builder.yml'), 'utf8')
 const updaterSource = readFileSync(
   resolve('src/main/update/AppUpdaterService.ts'),
@@ -250,6 +254,11 @@ const updaterPublishConfig = readFileSync(
   'utf8'
 )
 const rendererHtml = readFileSync(resolve('src/renderer/index.html'), 'utf8')
+check(
+  'Production renderer protocol avoids blocked file net.fetch',
+  browserSecuritySource.includes('readFileSync(filePath)') &&
+    !browserSecuritySource.includes('net.fetch')
+)
 check('Electron renderer sandbox 已啟用', mainSource.includes('sandbox: true'))
 check('Node integration 明確停用', mainSource.includes('nodeIntegration: false'))
 check('生產版停用 DevTools', mainSource.includes('devTools: isDev'))
@@ -270,7 +279,7 @@ check(
 )
 check(
   'Windows 發佈版使用正式應用程式圖示',
-  builderConfig.includes('icon: build/icon.png') &&
+  builderConfig.includes('icon: build/icon.ico') &&
     builderConfig.includes('from: build/icon.png')
 )
 check(
