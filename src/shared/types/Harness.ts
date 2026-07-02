@@ -82,4 +82,6 @@ export interface HarnessTrace {
   usage?: TokenUsage
   feedback?: 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
   status: 'completed' | 'clarification_required' | 'cancelled' | 'failed'
+  /** 最終顯示給使用者的文字（供未來建立回歸評測集用）；儲存時會截斷長度。 */
+  finalText?: string
 }

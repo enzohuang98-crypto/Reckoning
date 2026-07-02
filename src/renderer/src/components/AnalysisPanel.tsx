@@ -12,6 +12,7 @@ import type {
 } from '@shared/types/EngineRegistry'
 import type {
   HarnessEvidence,
+  HarnessPhase,
   HarnessProgressPayload
 } from '@shared/types/Harness'
 import type {
@@ -81,6 +82,31 @@ function progressPhaseText(phase: EngineAnalysisProgressPayload['phase']): strin
   }
 }
 
+function harnessPhaseText(phase: HarnessPhase): string {
+  switch (phase) {
+    case 'understanding':
+      return '理解問題'
+    case 'planning':
+      return '規劃研究任務'
+    case 'engine_research':
+      return '引擎加深研究'
+    case 'cross_verification':
+      return '交叉驗證'
+    case 'consequence_review':
+      return '檢查具體後果'
+    case 'waiting_for_user':
+      return '等待你決定'
+    case 'writing':
+      return '撰寫說明'
+    case 'validating':
+      return '驗證證據引用'
+    case 'repairing':
+      return '修正敘述'
+    case 'completed':
+      return '完成'
+  }
+}
+
 function estimateTokens(text: string): number {
   const ascii = text.replace(/[^\x00-\x7F]/g, '').length
   const nonAscii = text.length - ascii
@@ -113,6 +139,36 @@ function formatConsoleScore(entry: EngineThoughtEntry): string {
 
 function consolePhaseLabel(phase: EngineThoughtEntry['phase']): string {
   return phase === 'user_move_analysis' ? '你的著法後' : '局面分析'
+}
+
+function EngineThoughtRow({
+  item,
+  latest
+}: {
+  item: EngineThoughtEntry
+  latest?: boolean
+}): JSX.Element {
+  return (
+    <div className={`engine-console-row${latest ? ' latest' : ''}`}>
+      <div className="engine-console-meta">
+        <b>{consolePhaseLabel(item.phase)}</b>
+        <span>深度: {item.depth ?? '—'}</span>
+        <span>分數: {formatConsoleScore(item)}</span>
+        <span>耗時: {formatElapsedMs(item.elapsedMs)}</span>
+        <span>NPS: {formatLargeNumber(item.nps) ?? '—'}</span>
+        {item.nodes !== undefined && item.nodes !== null && (
+          <span>節點: {formatLargeNumber(item.nodes)}</span>
+        )}
+      </div>
+      <div className="engine-console-pv">
+        {item.displayPrincipalVariation.length > 0
+          ? item.displayPrincipalVariation.slice(0, 18).join('  ')
+          : item.displayMove
+            ? item.displayMove
+            : '引擎尚未輸出主線'}
+      </div>
+    </div>
+  )
 }
 
 function thoughtSignature(entry: EngineThoughtEntry): string {
@@ -754,30 +810,22 @@ export function AnalysisPanel({
               開始分析後，這裡會持續列出引擎每次回傳的深度、原始分數、耗時、NPS 與主線。
             </div>
           ) : (
-            engineThoughts
-              .slice()
-              .reverse()
-              .map((item) => (
-                <div className="engine-console-row" key={item.id}>
-                  <div className="engine-console-meta">
-                    <b>{consolePhaseLabel(item.phase)}</b>
-                    <span>深度: {item.depth ?? '—'}</span>
-                    <span>分數: {formatConsoleScore(item)}</span>
-                    <span>耗時: {formatElapsedMs(item.elapsedMs)}</span>
-                    <span>NPS: {formatLargeNumber(item.nps) ?? '—'}</span>
-                    {item.nodes !== undefined && item.nodes !== null && (
-                      <span>節點: {formatLargeNumber(item.nodes)}</span>
-                    )}
-                  </div>
-                  <div className="engine-console-pv">
-                    {item.displayPrincipalVariation.length > 0
-                      ? item.displayPrincipalVariation.slice(0, 18).join('  ')
-                      : item.displayMove
-                        ? item.displayMove
-                        : '引擎尚未輸出主線'}
-                  </div>
-                </div>
-              ))
+            (() => {
+              const reversed = engineThoughts.slice().reverse()
+              const [latestThought, ...historyThoughts] = reversed
+              return (
+                <>
+                  <EngineThoughtRow item={latestThought} latest />
+                  {historyThoughts.length > 0 && (
+                    <div className="engine-console-history">
+                      {historyThoughts.map((item) => (
+                        <EngineThoughtRow item={item} key={item.id} />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()
           )}
         </div>
       </section>
@@ -841,12 +889,15 @@ export function AnalysisPanel({
       </div>
 
       {aiBusy && harnessProgress && (
-        <div className="harness-progress" aria-live="polite">
+        <div
+          className={`harness-progress${harnessProgress.awaitingDecision ? ' awaiting' : ''}`}
+          aria-live="polite"
+        >
           <div className="live-analysis-head">
             <div>
               <b>{harnessProgress.message}</b>
               <span className="muted small">
-                階段：{harnessProgress.phase} · 模型呼叫{' '}
+                階段：{harnessPhaseText(harnessProgress.phase)} · 模型呼叫{' '}
                 {harnessProgress.modelCallsUsed} · 引擎輪數{' '}
                 {harnessProgress.engineRoundsUsed} · 證據{' '}
                 {harnessProgress.evidenceCount}
@@ -859,8 +910,12 @@ export function AnalysisPanel({
                 {` · 已確認 ${harnessProgress.verifiedConsequenceCount ?? 0} 項具體後果`}
               </span>
             </div>
-            <span className="badge on">
-              {settings.harnessAnswerMode === 'research' ? '完整研究' : '聚焦回答'}
+            <span className={`badge ${harnessProgress.awaitingDecision ? 'warn' : 'on'}`}>
+              {harnessProgress.awaitingDecision
+                ? '等待你決定'
+                : settings.harnessAnswerMode === 'research'
+                  ? '完整研究'
+                  : '聚焦回答'}
             </span>
           </div>
           {(harnessProgress.displayPrincipalVariation ?? []).length > 0 && (
@@ -871,6 +926,9 @@ export function AnalysisPanel({
           )}
           {harnessProgress.awaitingDecision && (
             <div className="row gap harness-decision">
+              <span className="muted small">
+                120 秒內沒有回應會自動用目前證據產生保守版分析。
+              </span>
               <button className="btn" onClick={continueExplain}>
                 繼續分析
               </button>
@@ -905,20 +963,6 @@ export function AnalysisPanel({
             {ea.analysisTimeMs !== undefined && (
               <span className="muted small">　({(ea.analysisTimeMs / 1000).toFixed(1)}s)</span>
             )}
-          </div>
-          <div className="analysis-summary-grid">
-            <div>
-              <span className="muted small">最佳著法</span>
-              <b>{ea.displayBestMove ?? '無法辨識著法'}</b>
-            </div>
-            <div>
-              <span className="muted small">原始分數</span>
-              <b>{ea.scoreAfterBestMove?.raw ?? '無'}</b>
-            </div>
-            <div>
-              <span className="muted small">搜尋深度</span>
-              <b>{ea.depth ?? '—'}</b>
-            </div>
           </div>
           {(ea.incomplete || confidence === 'low') && (
             <div className="engine-status warn">

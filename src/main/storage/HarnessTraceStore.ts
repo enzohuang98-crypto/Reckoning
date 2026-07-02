@@ -5,6 +5,8 @@ import { MAX_APP_DATA_BYTES } from '../security/InputValidation'
 export const HARNESS_TRACE_FILE = 'harness-traces.json'
 const MAX_TRACES = 100
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+/** 本機保存上限，避免 finalText（供未來評測用）讓 trace 檔案無限變大。 */
+const MAX_FINAL_TEXT_CHARS = 12_000
 
 function sanitizeTrace(value: unknown): HarnessTrace | null {
   if (typeof value !== 'object' || value === null) return null
@@ -46,6 +48,7 @@ export class HarnessTraceStore {
     const sanitized: HarnessTrace = {
       ...trace,
       question: trace.question?.slice(0, 4000),
+      finalText: trace.finalText?.slice(0, MAX_FINAL_TEXT_CHARS),
       phases: trace.phases.slice(-50),
       validationErrors: trace.validationErrors.slice(-30),
       evidence: trace.evidence.map((item) => ({

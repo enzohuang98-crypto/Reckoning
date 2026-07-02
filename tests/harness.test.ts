@@ -145,6 +145,33 @@ class StagnationProvider implements AIProvider {
   }
 }
 
+/** 規劃器 + 具體後果審查器都成功，但預算只夠這兩次呼叫，寫作階段會撞到上限。 */
+class WriterBudgetProvider implements AIProvider {
+  readonly id = 'openai' as const
+  readonly displayName = 'Fake writer-budget provider'
+  calls = 0
+
+  async generateExplanation() {
+    this.calls++
+    const outputs = [
+      '{"clarification":"","tasks":[{"kind":"root","purpose":"確認目前局面的最佳著法與後續主線"}]}',
+      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}'
+    ]
+    return {
+      text: outputs[this.calls - 1] ?? '{}',
+      provider: this.id,
+      model: 'fake-model',
+      createdAt: Date.now(),
+      groundedOnEngineData: true as const,
+      usage: { inputTokens: 10, outputTokens: 20 }
+    }
+  }
+
+  async *generateExplanationStream(): AsyncIterable<never> {
+    return
+  }
+}
+
 async function main(): Promise<void> {
   console.log('\n## AI 解說 Harness')
   const traces: HarnessTrace[] = []
@@ -324,6 +351,239 @@ async function main(): Promise<void> {
   )
   check('模糊問題先要求使用者指出著法', ambiguous.clarificationRequired)
   check('模糊問題不浪費模型呼叫', ambiguousProvider.calls === 0)
+
+  console.log('\n## 逾時、預算與證據簽章修正')
+
+  // 使用者 120 秒內沒有回應「是否繼續」：不能整個失敗，要用現有證據自動收尾。
+  const timeoutTraces: HarnessTrace[] = []
+  let timeoutError: unknown = null
+  let timeoutResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
+  try {
+    timeoutResult = await runExplanationHarness(
+      {
+        requestId: 'ai-request-continuation-timeout',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 4,
+          maxOutputTokens: 8000
+        }
+      },
+      {
+        provider: new FakeProvider(),
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => ({
+            analyzePosition: async (
+              _input: unknown,
+              _config: unknown,
+              options?: {
+                onProgress?: (value: {
+                  phase: 'root_analysis'
+                  elapsedMs: number
+                  targetMs: number
+                  depth: number
+                  score: ReturnType<typeof convertCpScore>
+                  displayMove: string
+                  displayPrincipalVariation: string[]
+                }) => void
+              }
+            ) => {
+              options?.onProgress?.({
+                phase: 'root_analysis',
+                elapsedMs: 5,
+                targetMs: 10,
+                depth: 14,
+                score: convertCpScore(42, 'score cp 42'),
+                displayMove: '炮二平五',
+                displayPrincipalVariation: ['炮二平五', '馬8進7']
+              })
+              await new Promise((resolve) => setTimeout(resolve, 5))
+              return analysis()
+            }
+          })
+        } as never,
+        traceStore: { save: (trace: HarnessTrace) => timeoutTraces.push(trace) } as never,
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+        // 永遠不 resolve：模擬使用者在時限內完全沒有回應「是否繼續」。
+        waitForContinuation: () => new Promise<void>(() => undefined),
+        timing: {
+          progressDelayMs: 0,
+          progressIntervalMs: 5,
+          stagnationMs: 0,
+          minResearchRoundMs: 10,
+          maxResearchRoundMs: 20,
+          continuationTimeoutMs: 20
+        }
+      }
+    )
+  } catch (error) {
+    timeoutError = error
+  }
+  check('等待使用者決定逾時後不會讓整個請求失敗', timeoutError === null, timeoutError)
+  check(
+    '逾時後仍回傳完整分析而非要求澄清',
+    Boolean(timeoutResult && !timeoutResult.clarificationRequired)
+  )
+  check(
+    '逾時保守版分析明確承認證據有限，而非空泛帶過',
+    Boolean(timeoutResult?.finalText.includes('證據不足'))
+  )
+  check(
+    '逾時保守版分析不以分數高低作為理由',
+    Boolean(timeoutResult && !/分數(較高|較低|比較高|比較低)/.test(timeoutResult.finalText))
+  )
+  check('逾時後完成狀態仍寫入 completed（不是 failed）', timeoutTraces[0]?.status === 'completed')
+  check(
+    '逾時後 trace 有記錄最終文字供未來評測使用',
+    Boolean(timeoutTraces[0]?.finalText && timeoutTraces[0].finalText.length > 0)
+  )
+
+  // 引擎重跑後 depth／主線都沒變，但分數有實質變化：不應被誤判為「停滯」而打斷使用者。
+  let scoreSignatureContinuationRequests = 0
+  const scoreSignatureResult = await runExplanationHarness(
+    {
+      requestId: 'ai-request-score-signature',
+      analysisId: session.analysisId,
+      provider: 'openai',
+      model: 'fake-model',
+      userLevel: 'intermediate',
+      explanationStyle: 'long_analytical',
+      language: 'zh-TW',
+      answerMode: 'research',
+      budget: {
+        engineTimeMs: 3000,
+        maxEngineRounds: 1,
+        maxModelCalls: 4,
+        maxOutputTokens: 8000
+      }
+    },
+    {
+      provider: new FakeProvider(),
+      apiKey: 'secret',
+      model: 'fake-model',
+      session,
+      registry: {
+        list: () => ({
+          installations: [],
+          activeEngineId: 'engine-1',
+          verificationEngineId: null
+        }),
+        getAdapter: () => ({
+          analyzePosition: async (): Promise<EngineAnalysis> => ({
+            ...analysis(),
+            scoreAfterBestMove: convertCpScore(88, 'score cp 88'),
+            evaluationAfterBestMove: 0.88
+          })
+        })
+      } as never,
+      traceStore: { save: () => undefined } as never,
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+      waitForContinuation: async () => {
+        scoreSignatureContinuationRequests++
+      },
+      timing: {
+        progressDelayMs: 0,
+        progressIntervalMs: 5,
+        stagnationMs: 0,
+        minResearchRoundMs: 10,
+        maxResearchRoundMs: 20
+      }
+    }
+  )
+  check(
+    '深度與主線不變但分數變化時，不應被誤判為停滯',
+    scoreSignatureContinuationRequests === 0
+  )
+  check(
+    '分數變化情境仍能正常完成分析',
+    scoreSignatureResult.finalText.includes('最佳著法想做什麼')
+  )
+
+  // 具體後果審查與規劃都成功，但預算只夠這兩次呼叫；寫作階段撞到上限時要走保守版問答，不能讓整個請求失敗。
+  const writerBudgetProvider = new WriterBudgetProvider()
+  const writerBudgetTraces: HarnessTrace[] = []
+  let writerBudgetError: unknown = null
+  let writerBudgetResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
+  try {
+    writerBudgetResult = await runExplanationHarness(
+      {
+        requestId: 'ai-request-writer-budget',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        followUpQuestion: '請完整解釋這個局面和我的著法錯在哪裡',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 1,
+          maxOutputTokens: 4000
+        }
+      },
+      {
+        provider: writerBudgetProvider,
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: (trace: HarnessTrace) => writerBudgetTraces.push(trace) } as never,
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+        waitForContinuation: async () => undefined
+      }
+    )
+  } catch (error) {
+    writerBudgetError = error
+  }
+  check('寫作階段撞到模型呼叫上限時不會讓整個請求失敗', writerBudgetError === null, writerBudgetError)
+  check(
+    '撞到上限前只用掉規劃與具體後果審查兩次呼叫，沒有嘗試呼叫寫作模型',
+    writerBudgetProvider.calls === 2
+  )
+  check(
+    '撞到上限後改用引擎資料產生保守版問答',
+    Boolean(
+      writerBudgetResult?.finalText.includes(
+        'AI 結構化回答未通過驗證，已改用引擎資料產生保守版問答'
+      )
+    )
+  )
+  check(
+    '保守版問答仍具體引用真實對手利用方式，不是空泛帶過',
+    Boolean(writerBudgetResult?.finalText.includes('黑方以馬8進7順利完成出子'))
+  )
+  check(
+    '保守版問答仍具體引用真實盤面後果',
+    Boolean(writerBudgetResult?.finalText.includes('紅方中路計畫延後，黑方陣形更完整'))
+  )
+  check('撞到上限後完成狀態仍寫入 completed', writerBudgetTraces[0]?.status === 'completed')
 
   console.log(`結果：${passed} 通過，${failed} 失敗`)
   if (failed > 0) process.exitCode = 1
