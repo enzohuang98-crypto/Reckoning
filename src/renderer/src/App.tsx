@@ -408,8 +408,11 @@ export function App(): JSX.Element {
       )}
 
       <main className="app-main">
-        {tab === 'analyze' && (
-          <div className="analyze-page">
+        <div
+          className="analyze-page"
+          hidden={tab !== 'analyze'}
+          aria-hidden={tab !== 'analyze'}
+        >
             <div className="page-heading">
               <div>
                 <span className="eyebrow">棋盤 · 引擎 · AI 教練</span>
@@ -447,10 +450,25 @@ export function App(): JSX.Element {
                     }))
                   }
                 />
-                <FenInput initialFen={board.fen} onValidBoard={changeBoard} />
-                <GameImportPanel board={board} onBoardChange={changeBoard} />
+                <details className="utility-drawer">
+                  <summary>FEN / 棋譜匯入</summary>
+                  <div className="utility-drawer-body">
+                    <FenInput initialFen={board.fen} onValidBoard={changeBoard} />
+                    <GameImportPanel board={board} onBoardChange={changeBoard} />
+                  </div>
+                </details>
               </div>
               <div className="right-col">
+                <AnalysisPanel
+                  board={board}
+                  settings={settings}
+                  submittedGuess={submittedGuess}
+                  conversation={activeConversation}
+                  onConversationChange={changeConversation}
+                  onResult={setResult}
+                  onExplanation={setExplanation}
+                  onSaveMisunderstood={saveMisunderstood}
+                />
                 <GuessModePanel
                   board={board}
                   draftMove={draftMove}
@@ -471,20 +489,9 @@ export function App(): JSX.Element {
                   onAddMistake={addMistake}
                   onRecordGuess={recordGuess}
                 />
-                <AnalysisPanel
-                  board={board}
-                  settings={settings}
-                  submittedGuess={submittedGuess}
-                  conversation={activeConversation}
-                  onConversationChange={changeConversation}
-                  onResult={setResult}
-                  onExplanation={setExplanation}
-                  onSaveMisunderstood={saveMisunderstood}
-                />
               </div>
             </div>
-          </div>
-        )}
+        </div>
         {tab === 'settings' && (
           <SettingsPage
             settings={settings}

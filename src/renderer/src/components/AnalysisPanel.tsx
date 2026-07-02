@@ -53,7 +53,7 @@ interface EngineThoughtEntry {
 
 const AUTO_ROOT_ANALYSIS_MAX_MS = 1500
 const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 700
-const MAX_ENGINE_THOUGHTS = 24
+const MAX_ENGINE_THOUGHTS = 80
 
 function hasBothKings(board: BoardState): boolean {
   let red = false
@@ -101,6 +101,18 @@ function formatLargeNumber(value?: number | null): string | null {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
   return String(value)
+}
+
+function formatElapsedMs(value: number): string {
+  return `${(value / 1000).toFixed(1)}s`
+}
+
+function formatConsoleScore(entry: EngineThoughtEntry): string {
+  return entry.scoreRaw ?? '等待分數'
+}
+
+function consolePhaseLabel(phase: EngineThoughtEntry['phase']): string {
+  return phase === 'user_move_analysis' ? '你的著法後' : '局面分析'
 }
 
 function thoughtSignature(entry: EngineThoughtEntry): string {
@@ -154,6 +166,7 @@ export function AnalysisPanel({
   const [harnessWarnings, setHarnessWarnings] = useState<string[]>([])
   const [traceId, setTraceId] = useState<string | null>(null)
   const activeRequestId = useRef<string | null>(null)
+  const activeAnalysisKey = useRef<string | null>(null)
   const activeAiRequestId = useRef<string | null>(null)
   const pendingAiRequest = useRef<PendingAiRequest | null>(null)
   const settingsRef = useRef(settings)
@@ -203,6 +216,7 @@ export function AnalysisPanel({
       window.api.ai.cancelExplanation(activeAiRequestId.current)
     }
     activeRequestId.current = null
+    activeAnalysisKey.current = null
     activeAiRequestId.current = null
     pendingAiRequest.current = null
     setBusy(false)
@@ -225,7 +239,7 @@ export function AnalysisPanel({
     setNotice(null)
     onResult(null)
     onExplanation(null)
-  }, [board.fen, onConversationChange, onExplanation, onResult])
+  }, [board.fen])
 
   useEffect(() => {
     const offProgress = window.api.engine.onAnalysisProgress((payload) => {
@@ -263,6 +277,7 @@ export function AnalysisPanel({
     const offResult = window.api.engine.onAnalysisResult((payload) => {
       if (payload.requestId !== activeRequestId.current) return
       activeRequestId.current = null
+      activeAnalysisKey.current = null
       setBusy(false)
       setProgress(null)
       setCancelling(false)
@@ -272,6 +287,7 @@ export function AnalysisPanel({
     const offError = window.api.engine.onAnalysisError((payload) => {
       if (payload.requestId !== activeRequestId.current) return
       activeRequestId.current = null
+      activeAnalysisKey.current = null
       setBusy(false)
       setProgress(null)
       setCancelling(false)
@@ -365,15 +381,6 @@ export function AnalysisPanel({
       if (!automatic) setError('棋盤需要同時有紅帥與黑將才能分析。')
       return
     }
-    if (activeRequestId.current) {
-      window.api.engine.cancelAnalysis(activeRequestId.current)
-    }
-    setError(null)
-    setEngineDiagnostics([])
-    setNotice(null)
-    setExplanation(null)
-    onExplanation(null)
-
     const move = submittedGuess?.move ?? ''
     if (move) {
       const check = validateMoveInput(board, move)
@@ -383,8 +390,45 @@ export function AnalysisPanel({
       }
     }
 
+    const rootAnalysisMovetimeMs = automatic
+      ? Math.min(settings.rootAnalysisMovetimeMs, AUTO_ROOT_ANALYSIS_MAX_MS)
+      : settings.rootAnalysisMovetimeMs
+    const userMoveEvalMovetimeMs = automatic
+      ? Math.min(
+          settings.userMoveEvalMovetimeMs,
+          AUTO_USER_MOVE_ANALYSIS_MAX_MS
+        )
+      : settings.userMoveEvalMovetimeMs
+    const analysisKey = [
+      automatic ? 'auto' : 'manual',
+      board.fen,
+      move,
+      primaryEngineId ?? '',
+      settings.crossEngineEnabled && verificationEngineId ? verificationEngineId : '',
+      rootAnalysisMovetimeMs,
+      userMoveEvalMovetimeMs,
+      settings.multiPv
+    ].join('|')
+    if (
+      automatic &&
+      activeRequestId.current &&
+      activeAnalysisKey.current === analysisKey
+    ) {
+      return
+    }
+
+    if (activeRequestId.current) {
+      window.api.engine.cancelAnalysis(activeRequestId.current)
+    }
+    setError(null)
+    setEngineDiagnostics([])
+    setNotice(null)
+    setExplanation(null)
+    onExplanation(null)
+
     const requestId = crypto.randomUUID()
     activeRequestId.current = requestId
+    activeAnalysisKey.current = analysisKey
     setBusy(true)
     setProgress({
       requestId,
@@ -409,15 +453,8 @@ export function AnalysisPanel({
       positionFen: board.fen,
       userMove: move || undefined,
       analysisConfig: {
-        rootAnalysisMovetimeMs: automatic
-          ? Math.min(settings.rootAnalysisMovetimeMs, AUTO_ROOT_ANALYSIS_MAX_MS)
-          : settings.rootAnalysisMovetimeMs,
-        userMoveEvalMovetimeMs: automatic
-          ? Math.min(
-              settings.userMoveEvalMovetimeMs,
-              AUTO_USER_MOVE_ANALYSIS_MAX_MS
-            )
-          : settings.userMoveEvalMovetimeMs,
+        rootAnalysisMovetimeMs,
+        userMoveEvalMovetimeMs,
         multiPv: settings.multiPv
       }
     })
@@ -436,7 +473,7 @@ export function AnalysisPanel({
 
   useEffect(() => {
     if (!status?.available || !hasBothKings(board)) return
-    const timer = window.setTimeout(() => startAnalysis(true), 450)
+    const timer = window.setTimeout(() => startAnalysis(true), 180)
     return () => window.clearTimeout(timer)
   }, [board.fen, startAnalysis, status?.available, submittedGuess?.move])
 
@@ -684,6 +721,67 @@ export function AnalysisPanel({
         </div>
       )}
 
+      <section className="engine-console" aria-live="polite">
+        <div className="engine-console-tabs" role="tablist" aria-label="analysis tabs">
+          <button className="engine-console-tab active" type="button">
+            {(status?.engineName ?? '引擎')}分析
+          </button>
+          <button className="engine-console-tab" type="button" disabled>
+            中國象棋題庫
+          </button>
+          <button className="engine-console-tab" type="button" disabled>
+            局勢
+          </button>
+          <button className="engine-console-tab" type="button" disabled>
+            注釋
+          </button>
+        </div>
+        <div className="engine-console-status">
+          <span>
+            {busy && progress
+              ? `${progressPhaseText(progress.phase)} · ${progress.percent}%`
+              : ea
+                ? `分析完成 · 深度 ${ea.depth ?? '—'}`
+                : '等待引擎回傳即時資料'}
+          </span>
+          {progress?.elapsedMs !== undefined && busy && (
+            <span>{formatElapsedMs(progress.elapsedMs)}</span>
+          )}
+        </div>
+        <div className="engine-console-feed">
+          {engineThoughts.length === 0 ? (
+            <div className="engine-console-empty">
+              開始分析後，這裡會持續列出引擎每次回傳的深度、原始分數、耗時、NPS 與主線。
+            </div>
+          ) : (
+            engineThoughts
+              .slice()
+              .reverse()
+              .map((item) => (
+                <div className="engine-console-row" key={item.id}>
+                  <div className="engine-console-meta">
+                    <b>{consolePhaseLabel(item.phase)}</b>
+                    <span>深度: {item.depth ?? '—'}</span>
+                    <span>分數: {formatConsoleScore(item)}</span>
+                    <span>耗時: {formatElapsedMs(item.elapsedMs)}</span>
+                    <span>NPS: {formatLargeNumber(item.nps) ?? '—'}</span>
+                    {item.nodes !== undefined && item.nodes !== null && (
+                      <span>節點: {formatLargeNumber(item.nodes)}</span>
+                    )}
+                  </div>
+                  <div className="engine-console-pv">
+                    {item.displayPrincipalVariation.length > 0
+                      ? item.displayPrincipalVariation.slice(0, 18).join('  ')
+                      : item.displayMove
+                        ? item.displayMove
+                        : '引擎尚未輸出主線'}
+                  </div>
+                </div>
+              ))
+          )}
+        </div>
+      </section>
+
       <div className="analysis-action-card">
         <div>
           <b>下一步</b>
@@ -741,104 +839,6 @@ export function AnalysisPanel({
           </span>
         )}
       </div>
-
-      {busy && progress && (
-        <div className="live-analysis" aria-live="polite">
-          <div className="live-analysis-head">
-            <div>
-              <b>{progressPhaseText(progress.phase)}</b>
-              <span className="muted small">
-                {progress.depth !== null ? `深度 ${progress.depth}` : '等待引擎資料'}
-                {progress.selDepth !== undefined && progress.selDepth !== null
-                  ? ` / 選擇深度 ${progress.selDepth}`
-                  : ''}
-                {progress.elapsedMs > 0
-                  ? `　已進行 ${(progress.elapsedMs / 1000).toFixed(1)} 秒`
-                  : ''}
-                {progress.nodes ? `　節點 ${formatLargeNumber(progress.nodes)}` : ''}
-                {progress.nps ? `　速度 ${formatLargeNumber(progress.nps)}/s` : ''}
-              </span>
-            </div>
-            <strong>{progress.percent}%</strong>
-          </div>
-          <div
-            className="analysis-progress-track"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress.percent}
-          >
-            <span style={{ width: `${progress.percent}%` }} />
-          </div>
-          {(progress.displayMove || progress.displayPrincipalVariation.length > 0) && (
-            <div className="live-analysis-line">
-              {progress.displayMove && (
-                <span>
-                  {progress.phase === 'user_move_analysis'
-                    ? '對手目前最佳回應'
-                    : '目前首選'}{' '}
-                  <b>{progress.displayMove}</b>
-                </span>
-              )}
-              {progress.score && <span>原始分數 {progress.score.raw}</span>}
-              {progress.displayPrincipalVariation.length > 0 && (
-                <span className="pv">
-                  主要變例：{progress.displayPrincipalVariation.slice(0, 6).join('、')}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {(busy || engineThoughts.length > 0) && (
-        <details className="engine-thinking" open={busy}>
-          <summary>
-            即時引擎思考動態
-            <span className="muted small">　最新 {engineThoughts.length} 筆深度變化</span>
-          </summary>
-          {engineThoughts.length === 0 ? (
-            <div className="muted small engine-thinking-empty">
-              等待引擎回傳深度、分數與主線。
-            </div>
-          ) : (
-            <ol className="engine-thinking-list">
-              {engineThoughts
-                .slice()
-                .reverse()
-                .map((item) => (
-                  <li key={item.id}>
-                    <div className="engine-thinking-meta">
-                      <b>{progressPhaseText(item.phase)}</b>
-                      <span>{(item.elapsedMs / 1000).toFixed(1)}s</span>
-                      <span>深度 {item.depth ?? '—'}</span>
-                      {item.selDepth !== undefined && item.selDepth !== null && (
-                        <span>選擇深度 {item.selDepth}</span>
-                      )}
-                      {item.scoreRaw && <span>原始分數 {item.scoreRaw}</span>}
-                      {item.nodes !== undefined && item.nodes !== null && (
-                        <span>節點 {formatLargeNumber(item.nodes)}</span>
-                      )}
-                      {item.nps !== undefined && item.nps !== null && (
-                        <span>速度 {formatLargeNumber(item.nps)}/s</span>
-                      )}
-                    </div>
-                    <div className="engine-thinking-line">
-                      {item.displayMove && (
-                        <span>
-                          目前首選 <b>{item.displayMove}</b>
-                        </span>
-                      )}
-                      <span className="pv">
-                        {item.displayPrincipalVariation.slice(0, 10).join('、') || '尚無主線'}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-            </ol>
-          )}
-        </details>
-      )}
 
       {aiBusy && harnessProgress && (
         <div className="harness-progress" aria-live="polite">

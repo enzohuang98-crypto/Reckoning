@@ -273,6 +273,44 @@ function scoreUsedAsReason(text: string): boolean {
   )
 }
 
+const GENERIC_CONSEQUENCE_LABELS = [
+  '失去先手',
+  '棋子受限',
+  '王區變弱',
+  '王区变弱',
+  '陣形變差',
+  '阵形变差',
+  '讓對手完成部署',
+  '让对手完成部署'
+]
+
+function compactChineseText(text: string): string {
+  return text.replace(/[，。！？；：、,.!?:;\s]/g, '')
+}
+
+function mentionsAnyMove(text: string, moves: string[]): boolean {
+  return moves.some((move) => move.trim() && text.includes(move))
+}
+
+function looksVagueConsequenceText(text: string, supportingMoves: string[]): boolean {
+  const compact = compactChineseText(text)
+  if (!compact) return true
+  if (
+    GENERIC_CONSEQUENCE_LABELS.some(
+      (label) => compact === compactChineseText(label)
+    )
+  ) {
+    return true
+  }
+  if (/^(紅方|黑方)?(失去先手|棋子受限|王區變弱|陣形變差)$/.test(compact)) {
+    return true
+  }
+  if (/^(紅方|黑方)?.{0,4}(完成|順利完成).{0,4}(部署|出子)$/.test(compact)) {
+    return true
+  }
+  return compact.length < 10 && !mentionsAnyMove(text, supportingMoves)
+}
+
 function validateConsequenceAudit(
   audit: ConsequenceAudit,
   evidence: HarnessEvidence[],
@@ -293,6 +331,10 @@ function validateConsequenceAudit(
   }
   const verified = audit.consequences.filter((item) => item.verified)
   if (verified.length < 2) errors.push('至少需要兩項已驗證的具體後果。')
+  const categoryCount = new Set(verified.map((item) => item.category)).size
+  if (verified.length >= 2 && categoryCount < 2) {
+    errors.push('兩項具體後果不能只是同一種類型的重述。')
+  }
   if (audit.contradictions.length > 0) {
     errors.push('具體後果仍有互相矛盾的判斷。')
   }
@@ -310,12 +352,33 @@ function validateConsequenceAudit(
     for (const id of consequence.evidenceIds) {
       if (!evidenceIds.has(id)) errors.push(`${consequence.id} 引用了不存在的 ${id}。`)
     }
-    if (consequence.supportingMoves.length === 0) {
-      errors.push(`${consequence.id} 沒有指出對應著法。`)
+    if (consequence.supportingMoves.length < 2) {
+      errors.push(`${consequence.id} 至少要指出兩步主線著法，不能只貼一個結果標籤。`)
     } else if (
       consequence.supportingMoves.some((move) => !availableMoves.has(move))
     ) {
       errors.push(`${consequence.id} 使用了引擎主線中沒有的著法。`)
+    }
+    if (
+      looksVagueConsequenceText(consequence.summary, consequence.supportingMoves) ||
+      looksVagueConsequenceText(
+        consequence.opponentUse,
+        consequence.supportingMoves
+      ) ||
+      looksVagueConsequenceText(
+        consequence.boardImpact,
+        consequence.supportingMoves
+      )
+    ) {
+      errors.push(`${consequence.id} 仍然太空泛，必須說出主線著法如何造成具體後果。`)
+    }
+    const combinedConsequenceText = [
+      consequence.summary,
+      consequence.opponentUse,
+      consequence.boardImpact
+    ].join(' ')
+    if (!mentionsAnyMove(combinedConsequenceText, consequence.supportingMoves)) {
+      errors.push(`${consequence.id} 沒有把後果連回實際主線著法。`)
     }
   }
   const prose = [
@@ -334,23 +397,34 @@ function validateConsequenceAudit(
   return errors
 }
 
+function concreteVerifiedConsequences(
+  audit: ConsequenceAudit
+): ConsequenceFinding[] {
+  return audit.consequences.filter((item) => {
+    if (!item.verified) return false
+    const combined = [item.summary, item.opponentUse, item.boardImpact].join(' ')
+    return (
+      !looksVagueConsequenceText(item.summary, item.supportingMoves) &&
+      !looksVagueConsequenceText(item.opponentUse, item.supportingMoves) &&
+      !looksVagueConsequenceText(item.boardImpact, item.supportingMoves) &&
+      mentionsAnyMove(combined, item.supportingMoves)
+    )
+  })
+}
+
 function evidenceSignature(evidence: HarnessEvidence[]): string {
   const latestBySource = new Map<string, HarnessEvidence>()
   for (const item of evidence) {
-    latestBySource.set(`${item.engineId}:${item.move ?? 'root'}`, item)
+    latestBySource.set(item.engineId, item)
   }
   return [...latestBySource.values()]
-    .sort((a, b) =>
-      `${a.engineId}:${a.move ?? 'root'}`.localeCompare(
-        `${b.engineId}:${b.move ?? 'root'}`
-      )
-    )
+    .sort((a, b) => a.engineId.localeCompare(b.engineId))
     .map((item) =>
       [
         item.engineId,
-        item.move ?? 'root',
         item.depth ?? 'none',
-        ...item.displayPrincipalVariation.slice(0, 16)
+        ...(item.analysis.displayPrincipalVariation ?? []).slice(0, 16),
+        ...(item.analysis.displayUserMovePrincipalVariation ?? []).slice(0, 16)
       ].join('|')
     )
     .join('::')
@@ -363,6 +437,15 @@ function validateAnswer(
 ): string[] {
   const errors: string[] = []
   const evidenceIds = new Set(evidence.map((item) => item.id))
+  const explanationMoves = [
+    ...new Set(
+      evidence.flatMap((item) => [
+        ...item.displayPrincipalVariation,
+        ...(item.analysis.displayPrincipalVariation ?? []),
+        ...(item.analysis.displayUserMovePrincipalVariation ?? [])
+      ])
+    )
+  ].filter(Boolean)
   if (!answer.directAnswer?.trim()) errors.push('缺少直接回答。')
   const directNeedsEvidence = !/目前(模型|引擎).*(不足|未能)/.test(
     answer.directAnswer
@@ -415,6 +498,14 @@ function validateAnswer(
     ...(answer.sections ?? []).map((section) => section.heading),
     ...claims.map((claim) => claim.text)
   ].join(' ')
+  if (requirements.hasUserMove && explanationMoves.length >= 2) {
+    const mentionedMoveCount = explanationMoves.filter((move) =>
+      prose.includes(move)
+    ).length
+    if (mentionedMoveCount < 2) {
+      errors.push('回答沒有把棋理原因連回至少兩步引擎主線中的中文著法。')
+    }
+  }
   if (!/(後續|接下來|續走|主要變例|具體後果)/.test(prose)) {
     errors.push('回答缺少後續主線與具體後果。')
   }
@@ -470,7 +561,7 @@ function buildFallbackAnswer(
     userLine.length > 1 ? userLine.join('、') : '引擎沒有提供足夠的使用者著法後續主線'
   const userMove = analysis.displayUserMove ?? '這步'
   const bestMove = analysis.displayBestMove ?? '引擎首選'
-  const findings = audit?.consequences.filter((item) => item.verified) ?? []
+  const findings = audit ? concreteVerifiedConsequences(audit) : []
   const firstFinding = findings[0]
   const secondFinding = findings[1]
 
@@ -609,11 +700,13 @@ export async function runExplanationHarness(
     maxResearchRoundMs:
       deps.timing?.maxResearchRoundMs ?? MAX_RESEARCH_ROUND_MS
   }
-  const budget = payload.budget ?? {
+  const budget = {
+    ...(payload.budget ?? {
     engineTimeMs: 10_000,
     maxEngineRounds: 3,
     maxModelCalls: mode === 'research' ? 6 : 4,
     maxOutputTokens: mode === 'research' ? 10_000 : 4_000
+    })
   }
   let modelCalls = 0
   let modelCallLimit = budget.maxModelCalls
@@ -888,9 +981,14 @@ export async function runExplanationHarness(
     let auditErrors: string[] = []
     let previousSignature = evidenceSignature(evidence)
     let lastNovelEvidenceAt = Date.now()
+    let lastContinuationSignature: string | null = null
     let shouldResearch = primaryAdapter !== null
 
     while (true) {
+      if (shouldResearch && engineRounds >= budget.maxEngineRounds) {
+        shouldResearch = false
+        validationErrors.push('已達引擎加深輪數上限，停止加深並使用目前證據。')
+      }
       if (shouldResearch && primaryAdapter) {
         const roundMs = Math.min(
           timing.maxResearchRoundMs,
@@ -983,10 +1081,16 @@ export async function runExplanationHarness(
         if (nextSignature !== previousSignature) {
           previousSignature = nextSignature
           lastNovelEvidenceAt = Date.now()
-        } else if (Date.now() - lastNovelEvidenceAt >= timing.stagnationMs) {
+          lastContinuationSignature = null
+        } else if (
+          Date.now() - lastNovelEvidenceAt >= timing.stagnationMs &&
+          lastContinuationSignature !== nextSignature
+        ) {
           await waitForUserContinuation(
             '連續 60 秒沒有提升深度或發現新變例。要繼續加深，還是取消本次分析？'
           )
+          budget.maxEngineRounds += 1
+          lastContinuationSignature = nextSignature
           lastNovelEvidenceAt = Date.now()
         }
         progress(
@@ -1023,6 +1127,7 @@ export async function runExplanationHarness(
 - material_or_tactical：可驗證的失子、將軍或戰術後果
 
 至少提出兩項互不重複的後果。supportingMoves 必須逐字使用 evidence 主線中的中文著法。
+summary、opponentUse、boardImpact 都不能只寫「失去先手」「棋子受限」「王區變弱」「陣形變差」「讓對手完成部署」這類標籤；必須說出哪幾步主線如何造成該後果。
 若兩項解釋互相矛盾，放入 contradictions，enoughEvidence 必須是 false。
 禁止以「分數較高／較低」作為任何原因；原始分數只供查證。
 
@@ -1068,17 +1173,25 @@ export async function runExplanationHarness(
       } catch {
         auditErrors = ['具體後果審查器沒有輸出有效 JSON。']
       }
-      verifiedConsequenceCount = audit.consequences.filter(
-        (item) => item.verified
-      ).length
+      verifiedConsequenceCount = concreteVerifiedConsequences(audit).length
       validationErrors.push(...auditErrors)
       if (auditErrors.length === 0) break
       progress(
         'consequence_review',
         `目前只確認 ${verifiedConsequenceCount} 項具體後果，證據仍不足，繼續加深引擎。`
       )
-      if (!primaryAdapter) break
+      if (!primaryAdapter || engineRounds >= budget.maxEngineRounds) break
       shouldResearch = true
+    }
+
+    const concreteConsequences = concreteVerifiedConsequences(audit)
+    const writerAudit: ConsequenceAudit = {
+      ...audit,
+      consequences: concreteConsequences,
+      enoughEvidence:
+        auditErrors.length === 0 &&
+        concreteConsequences.length >= 2 &&
+        new Set(concreteConsequences.map((item) => item.category)).size >= 2
     }
 
     progress('writing', '正在依引擎證據撰寫中文說明。')
@@ -1100,11 +1213,12 @@ export async function runExplanationHarness(
 第四區要按引擎主線順序，盡可能逐手說明每一步目的與盤面影響，一直寫到具體後果出現。
 第五區要先說最佳著法的目的，再逐步對照使用者著法錯失什麼、為什麼不好。
 每項 claims 都必須引用 supporting evidenceIds。若資料不足，直接說證據不足，不能猜。
+每個關鍵 claim 至少要包含一個 evidence 主線中的中文著法，並說明這步棋造成的具體盤面後果；禁止只寫「失去先手」「陣形變差」這種分類詞。
 
 使用者程度：${payload.userLevel}
 問題：${payload.followUpQuestion?.trim() || '完整解釋目前局面'}
 模式：${mode}
-已驗證具體後果：${JSON.stringify(audit)}
+已驗證具體後果：${JSON.stringify(writerAudit)}
 證據：${JSON.stringify(
       evidence.map((item) => ({
         id: item.id,
@@ -1175,7 +1289,7 @@ export async function runExplanationHarness(
           : []
       }
     } catch {
-      answer = buildFallbackAnswer(mode, deps.session, evidence, audit)
+      answer = buildFallbackAnswer(mode, deps.session, evidence, writerAudit)
       validationErrors.push('寫作者輸出不是有效 JSON。')
     }
 
@@ -1197,7 +1311,7 @@ export async function runExplanationHarness(
 任何用分數高低代替棋理原因的敘述都視為不受支持。
 不要用你自己的象棋知識補足。
 回答：${JSON.stringify({ ...answer, evidence: [] })}
-已驗證具體後果：${JSON.stringify(audit)}
+已驗證具體後果：${JSON.stringify(writerAudit)}
 證據：${JSON.stringify(
             evidence.map((item) => ({
               id: item.id,
@@ -1234,7 +1348,7 @@ ${JSON.stringify([...deterministicErrors, ...validationErrors])}
 禁止用分數高低、評估差距或可信度作為原因。
 回答必須保留六個固定問答區塊。
 原回答：${JSON.stringify({ ...answer, evidence: [] })}
-已驗證具體後果：${JSON.stringify(audit)}
+已驗證具體後果：${JSON.stringify(writerAudit)}
 可用 evidenceIds：${JSON.stringify(evidence.map((item) => item.id))}
 `)
         )
@@ -1288,7 +1402,7 @@ ${JSON.stringify([...deterministicErrors, ...validationErrors])}
         answerRequirements
       )
       if (remainingErrors.length > 0) {
-        answer = buildFallbackAnswer(mode, deps.session, evidence, audit)
+        answer = buildFallbackAnswer(mode, deps.session, evidence, writerAudit)
       }
     }
 

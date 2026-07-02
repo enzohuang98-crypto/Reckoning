@@ -126,8 +126,8 @@ class StagnationProvider implements AIProvider {
     this.calls++
     const outputs = [
       '{"bestMovePurpose":"炮二平五控制中路。","userMoveProblem":"馬八進七延後中路計畫。","consequences":[{"id":"K1","category":"initiative_loss","summary":"失去先手。","opponentUse":"黑方馬8進7出子。","boardImpact":"黑方先完成一步部署。","supportingMoves":["馬八進七","馬8進7"],"evidenceIds":["E2"],"verified":true}],"contradictions":[],"enoughEvidence":false}',
-      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去先手。","opponentUse":"黑方以馬8進7完成出子。","boardImpact":"紅方之後仍要補走炮二平五。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E3"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方完成兩翼部署。","opponentUse":"黑方接走馬2進3。","boardImpact":"黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E3"],"verified":true}],"contradictions":[],"enoughEvidence":true}',
-      '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七延後中路計畫，讓黑方先完成兩翼馬部署。","directAnswerEvidenceIds":["E3"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五立即控制中路。","evidenceIds":["E3"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七錯過立即控制中路的機會。","evidenceIds":["E3"]}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方利用時間完成兩翼馬出子。","evidenceIds":["E3"]}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"馬八進七、馬8進7、炮二平五、馬2進3，黑方陣形更完整。","evidenceIds":["E3"]}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"最佳著法先控制中路；你的著法讓對手先部署。","evidenceIds":["E3"]}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先找需要立即爭取的先手機會。","evidenceIds":["E3"]}]}],"warnings":[]}',
+      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過炮二平五立即控制中路的時機。","consequences":[{"id":"K1","category":"initiative_loss","summary":"馬八進七讓炮二平五延後到第三手才補，紅方中路先手被推遲。","opponentUse":"黑方在馬八進七後立即馬8進7，把本來要面對中炮壓力的時間拿去出子。","boardImpact":"紅方第三手才炮二平五，黑方已先完成馬8進7，紅方中路計畫慢一拍。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E3"],"verified":true},{"id":"K2","category":"opponent_development","summary":"炮二平五被延後後，黑方可以接馬2進3補齊另一翼馬。","opponentUse":"黑方先馬8進7，再在紅方炮二平五後馬2進3，兩翼馬都出動。","boardImpact":"到馬2進3時，黑方左右馬已連續完成部署，紅方只補回中炮，局面主動性下降。","supportingMoves":["馬8進7","炮二平五","馬2進3"],"evidenceIds":["E3"],"verified":true}],"contradictions":[],"enoughEvidence":true}',
+      '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，讓炮二平五延後；黑方可先馬8進7，等紅方補炮二平五後再馬2進3，左右馬都完成部署，紅方中路計畫慢一拍。","directAnswerEvidenceIds":["E3"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五要立即控制中路，避免黑方先從容出馬。","evidenceIds":["E3"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七把炮二平五延後，錯過第一時間建立中路壓力的機會。","evidenceIds":["E3"]}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方先用馬8進7出子，等紅方炮二平五後再馬2進3，兩翼馬都取得發展。","evidenceIds":["E3"]}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"主線是馬八進七、馬8進7、炮二平五、馬2進3；到馬2進3時，黑方左右馬已連續完成部署，紅方只補回中炮。","evidenceIds":["E3"]}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先走是先控中路；馬八進七後黑方馬8進7，紅方再炮二平五，黑方還能馬2進3，紅方中路計畫慢一拍。","evidenceIds":["E3"]}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問最佳著法是否在搶立即控制點，再檢查普通出子會不會讓對手連續完成部署。","evidenceIds":["E3"]}]}],"warnings":[]}',
       '{"unsupportedClaimIds":[],"reasons":[]}'
     ]
     return {
@@ -275,7 +275,7 @@ async function main(): Promise<void> {
   )
   check('超過門檻後持續回報深度與目前主線', progressEvents.some((item) => item.depth === 14 && (item.displayPrincipalVariation?.length ?? 0) > 0))
   check('相同深度與變例停滯時要求使用者決定', continuationRequests === 1)
-  check('使用者選擇繼續後可完成兩項具體後果', stagnationResult.finalText.includes('黑方陣形更完整'))
+  check('使用者選擇繼續後可完成兩項具體後果', stagnationResult.finalText.includes('黑方左右馬已連續完成部署'))
 
   const ambiguousProvider = new FakeProvider()
   const noMoveEngineAnalysis: EngineAnalysis = {
