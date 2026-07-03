@@ -232,15 +232,18 @@ export function GuessModePanel({
             </div>
           )}
           {!isCorrect && (
-            <div className="guess-explain-cta" style={{ marginTop: 8 }}>
+            <div className="guess-explain-hint">
               {explanation ? (
                 <span className="success-text small">
-                  ✓ AI 已解釋原因，請往上看「AI 解說」區塊。
+                  ✓ AI 已解釋原因，見上方「AI 解說」。
                 </span>
               ) : (
-                <button className="btn small" onClick={onRequestExplanation}>
-                  請 AI 解釋為什麼
-                </button>
+                <span className="muted small">
+                  想知道為什麼？
+                  <button type="button" className="text-link" onClick={onRequestExplanation}>
+                    請 AI 解說
+                  </button>
+                </span>
               )}
             </div>
           )}

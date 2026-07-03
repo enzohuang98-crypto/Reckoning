@@ -245,6 +245,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const settingsRef = useRef(settings)
   const conversationRef = useRef(conversation)
   const resultRef = useRef(result)
+  const actionCardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     settingsRef.current = settings
@@ -632,6 +633,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     requestExplanation: () => {
       if (!result || aiBusy) return
       generateExplanation(null)
+      actionCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }))
 
@@ -856,7 +858,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         </div>
       </section>
 
-      <div className="analysis-action-card">
+      <div className="analysis-action-card" ref={actionCardRef}>
         <div>
           <b>下一步</b>
           <p className="muted small">
@@ -867,32 +869,59 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
                 : '可直接重新分析目前棋盤，或先在左側選一個你的著法。'}
           </p>
         </div>
-        <div className="row gap analysis-actions">
-          <button
-            className="btn"
-            onClick={() => startAnalysis(false)}
-            disabled={!canAnalyze}
-            title={analysisBlockedReason ?? undefined}
-          >
-            {busy ? '分析中…' : '立即重新分析'}
-          </button>
-          {busy && (
-            <button className="btn ghost" onClick={cancelAnalysis} disabled={cancelling}>
-              {cancelling ? '取消中…' : '取消'}
+        <div className="analysis-actions">
+          <div className="row gap">
+            <button
+              className="btn"
+              onClick={() => startAnalysis(false)}
+              disabled={!canAnalyze}
+              title={analysisBlockedReason ?? undefined}
+            >
+              {busy ? '分析中…' : '立即重新分析'}
             </button>
+            <button
+              className={`btn${explanation ? ' ghost' : ''}`}
+              onClick={() => generateExplanation(null, explanation !== null)}
+              disabled={Boolean(aiBlockedReason)}
+              title={aiBlockedReason ?? undefined}
+            >
+              {aiBusy ? '生成中…' : explanation ? '重新生成解說' : '請 AI 解說'}
+            </button>
+          </div>
+          {result && (
+            <div className="row gap">
+              <input
+                className="text-input"
+                value={collectionReason}
+                placeholder="收藏原因，例如：看不懂中炮交換（選填）"
+                onChange={(event) => setCollectionReason(event.target.value)}
+              />
+              <button className="btn ghost small" onClick={saveMisunderstood}>
+                收藏待理解
+              </button>
+            </div>
           )}
-          <button
-            className="btn ghost"
-            onClick={() => generateExplanation(null, explanation !== null)}
-            disabled={Boolean(aiBlockedReason)}
-            title={aiBlockedReason ?? undefined}
-          >
-            {aiBusy ? '生成中…' : explanation ? '重新生成' : '請 AI 解說'}
-          </button>
-          {aiBusy && (
-            <button className="btn ghost" onClick={cancelExplain} disabled={aiCancelling}>
-              {aiCancelling ? '取消中…' : '取消生成'}
-            </button>
+          {(busy || aiBusy) && (
+            <div className="row gap">
+              {busy && (
+                <button
+                  className="btn danger small"
+                  onClick={cancelAnalysis}
+                  disabled={cancelling}
+                >
+                  {cancelling ? '取消分析中…' : '取消分析'}
+                </button>
+              )}
+              {aiBusy && (
+                <button
+                  className="btn danger small"
+                  onClick={cancelExplain}
+                  disabled={aiCancelling}
+                >
+                  {aiCancelling ? '取消生成中…' : '取消生成'}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1079,13 +1108,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               }}
             />
             <button
-              className="btn"
+              className="btn small"
               onClick={submitFollowUp}
               disabled={aiBusy || !result || !followUp.trim()}
             >
               追問
             </button>
-            <button className="btn ghost" onClick={() => void copyExplanation()}>
+            <button className="btn ghost small" onClick={() => void copyExplanation()}>
               複製
             </button>
           </div>
@@ -1129,39 +1158,28 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       {traceId && (
         <div className="harness-feedback">
           <span className="muted small">這次解說是否有幫助？</span>
-          {(
-            [
-              ['helpful', '有幫助'],
-              ['unclear', '不清楚'],
-              ['incorrect', '內容不正確'],
-              ['missing_evidence', '證據不足']
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              className="btn ghost"
-              key={value}
-              onClick={async () => {
-                await window.api.ai.setHarnessFeedback(traceId, value)
-                setNotice('已記錄這次 Harness 回饋。')
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {result && (
-        <div className="row gap collection-row">
-          <input
-            className="text-input"
-            value={collectionReason}
-            placeholder="收藏原因，例如：看不懂中炮交換"
-            onChange={(event) => setCollectionReason(event.target.value)}
-          />
-          <button className="btn ghost" onClick={saveMisunderstood}>
-            收藏待理解
-          </button>
+          <div className="feedback-segment" role="group" aria-label="解說回饋">
+            {(
+              [
+                ['helpful', '有幫助'],
+                ['unclear', '不清楚'],
+                ['incorrect', '內容不正確'],
+                ['missing_evidence', '證據不足']
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                type="button"
+                className="feedback-segment-btn"
+                key={value}
+                onClick={async () => {
+                  await window.api.ai.setHarnessFeedback(traceId, value)
+                  setNotice('已記錄這次 Harness 回饋。')
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

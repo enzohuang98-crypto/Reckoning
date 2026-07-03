@@ -558,7 +558,10 @@ summary:focus-visible {
 }
 
 .analysis-actions {
-  justify-content: flex-end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .analysis-helper-strip {
@@ -779,6 +782,22 @@ summary:focus-visible {
   padding: 4px 10px;
   border-radius: 8px;
   font-size: 11px;
+}
+
+.text-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--jade);
+  font: inherit;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.text-link:hover {
+  color: var(--jade-bright);
 }
 
 .row {
@@ -1087,6 +1106,10 @@ input[type="range"] {
   line-height: 1.5;
 }
 
+.guess-explain-hint {
+  margin-top: 8px;
+}
+
 .guess-result.correct {
   border-color: rgba(120, 156, 49, 0.27);
   background: rgba(120, 156, 49, 0.09);
@@ -1373,6 +1396,35 @@ button.badge {
   margin-top: 10px;
 }
 
+.feedback-segment {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.feedback-segment-btn {
+  padding: 5px 10px;
+  border: none;
+  border-right: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--ivory-soft);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.feedback-segment-btn:last-child {
+  border-right: none;
+}
+
+.feedback-segment-btn:hover {
+  background: rgba(139, 94, 60, 0.12);
+  color: var(--ivory);
+}
+
 .explanation-text {
   white-space: pre-wrap;
 }
@@ -1551,8 +1603,7 @@ button.badge {
   margin-bottom: 0;
 }
 
-.follow-up-row,
-.collection-row {
+.follow-up-row {
   margin-top: 11px;
 }
 
@@ -1706,7 +1757,7 @@ summary {
   }
 
   .analysis-actions {
-    justify-content: flex-start;
+    align-items: flex-start;
   }
 
   .engine-install-item {
