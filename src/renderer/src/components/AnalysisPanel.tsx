@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
 import type {
@@ -183,16 +191,24 @@ function thoughtSignature(entry: EngineThoughtEntry): string {
   ].join('::')
 }
 
-export function AnalysisPanel({
-  board,
-  settings,
-  submittedGuess,
-  conversation,
-  onConversationChange,
-  onResult,
-  onExplanation,
-  onSaveMisunderstood
-}: Props): JSX.Element {
+export interface AnalysisPanelHandle {
+  /** 由外部（例如猜著模式的「請 AI 解釋為什麼」按鈕）觸發生成 AI 解說。 */
+  requestExplanation: () => void
+}
+
+export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function AnalysisPanel(
+  {
+    board,
+    settings,
+    submittedGuess,
+    conversation,
+    onConversationChange,
+    onResult,
+    onExplanation,
+    onSaveMisunderstood
+  }: Props,
+  ref
+): JSX.Element {
   const [status, setStatus] = useState<EngineStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<EngineAnalysisProgressPayload | null>(null)
@@ -609,6 +625,15 @@ export function AnalysisPanel({
       generateExplanation(null)
     }
   }, [result?.analysisId, settings.harnessAutoRun])
+
+  // 不傳 deps：generateExplanation 閉包捕捉了 settings/引擎選擇等會變動的值，
+  // 每次 render 都重建這個 handle 才能避免呼叫到過期的閉包。
+  useImperativeHandle(ref, () => ({
+    requestExplanation: () => {
+      if (!result || aiBusy) return
+      generateExplanation(null)
+    }
+  }))
 
   const submitFollowUp = (): void => {
     const question = followUp.trim()
@@ -1141,4 +1166,4 @@ export function AnalysisPanel({
       )}
     </div>
   )
-}
+})

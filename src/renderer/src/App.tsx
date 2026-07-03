@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BoardEditor } from './components/BoardEditor'
 import { FenInput } from './components/FenInput'
 import { GameImportPanel } from './components/GameImportPanel'
-import { AnalysisPanel } from './components/AnalysisPanel'
+import { AnalysisPanel, type AnalysisPanelHandle } from './components/AnalysisPanel'
 import { GuessModePanel } from './components/GuessModePanel'
 import { SettingsPage } from './pages/SettingsPage'
 import { SetupWizard } from './pages/SetupWizard'
@@ -75,6 +75,7 @@ export function App(): JSX.Element {
   const saveQueue = useRef(Promise.resolve())
   const pendingConversationId = useRef<string | null>(null)
   const appDataRef = useRef(appData)
+  const analysisPanelRef = useRef<AnalysisPanelHandle>(null)
 
   const resetPositionInteraction = useCallback((): void => {
     setResult(null)
@@ -460,6 +461,7 @@ export function App(): JSX.Element {
               </div>
               <div className="right-col">
                 <AnalysisPanel
+                  ref={analysisPanelRef}
                   board={board}
                   settings={settings}
                   submittedGuess={submittedGuess}
@@ -488,6 +490,7 @@ export function App(): JSX.Element {
                   explanation={explanation}
                   onAddMistake={addMistake}
                   onRecordGuess={recordGuess}
+                  onRequestExplanation={() => analysisPanelRef.current?.requestExplanation()}
                 />
               </div>
             </div>

@@ -24,6 +24,7 @@ interface Props {
   explanation: AIExplanationResponse | null
   onAddMistake: (entry: MistakeBookEntry) => void
   onRecordGuess: (guess: UserGuess) => void
+  onRequestExplanation: () => void
 }
 
 export function GuessModePanel({
@@ -41,7 +42,8 @@ export function GuessModePanel({
   result,
   explanation,
   onAddMistake,
-  onRecordGuess
+  onRecordGuess,
+  onRequestExplanation
 }: Props): JSX.Element {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [savedToBook, setSavedToBook] = useState(false)
@@ -227,6 +229,19 @@ export function GuessModePanel({
           {comparison.uncertaintyReasons.length > 0 && (
             <div className="muted small">
               不確定原因：{comparison.uncertaintyReasons.join('；')}
+            </div>
+          )}
+          {!isCorrect && (
+            <div className="guess-explain-cta" style={{ marginTop: 8 }}>
+              {explanation ? (
+                <span className="success-text small">
+                  ✓ AI 已解釋原因，請往上看「AI 解說」區塊。
+                </span>
+              ) : (
+                <button className="btn small" onClick={onRequestExplanation}>
+                  請 AI 解釋為什麼
+                </button>
+              )}
             </div>
           )}
           {canSave && (
