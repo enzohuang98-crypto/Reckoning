@@ -61,6 +61,8 @@ export interface HarnessAnswer {
   directAnswer: string
   directAnswerEvidenceIds: string[]
   sections: Array<{ heading: string; claims: HarnessClaim[] }>
+  /** 一般棋理補充：未經引擎驗證的教練常識，必須與引擎結論分開顯示，不得引用證據編號。 */
+  generalNotes?: string[]
   evidence: HarnessEvidence[]
   warnings: string[]
 }

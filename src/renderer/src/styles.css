@@ -2617,3 +2617,125 @@ summary {
     justify-content: space-between;
   }
 }
+
+/* Structured AI explanation (harness Q&A) */
+.explanation-view {
+  line-height: 1.75;
+}
+
+.explanation-title {
+  margin: 2px 0 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ivory);
+}
+
+.explanation-section {
+  margin: 10px 0;
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.explanation-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #2f7557;
+}
+
+.explanation-claim {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+  align-items: baseline;
+}
+
+.explanation-claim.plain {
+  display: block;
+}
+
+.claim-label {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid #d8e6dd;
+  border-radius: 999px;
+  background: #f2f8f4;
+  color: #34795b;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.claim-text {
+  min-width: 0;
+}
+
+.evidence-badge {
+  display: inline-block;
+  margin: 0 3px;
+  padding: 0 7px;
+  border: 1px solid rgba(47, 125, 92, 0.32);
+  border-radius: 999px;
+  background: rgba(47, 125, 92, 0.1);
+  color: #2f7557;
+  font-size: 10.5px;
+  font-weight: 800;
+  vertical-align: 1px;
+}
+
+.explanation-view ul {
+  margin: 4px 0 4px;
+  padding-left: 20px;
+}
+
+.explanation-view li {
+  margin: 3px 0;
+}
+
+.explanation-section.general {
+  border-style: dashed;
+  border-color: #e3cf9f;
+  background: #fdf8ec;
+}
+
+.explanation-section.general .explanation-heading {
+  color: #8a6a33;
+}
+
+.general-tag {
+  padding: 1px 8px;
+  border: 1px solid #e3cf9f;
+  border-radius: 999px;
+  background: #fbf1d9;
+  color: #8a6a33;
+  font-size: 10.5px;
+  font-weight: 750;
+}
+
+.explanation-section.notice {
+  border-color: #ead9bc;
+  background: #fffaf0;
+}
+
+.explanation-section.notice .explanation-heading {
+  color: #9a6b23;
+}
+
+.explanation-section.raw {
+  background: #f3f6f4;
+}
+
+.explanation-section.raw .explanation-heading {
+  color: var(--muted);
+}
+
+.explanation-section.raw li {
+  color: var(--muted);
+  font-size: 12px;
+  font-family: Consolas, "Courier New", monospace;
+}

@@ -3,6 +3,7 @@ import type {
   MisunderstoodPosition
 } from '@shared/types/AppData'
 import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
+import { ExplanationView } from '../components/ExplanationView'
 
 interface Props {
   entries: MisunderstoodPosition[]
@@ -94,18 +95,22 @@ export function MisunderstoodPage({
                 {entry.explanation && (
                   <details>
                     <summary>已生成解說</summary>
-                    <p className="explanation-text">{entry.explanation}</p>
+                    <ExplanationView text={entry.explanation} />
                   </details>
                 )}
                 {conversation && (
                   <details>
                     <summary>追問紀錄（{conversation.messages.length} 則）</summary>
-                    {conversation.messages.map((message) => (
-                      <p key={message.id} className="explanation-text">
-                        <b>{message.role === 'user' ? '問：' : '答：'}</b>
-                        {message.text}
-                      </p>
-                    ))}
+                    {conversation.messages.map((message) =>
+                      message.role === 'assistant' ? (
+                        <ExplanationView key={message.id} text={message.text} />
+                      ) : (
+                        <p key={message.id} className="explanation-text">
+                          <b>問：</b>
+                          {message.text}
+                        </p>
+                      )
+                    )}
                   </details>
                 )}
                 <div className="row gap">

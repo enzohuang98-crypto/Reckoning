@@ -22,12 +22,13 @@ npm run build    # 型別檢查 + 打包（electron-vite build）
 npm run typecheck# 只跑 tsc 型別檢查（node + web 兩個 project）
 ```
 
-測試（規則引擎 + Provider/Registry + License + Logger 遮蔽 + 引擎契約/e2e，共 190 條）：
+測試（規則引擎 / AppData / Provider/Registry / License / Logger 遮蔽 / 資安基線 /
+Session 快取 / 引擎登錄 / AI Harness / 引擎契約 e2e，共 303 條）：
 
 ```bash
 # 先編譯假引擎（僅需一次；csc 為 Windows 內建 .NET Framework 編譯器）
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /out:tests\fake-engine.exe tests\FakeEngine.cs
-npm test   # rules / providers / license / engine 四套全部執行
+npm test   # 上述十套測試全部執行
 ```
 
 > 注意：本機若 `node` 不在 PATH，請先把 `C:\Program Files\nodejs` 加入 PATH。

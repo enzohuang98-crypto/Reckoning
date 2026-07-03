@@ -22,6 +22,7 @@ import type {
 } from '@shared/types/AppData'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
 import { validateMoveInput } from '@shared/logic/ValidationUtils'
+import { ExplanationView } from './ExplanationView'
 
 interface Props {
   board: BoardState
@@ -1019,7 +1020,7 @@ export function AnalysisPanel({
       {(aiBusy || (!explanation && streamingText)) && streamingText && (
         <div className="ai-explanation">
           <h4>AI 解說（{settings.aiModel}）{aiBusy ? '　生成中…' : '　（未完成）'}</h4>
-          <p className="explanation-text">{streamingText}</p>
+          <ExplanationView text={streamingText} />
         </div>
       )}
 
@@ -1029,7 +1030,11 @@ export function AnalysisPanel({
           {conversation.messages.map((message) => (
             <div key={message.id} className={`conversation-message ${message.role}`}>
               <b>{message.role === 'user' ? '你問' : 'AI 教練'}</b>
-              <p className="explanation-text">{message.text}</p>
+              {message.role === 'assistant' ? (
+                <ExplanationView text={message.text} />
+              ) : (
+                <p className="explanation-text">{message.text}</p>
+              )}
             </div>
           ))}
           {explanation?.usage && (

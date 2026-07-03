@@ -12,6 +12,10 @@ import type {
 import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
 import { parseFen } from '@shared/logic/fen'
 import { legalMoveCheck } from '@shared/logic/moves'
+import {
+  CONCRETE_TERM_EXAMPLES,
+  containsConcreteXiangqiTerm
+} from '@shared/logic/xiangqiTerms'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../storage/HarnessTraceStore'
@@ -32,7 +36,7 @@ interface SemanticReview {
   reasons: string[]
 }
 
-type ConsequenceCategory =
+export type ConsequenceCategory =
   | 'initiative_loss'
   | 'piece_restriction'
   | 'king_safety'
@@ -40,7 +44,7 @@ type ConsequenceCategory =
   | 'opponent_development'
   | 'material_or_tactical'
 
-interface ConsequenceFinding {
+export interface ConsequenceFinding {
   id: string
   category: ConsequenceCategory
   summary: string
@@ -51,7 +55,7 @@ interface ConsequenceFinding {
   verified: boolean
 }
 
-interface ConsequenceAudit {
+export interface ConsequenceAudit {
   bestMovePurpose: string
   userMoveProblem: string
   consequences: ConsequenceFinding[]
@@ -59,7 +63,7 @@ interface ConsequenceAudit {
   enoughEvidence: boolean
 }
 
-interface AnswerRequirements {
+export interface AnswerRequirements {
   hasUserMove: boolean
   requiredHeadings: string[]
 }
@@ -286,6 +290,15 @@ function normalizeConsequenceAudit(raw: ConsequenceAudit): ConsequenceAudit {
   }
 }
 
+function normalizeGeneralNotes(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw
+        .map((note) => String(note).trim().slice(0, 300))
+        .filter(Boolean)
+        .slice(0, 3)
+    : []
+}
+
 function scoreUsedAsReason(text: string): boolean {
   return /(因為|理由|所以|代表).{0,30}(分數|評分|數值).{0,20}(較高|較低|比較高|比較低|領先|落後)/.test(
     text
@@ -309,6 +322,100 @@ function compactChineseText(text: string): string {
 
 function mentionsAnyMove(text: string, moves: string[]): boolean {
   return moves.some((move) => move.trim() && text.includes(move))
+}
+
+/** 正文中逐字出現的不同著法數：只提一步等於沒把因果沿主線走完。 */
+function distinctMentionedMoves(text: string, moves: string[]): number {
+  return new Set(moves.filter((move) => move.trim() && text.includes(move))).size
+}
+
+function characterBigrams(text: string): Map<string, number> {
+  const bigrams = new Map<string, number>()
+  for (let index = 0; index < text.length - 1; index++) {
+    const gram = text.slice(index, index + 2)
+    bigrams.set(gram, (bigrams.get(gram) ?? 0) + 1)
+  }
+  return bigrams
+}
+
+/** 字元 bigram Dice 相似度（0~1），用來擋 summary/opponentUse/boardImpact 互相改寫湊字數。 */
+function textSimilarity(a: string, b: string): number {
+  const left = compactChineseText(a)
+  const right = compactChineseText(b)
+  if (left.length < 2 || right.length < 2) {
+    return left.length > 0 && left === right ? 1 : 0
+  }
+  const leftGrams = characterBigrams(left)
+  const rightGrams = characterBigrams(right)
+  let shared = 0
+  for (const [gram, count] of leftGrams) {
+    shared += Math.min(count, rightGrams.get(gram) ?? 0)
+  }
+  return (2 * shared) / (left.length - 1 + (right.length - 1))
+}
+
+const DUPLICATE_FIELD_SIMILARITY = 0.75
+const DUPLICATE_FIELD_MIN_LENGTH = 10
+
+/** 解說可引用的全部中文著法：主線、使用者著法主線，以及各候選著法與其變例。 */
+function collectDisplayMoves(evidence: HarnessEvidence[]): string[] {
+  return evidence
+    .flatMap((item) => [
+      ...item.displayPrincipalVariation,
+      ...(item.analysis.displayPrincipalVariation ?? []),
+      ...(item.analysis.displayUserMovePrincipalVariation ?? []),
+      ...item.analysis.candidateMoves.flatMap((candidate) => [
+        ...(candidate.displayMove ? [candidate.displayMove] : []),
+        ...(candidate.displayPrincipalVariation ?? [])
+      ])
+    ])
+    .filter(Boolean)
+}
+
+/**
+ * 單項後果的具體性檢查（validateConsequenceAudit 與 concreteVerifiedConsequences 共用，
+ * 兩邊標準必須一致）：三段正文合起來要連回至少兩步主線著法、用到具體象棋詞彙，
+ * 且三段各自說明不同層面。回傳空陣列代表通過。
+ */
+function consequenceTextIssues(finding: ConsequenceFinding): string[] {
+  const issues: string[] = []
+  const combined = [finding.summary, finding.opponentUse, finding.boardImpact].join(' ')
+  if (
+    looksVagueConsequenceText(finding.summary, finding.supportingMoves) ||
+    looksVagueConsequenceText(finding.opponentUse, finding.supportingMoves) ||
+    looksVagueConsequenceText(finding.boardImpact, finding.supportingMoves)
+  ) {
+    issues.push('仍然太空泛，必須說出主線著法如何造成具體後果。')
+  }
+  if (distinctMentionedMoves(combined, finding.supportingMoves) < 2) {
+    issues.push('沒有把後果連回至少兩步實際主線著法（正文必須逐字出現這些著法）。')
+  }
+  if (!containsConcreteXiangqiTerm(combined)) {
+    issues.push(
+      `沒有使用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）指出位置、棋子關係或威脅。`
+    )
+  }
+  const fields: Array<[string, string]> = [
+    ['summary', finding.summary],
+    ['opponentUse', finding.opponentUse],
+    ['boardImpact', finding.boardImpact]
+  ]
+  for (let i = 0; i < fields.length; i++) {
+    for (let j = i + 1; j < fields.length; j++) {
+      const [nameA, textA] = fields[i]
+      const [nameB, textB] = fields[j]
+      if (
+        compactChineseText(textA).length >= DUPLICATE_FIELD_MIN_LENGTH &&
+        compactChineseText(textB).length >= DUPLICATE_FIELD_MIN_LENGTH &&
+        textSimilarity(textA, textB) >= DUPLICATE_FIELD_SIMILARITY
+      ) {
+        issues.push(
+          `${nameA} 與 ${nameB} 內容高度重複，必須分別說明後果本身、對手利用方式與盤面影響。`
+        )
+      }
+    }
+  }
+  return issues
 }
 
 const GENERIC_PURPOSE_PHRASES = [
@@ -356,20 +463,14 @@ function looksVagueConsequenceText(text: string, supportingMoves: string[]): boo
   return compact.length < 10 && !mentionsAnyMove(text, supportingMoves)
 }
 
-function validateConsequenceAudit(
+export function validateConsequenceAudit(
   audit: ConsequenceAudit,
   evidence: HarnessEvidence[],
   hasUserMove: boolean
 ): string[] {
   const errors: string[] = []
   const evidenceIds = new Set(evidence.map((item) => item.id))
-  const availableMoves = new Set(
-    evidence.flatMap((item) => [
-      ...item.displayPrincipalVariation,
-      ...(item.analysis.displayPrincipalVariation ?? []),
-      ...(item.analysis.displayUserMovePrincipalVariation ?? [])
-    ])
-  )
+  const availableMoves = new Set(collectDisplayMoves(evidence))
   if (!audit.bestMovePurpose) {
     errors.push('缺少最佳著法的具體目的。')
   } else if (looksVaguePurposeText(audit.bestMovePurpose)) {
@@ -412,26 +513,8 @@ function validateConsequenceAudit(
     ) {
       errors.push(`${consequence.id} 使用了引擎主線中沒有的著法。`)
     }
-    if (
-      looksVagueConsequenceText(consequence.summary, consequence.supportingMoves) ||
-      looksVagueConsequenceText(
-        consequence.opponentUse,
-        consequence.supportingMoves
-      ) ||
-      looksVagueConsequenceText(
-        consequence.boardImpact,
-        consequence.supportingMoves
-      )
-    ) {
-      errors.push(`${consequence.id} 仍然太空泛，必須說出主線著法如何造成具體後果。`)
-    }
-    const combinedConsequenceText = [
-      consequence.summary,
-      consequence.opponentUse,
-      consequence.boardImpact
-    ].join(' ')
-    if (!mentionsAnyMove(combinedConsequenceText, consequence.supportingMoves)) {
-      errors.push(`${consequence.id} 沒有把後果連回實際主線著法。`)
+    for (const issue of consequenceTextIssues(consequence)) {
+      errors.push(`${consequence.id} ${issue}`)
     }
   }
   const prose = [
@@ -453,16 +536,9 @@ function validateConsequenceAudit(
 function concreteVerifiedConsequences(
   audit: ConsequenceAudit
 ): ConsequenceFinding[] {
-  return audit.consequences.filter((item) => {
-    if (!item.verified) return false
-    const combined = [item.summary, item.opponentUse, item.boardImpact].join(' ')
-    return (
-      !looksVagueConsequenceText(item.summary, item.supportingMoves) &&
-      !looksVagueConsequenceText(item.opponentUse, item.supportingMoves) &&
-      !looksVagueConsequenceText(item.boardImpact, item.supportingMoves) &&
-      mentionsAnyMove(combined, item.supportingMoves)
-    )
-  })
+  return audit.consequences.filter(
+    (item) => item.verified && consequenceTextIssues(item).length === 0
+  )
 }
 
 function evidenceSignature(evidence: HarnessEvidence[]): string {
@@ -485,22 +561,14 @@ function evidenceSignature(evidence: HarnessEvidence[]): string {
     .join('::')
 }
 
-function validateAnswer(
+export function validateAnswer(
   answer: HarnessAnswer,
   evidence: HarnessEvidence[],
   requirements: AnswerRequirements
 ): string[] {
   const errors: string[] = []
   const evidenceIds = new Set(evidence.map((item) => item.id))
-  const explanationMoves = [
-    ...new Set(
-      evidence.flatMap((item) => [
-        ...item.displayPrincipalVariation,
-        ...(item.analysis.displayPrincipalVariation ?? []),
-        ...(item.analysis.displayUserMovePrincipalVariation ?? [])
-      ])
-    )
-  ].filter(Boolean)
+  const explanationMoves = [...new Set(collectDisplayMoves(evidence))]
   if (!answer.directAnswer?.trim()) errors.push('缺少直接回答。')
   const directNeedsEvidence = !/目前(模型|引擎).*(不足|未能)/.test(
     answer.directAnswer
@@ -559,6 +627,16 @@ function validateAnswer(
     ).length
     if (mentionedMoveCount < 2) {
       errors.push('回答沒有把棋理原因連回至少兩步引擎主線中的中文著法。')
+    }
+  }
+  if (!containsConcreteXiangqiTerm(prose)) {
+    errors.push(
+      `回答沒有使用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）指出位置、棋子關係或威脅。`
+    )
+  }
+  for (const note of answer.generalNotes ?? []) {
+    if (/\[E\d+\]/.test(note) || /引擎(證實|证实|驗證|验证|確認|确认)/.test(note)) {
+      errors.push('一般棋理補充不得引用證據編號或聲稱經過引擎驗證，必須與引擎結論分開。')
     }
   }
   if (!/(後續|接下來|續走|主要變例|具體後果)/.test(prose)) {
@@ -699,6 +777,7 @@ function buildFallbackAnswer(
         ]
       }
     ],
+    generalNotes: [],
     evidence,
     warnings: ['AI 結構化回答未通過驗證，已改用引擎資料產生保守版問答。']
   }
@@ -721,6 +800,14 @@ function renderAnswer(answer: HarnessAnswer): string {
         `AI 答：${claim.text} ${claim.evidenceIds.map((id) => `[${id}]`).join(' ')}`
       )
     }
+  }
+  const generalNotes = answer.generalNotes ?? []
+  if (generalNotes.length > 0) {
+    lines.push(
+      '',
+      '### 一般棋理補充（教練常識，未經引擎驗證）',
+      ...generalNotes.map((note) => `- ${note}`)
+    )
   }
   if (answer.warnings.length > 0) {
     lines.push('', '### 注意', ...answer.warnings.map((warning) => `- ${warning}`))
@@ -1207,6 +1294,10 @@ export async function runExplanationHarness(
 
 至少提出兩項互不重複的後果。supportingMoves 必須逐字使用 evidence 主線中的中文著法。
 summary、opponentUse、boardImpact 都不能只寫「失去先手」「棋子受限」「王區變弱」「陣形變差」「讓對手完成部署」這類標籤；必須說出哪幾步主線如何造成該後果。
+summary、opponentUse、boardImpact 三段合起來必須逐字出現至少兩步不同的主線著法，
+並至少使用一個具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）指出位置、棋子關係或威脅。
+三段必須各自說明不同層面（後果本身／對手利用／盤面影響），不得互相改寫湊字數。
+不在這盤引擎主線中的一般開局／中局原則不能當作 verified 後果；verified 後果只能來自引擎主線可查證的因果。
 若兩項解釋互相矛盾，放入 contradictions，enoughEvidence 必須是 false。
 禁止以「分數較高／較低」作為任何原因；原始分數只供查證。
 
@@ -1295,6 +1386,10 @@ summary、opponentUse、boardImpact 都不能只寫「失去先手」「棋子�
 第五區要先說最佳著法的目的，再逐步對照使用者著法錯失什麼、為什麼不好。
 每項 claims 都必須引用 supporting evidenceIds。若資料不足，直接說證據不足，不能猜。
 每個關鍵 claim 至少要包含一個 evidence 主線中的中文著法，並說明這步棋造成的具體盤面後果；禁止只寫「失去先手」「陣形變差」這種分類詞。
+因果敘述要使用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）指出位置、棋子關係或威脅，不能只用抽象評價。
+若想補充引擎主線之外的一般棋理原則（例如「無根子容易被捉」），寫進頂層 "generalNotes" 陣列：
+每條一句話、最多 3 條、以一般原則的語氣書寫；不得寫進 claims、不得引用證據編號、
+也不得寫成這盤棋已被引擎證實的結論。沒有需要就給空陣列。
 
 使用者程度：${payload.userLevel}
 問題：${payload.followUpQuestion?.trim() || '完整解釋目前局面'}
@@ -1335,6 +1430,7 @@ summary、opponentUse、boardImpact 都不能只寫「失去先手」「棋子�
       {"id":"C6","text":"可操作的思考順序。","evidenceIds":["E1"]}
     ]}
   ],
+  "generalNotes":[],
   "warnings":[]
 }
 `)
@@ -1375,6 +1471,7 @@ summary、opponentUse、boardImpact 都不能只寫「失去先手」「棋子�
                   : []
               }))
             : [],
+          generalNotes: normalizeGeneralNotes(parsed.generalNotes),
           evidence,
           warnings: Array.isArray(parsed.warnings)
             ? parsed.warnings.map(String).slice(0, 10)
@@ -1439,6 +1536,8 @@ summary、opponentUse、boardImpact 都不能只寫「失去先手」「棋子�
 ${JSON.stringify([...deterministicErrors, ...validationErrors])}
 禁止新增證據中沒有的棋力判斷；無法支持的 claim 直接刪除。
 禁止用分數高低、評估差距或可信度作為原因。
+因果敘述要使用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）並逐字連回主線著法。
+generalNotes 只能保留一般棋理原則，不得引用證據編號或聲稱經過引擎驗證。
 回答必須保留六個固定問答區塊。
 原回答：${JSON.stringify({ ...answer, evidence: [] })}
 已驗證具體後果：${JSON.stringify(writerAudit)}
@@ -1472,6 +1571,9 @@ ${JSON.stringify([...deterministicErrors, ...validationErrors])}
                   : []
               }))
             : [],
+          generalNotes: Array.isArray(repaired.generalNotes)
+            ? normalizeGeneralNotes(repaired.generalNotes)
+            : answer.generalNotes,
           warnings: Array.isArray(repaired.warnings)
             ? repaired.warnings.map(String)
             : answer.warnings,

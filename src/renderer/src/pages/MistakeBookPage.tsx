@@ -3,6 +3,7 @@ import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
 import { parseFen } from '@shared/logic/fen'
 import { formatChineseMove } from '@shared/logic/ChineseNotation'
+import { ExplanationView } from '../components/ExplanationView'
 
 interface Props {
   entries: MistakeBookEntry[]
@@ -141,7 +142,7 @@ export function MistakeBookPage({
               </div>
               <details className="mistake-details">
                 <summary>單筆詳情與原始分析</summary>
-                {entry.explanation && <p className="explanation-text">{entry.explanation}</p>}
+                {entry.explanation && <ExplanationView text={entry.explanation} />}
                 <div className="muted small">
                   深度 {entry.engineAnalysis.depth ?? '—'}；候選著法：{' '}
                   {entry.engineAnalysis.candidateMoves

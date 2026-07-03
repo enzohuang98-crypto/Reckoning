@@ -3,9 +3,21 @@ import type { EngineAnalysis } from '../src/shared/types/EngineAnalysis'
 import { START_FEN } from '../src/shared/types/BoardState'
 import { convertCpScore } from '../src/main/engine/EngineOutputParser'
 import { compareMove } from '../src/shared/logic/MoveComparisonService'
-import { runExplanationHarness } from '../src/main/ai/HarnessOrchestrator'
+import {
+  runExplanationHarness,
+  validateAnswer,
+  validateConsequenceAudit
+} from '../src/main/ai/HarnessOrchestrator'
+import type {
+  ConsequenceAudit,
+  ConsequenceFinding
+} from '../src/main/ai/HarnessOrchestrator'
 import type { AnalysisSession } from '../src/main/storage/AnalysisSessionStore'
-import type { HarnessTrace } from '../src/shared/types/Harness'
+import type {
+  HarnessAnswer,
+  HarnessEvidence,
+  HarnessTrace
+} from '../src/shared/types/Harness'
 import type { HarnessProgressPayload } from '../src/shared/types/Harness'
 
 let passed = 0
@@ -67,6 +79,15 @@ function analysis(): EngineAnalysis {
           '炮二平五',
           '馬2進3'
         ]
+      },
+      {
+        move: 'c3c4',
+        displayMove: '兵三進一',
+        score: userScore,
+        evaluation: userScore.comparableValue,
+        depth: 12,
+        principalVariation: ['c3c4', 'h9g7'],
+        displayPrincipalVariation: ['兵三進一', '馬8進7']
       }
     ],
     principalVariation: ['h2e2', 'h9g7'],
@@ -98,8 +119,8 @@ class FakeProvider implements AIProvider {
   async generateExplanation() {
     this.calls++
     const outputs = [
-      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}',
-      '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。","directAnswerEvidenceIds":["E1"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五立即控制中路並保留先手。","evidenceIds":["E1"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七先出子，錯過立即控制中路的時機。","evidenceIds":["E1"]}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方以馬8進7和馬2進3完成兩翼馬部署。","evidenceIds":["E1"]}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。","evidenceIds":["E1"]}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。","evidenceIds":["E1"]}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。","evidenceIds":["E1"]}]}],"warnings":[]}',
+      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方補走炮二平五後中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}',
+      '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。","directAnswerEvidenceIds":["E1"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五立即控制中路並保留先手。","evidenceIds":["E1"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七先出子，錯過立即控制中路的時機。","evidenceIds":["E1"]}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方以馬8進7和馬2進3完成兩翼馬部署。","evidenceIds":["E1"]}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。","evidenceIds":["E1"]}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。","evidenceIds":["E1"]}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。","evidenceIds":["E1"]}]}],"generalNotes":["一般而言，先出正馬再補中炮，容易讓對手搶先完成部署。"],"warnings":[]}',
       '{"unsupportedClaimIds":[],"reasons":[]}'
     ]
     return {
@@ -155,7 +176,7 @@ class WriterBudgetProvider implements AIProvider {
     this.calls++
     const outputs = [
       '{"clarification":"","tasks":[{"kind":"root","purpose":"確認目前局面的最佳著法與後續主線"}]}',
-      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}'
+      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方補走炮二平五後中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}'
     ]
     return {
       text: outputs[this.calls - 1] ?? '{}',
@@ -223,6 +244,14 @@ async function main(): Promise<void> {
   check('證據保留引擎名稱與中文主線', result.evidence[0]?.engineName === 'Test Engine')
   check('完成紀錄不保存 API key', !JSON.stringify(traces).includes('not-stored-in-trace'))
   check('完成狀態寫入本機 trace', traces[0]?.status === 'completed')
+  check(
+    '一般棋理補充獨立成區塊並標示未經引擎驗證',
+    result.finalText.includes('### 一般棋理補充（教練常識，未經引擎驗證）')
+  )
+  check(
+    '一般棋理補充保留寫作者提供的原則句',
+    result.finalText.includes('一般而言，先出正馬再補中炮')
+  )
 
   const stagnationProvider = new StagnationProvider()
   const progressEvents: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
@@ -351,6 +380,149 @@ async function main(): Promise<void> {
   )
   check('模糊問題先要求使用者指出著法', ambiguous.clarificationRequired)
   check('模糊問題不浪費模型呼叫', ambiguousProvider.calls === 0)
+
+  console.log('\n## 驗證器：具體詞彙、著法連結與欄位重複')
+
+  const validatorEvidence: HarnessEvidence[] = [
+    {
+      id: 'E1',
+      engineId: 'engine-1',
+      engineName: 'Test Engine',
+      purpose: '初始主引擎分析',
+      positionFen: START_FEN,
+      depth: 12,
+      score: null,
+      displayPrincipalVariation: ['炮二平五', '馬8進7'],
+      analysis: engineAnalysis
+    }
+  ]
+  const makeFinding = (
+    overrides: Partial<ConsequenceFinding>
+  ): ConsequenceFinding => ({
+    id: 'K1',
+    category: 'initiative_loss',
+    summary: '馬八進七讓炮二平五延後，紅方中路控制慢一拍。',
+    opponentUse: '黑方以馬8進7搶先出子。',
+    boardImpact: '等紅方補走炮二平五時，黑方已先完成一步部署。',
+    supportingMoves: ['馬八進七', '馬8進7', '炮二平五'],
+    evidenceIds: ['E1'],
+    verified: true,
+    ...overrides
+  })
+  const goodSecondFinding = makeFinding({
+    id: 'K2',
+    category: 'opponent_development',
+    summary: '黑方獲得先出子的時間差。',
+    opponentUse: '黑方馬8進7後可從容再出另一翼馬。',
+    boardImpact: '等紅方炮二平五時，黑方部署已領先一步。',
+    supportingMoves: ['馬8進7', '炮二平五']
+  })
+  const makeAudit = (consequences: ConsequenceFinding[]): ConsequenceAudit => ({
+    bestMovePurpose: '炮二平五立即控制中路並保留先手。',
+    userMoveProblem: '馬八進七先出子，錯過立即控制中路的機會。',
+    consequences,
+    contradictions: [],
+    enoughEvidence: true
+  })
+
+  const baselineErrors = validateConsequenceAudit(
+    makeAudit([makeFinding({}), goodSecondFinding]),
+    validatorEvidence,
+    true
+  )
+  check('具體的後果審查可通過全部檢查', baselineErrors.length === 0, baselineErrors)
+
+  const fatVagueErrors = validateConsequenceAudit(
+    makeAudit([
+      makeFinding({
+        summary: '馬八進七之後紅方的整體節奏顯得緩慢，未來的機會逐漸流失。',
+        opponentUse: '黑方馬8進7之後獲得更多的可能性與彈性。',
+        boardImpact: '炮二平五補走之後，紅方各方面都變得不太理想。'
+      }),
+      goodSecondFinding
+    ]),
+    validatorEvidence,
+    true
+  )
+  check(
+    '灌水拉長但沒有具體象棋詞彙的敘述會被擋下',
+    fatVagueErrors.some((error) => error.includes('具體象棋詞彙'))
+  )
+
+  const oneMoveErrors = validateConsequenceAudit(
+    makeAudit([
+      makeFinding({
+        summary: '馬八進七讓紅方中路控制慢一拍。',
+        opponentUse: '黑方藉機搶先出子。',
+        boardImpact: '紅方之後被迫補中炮，部署落後。'
+      }),
+      goodSecondFinding
+    ]),
+    validatorEvidence,
+    true
+  )
+  check(
+    '正文只連回一步著法會被要求補到兩步',
+    oneMoveErrors.some((error) => error.includes('至少兩步實際主線著法'))
+  )
+
+  const duplicatedText = '馬八進七與馬8進7交換次序後，紅方中路受制無法出車。'
+  const duplicateErrors = validateConsequenceAudit(
+    makeAudit([
+      makeFinding({
+        summary: duplicatedText,
+        opponentUse: duplicatedText,
+        boardImpact: duplicatedText
+      }),
+      goodSecondFinding
+    ]),
+    validatorEvidence,
+    true
+  )
+  check(
+    'summary/opponentUse/boardImpact 互相抄寫會被擋下',
+    duplicateErrors.some((error) => error.includes('高度重複'))
+  )
+
+  const candidateLineErrors = validateConsequenceAudit(
+    makeAudit([
+      makeFinding({}),
+      makeFinding({
+        id: 'K3',
+        category: 'piece_restriction',
+        summary: '改走兵三進一雖然開通馬路，但讓黑方馬8進7搶先控制河口。',
+        opponentUse: '黑方馬8進7後紅方馬路仍被壓制。',
+        boardImpact: '紅方兵三進一後的部署比炮二平五慢。',
+        supportingMoves: ['兵三進一', '馬8進7']
+      })
+    ]),
+    validatorEvidence,
+    true
+  )
+  check(
+    '候選著法變例中的著法可以合法引用（不再誤判違規）',
+    !candidateLineErrors.some((error) => error.includes('引擎主線中沒有的著法')),
+    candidateLineErrors
+  )
+
+  const badNoteAnswer: HarnessAnswer = {
+    mode: 'research',
+    title: '測試',
+    directAnswer: '目前引擎證據不足，無法確認。',
+    directAnswerEvidenceIds: [],
+    sections: [],
+    generalNotes: ['這個原則已被引擎驗證，肯定成立 [E1]。'],
+    evidence: [],
+    warnings: []
+  }
+  const badNoteErrors = validateAnswer(badNoteAnswer, validatorEvidence, {
+    hasUserMove: false,
+    requiredHeadings: []
+  })
+  check(
+    '一般棋理補充不得引用證據編號或聲稱經過引擎驗證',
+    badNoteErrors.some((error) => error.includes('一般棋理補充不得'))
+  )
 
   console.log('\n## 逾時、預算與證據簽章修正')
 
@@ -581,7 +753,11 @@ async function main(): Promise<void> {
   )
   check(
     '保守版問答仍具體引用真實盤面後果',
-    Boolean(writerBudgetResult?.finalText.includes('紅方中路計畫延後，黑方陣形更完整'))
+    Boolean(
+      writerBudgetResult?.finalText.includes(
+        '紅方補走炮二平五後中路計畫延後，黑方陣形更完整'
+      )
+    )
   )
   check('撞到上限後完成狀態仍寫入 completed', writerBudgetTraces[0]?.status === 'completed')
 
