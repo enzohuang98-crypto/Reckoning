@@ -32,6 +32,18 @@ import type { SubmittedGuess } from '@shared/types/UserGuess'
 import { validateMoveInput } from '@shared/logic/ValidationUtils'
 import { ExplanationView } from './ExplanationView'
 
+export interface AnalysisPanelStatus {
+  canAnalyze: boolean
+  analysisBusy: boolean
+  analysisCancelling: boolean
+  aiBusy: boolean
+  aiCancelling: boolean
+  hasExplanation: boolean
+  hasResult: boolean
+  analysisBlockedReason: string | null
+  aiBlockedReason: string | null
+}
+
 interface Props {
   board: BoardState
   settings: AppSettings
@@ -41,6 +53,7 @@ interface Props {
   onResult: (payload: EngineAnalysisResultPayload | null) => void
   onExplanation: (explanation: AIExplanationResponse | null) => void
   onSaveMisunderstood: (entry: MisunderstoodPosition) => void
+  onStatusChange: (status: AnalysisPanelStatus) => void
 }
 
 interface PendingAiRequest {
@@ -194,6 +207,12 @@ function thoughtSignature(entry: EngineThoughtEntry): string {
 export interface AnalysisPanelHandle {
   /** 由外部（例如猜著模式的「請 AI 解釋為什麼」按鈕）觸發生成 AI 解說。 */
   requestExplanation: () => void
+  /** 由外部頂部工具列觸發「開始／重新分析」。 */
+  startAnalysis: () => void
+  /** 由外部頂部工具列觸發「停止分析」。 */
+  cancelAnalysis: () => void
+  /** 由外部頂部工具列觸發「停止」AI 生成。 */
+  cancelExplain: () => void
 }
 
 export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function AnalysisPanel(
@@ -205,7 +224,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     onConversationChange,
     onResult,
     onExplanation,
-    onSaveMisunderstood
+    onSaveMisunderstood,
+    onStatusChange
   }: Props,
   ref
 ): JSX.Element {
@@ -245,7 +265,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const settingsRef = useRef(settings)
   const conversationRef = useRef(conversation)
   const resultRef = useRef(result)
-  const actionCardRef = useRef<HTMLDivElement>(null)
+  const explanationAnchorRef = useRef<HTMLDivElement>(null)
+  const analysisStartedAtRef = useRef<number | null>(null)
+  const lastThoughtAtRef = useRef<number | null>(null)
+  const [liveNow, setLiveNow] = useState(() => Date.now())
 
   useEffect(() => {
     settingsRef.current = settings
@@ -293,6 +316,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     activeAnalysisKey.current = null
     activeAiRequestId.current = null
     pendingAiRequest.current = null
+    analysisStartedAtRef.current = null
+    lastThoughtAtRef.current = null
     setBusy(false)
     setProgress(null)
     setEngineThoughts([])
@@ -318,6 +343,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   useEffect(() => {
     const offProgress = window.api.engine.onAnalysisProgress((payload) => {
       if (payload.requestId !== activeRequestId.current) return
+      lastThoughtAtRef.current = Date.now()
       setProgress(payload)
       if (
         payload.phase === 'preparing_engine' ||
@@ -352,6 +378,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       if (payload.requestId !== activeRequestId.current) return
       activeRequestId.current = null
       activeAnalysisKey.current = null
+      analysisStartedAtRef.current = null
+      lastThoughtAtRef.current = null
       setBusy(false)
       setProgress(null)
       setCancelling(false)
@@ -362,6 +390,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       if (payload.requestId !== activeRequestId.current) return
       activeRequestId.current = null
       activeAnalysisKey.current = null
+      analysisStartedAtRef.current = null
+      lastThoughtAtRef.current = null
       setBusy(false)
       setProgress(null)
       setCancelling(false)
@@ -450,6 +480,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     resultRef.current = result
   }, [result])
 
+  // 每秒重新渲染一次，讓「仍在分析中」的耗時持續走動，即使引擎暫時沒有新的 info 行也不會看起來像停止。
+  useEffect(() => {
+    if (!busy) return
+    const timer = window.setInterval(() => setLiveNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [busy])
+
   const startAnalysis = useCallback((automatic = false): void => {
     if (!hasBothKings(board)) {
       if (!automatic) setError('棋盤需要同時有紅帥與黑將才能分析。')
@@ -503,6 +540,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     const requestId = crypto.randomUUID()
     activeRequestId.current = requestId
     activeAnalysisKey.current = analysisKey
+    analysisStartedAtRef.current = Date.now()
+    lastThoughtAtRef.current = Date.now()
+    setLiveNow(Date.now())
     setBusy(true)
     setProgress({
       requestId,
@@ -627,14 +667,17 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     }
   }, [result?.analysisId, settings.harnessAutoRun])
 
-  // 不傳 deps：generateExplanation 閉包捕捉了 settings/引擎選擇等會變動的值，
+  // 不傳 deps：generateExplanation/startAnalysis 等閉包捕捉了 settings/引擎選擇等會變動的值，
   // 每次 render 都重建這個 handle 才能避免呼叫到過期的閉包。
   useImperativeHandle(ref, () => ({
     requestExplanation: () => {
       if (!result || aiBusy) return
       generateExplanation(null)
-      actionCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
+      explanationAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    },
+    startAnalysis: () => startAnalysis(false),
+    cancelAnalysis,
+    cancelExplain
   }))
 
   const submitFollowUp = (): void => {
@@ -727,14 +770,46 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         ? 'AI 正在生成解說。'
         : null
 
+  // 把外部（頂部工具列）需要的按鈕狀態往上回報，本身不影響任何分析/Harness 邏輯。
+  useEffect(() => {
+    onStatusChange({
+      canAnalyze,
+      analysisBusy: busy,
+      analysisCancelling: cancelling,
+      aiBusy,
+      aiCancelling,
+      hasExplanation: explanation !== null,
+      hasResult: result !== null,
+      analysisBlockedReason,
+      aiBlockedReason
+    })
+  }, [
+    canAnalyze,
+    busy,
+    cancelling,
+    aiBusy,
+    aiCancelling,
+    explanation,
+    result,
+    analysisBlockedReason,
+    aiBlockedReason,
+    onStatusChange
+  ])
+
+  const liveElapsedMs =
+    busy && analysisStartedAtRef.current !== null
+      ? liveNow - analysisStartedAtRef.current
+      : null
+  const sinceLastThoughtMs =
+    busy && lastThoughtAtRef.current !== null ? liveNow - lastThoughtAtRef.current : null
+
   return (
     <div className="analysis-panel">
-      <div className="panel-heading">
+      <div className="panel-heading compact">
         <div>
           <span className="eyebrow">即時分析與解說</span>
           <h3>引擎與 AI 教練</h3>
         </div>
-        <span className="panel-number">02</span>
       </div>
       {status && (
         <div className={`engine-status ${status.available ? 'ok' : 'warn'}`}>
@@ -823,19 +898,26 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         <div className="engine-console-status">
           <span>
             {busy && progress
-              ? `${progressPhaseText(progress.phase)} · ${progress.percent}%`
+              ? `${progressPhaseText(progress.phase)} · 仍在分析中 · ${progress.percent}%`
               : ea
                 ? `分析完成 · 深度 ${ea.depth ?? '—'}`
-                : '等待引擎回傳即時資料'}
+                : '尚未開始分析'}
           </span>
-          {progress?.elapsedMs !== undefined && busy && (
-            <span>{formatElapsedMs(progress.elapsedMs)}</span>
+          {busy && liveElapsedMs !== null && (
+            <span>
+              已進行 {formatElapsedMs(liveElapsedMs)}
+              {sinceLastThoughtMs !== null && sinceLastThoughtMs >= 3000
+                ? `（引擎思考中，${formatElapsedMs(sinceLastThoughtMs)}未回報新資料）`
+                : ''}
+            </span>
           )}
         </div>
         <div className="engine-console-feed">
           {engineThoughts.length === 0 ? (
             <div className="engine-console-empty">
-              開始分析後，這裡會持續列出引擎每次回傳的深度、原始分數、耗時、NPS 與主線。
+              {busy
+                ? '引擎已啟動，正在等待第一筆深度資料…仍在分析中。'
+                : '開始分析後，這裡會持續列出引擎每次回傳的深度、原始分數、耗時、NPS 與主線。'}
             </div>
           ) : (
             (() => {
@@ -858,73 +940,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         </div>
       </section>
 
-      <div className="analysis-action-card" ref={actionCardRef}>
-        <div>
-          <b>下一步</b>
-          <p className="muted small">
-            {result
-              ? '可以查看候選著法、加入待理解，或請 AI 用中文解釋。'
-              : busy
-                ? '正在讀取引擎結果，先觀察即時思考動態。'
-                : '可直接重新分析目前棋盤，或先在左側選一個你的著法。'}
-          </p>
-        </div>
-        <div className="analysis-actions">
-          <div className="row gap">
-            <button
-              className="btn"
-              onClick={() => startAnalysis(false)}
-              disabled={!canAnalyze}
-              title={analysisBlockedReason ?? undefined}
-            >
-              {busy ? '分析中…' : '立即重新分析'}
-            </button>
-            <button
-              className={`btn${explanation ? ' ghost' : ''}`}
-              onClick={() => generateExplanation(null, explanation !== null)}
-              disabled={Boolean(aiBlockedReason)}
-              title={aiBlockedReason ?? undefined}
-            >
-              {aiBusy ? '生成中…' : explanation ? '重新生成解說' : '請 AI 解說'}
-            </button>
-          </div>
-          {result && (
-            <div className="row gap">
-              <input
-                className="text-input"
-                value={collectionReason}
-                placeholder="收藏原因，例如：看不懂中炮交換（選填）"
-                onChange={(event) => setCollectionReason(event.target.value)}
-              />
-              <button className="btn ghost small" onClick={saveMisunderstood}>
-                收藏待理解
-              </button>
-            </div>
-          )}
-          {(busy || aiBusy) && (
-            <div className="row gap">
-              {busy && (
-                <button
-                  className="btn danger small"
-                  onClick={cancelAnalysis}
-                  disabled={cancelling}
-                >
-                  {cancelling ? '取消分析中…' : '取消分析'}
-                </button>
-              )}
-              {aiBusy && (
-                <button
-                  className="btn danger small"
-                  onClick={cancelExplain}
-                  disabled={aiCancelling}
-                >
-                  {aiCancelling ? '取消生成中…' : '取消生成'}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
       <div className="analysis-helper-strip">
         <span>
           {busy
@@ -934,7 +949,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
                   settings.rootAnalysisMovetimeMs,
                   AUTO_ROOT_ANALYSIS_MAX_MS
                 ) / 1000
-              ).toFixed(1)} 秒；手動重跑會使用完整設定時間。`}
+              ).toFixed(1)} 秒；手動重跑會使用完整設定時間（可在頂部工具列操作）。`}
         </span>
         {(analysisBlockedReason || aiBlockedReason) && !busy && (
           <span className="muted small">
@@ -942,6 +957,22 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
           </span>
         )}
       </div>
+
+      <div ref={explanationAnchorRef} />
+
+      {result && (
+        <div className="row gap analysis-bookmark-row">
+          <input
+            className="text-input"
+            value={collectionReason}
+            placeholder="收藏原因，例如：看不懂中炮交換（選填）"
+            onChange={(event) => setCollectionReason(event.target.value)}
+          />
+          <button className="btn ghost small" onClick={saveMisunderstood}>
+            收藏待理解
+          </button>
+        </div>
+      )}
 
       {aiBusy && harnessProgress && (
         <div
@@ -1078,24 +1109,39 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         </div>
       )}
 
-      {conversation && (
+      {conversation && conversation.messages.length > 0 && (
         <div className="ai-explanation">
-          <h4>AI 解說與追問（{settings.aiModel}）</h4>
-          {conversation.messages.map((message) => (
-            <div key={message.id} className={`conversation-message ${message.role}`}>
-              <b>{message.role === 'user' ? '你問' : 'AI 教練'}</b>
-              {message.role === 'assistant' ? (
-                <ExplanationView text={message.text} />
-              ) : (
-                <p className="explanation-text">{message.text}</p>
-              )}
-            </div>
-          ))}
-          {explanation?.usage && (
-            <div className="usage">
-              token：輸入 {explanation.usage.inputTokens} / 輸出 {explanation.usage.outputTokens}
-            </div>
-          )}
+          <h4>AI 解說（{settings.aiModel}）</h4>
+          {(() => {
+            const latestMessage = conversation.messages[conversation.messages.length - 1]
+            const historyMessages = conversation.messages.slice(0, -1)
+            return (
+              <>
+                {latestMessage.role === 'assistant' ? (
+                  <ExplanationView text={latestMessage.text} />
+                ) : (
+                  <p className="explanation-text">{latestMessage.text}</p>
+                )}
+                {explanation?.usage && (
+                  <div className="usage">
+                    token：輸入 {explanation.usage.inputTokens} / 輸出{' '}
+                    {explanation.usage.outputTokens}
+                  </div>
+                )}
+                {historyMessages.length > 0 && (
+                  <details className="conversation-history">
+                    <summary>先前追問紀錄（{historyMessages.length} 則）</summary>
+                    {historyMessages.map((message) => (
+                      <div className="conversation-history-message" key={message.id}>
+                        <b>{message.role === 'user' ? '問' : '答'}</b>
+                        <span>{message.text}</span>
+                      </div>
+                    ))}
+                  </details>
+                )}
+              </>
+            )
+          })()}
           <div className="row gap follow-up-row">
             <input
               className="text-input"

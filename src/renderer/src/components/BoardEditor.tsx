@@ -18,11 +18,7 @@ import type { SavedPosition } from '@shared/types/AppData'
 interface Props {
   board: BoardState
   onChange: (board: BoardState) => void
-  canUndo: boolean
-  canRedo: boolean
-  onUndo: () => void
-  onRedo: () => void
-  onRestoreOriginal: () => void
+  toolsOpen: boolean
   guessSelectionActive: boolean
   onGuessMoveSelected: (move: string) => void
   onGuessSelectionCancel: () => void
@@ -40,11 +36,7 @@ type Tool =
 export function BoardEditor({
   board,
   onChange,
-  canUndo,
-  canRedo,
-  onUndo,
-  onRedo,
-  onRestoreOriginal,
+  toolsOpen,
   guessSelectionActive,
   onGuessMoveSelected,
   onGuessSelectionCancel,
@@ -57,7 +49,6 @@ export function BoardEditor({
   const [selected, setSelected] = useState<[number, number] | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
   const [positionName, setPositionName] = useState('')
-  const [toolsOpen, setToolsOpen] = useState(false)
 
   const selectTool = (next: Tool): void => {
     setSelected(null)
@@ -246,34 +237,11 @@ export function BoardEditor({
               : '點棋子後再點目的地即可走棋'}
           </span>
         </div>
-        <div className="board-toolbar-actions">
-          <div className="board-history-toolbar" aria-label="棋盤歷史">
-            <span className="toolbar-history-label">棋盤歷史</span>
-            <button className="btn ghost small" onClick={onUndo} disabled={!canUndo}>
-              悔棋
-            </button>
-            <button className="btn ghost small" onClick={onRedo} disabled={!canRedo}>
-              下一步
-            </button>
-            <button className="btn ghost small" onClick={onRestoreOriginal}>
-              還原原始棋盤
-            </button>
-          </div>
-          <div className="row gap">
-            {guessSelectionActive && (
-              <button className="btn ghost" onClick={onGuessSelectionCancel}>
-                取消選擇
-              </button>
-            )}
-            <button
-              className="btn ghost board-tools-toggle"
-              onClick={() => setToolsOpen((current) => !current)}
-              aria-expanded={toolsOpen}
-            >
-              {toolsOpen ? '收起擺棋工具' : '擺棋工具'}
-            </button>
-          </div>
-        </div>
+        {guessSelectionActive && (
+          <button className="btn ghost small" onClick={onGuessSelectionCancel}>
+            取消選擇
+          </button>
+        )}
       </div>
       <div className="board-wrap">
         <XiangqiBoard grid={board.grid} selected={selected} onCellClick={handleCellClick} />

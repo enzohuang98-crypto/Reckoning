@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BoardEditor } from './components/BoardEditor'
 import { FenInput } from './components/FenInput'
 import { GameImportPanel } from './components/GameImportPanel'
-import { AnalysisPanel, type AnalysisPanelHandle } from './components/AnalysisPanel'
+import {
+  AnalysisPanel,
+  type AnalysisPanelHandle,
+  type AnalysisPanelStatus
+} from './components/AnalysisPanel'
+import { AnalysisToolbar } from './components/AnalysisToolbar'
 import { GuessModePanel } from './components/GuessModePanel'
 import { SettingsPage } from './pages/SettingsPage'
 import { SetupWizard } from './pages/SetupWizard'
@@ -64,6 +69,19 @@ export function App(): JSX.Element {
   const [guessSelectionActive, setGuessSelectionActive] = useState(false)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [boardToolsOpen, setBoardToolsOpen] = useState(false)
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisPanelStatus>({
+    canAnalyze: false,
+    analysisBusy: false,
+    analysisCancelling: false,
+    aiBusy: false,
+    aiCancelling: false,
+    hasExplanation: false,
+    hasResult: false,
+    analysisBlockedReason: null,
+    aiBlockedReason: null
+  })
   const [activeConversation, setActiveConversation] = useState<AIConversation | null>(null)
   const [appData, setAppData] = useState<AppDataSnapshot>(EMPTY_APP_DATA)
   const [dataReady, setDataReady] = useState(false)
@@ -414,27 +432,31 @@ export function App(): JSX.Element {
           hidden={tab !== 'analyze'}
           aria-hidden={tab !== 'analyze'}
         >
-            <div className="page-heading">
-              <div>
-                <span className="eyebrow">棋盤 · 引擎 · AI 教練</span>
-                <h1>局面分析工作台</h1>
-                <p>每次走棋後自動更新分析，也可悔棋、前進並隨時還原標準開局。</p>
-              </div>
-              <div className="heading-status">
-                <span className="status-dot" />
-                本機分析模式
-              </div>
-            </div>
+            <AnalysisToolbar
+              importOpen={importOpen}
+              onToggleImport={() => setImportOpen((current) => !current)}
+              boardToolsOpen={boardToolsOpen}
+              onToggleBoardTools={() => setBoardToolsOpen((current) => !current)}
+              canUndo={boardTimeline.index > 0}
+              canRedo={boardTimeline.index < boardTimeline.entries.length - 1}
+              onUndo={undoCurrentBoard}
+              onRedo={redoCurrentBoard}
+              onRestoreOriginal={restoreOriginalBoard}
+              status={analysisStatus}
+              onStartAnalysis={() => analysisPanelRef.current?.startAnalysis()}
+              onStopAnalysis={() => {
+                if (analysisStatus.analysisBusy) analysisPanelRef.current?.cancelAnalysis()
+                else if (analysisStatus.aiBusy) analysisPanelRef.current?.cancelExplain()
+              }}
+              onRequestExplanation={() => analysisPanelRef.current?.requestExplanation()}
+              onOpenSettings={() => setTab('settings')}
+            />
             <div className="analyze-layout">
               <div className="left-col">
                 <BoardEditor
                   board={board}
                   onChange={changeBoard}
-                  canUndo={boardTimeline.index > 0}
-                  canRedo={boardTimeline.index < boardTimeline.entries.length - 1}
-                  onUndo={undoCurrentBoard}
-                  onRedo={redoCurrentBoard}
-                  onRestoreOriginal={restoreOriginalBoard}
+                  toolsOpen={boardToolsOpen}
                   guessSelectionActive={guessSelectionActive}
                   onGuessMoveSelected={(move) => {
                     setDraftMove(move)
@@ -451,13 +473,12 @@ export function App(): JSX.Element {
                     }))
                   }
                 />
-                <details className="utility-drawer">
-                  <summary>FEN / 棋譜匯入</summary>
+                {importOpen && (
                   <div className="utility-drawer-body">
                     <FenInput initialFen={board.fen} onValidBoard={changeBoard} />
                     <GameImportPanel board={board} onBoardChange={changeBoard} />
                   </div>
-                </details>
+                )}
               </div>
               <div className="right-col">
                 <AnalysisPanel
@@ -470,6 +491,7 @@ export function App(): JSX.Element {
                   onResult={setResult}
                   onExplanation={setExplanation}
                   onSaveMisunderstood={saveMisunderstood}
+                  onStatusChange={setAnalysisStatus}
                 />
                 <GuessModePanel
                   board={board}

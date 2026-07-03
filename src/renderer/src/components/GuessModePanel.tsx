@@ -134,12 +134,11 @@ export function GuessModePanel({
 
   return (
     <div className="guess-panel">
-      <div className="panel-heading">
+      <div className="panel-heading compact">
         <div>
           <span className="eyebrow">先想再看答案</span>
           <h3>你的著法</h3>
         </div>
-        <span className="panel-number">01</span>
       </div>
       <p className="muted small">
         點「你的著法」後，直接在棋盤依序點選棋子與目的地，再提交鎖定答案。
