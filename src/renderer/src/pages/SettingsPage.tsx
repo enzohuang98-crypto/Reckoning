@@ -40,7 +40,8 @@ export function SettingsPage({
   const [apiKey, setApiKey] = useState('')
   const [secretStatus, setSecretStatus] = useState<SecretStatus>({
     configured: false,
-    provider: null
+    provider: null,
+    needsReentry: false
   })
   const [encAvailable, setEncAvailable] = useState<boolean | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
@@ -151,7 +152,7 @@ export function SettingsPage({
         PROVIDER_DEFAULT_MODELS[result.provider][0]
       update({ aiProvider: result.provider, aiModel: defaultModel.id })
       setApiKey('')
-      setSecretStatus({ configured: true, provider: result.provider })
+      setSecretStatus({ configured: true, provider: result.provider, needsReentry: false })
       setSavedMsg(`${PROVIDER_LABEL[result.provider]} 金鑰已安全儲存並設為使用中。`)
       setOperationError(null)
     } catch {
@@ -164,7 +165,7 @@ export function SettingsPage({
   const deleteKey = async (): Promise<void> => {
     try {
       await window.api.secret.delete()
-      setSecretStatus({ configured: false, provider: null })
+      setSecretStatus({ configured: false, provider: null, needsReentry: false })
       setSavedMsg('API Key 已刪除。')
       setOperationError(null)
     } catch {
@@ -272,10 +273,24 @@ export function SettingsPage({
                 ? `目前：${PROVIDER_LABEL[secretStatus.provider]}`
                 : '尚未設定'}
             </b>
-            <span className={`badge ${secretStatus.configured ? 'on' : 'off'}`}>
-              {secretStatus.configured ? '已設定' : '未設定'}
+            <span
+              className={`badge ${
+                secretStatus.configured ? 'on' : secretStatus.needsReentry ? 'warn' : 'off'
+              }`}
+            >
+              {secretStatus.configured
+                ? '已設定'
+                : secretStatus.needsReentry
+                  ? '需重新輸入'
+                  : '未設定'}
             </span>
           </div>
+          {secretStatus.needsReentry && (
+            <div className="error-text">
+              ⚠ 偵測到先前保存的 API 金鑰已無法解密（通常是系統或設定檔變動造成）。
+              金鑰本身沒有外洩，但需要重新貼上一次才能繼續使用 AI 解說。
+            </div>
+          )}
           <div className="row gap">
             <input
               className="text-input"
@@ -287,7 +302,7 @@ export function SettingsPage({
             <button className="btn" onClick={() => void saveKey()}>
               儲存
             </button>
-            {secretStatus.configured && (
+            {(secretStatus.configured || secretStatus.needsReentry) && (
               <button className="btn danger" onClick={() => void deleteKey()}>
                 刪除
               </button>

@@ -30,6 +30,13 @@ import { AppUpdaterService } from './update/AppUpdaterService'
 
 const isDev = !app.isPackaged
 
+// 單一實例鎖：多個實例同時使用同一個 userData 會互搶 Chromium Local State
+// 與 localStorage 檔案鎖，最壞情況會讓 safeStorage 加密金鑰被重建、
+// 導致已保存的 API 金鑰永遠無法解密。第二個實例直接退出並喚醒既有視窗。
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+}
+
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.xiangqi.analyzer')
 }
@@ -52,8 +59,10 @@ function getRendererUrl(): string {
   return url.toString()
 }
 
+let mainWindow: BrowserWindow | null = null
+
 function createWindow(rendererUrl: string): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
     minWidth: 1024,
@@ -78,11 +87,15 @@ function createWindow(rendererUrl: string): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow.show())
-  lockDownWindow(mainWindow, rendererUrl, (url) => shell.openExternal(url))
+  const window = mainWindow
+  window.on('ready-to-show', () => window.show())
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null
+  })
+  lockDownWindow(window, rendererUrl, (url) => shell.openExternal(url))
 
   // electron-vite 提供的開發伺服器 URL 環境變數
-  void mainWindow.loadURL(rendererUrl)
+  void window.loadURL(rendererUrl)
 }
 
 function registerIpc(): AppUpdaterService {
@@ -112,6 +125,12 @@ app.whenReady().then(() => {
   const appUpdater = registerIpc()
   createWindow(rendererUrl)
   appUpdater.startAutomaticCheck()
+
+  app.on('second-instance', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(rendererUrl)

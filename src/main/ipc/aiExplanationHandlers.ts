@@ -50,7 +50,11 @@ import { HarnessTraceStore } from '../storage/HarnessTraceStore'
 
 /** API key 缺失（§2.17.9：不得用空字串或 placeholder 繼續呼叫） */
 export class MissingApiKeyError extends Error {
-  constructor(public readonly provider: AIProviderId) {
+  constructor(
+    public readonly provider: AIProviderId,
+    /** 檔案裡有金鑰但解密失敗（needsReentry），與「從未設定」區分開來 */
+    public readonly needsReentry = false
+  ) {
     super(`Missing API key for provider: ${provider}`)
     this.name = 'MissingApiKeyError'
   }
@@ -71,7 +75,12 @@ export async function buildAIExplanationRequest(
   // 不存在則丟 UnsupportedModelError（§2.19.1）
   const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
   const apiKey = deps.secretStore.getApiKey(payload.provider)
-  if (!apiKey) throw new MissingApiKeyError(payload.provider)
+  if (!apiKey) {
+    throw new MissingApiKeyError(
+      payload.provider,
+      deps.secretStore.hasApiKey(payload.provider)
+    )
+  }
   const session = await deps.analysisSessionStore.get(payload.analysisId)
   if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
   const prompt = buildExplanationPrompt({
@@ -109,7 +118,9 @@ export function mapStreamingErrorToPayload(
     return {
       requestId,
       code: 'missing_api_key',
-      message: `尚未設定 ${error.provider} 的 API 金鑰，請至設定頁輸入。`
+      message: error.needsReentry
+        ? `已保存的 ${error.provider} API 金鑰無法解密（系統加密金鑰已變動），請至設定頁重新輸入。`
+        : `尚未設定 ${error.provider} 的 API 金鑰，請至設定頁輸入。`
     }
   }
   if (error instanceof UnsupportedModelError) {
@@ -259,8 +270,12 @@ export function registerAiExplanationHandlers(
 
   ipcMain.handle(IPC.SECRET_STATUS, (event) => {
     assertTrustedIpcSender(event)
-    const provider = secretStore.getActiveProvider()
-    return { configured: provider !== null, provider }
+    const health = secretStore.getKeyHealth()
+    return {
+      configured: health.configured,
+      provider: health.provider,
+      needsReentry: health.needsReentry
+    }
   })
 
   ipcMain.handle(
@@ -320,7 +335,12 @@ export function registerAiExplanationHandlers(
         const provider = getAIProvider(payload.provider)
         const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
         const apiKey = secretStore.getApiKey(payload.provider)
-        if (!apiKey) throw new MissingApiKeyError(payload.provider)
+        if (!apiKey) {
+          throw new MissingApiKeyError(
+            payload.provider,
+            secretStore.hasApiKey(payload.provider)
+          )
+        }
         const session = await sessionStore.get(payload.analysisId)
         if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
         const result = await runExplanationHarness(payload, {

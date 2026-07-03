@@ -185,6 +185,8 @@ export interface EngineTestResult {
 export interface SecretStatus {
   configured: boolean
   provider: AIProviderId | null
+  /** 檔案裡有金鑰但無法解密（OS 加密金鑰已變動），需要使用者重新輸入 */
+  needsReentry: boolean
 }
 
 /* ---------- AI 解釋 streaming（§2.17.3） ---------- */

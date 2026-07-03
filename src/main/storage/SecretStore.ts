@@ -26,6 +26,14 @@ interface SecretsFile {
 
 const SECRETS_FILENAME = 'secrets.enc.json'
 
+export interface SecretKeyHealth {
+  provider: AIProviderId | null
+  /** 有金鑰且可成功解密才算已設定 */
+  configured: boolean
+  /** 檔案裡有金鑰但無法解密（OS 加密金鑰已變動），需要使用者重新輸入 */
+  needsReentry: boolean
+}
+
 export class SecretStore {
   private readonly filePath: string
 
@@ -59,6 +67,25 @@ export class SecretStore {
     return (['anthropic', 'openai', 'gemini'] as AIProviderId[]).find((provider) =>
       this.hasEncryptedKey(data, provider)
     ) ?? null
+  }
+
+  /**
+   * 金鑰健康狀態：不只看檔案有沒有條目，還實際驗證能否解密。
+   * safeStorage 的加密金鑰（Chromium Local State）若曾被重建（例如 userData 搬移、
+   * 多實例同時寫入），舊密文會永遠解不開——此時必須提示使用者重新輸入，
+   * 而不是回報「已設定」卻在生成解說時才失敗。
+   */
+  getKeyHealth(): SecretKeyHealth {
+    const data = this.read()
+    const provider =
+      data.activeProvider && this.hasEncryptedKey(data, data.activeProvider)
+        ? data.activeProvider
+        : (['anthropic', 'openai', 'gemini'] as AIProviderId[]).find((candidate) =>
+            this.hasEncryptedKey(data, candidate)
+          ) ?? null
+    if (!provider) return { provider: null, configured: false, needsReentry: false }
+    const decryptable = this.getApiKey(provider) !== null
+    return { provider, configured: decryptable, needsReentry: !decryptable }
   }
 
   /** 是否已存有某 Provider 的金鑰 */
