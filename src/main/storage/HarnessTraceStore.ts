@@ -82,4 +82,48 @@ export class HarnessTraceStore {
       MAX_APP_DATA_BYTES
     )
   }
+
+  /**
+   * 使用者標記「不清楚／不正確／證據不足」的 trace 轉為自包含回歸案例：
+   * 匯出後可直接加入 tests/fixtures 的回歸評測集，
+   * 用 screenExplanationText 驗證未來版本不再產出同類問題。
+   */
+  listRegressionCases(): HarnessRegressionCase[] {
+    return this.list()
+      .filter(
+        (trace) => trace.feedback !== undefined && trace.feedback !== 'helpful'
+      )
+      .map((trace) => ({
+        traceId: trace.id,
+        createdAt: trace.createdAt,
+        positionFen: trace.positionFen,
+        question: trace.question,
+        attachedMove: trace.attachedMove,
+        feedback: trace.feedback as NonNullable<HarnessTrace['feedback']>,
+        finalText: trace.finalText,
+        validationErrors: trace.validationErrors,
+        availableMoves: [
+          ...new Set(
+            trace.evidence.flatMap((item) => [
+              ...item.displayPrincipalVariation,
+              ...(item.analysis?.displayPrincipalVariation ?? []),
+              ...(item.analysis?.displayUserMovePrincipalVariation ?? [])
+            ])
+          )
+        ].filter(Boolean)
+      }))
+  }
+}
+
+/** 自包含回歸案例：不依賴本機 trace 也能重放品質檢查。 */
+export interface HarnessRegressionCase {
+  traceId: string
+  createdAt: string
+  positionFen: string
+  question?: string
+  attachedMove?: string
+  feedback: NonNullable<HarnessTrace['feedback']>
+  finalText?: string
+  validationErrors: string[]
+  availableMoves: string[]
 }

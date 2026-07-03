@@ -1,6 +1,6 @@
 {
   "name": "xiangqi-analyzer",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "象棋 AI 分析講解軟體 — Pikafish 引擎 + LLM 結構化解釋 (MVP)",
   "main": "./out/main/index.js",
   "author": "xiangqi-analyzer",
@@ -14,7 +14,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "tsx --tsconfig tsconfig.node.json tests/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/license.test.ts && tsx --tsconfig tsconfig.node.json tests/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security.test.ts && tsx --tsconfig tsconfig.node.json tests/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts",
+    "test": "tsx --tsconfig tsconfig.node.json tests/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/license.test.ts && tsx --tsconfig tsconfig.node.json tests/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security.test.ts && tsx --tsconfig tsconfig.node.json tests/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/quality.test.ts && tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts",
     "security:check": "tsx --tsconfig tsconfig.node.json tests/security.test.ts",
     "security:audit": "npm audit --audit-level=moderate",
     "pack": "npm run build && electron-builder --dir",

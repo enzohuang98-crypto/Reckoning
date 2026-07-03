@@ -11,6 +11,7 @@ export type HarnessPhase =
   | 'waiting_for_user'
   | 'writing'
   | 'validating'
+  | 'quality_check'
   | 'repairing'
   | 'completed'
 
@@ -49,10 +50,29 @@ export interface HarnessProgressPayload {
   awaitingDecision?: boolean
 }
 
+/**
+ * 因果鏈：核心主張必須完整交代五段結構，
+ * 品質評分器逐段驗證具體性，缺一段即退回重寫。
+ */
+export interface CausalChain {
+  /** 原因：因為哪一步（必須逐字含主線中文著法） */
+  cause: string
+  /** 機制：造成什麼棋理或盤面變化 */
+  mechanism: string
+  /** 受影響對象：哪個棋子、線路、王區、陣形或威脅 */
+  affected: string
+  /** 對手利用：對手下一步如何利用 */
+  opponentUse: string
+  /** 後果：後續具體變差在哪裡 */
+  consequence: string
+}
+
 export interface HarnessClaim {
   id: string
   text: string
   evidenceIds: string[]
+  /** 核心區塊（錯失／對手利用／後果／比較）的 claim 必須附完整因果鏈。 */
+  causal?: CausalChain
 }
 
 export interface HarnessAnswer {

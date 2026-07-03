@@ -1,0 +1,42 @@
+{
+  "note": "回歸評測集：來自使用者回饋（不清楚／不正確／證據不足）的壞解說樣本。screenExplanationText 對每一筆都必須回報問題；good 樣本必須通過。新增案例時把 trace 匯出檔 regressionCases 內的項目貼進 cases 即可。",
+  "availableMoves": ["炮二平五", "馬8進7", "馬八進七", "馬2進3", "車九平八", "卒3進1"],
+  "cases": [
+    {
+      "name": "空泛評價帶過（feedback: unclear）",
+      "feedback": "unclear",
+      "expectRejected": true,
+      "finalText": "這步棋大致上還可以，但整體而言不夠理想，局面複雜，總體而言建議多注意灵活性與主動性。"
+    },
+    {
+      "name": "只用分數當理由（feedback: incorrect）",
+      "feedback": "incorrect",
+      "expectRejected": true,
+      "finalText": "馬八進七之後引擎評分較低，而炮二平五的分數較高，所以馬八進七不好，建議改走分數更高的著法。"
+    },
+    {
+      "name": "有術語但沒有因果鏈（feedback: missing_evidence）",
+      "feedback": "missing_evidence",
+      "expectRejected": true,
+      "finalText": "這步棋牽制不足，陣形鬆散，王區薄弱，中路空虛。"
+    },
+    {
+      "name": "只貼結論標籤（feedback: unclear）",
+      "feedback": "unclear",
+      "expectRejected": true,
+      "finalText": "你的著法讓紅方失去先手，棋子受限，陣形變差。"
+    },
+    {
+      "name": "合格解說（對照樣本，不得誤殺）",
+      "feedback": "helpful",
+      "expectRejected": false,
+      "finalText": "因為先走馬八進七而不是炮二平五，紅方開局第一時間的中路壓制被推遲；黑方趁機馬8進7完成出子，之後再馬2進3補齊另一翼，兩翼馬完成部署。結果紅方要到第三手才補回中炮，先手節奏被拖慢，中路攻勢延後。"
+    },
+    {
+      "name": "主線不足時誠實承認（合格，不得誤殺）",
+      "feedback": "helpful",
+      "expectRejected": false,
+      "finalText": "目前引擎主線不足，尚不能確認這步之後的具體變化；請加深分析後再看結論，暫時不下具體判斷。"
+    }
+  ]
+}

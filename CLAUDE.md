@@ -23,7 +23,7 @@ npm run typecheck# 只跑 tsc 型別檢查（node + web 兩個 project）
 ```
 
 測試（規則引擎 / AppData / Provider/Registry / License / Logger 遮蔽 / 資安基線 /
-Session 快取 / 引擎登錄 / AI Harness / 引擎契約 e2e，共 303 條）：
+Session 快取 / 引擎登錄 / AI Harness / 解釋品質評測集 / 引擎契約 e2e）：
 
 ```bash
 # 先編譯假引擎（僅需一次；csc 為 Windows 內建 .NET Framework 編譯器）
@@ -210,6 +210,27 @@ src/
 - Pikafish 為閉源 NNUE 引擎：除 `pikafish.exe` 外，**還需把 `pikafish.nnue` 評估檔放在同目錄**
   （或以 `setoption name EvalFile` 指定）。缺檔時引擎可能無法通過 `isready`。
   本軟體只負責驅動 UCI，不內含二進位與評估檔。
+
+## AI 解釋品質迴圈（loop engineering）
+
+Harness 不是一次性 pipeline，而是 generate → validate → diagnose → **只重寫失敗區塊** →
+re-validate 的品質迴圈（`HarnessOrchestrator.runExplanationHarness`）：
+
+- **品質評分器**（`shared/logic/ExplanationQualityScorer.ts`，純函式）：八項準則——
+  最佳著法目的／錯失什麼／為什麼不好／對手如何利用／後續具體後果／完整比較／
+  不以分數當理由／不用空泛詞。逐區塊回報失敗原因（`QualityReport.failedSections`）。
+- **因果鏈驗證**：核心區塊（錯失／對手利用／後果／比較）每個 claim 需附 `causal`
+  五段結構（cause 逐字含主線著法 → mechanism → affected → opponentUse → consequence）；
+  正文自帶「著法＋機制詞＋因果連接」或誠實承認證據不足者可免。
+- **修正迴圈**：最多 `MAX_SECTION_REWRITES`（2）輪，每輪只把失敗區塊與其診斷送回模型
+  重寫並依 heading 合併；超限才走 `buildFallbackAnswer` 保守版。進度以
+  `quality_check`／`repairing` phase 回報（「發現解釋太空泛，正在重寫…」「已通過品質檢查」）。
+- **評測集**（`tests/quality.test.ts`）：空泛／唯分數／有術語無因果 必擋，具體必過；
+  八大錯誤類型好壞對照；PV 不足須誠實承認；使用者著法不在候選仍可比較。
+- **回饋回歸**：使用者按「不清楚／不正確／證據不足」後，trace 匯出檔會含
+  `regressionCases`（`HarnessTraceStore.listRegressionCases`，自包含 finalText +
+  availableMoves）；貼入 `tests/fixtures/harness-regression-cases.json` 即成回歸案例，
+  由 `screenExplanationText`（評分器的文字級子集）在 CI 擋下同類問題。
 
 ## 尚未完成 / 後續
 

@@ -236,7 +236,9 @@ export function registerAiExplanationHandlers(
     }
     storage.writeAbsolute(result.filePath, {
       exportedAt: new Date().toISOString(),
-      traces: traceStore.list()
+      traces: traceStore.list(),
+      // 使用者標記「不清楚／不正確／證據不足」的解說，轉為可重放的回歸案例
+      regressionCases: traceStore.listRegressionCases()
     })
     return { ok: true as const, filePath: result.filePath }
   })

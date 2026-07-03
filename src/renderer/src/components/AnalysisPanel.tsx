@@ -121,9 +121,11 @@ function harnessPhaseText(phase: HarnessPhase): string {
     case 'writing':
       return '撰寫說明'
     case 'validating':
-      return '驗證證據引用'
+      return '檢查因果鏈與證據'
+    case 'quality_check':
+      return '品質檢查'
     case 'repairing':
-      return '修正敘述'
+      return '重寫未達標區塊'
     case 'completed':
       return '完成'
   }
