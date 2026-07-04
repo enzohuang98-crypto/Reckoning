@@ -1,6 +1,6 @@
 {
   "name": "xiangqi-analyzer",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "象棋 AI 分析講解軟體 — Pikafish 引擎 + LLM 結構化解釋 (MVP)",
   "main": "./out/main/index.js",
   "author": "xiangqi-analyzer",

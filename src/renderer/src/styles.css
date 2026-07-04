@@ -2270,6 +2270,27 @@ input[type="range"] {
   gap: 12px;
 }
 
+/* 右欄（分析與猜著）改為滾動式設計：欄位本身固定貼齊視窗頂端，
+   超出可視高度的內容在欄位內部捲動，棋盤與工具列不會被推出畫面。 */
+.right-col {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: calc(100vh - 92px);
+  padding-right: 6px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+/* 右欄本身仍是 flex column；子面板若可被壓縮，flexbox 預設會先擠壓
+   內部含 overflow:hidden 的子元件（例如 engine-console）到近乎 0 高，
+   而不是讓外層捲動。固定子面板的自然高度，讓超出的部分改由 .right-col 捲動。 */
+.right-col > .analysis-panel,
+.right-col > .guess-panel {
+  flex-shrink: 0;
+}
+
 .board-editor,
 .analysis-panel,
 .guess-panel {
@@ -2289,7 +2310,7 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: calc(100vh - 92px);
+  min-height: 260px;
 }
 
 .analysis-panel .panel-heading,
