@@ -14,7 +14,7 @@ import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { extractApiErrorMessage } from '../http'
+import { extractApiErrorMessage, readJsonResponseBounded } from '../http'
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 const MAX_OUTPUT_TOKENS = 4096
@@ -56,7 +56,7 @@ export class OpenAIProvider implements AIProvider {
       throw new Error(`OpenAI API 錯誤 (${res.status})：${await extractApiErrorMessage(res)}`)
     }
 
-    const data = (await res.json()) as OpenAIChatResponse
+    const data = await readJsonResponseBounded<OpenAIChatResponse>(res)
     const text = data.choices?.[0]?.message?.content?.trim()
     if (!text) {
       throw new Error('OpenAI 回應中沒有文字內容。')

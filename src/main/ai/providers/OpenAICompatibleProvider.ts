@@ -6,7 +6,7 @@ import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { extractApiErrorMessage } from '../http'
+import { extractApiErrorMessage, readJsonResponseBounded } from '../http'
 
 interface CompatibleChatResponse {
   choices?: Array<{
@@ -28,6 +28,10 @@ function chatEndpoint(baseUrl: string): string {
   return normalized.endsWith('/chat/completions')
     ? normalized
     : `${normalized}/chat/completions`
+}
+
+function redactExactSecret(value: string, secret: string): string {
+  return secret ? value.replaceAll(secret, '[REDACTED]') : value
 }
 
 /**
@@ -61,11 +65,15 @@ export class OpenAICompatibleProvider implements AIProvider {
       })
     })
     if (!res.ok) {
+      const detail = redactExactSecret(
+        await extractApiErrorMessage(res),
+        request.apiKey
+      )
       throw new Error(
-        `OpenAI-compatible API 錯誤 (${res.status})：${await extractApiErrorMessage(res)}`
+        `OpenAI-compatible API 錯誤 (${res.status})：${detail}`
       )
     }
-    const data = (await res.json()) as CompatibleChatResponse
+    const data = await readJsonResponseBounded<CompatibleChatResponse>(res)
     const message = data.choices?.[0]?.message
     const text = (message?.content ?? message?.reasoning_content ?? '').trim()
     if (!text) throw new Error('OpenAI-compatible 回應中沒有文字內容。')

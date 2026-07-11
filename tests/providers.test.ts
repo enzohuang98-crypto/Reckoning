@@ -14,6 +14,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { OpenAIProvider } from '../src/main/ai/providers/OpenAIProvider'
 import { OpenAICompatibleProvider } from '../src/main/ai/providers/OpenAICompatibleProvider'
+import { readJsonResponseBounded } from '../src/main/ai/http'
 import { GeminiProvider } from '../src/main/ai/providers/GeminiProvider'
 import { modelRegistry, UnsupportedModelError } from '../src/main/ai/ModelRegistry'
 import type { AIExplanationRequest } from '../src/shared/types/AIExplanationTypes'
@@ -199,6 +200,51 @@ async function main(): Promise<void> {
     server.close()
     check('本機模型可不傳 Authorization', requests[0].headers.authorization === undefined)
     check('相容服務可讀 reasoning_content', response.text === '本機模型結果')
+  }
+  {
+    const secret = 'moonshot-custom-secret-value'
+    const { server, port } = await startMockServer(() => [
+      401,
+      { error: { message: `invalid key ${secret}` } }
+    ])
+    const provider = new OpenAICompatibleProvider()
+    let error: unknown = null
+    try {
+      await provider.generateExplanation(
+        explanationRequest(
+          'openai-compatible',
+          'kimi-k2.6',
+          secret,
+          `http://127.0.0.1:${port}/v1`
+        )
+      )
+    } catch (caught) {
+      error = caught
+    }
+    server.close()
+    check(
+      '相容服務錯誤若回顯自訂金鑰會精確遮蔽',
+      error instanceof Error &&
+        error.message.includes('[REDACTED]') &&
+        !error.message.includes(secret)
+    )
+  }
+
+  section('AI HTTP 回應大小邊界')
+  {
+    let error: unknown = null
+    try {
+      await readJsonResponseBounded(
+        new Response(JSON.stringify({ text: 'x'.repeat(128) })),
+        32
+      )
+    } catch (caught) {
+      error = caught
+    }
+    check(
+      '超過上限的 Provider JSON 會在解析前被拒絕',
+      error instanceof Error && error.message.includes('超過允許大小')
+    )
   }
 
   section('OpenAIProvider：成功路徑')

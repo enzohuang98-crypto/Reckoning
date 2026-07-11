@@ -13,7 +13,7 @@ import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { extractApiErrorMessage } from '../http'
+import { extractApiErrorMessage, readJsonResponseBounded } from '../http'
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const MAX_OUTPUT_TOKENS = 4096
@@ -60,7 +60,7 @@ export class GeminiProvider implements AIProvider {
       throw new Error(`Gemini API 錯誤 (${res.status})：${await extractApiErrorMessage(res)}`)
     }
 
-    const data = (await res.json()) as GeminiGenerateContentResponse
+    const data = await readJsonResponseBounded<GeminiGenerateContentResponse>(res)
     const text = data.candidates?.[0]?.content?.parts
       ?.map((part) => part.text ?? '')
       .join('\n')

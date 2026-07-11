@@ -28,6 +28,10 @@ import {
   writeJsonFileAtomic
 } from '../src/main/storage/SecureJsonFile'
 import { PikafishAdapter } from '../src/main/engine/PikafishAdapter'
+import {
+  assertProviderEndpointBinding,
+  ProviderEndpointMismatchError
+} from '../src/main/ipc/aiExplanationHandlers'
 
 let passed = 0
 let failed = 0
@@ -189,6 +193,43 @@ check(
     () => normalizeAiBaseUrl('https://user:pass@example.com/v1?token=secret'),
     SecurityValidationError
   )
+)
+check(
+  '相容 API Key 只能送往儲存時綁定的端點',
+  rejects(
+    () =>
+      assertProviderEndpointBinding(
+        'openai-compatible',
+        'https://attacker.example/v1',
+        'provider-secret',
+        'https://api.deepseek.com'
+      ),
+    ProviderEndpointMismatchError
+  )
+)
+check(
+  '相容 API Key 與綁定端點一致時可使用',
+  (() => {
+    assertProviderEndpointBinding(
+      'openai-compatible',
+      'https://api.deepseek.com',
+      'provider-secret',
+      'https://api.deepseek.com'
+    )
+    return true
+  })()
+)
+check(
+  '本機免金鑰端點不需要端點綁定',
+  (() => {
+    assertProviderEndpointBinding(
+      'openai-compatible',
+      'http://127.0.0.1:11434/v1',
+      '',
+      null
+    )
+    return true
+  })()
 )
 check(
   '相對引擎路徑被拒絕',

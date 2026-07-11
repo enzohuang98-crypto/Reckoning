@@ -40,6 +40,7 @@ import { assertTrustedIpcSender } from '../security/IpcSecurity'
 import {
   MAX_AI_RESPONSE_CHARS,
   isLoopbackAiBaseUrl,
+  normalizeAiBaseUrl,
   normalizeApiKey,
   normalizeProviderId,
   safeRequestId,
@@ -59,6 +60,28 @@ export class MissingApiKeyError extends Error {
   ) {
     super(`Missing API key for provider: ${provider}`)
     this.name = 'MissingApiKeyError'
+  }
+}
+
+export class ProviderEndpointMismatchError extends Error {
+  constructor() {
+    super('OpenAI-compatible endpoint does not match the endpoint bound to the stored API key.')
+    this.name = 'ProviderEndpointMismatchError'
+  }
+}
+
+export function assertProviderEndpointBinding(
+  provider: AIProviderId,
+  requestedBaseUrl: string | undefined,
+  apiKey: string,
+  boundBaseUrl: string | null
+): void {
+  if (
+    provider === 'openai-compatible' &&
+    apiKey &&
+    (!requestedBaseUrl || requestedBaseUrl !== boundBaseUrl)
+  ) {
+    throw new ProviderEndpointMismatchError()
   }
 }
 
@@ -86,6 +109,12 @@ export async function buildAIExplanationRequest(
       deps.secretStore.hasApiKey(payload.provider)
     )
   }
+  assertProviderEndpointBinding(
+    payload.provider,
+    payload.baseUrl,
+    apiKey,
+    deps.secretStore.getBoundBaseUrl(payload.provider)
+  )
   const session = await deps.analysisSessionStore.get(payload.analysisId)
   if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
   const prompt = buildExplanationPrompt({
@@ -134,6 +163,13 @@ export function mapStreamingErrorToPayload(
       requestId,
       code: 'unsupported_model',
       message: `不支援的模型：${error.provider}/${error.model}。請至設定頁選擇有效模型。`
+    }
+  }
+  if (error instanceof ProviderEndpointMismatchError) {
+    return {
+      requestId,
+      code: 'invalid_request',
+      message: '相容服務網址已變更。為避免把 API Key 送到錯誤端點，請到設定頁重新確認並儲存金鑰。'
     }
   }
   if (error instanceof AnalysisSessionNotFoundError) {
@@ -219,11 +255,15 @@ export function registerAiExplanationHandlers(
       const preferredProvider = value?.preferredProvider
         ? normalizeProviderId(value.preferredProvider)
         : undefined
+      const baseUrl =
+        preferredProvider === 'openai-compatible'
+          ? normalizeAiBaseUrl(value?.baseUrl)
+          : undefined
       const { provider, apiKey } = normalizeApiKey(
         value ? value.apiKey : rawInput,
         preferredProvider
       )
-      secretStore.setApiKey(provider, apiKey)
+      secretStore.setApiKey(provider, apiKey, baseUrl)
       return { ok: true, provider }
     }
   )
@@ -363,6 +403,12 @@ export function registerAiExplanationHandlers(
             secretStore.hasApiKey(payload.provider)
           )
         }
+        assertProviderEndpointBinding(
+          payload.provider,
+          payload.baseUrl,
+          apiKey,
+          secretStore.getBoundBaseUrl(payload.provider)
+        )
         const session = await sessionStore.get(payload.analysisId)
         if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
         const result = await runExplanationHarness(payload, {

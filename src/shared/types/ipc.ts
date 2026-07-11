@@ -354,7 +354,8 @@ export interface RendererApi {
   secret: {
     set(
       apiKey: string,
-      preferredProvider?: AIProviderId
+      preferredProvider?: AIProviderId,
+      baseUrl?: string
     ): Promise<{ ok: boolean; provider: AIProviderId }>
     status(): Promise<SecretStatus>
     delete(): Promise<{ ok: boolean }>

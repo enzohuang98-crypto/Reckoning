@@ -84,8 +84,8 @@ const api: RendererApi = {
     importBackup: () => ipcRenderer.invoke(IPC.DATA_IMPORT)
   },
   secret: {
-    set: (apiKey, preferredProvider) =>
-      ipcRenderer.invoke(IPC.SECRET_SET, { apiKey, preferredProvider }),
+    set: (apiKey, preferredProvider, baseUrl) =>
+      ipcRenderer.invoke(IPC.SECRET_SET, { apiKey, preferredProvider, baseUrl }),
     status: () => ipcRenderer.invoke(IPC.SECRET_STATUS),
     delete: () => ipcRenderer.invoke(IPC.SECRET_DELETE),
     isAvailable: () => ipcRenderer.invoke(IPC.SECRET_IS_AVAILABLE)

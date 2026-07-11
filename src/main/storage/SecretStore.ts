@@ -17,13 +17,18 @@ import {
   ALL_PROVIDER_IDS,
   type AIProviderId
 } from '@shared/types/AIProviderTypes'
-import { MAX_SECRET_FILE_BYTES } from '../security/InputValidation'
+import {
+  MAX_SECRET_FILE_BYTES,
+  normalizeAiBaseUrl
+} from '../security/InputValidation'
 import { readJsonFile, writeJsonFileAtomic } from './SecureJsonFile'
 
 interface SecretsFile {
   /** providerId → 加密後金鑰 (base64) */
   secrets: Record<string, string>
   activeProvider?: AIProviderId | null
+  /** OpenAI-compatible 金鑰只可送往使用者儲存金鑰時確認的端點。 */
+  activeBaseUrl?: string | null
   version: number
 }
 
@@ -50,7 +55,11 @@ export class SecretStore {
   }
 
   /** 儲存（加密）某 Provider 的 API 金鑰 */
-  setApiKey(providerId: AIProviderId, apiKey: string): void {
+  setApiKey(
+    providerId: AIProviderId,
+    apiKey: string,
+    baseUrl?: string
+  ): void {
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('此系統不支援安全加密儲存，拒絕以明文保存金鑰。')
     }
@@ -58,7 +67,11 @@ export class SecretStore {
     const encrypted = safeStorage.encryptString(apiKey).toString('base64')
     data.secrets = { [providerId]: encrypted }
     data.activeProvider = providerId
-    data.version = 2
+    data.activeBaseUrl =
+      providerId === 'openai-compatible' && baseUrl
+        ? normalizeAiBaseUrl(baseUrl)
+        : null
+    data.version = 3
     this.write(data)
   }
 
@@ -87,8 +100,15 @@ export class SecretStore {
             this.hasEncryptedKey(data, candidate)
           ) ?? null
     if (!provider) return { provider: null, configured: false, needsReentry: false }
-    const decryptable = this.getApiKey(provider) !== null
+    const decryptable =
+      this.getApiKey(provider) !== null &&
+      (provider !== 'openai-compatible' || Boolean(data.activeBaseUrl))
     return { provider, configured: decryptable, needsReentry: !decryptable }
+  }
+
+  getBoundBaseUrl(providerId: AIProviderId): string | null {
+    const data = this.read()
+    return data.activeProvider === providerId ? data.activeBaseUrl ?? null : null
   }
 
   /** 是否已存有某 Provider 的金鑰 */
@@ -116,7 +136,10 @@ export class SecretStore {
   deleteApiKey(providerId: AIProviderId): void {
     const data = this.read()
     delete data.secrets[providerId]
-    if (data.activeProvider === providerId) data.activeProvider = null
+    if (data.activeProvider === providerId) {
+      data.activeProvider = null
+      data.activeBaseUrl = null
+    }
     this.write(data)
   }
 
@@ -124,7 +147,8 @@ export class SecretStore {
     const data = this.read()
     data.secrets = {}
     data.activeProvider = null
-    data.version = 2
+    data.activeBaseUrl = null
+    data.version = 3
     this.write(data)
   }
 
@@ -163,7 +187,19 @@ export class SecretStore {
         ALL_PROVIDER_IDS.includes(parsed.activeProvider as AIProviderId)
           ? (parsed.activeProvider as AIProviderId)
           : null
-      return { secrets, activeProvider, version: 2 }
+      let activeBaseUrl: string | null = null
+      if (
+        activeProvider === 'openai-compatible' &&
+        'activeBaseUrl' in parsed &&
+        typeof parsed.activeBaseUrl === 'string'
+      ) {
+        try {
+          activeBaseUrl = normalizeAiBaseUrl(parsed.activeBaseUrl)
+        } catch {
+          activeBaseUrl = null
+        }
+      }
+      return { secrets, activeProvider, activeBaseUrl, version: 3 }
     } catch {
       return { secrets: {}, version: 1 }
     }

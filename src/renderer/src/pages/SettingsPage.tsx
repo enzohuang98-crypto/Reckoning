@@ -122,7 +122,13 @@ export function SettingsPage({
     const key = apiKey.trim()
     if (!key) return
     try {
-      const result = await window.api.secret.set(key, settings.aiProvider)
+      const result = await window.api.secret.set(
+        key,
+        settings.aiProvider,
+        settings.aiProvider === 'openai-compatible'
+          ? settings.aiBaseUrl
+          : undefined
+      )
       const defaultModel =
         result.provider === 'openai-compatible'
           ? null
