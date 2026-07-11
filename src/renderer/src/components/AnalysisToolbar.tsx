@@ -1,4 +1,6 @@
-import type { AnalysisPanelStatus } from './AnalysisPanel'
+import type { AnalysisPanelStatus, AnalysisView } from '../features/analysis/types'
+import { Icon, type IconName } from './ui/Icon'
+import { ToolbarMenu } from './ui/ToolbarMenu'
 
 interface Props {
   importOpen: boolean
@@ -10,11 +12,12 @@ interface Props {
   onUndo: () => void
   onRedo: () => void
   onRestoreOriginal: () => void
+  activeView: AnalysisView
+  onViewChange: (view: AnalysisView) => void
   status: AnalysisPanelStatus
   onStartAnalysis: () => void
   onStopAnalysis: () => void
   onRequestExplanation: () => void
-  onOpenSettings: () => void
 }
 
 function ToolbarButton({
@@ -26,7 +29,7 @@ function ToolbarButton({
   disabled,
   onClick
 }: {
-  icon: string
+  icon: IconName
   label: string
   title: string
   active?: boolean
@@ -39,12 +42,11 @@ function ToolbarButton({
       type="button"
       className={`toolbar-btn${active ? ' active' : ''}${variant ? ` ${variant}` : ''}`}
       title={title}
+      aria-label={title}
       disabled={disabled}
       onClick={onClick}
     >
-      <span className="toolbar-icon" aria-hidden="true">
-        {icon}
-      </span>
+      <Icon name={icon} className="toolbar-icon" />
       <span className="toolbar-label">{label}</span>
     </button>
   )
@@ -60,11 +62,12 @@ export function AnalysisToolbar({
   onUndo,
   onRedo,
   onRestoreOriginal,
+  activeView,
+  onViewChange,
   status,
   onStartAnalysis,
   onStopAnalysis,
-  onRequestExplanation,
-  onOpenSettings
+  onRequestExplanation
 }: Props): JSX.Element {
   const analysisRunning = status.analysisBusy || status.aiBusy
   const stopCancelling = status.analysisCancelling || status.aiCancelling
@@ -72,19 +75,35 @@ export function AnalysisToolbar({
   return (
     <div className="app-toolbar" role="toolbar" aria-label="分析工具列">
       <div className="toolbar-group">
-        <ToolbarButton
-          icon="📥"
-          label="匯入"
-          title="匯入棋局 / FEN / 棋譜"
-          active={importOpen}
-          onClick={onToggleImport}
-        />
-        <ToolbarButton
-          icon="♟"
-          label="擺棋"
-          title="擺棋 / 編輯棋盤"
-          active={boardToolsOpen}
-          onClick={onToggleBoardTools}
+        <ToolbarMenu
+          icon="board"
+          label="局面工具"
+          active={importOpen || boardToolsOpen}
+          items={[
+            {
+              id: 'import',
+              icon: 'archive',
+              label: importOpen ? '收起匯入工具' : '匯入棋局',
+              description: '載入 FEN 或逐手棋譜',
+              active: importOpen,
+              onSelect: onToggleImport
+            },
+            {
+              id: 'board',
+              icon: 'board',
+              label: boardToolsOpen ? '收起擺棋工具' : '擺棋與保存局面',
+              description: '替換棋子、設定輪走方與保存局面',
+              active: boardToolsOpen,
+              onSelect: onToggleBoardTools
+            },
+            {
+              id: 'reset',
+              icon: 'reset',
+              label: '還原原始棋盤',
+              description: '回到標準象棋開局',
+              onSelect: onRestoreOriginal
+            }
+          ]}
         />
       </div>
 
@@ -92,60 +111,65 @@ export function AnalysisToolbar({
 
       <div className="toolbar-group">
         <ToolbarButton
-          icon="↶"
+          icon="undo"
           label="悔棋"
-          title="悔棋"
+          title="回到上一個棋盤狀態"
           disabled={!canUndo}
           onClick={onUndo}
         />
         <ToolbarButton
-          icon="↷"
+          icon="redo"
           label="下一步"
-          title="下一步"
+          title="回到下一個棋盤狀態"
           disabled={!canRedo}
           onClick={onRedo}
-        />
-        <ToolbarButton
-          icon="↺"
-          label="還原棋盤"
-          title="還原原始棋盤"
-          onClick={onRestoreOriginal}
         />
       </div>
 
       <div className="toolbar-separator" />
 
-      <div className="toolbar-group">
+      <div className="toolbar-group toolbar-primary-actions">
         <ToolbarButton
-          icon="▶"
-          label={status.analysisBusy ? '分析中…' : status.hasResult ? '重新分析' : '開始分析'}
-          title={status.analysisBlockedReason ?? '開始／重新分析目前局面'}
+          icon="play"
+          label={status.analysisBusy ? '分析中' : status.hasResult ? '重新分析' : '開始分析'}
+          title={status.analysisBlockedReason ?? '使用完整設定重新分析目前局面'}
           variant="primary"
           disabled={!status.canAnalyze}
-          onClick={onStartAnalysis}
+          onClick={() => {
+            onViewChange('live')
+            onStartAnalysis()
+          }}
         />
         <ToolbarButton
-          icon="⏹"
-          label={stopCancelling ? '停止中…' : '停止分析'}
-          title={analysisRunning ? '停止目前的引擎分析或 AI 生成' : '目前沒有進行中的分析'}
+          icon="stop"
+          label={stopCancelling ? '停止中' : '停止'}
+          title={analysisRunning ? '停止目前的引擎分析或 AI 生成' : '目前沒有進行中的工作'}
           variant="danger"
           disabled={!analysisRunning || stopCancelling}
           onClick={onStopAnalysis}
         />
         <ToolbarButton
-          icon="💬"
-          label={
-            status.aiBusy ? '生成中…' : status.hasExplanation ? '重新生成' : '請 AI 解說'
-          }
+          icon="sparkles"
+          label={status.aiBusy ? '解說中' : status.hasExplanation ? '重新解說' : 'AI 解說'}
           title={status.aiBlockedReason ?? '請 AI 用中文解說目前局面'}
+          active={activeView === 'coach'}
           disabled={Boolean(status.aiBlockedReason)}
-          onClick={onRequestExplanation}
+          onClick={() => {
+            onViewChange('coach')
+            onRequestExplanation()
+          }}
         />
       </div>
 
       <div className="toolbar-spacer" />
 
-      <ToolbarButton icon="⚙" label="設定" title="設定" onClick={onOpenSettings} />
+      <ToolbarButton
+        icon="target"
+        label="猜著模式"
+        title="先選擇你的著法，再與引擎比較"
+        active={activeView === 'guess'}
+        onClick={() => onViewChange('guess')}
+      />
     </div>
   )
 }

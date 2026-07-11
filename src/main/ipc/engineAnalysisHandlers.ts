@@ -11,6 +11,7 @@ import {
 import type { EngineAnalysis, EngineProtocol } from '@shared/types/EngineAnalysis'
 import type { EngineProfileId } from '@shared/types/EngineRegistry'
 import { compareMove } from '@shared/logic/MoveComparisonService'
+import { buildDualEngineComparison } from '@shared/logic/DualEngineComparison'
 import {
   EngineAnalysisError,
   type EngineProcessControls
@@ -110,18 +111,6 @@ function mapAnalysisError(requestId: string, error: unknown): EngineAnalysisErro
       ? sanitizePublicErrorMessage(error.message, '分析發生未知錯誤。')
       : '分析發生未知錯誤。'
   }
-}
-
-function analysesDisagree(
-  primary: EngineAnalysis,
-  verification?: EngineAnalysis
-): boolean {
-  if (!verification) return false
-  if (primary.bestMove !== verification.bestMove) return true
-  const a = primary.scoreAfterBestMove?.comparableValue
-  const b = verification.scoreAfterBestMove?.comparableValue
-  if (a === undefined || b === undefined) return false
-  return Math.sign(a) !== Math.sign(b) || Math.abs(a - b) >= 150
 }
 
 function validateEngineId(value: unknown): string {
@@ -242,7 +231,8 @@ export function registerEngineAnalysisHandlers(
 
       const runEngine = (
         adapter: NonNullable<ReturnType<EngineRegistryService['getAdapter']>>,
-        reportProgress: boolean
+        installation: typeof primaryInstallation,
+        engineRole: 'primary' | 'verification'
       ): Promise<EngineAnalysis> =>
         adapter.analyzePosition(
           { positionFen: payload.positionFen, userMove: payload.userMove },
@@ -251,7 +241,6 @@ export function registerEngineAnalysisHandlers(
             signal: handle.controller.signal,
             onPhase: (phase, controls) => {
               handle.controls.add(controls)
-              if (!reportProgress) return
               sendProgress({
                 phase,
                 elapsedMs: 0,
@@ -262,11 +251,13 @@ export function registerEngineAnalysisHandlers(
                 percent: phase === 'root_analysis' ? 5 : 68,
                 depth: null,
                 score: null,
-                displayPrincipalVariation: []
+                displayPrincipalVariation: [],
+                engineRole,
+                engineId: installation.id,
+                engineName: installation.detectedName ?? installation.displayName
               })
             },
-            onProgress: reportProgress
-              ? (progress) => {
+            onProgress: (progress) => {
                   const ratio = Math.min(
                     1,
                     progress.elapsedMs / Math.max(1, progress.targetMs)
@@ -275,17 +266,40 @@ export function registerEngineAnalysisHandlers(
                     progress.phase === 'root_analysis'
                       ? Math.round(5 + ratio * (payload.userMove ? 60 : 88))
                       : Math.round(68 + ratio * 27)
-                  sendProgress({ ...progress, percent: Math.min(95, percent) })
+                  sendProgress({
+                    ...progress,
+                    percent: Math.min(95, percent),
+                    engineRole,
+                    engineId: installation.id,
+                    engineName: installation.detectedName ?? installation.displayName
+                  })
                 }
-              : undefined
           }
         )
 
       try {
+        let verificationWarning =
+          verificationInstallation && !verificationAdapter
+            ? '複核引擎目前無法啟動；已保留主引擎結果。'
+            : undefined
         const [engineAnalysis, verificationEngineAnalysis] = await Promise.all([
-          runEngine(primaryAdapter, true),
-          verificationAdapter
-            ? runEngine(verificationAdapter, false)
+          runEngine(primaryAdapter, primaryInstallation, 'primary'),
+          verificationAdapter && verificationInstallation
+            ? runEngine(
+                verificationAdapter,
+                verificationInstallation,
+                'verification'
+              ).catch((error: unknown) => {
+                if (error instanceof DOMException && error.name === 'AbortError') {
+                  throw error
+                }
+                verificationWarning = `複核引擎未完成：${sanitizePublicErrorMessage(
+                  error instanceof Error ? error.message : '',
+                  '複核引擎分析失敗。'
+                )}`
+                logger.warn('複核引擎分析失敗，保留主引擎結果', verificationWarning)
+                return undefined
+              })
             : Promise.resolve(undefined)
         ])
         if (
@@ -295,10 +309,12 @@ export function registerEngineAnalysisHandlers(
           throw new DOMException('Analysis cancelled', 'AbortError')
         }
         const moveComparison = compareMove(engineAnalysis)
-        const engineDisagreement = analysesDisagree(
+        const dualEngineComparison = buildDualEngineComparison(
           engineAnalysis,
           verificationEngineAnalysis
         )
+        const engineDisagreement =
+          dualEngineComparison?.status === 'disagreement'
         sendProgress({
           phase: 'finalizing',
           elapsedMs: Date.now() - startedAt,
@@ -308,7 +324,11 @@ export function registerEngineAnalysisHandlers(
           score: engineAnalysis.scoreAfterBestMove,
           displayMove: engineAnalysis.displayBestMove,
           displayPrincipalVariation:
-            engineAnalysis.displayPrincipalVariation ?? []
+            engineAnalysis.displayPrincipalVariation ?? [],
+          engineRole: 'primary',
+          engineId: primaryInstallation.id,
+          engineName:
+            primaryInstallation.detectedName ?? primaryInstallation.displayName
         })
 
         const analysisId = randomUUID()
@@ -327,6 +347,8 @@ export function registerEngineAnalysisHandlers(
           engineAnalysis,
           verificationEngineAnalysis,
           engineDisagreement,
+          dualEngineComparison: dualEngineComparison ?? undefined,
+          verificationWarning,
           moveComparison
         }
         await sessionStore.save(session)
@@ -343,6 +365,8 @@ export function registerEngineAnalysisHandlers(
           engineAnalysis,
           verificationEngineAnalysis,
           engineDisagreement,
+          dualEngineComparison: dualEngineComparison ?? undefined,
+          verificationWarning,
           moveComparison
         })
       } catch (error) {

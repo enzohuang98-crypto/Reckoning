@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import {
   EngineAnalysisError,
+  type EngineProcessControls,
   type EngineLiveAnalysisProgress,
   PikafishAdapter,
   invertEngineScore
@@ -438,6 +439,21 @@ async function main(): Promise<void> {
     )
     check('取消即時生效（停止等引擎跑完）', elapsed < 3000, elapsed)
     check('onPhase 回報 root_analysis', phaseSeen === 'root_analysis')
+  }
+
+  section('E2E：搜尋結束與取消競態不會造成 EPIPE')
+  process.env.FAKE_ENGINE_MODE = 'uci'
+  {
+    const adapter = new PikafishAdapter(FAKE_ENGINE)
+    let staleControls: EngineProcessControls | null = null
+    await adapter.analyzePosition({ positionFen: START_FEN }, config, {
+      onPhase: (_phase, controls) => {
+        staleControls = controls
+      }
+    })
+    staleControls?.sendStop()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    check('已結束的引擎 stdin 忽略延遲 stop，不拋出 EPIPE', true)
   }
 
   console.log(`\n結果：${passed} 通過，${failed} 失敗`)

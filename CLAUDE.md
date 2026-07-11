@@ -1,5 +1,8 @@
 # CLAUDE.md — 象棋 AI 分析講解軟體 (xiangqi-analyzer)
 
+> **目前架構來源：** 先讀 `docs/ARCHITECTURE.md`。其中的 renderer feature 邊界、
+> Task-first App Shell 與發行門檻，取代本檔較早期的單檔元件描述；核心安全與棋力規則仍以本檔為準。
+
 本檔說明整體架構與開發規則，供後續以 Claude Code 接續開發時參考。
 
 ## 一句話定位

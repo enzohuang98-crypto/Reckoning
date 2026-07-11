@@ -27,6 +27,7 @@ import {
 } from './security/BrowserSecurity'
 import { configureTrustedRendererUrl } from './security/IpcSecurity'
 import { AppUpdaterService } from './update/AppUpdaterService'
+import { startupFailurePageUrl } from './startup/StartupFailurePage'
 
 const isDev = !app.isPackaged
 
@@ -88,14 +89,39 @@ function createWindow(rendererUrl: string): void {
   })
 
   const window = mainWindow
+  let rendererLoaded = false
+  let startupFailureShown = false
+
+  const showStartupFailure = async (): Promise<void> => {
+    if (startupFailureShown || window.isDestroyed()) return
+    startupFailureShown = true
+    window.setTitle('象棋 AI 分析講解 - 啟動失敗')
+    try {
+      await window.loadURL(startupFailurePageUrl())
+    } catch {
+      // 即使錯誤頁本身無法載入，也要顯示視窗而不是留在背景無限等待。
+    } finally {
+      if (!window.isDestroyed()) window.show()
+    }
+  }
+
   window.on('ready-to-show', () => window.show())
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null
   })
   lockDownWindow(window, rendererUrl, (url) => shell.openExternal(url))
+  window.webContents.on('did-finish-load', () => {
+    if (window.webContents.getURL() === rendererUrl) rendererLoaded = true
+  })
+  window.webContents.on(
+    'did-fail-load',
+    (_event, _errorCode, _errorDescription, _validatedUrl, isMainFrame) => {
+      if (isMainFrame && !rendererLoaded) void showStartupFailure()
+    }
+  )
 
   // electron-vite 提供的開發伺服器 URL 環境變數
-  void window.loadURL(rendererUrl)
+  void window.loadURL(rendererUrl).catch(() => showStartupFailure())
 }
 
 function registerIpc(): AppUpdaterService {

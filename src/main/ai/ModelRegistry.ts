@@ -30,7 +30,8 @@ export class UnsupportedModelError extends Error {
 const DEFAULT_MODEL_BY_PROVIDER: Record<AIProviderId, string> = {
   anthropic: 'claude-sonnet-4-6',
   openai: 'gpt-5.4',
-  gemini: 'gemini-3.5-flash'
+  gemini: 'gemini-3.5-flash',
+  'openai-compatible': 'custom-model'
 }
 
 /** 介面（§2.19.1） */
@@ -49,12 +50,21 @@ class JsonModelRegistry implements ModelRegistry {
   }
 
   getModel(provider: AIProviderId, model: string): AIModelConfig {
+    if (
+      provider === 'openai-compatible' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(model)
+    ) {
+      return { provider, model, displayName: model }
+    }
     const found = this.models.find((m) => m.provider === provider && m.model === model)
     if (!found) throw new UnsupportedModelError(provider, model)
     return found
   }
 
   hasModel(provider: AIProviderId, model: string): boolean {
+    if (provider === 'openai-compatible') {
+      return /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(model)
+    }
     return this.models.some((m) => m.provider === provider && m.model === model)
   }
 

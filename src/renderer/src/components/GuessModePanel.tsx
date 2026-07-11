@@ -47,7 +47,7 @@ export function GuessModePanel({
 }: Props): JSX.Element {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [savedToBook, setSavedToBook] = useState(false)
-  const recordedAnalysisIds = useRef(new Set<string>())
+  const recordedGuessKeys = useRef(new Set<string>())
 
   const comparison = result?.moveComparison ?? null
   const ea = result?.engineAnalysis ?? null
@@ -64,8 +64,9 @@ export function GuessModePanel({
 
   useEffect(() => {
     if (!result || !submittedGuess || !hasGuessResult) return
-    if (recordedAnalysisIds.current.has(result.analysisId)) return
-    recordedAnalysisIds.current.add(result.analysisId)
+    const guessKey = `${comparison.positionFen}|${comparison.userMove}|${submittedGuess.submittedAt}`
+    if (recordedGuessKeys.current.has(guessKey)) return
+    recordedGuessKeys.current.add(guessKey)
     onRecordGuess({
       id: crypto.randomUUID(),
       fen: comparison.positionFen,
@@ -178,14 +179,14 @@ export function GuessModePanel({
             提交猜著
           </button>
         ) : (
-          <button className="btn ghost" onClick={onUnlockGuess} disabled={result !== null}>
+          <button className="btn ghost" onClick={onUnlockGuess}>
             修改猜著
           </button>
         )}
       </div>
       {submittedGuess !== null && result !== null && (
         <div className="muted small guess-lock-note">
-          已完成本次比較；若要改猜著，請先在棋盤走新局面或重新開始測試，避免新舊分析混在一起。
+          已完成本次比較；按「修改猜著」會清除目前比較並重新分析。
         </div>
       )}
       {selectionActive && (
@@ -193,7 +194,7 @@ export function GuessModePanel({
           請到棋盤先點選要走的棋子，再點目的地；選擇過程不會改變棋盤。
         </div>
       )}
-      <div className="field" style={{ marginTop: 8 }}>
+      <div className="field guess-reason-field">
         <input
           className="text-input"
           value={submittedGuess?.reason ?? draftReason}
@@ -247,7 +248,7 @@ export function GuessModePanel({
             </div>
           )}
           {canSave && (
-            <div className="row gap" style={{ marginTop: 8 }}>
+            <div className="row gap guess-result-actions">
               <button className="btn small" onClick={addToMistakeBook} disabled={savedToBook}>
                 {savedToBook ? '✓ 已加入錯題本' : '加入錯題本'}
               </button>

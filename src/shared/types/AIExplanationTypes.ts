@@ -22,6 +22,8 @@ export interface AIExplanationRequest {
   model: string
   /** 由 SecretStore 注入；不得被 log（§2.11） */
   apiKey: string
+  /** 只有 openai-compatible 使用；必須先在 main process 通過 URL 安全驗證。 */
+  baseUrl?: string
   /** PromptBuilder 產生的完整 prompt（含防幻覺規則與引擎數據） */
   prompt: string
   /** 本次模型呼叫的輸出上限。 */

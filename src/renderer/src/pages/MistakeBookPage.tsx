@@ -156,7 +156,7 @@ export function MistakeBookPage({
                     .join('、') || '無'}
                 </div>
               </details>
-              <div className="row gap" style={{ marginTop: 6 }}>
+              <div className="row gap mistake-item-actions">
                 <button className="btn ghost small" onClick={() => onOpenPosition(entry.positionFen)}>
                   回到原局面
                 </button>

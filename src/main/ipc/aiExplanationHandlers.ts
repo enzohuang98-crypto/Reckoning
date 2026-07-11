@@ -39,7 +39,9 @@ import { logger } from '../Logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
 import {
   MAX_AI_RESPONSE_CHARS,
+  isLoopbackAiBaseUrl,
   normalizeApiKey,
+  normalizeProviderId,
   safeRequestId,
   SecurityValidationError,
   validateGenerateExplanationPayload
@@ -74,8 +76,11 @@ export async function buildAIExplanationRequest(
 ): Promise<AIExplanationRequest> {
   // 不存在則丟 UnsupportedModelError（§2.19.1）
   const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
-  const apiKey = deps.secretStore.getApiKey(payload.provider)
-  if (!apiKey) {
+  const apiKey = deps.secretStore.getApiKey(payload.provider) ?? ''
+  if (!apiKey && !(
+    payload.provider === 'openai-compatible' &&
+    isLoopbackAiBaseUrl(payload.baseUrl)
+  )) {
     throw new MissingApiKeyError(
       payload.provider,
       deps.secretStore.hasApiKey(payload.provider)
@@ -96,6 +101,7 @@ export async function buildAIExplanationRequest(
     provider: payload.provider,
     model: modelConfig.model,
     apiKey,
+    baseUrl: payload.baseUrl,
     prompt,
     metadata: {
       requestId: payload.requestId,
@@ -202,10 +208,21 @@ export function registerAiExplanationHandlers(
     IPC.SECRET_SET,
     (
       event,
-      rawApiKey: unknown
+      rawInput: unknown
     ): { ok: boolean; provider: AIProviderId } => {
       assertTrustedIpcSender(event)
-      const { provider, apiKey } = normalizeApiKey(rawApiKey)
+      const isStructured =
+        typeof rawInput === 'object' && rawInput !== null
+      const value = isStructured
+        ? (rawInput as Record<string, unknown>)
+        : null
+      const preferredProvider = value?.preferredProvider
+        ? normalizeProviderId(value.preferredProvider)
+        : undefined
+      const { provider, apiKey } = normalizeApiKey(
+        value ? value.apiKey : rawInput,
+        preferredProvider
+      )
       secretStore.setApiKey(provider, apiKey)
       return { ok: true, provider }
     }
@@ -336,8 +353,11 @@ export function registerAiExplanationHandlers(
       try {
         const provider = getAIProvider(payload.provider)
         const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
-        const apiKey = secretStore.getApiKey(payload.provider)
-        if (!apiKey) {
+        const apiKey = secretStore.getApiKey(payload.provider) ?? ''
+        if (!apiKey && !(
+          payload.provider === 'openai-compatible' &&
+          isLoopbackAiBaseUrl(payload.baseUrl)
+        )) {
           throw new MissingApiKeyError(
             payload.provider,
             secretStore.hasApiKey(payload.provider)

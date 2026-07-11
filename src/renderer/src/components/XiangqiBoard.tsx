@@ -87,7 +87,7 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
           width={CELL}
           height={CELL}
           fill="transparent"
-          style={{ cursor: onCellClick ? 'pointer' : 'default' }}
+          className={onCellClick ? 'board-hit-target interactive' : 'board-hit-target'}
           onClick={() => onCellClick?.(r, c)}
         />
       )

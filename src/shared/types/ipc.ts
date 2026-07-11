@@ -38,6 +38,7 @@ import type {
   HarnessProgressPayload
 } from './Harness'
 import type { AppUpdateStatus } from './AppUpdate'
+import type { DualEngineComparison } from './DualEngine'
 
 /** IPC 通道名稱常數 */
 export const IPC = {
@@ -110,6 +111,8 @@ export interface EngineAnalysisResultPayload {
   engineAnalysis: EngineAnalysis
   verificationEngineAnalysis?: EngineAnalysis
   engineDisagreement?: boolean
+  dualEngineComparison?: DualEngineComparison
+  verificationWarning?: string
   moveComparison: MoveComparisonResult
 }
 
@@ -132,6 +135,9 @@ export interface EngineAnalysisProgressPayload {
   score: EngineScore | null
   displayMove?: string
   displayPrincipalVariation: string[]
+  engineRole?: 'primary' | 'verification'
+  engineId?: string
+  engineName?: string
 }
 
 export type EngineAnalysisErrorCode =
@@ -202,6 +208,7 @@ export interface GenerateExplanationStartPayload {
   analysisId: string
   provider: AIProviderId
   model: string
+  baseUrl?: string
   userLevel: UserLevel
   explanationStyle: ExplanationStyle
   language: ExplanationLanguage
@@ -345,7 +352,10 @@ export interface RendererApi {
     importBackup(): Promise<DataImportResult>
   }
   secret: {
-    set(apiKey: string): Promise<{ ok: boolean; provider: AIProviderId }>
+    set(
+      apiKey: string,
+      preferredProvider?: AIProviderId
+    ): Promise<{ ok: boolean; provider: AIProviderId }>
     status(): Promise<SecretStatus>
     delete(): Promise<{ ok: boolean }>
     isAvailable(): Promise<boolean>

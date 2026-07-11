@@ -1,7 +1,10 @@
 import { isAbsolute, resolve } from 'node:path'
 import { parseFen } from '@shared/logic/fen'
 import { detectApiKeyProvider } from '@shared/logic/ApiKeyProvider'
-import type { AIProviderId } from '@shared/types/AIProviderTypes'
+import {
+  ALL_PROVIDER_IDS,
+  type AIProviderId
+} from '@shared/types/AIProviderTypes'
 import type { AnalyzePositionStartPayload, GenerateExplanationStartPayload } from '@shared/types/ipc'
 import type { ConversationMessage } from '@shared/types/AppData'
 import { maskSecrets } from '../Logger'
@@ -18,7 +21,7 @@ const MAX_LICENSE_KEY_LENGTH = 16_384
 const MAX_ENGINE_PATH_LENGTH = 2048
 const MAX_CONVERSATION_MESSAGES = 50
 const MAX_CONVERSATION_TEXT_LENGTH = 4000
-const PROVIDERS = new Set<AIProviderId>(['anthropic', 'openai', 'gemini'])
+const PROVIDERS = new Set<AIProviderId>(ALL_PROVIDER_IDS)
 const USER_LEVELS = new Set(['basic', 'intermediate', 'advanced'])
 const LANGUAGES = new Set(['zh-TW', 'zh-CN', 'en'])
 const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/
@@ -89,7 +92,10 @@ export function normalizeProviderId(value: unknown): AIProviderId {
   return value as AIProviderId
 }
 
-export function normalizeApiKey(value: unknown): {
+export function normalizeApiKey(
+  value: unknown,
+  preferredProvider?: AIProviderId
+): {
   provider: AIProviderId
   apiKey: string
 } {
@@ -97,13 +103,54 @@ export function normalizeApiKey(value: unknown): {
   if (/[\r\n]/.test(apiKey)) {
     throw new SecurityValidationError('API key 格式無效。')
   }
-  const detected = detectApiKeyProvider(apiKey)
+  const detected = detectApiKeyProvider(apiKey, preferredProvider)
   if (!detected) {
     throw new SecurityValidationError(
       '無法辨識 API Key。支援 Claude（sk-ant-）、Gemini（AIza）與 OpenAI（sk-）。'
     )
   }
   return { provider: detected.provider, apiKey: detected.normalizedKey }
+}
+
+const LOOPBACK_AI_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+
+/**
+ * 外接 AI URL 的 SSRF 邊界：遠端只允許標準 HTTPS；HTTP 僅允許本機 loopback，
+ * 供 Ollama / LM Studio 等本機服務使用。禁止帳密、query 與 fragment 進入設定。
+ */
+export function normalizeAiBaseUrl(value: unknown): string {
+  const raw = boundedString(value, 'AI Base URL', 2048)
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new SecurityValidationError('AI Base URL 格式無效。')
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new SecurityValidationError('AI Base URL 不得包含帳密、查詢參數或片段。')
+  }
+  const loopback = LOOPBACK_AI_HOSTS.has(url.hostname.toLowerCase())
+  if (url.protocol === 'http:') {
+    if (!loopback) {
+      throw new SecurityValidationError('HTTP AI 端點只允許本機 localhost。')
+    }
+  } else if (url.protocol === 'https:') {
+    if (!loopback && url.port && url.port !== '443') {
+      throw new SecurityValidationError('遠端 AI 端點只允許標準 HTTPS 連接埠。')
+    }
+  } else {
+    throw new SecurityValidationError('AI Base URL 只允許 HTTPS 或本機 HTTP。')
+  }
+  return url.toString().replace(/\/+$/, '')
+}
+
+export function isLoopbackAiBaseUrl(value: string | undefined): boolean {
+  if (!value) return false
+  try {
+    return LOOPBACK_AI_HOSTS.has(new URL(value).hostname.toLowerCase())
+  } catch {
+    return false
+  }
 }
 
 export function normalizeLicenseKey(value: unknown): string {
@@ -235,6 +282,10 @@ export function validateGenerateExplanationPayload(
   if (!MODEL_ID_PATTERN.test(model)) {
     throw new SecurityValidationError('模型 ID 格式無效。')
   }
+  const baseUrl =
+    provider === 'openai-compatible'
+      ? normalizeAiBaseUrl(value.baseUrl)
+      : undefined
   if (typeof value.userLevel !== 'string' || !USER_LEVELS.has(value.userLevel)) {
     throw new SecurityValidationError('使用者棋力設定無效。')
   }
@@ -312,6 +363,7 @@ export function validateGenerateExplanationPayload(
     analysisId,
     provider,
     model,
+    baseUrl,
     userLevel: value.userLevel as GenerateExplanationStartPayload['userLevel'],
     explanationStyle: 'long_analytical',
     language: value.language as GenerateExplanationStartPayload['language'],

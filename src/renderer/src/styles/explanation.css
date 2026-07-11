@@ -1,0 +1,122 @@
+.explanation-view {
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.explanation-title {
+  margin: 2px 0 10px;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.explanation-section {
+  margin: 9px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fbfdfb;
+}
+
+.explanation-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 6px;
+  color: #2f7557;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.explanation-claim {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+  align-items: baseline;
+}
+
+.explanation-claim.plain {
+  display: block;
+}
+
+.claim-label {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid #d8e6dd;
+  border-radius: var(--radius-pill);
+  color: #34795b;
+  background: #f2f8f4;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.claim-text {
+  min-width: 0;
+}
+
+.evidence-badge {
+  display: inline-block;
+  margin: 0 3px;
+  padding: 0 7px;
+  border: 1px solid rgba(47, 125, 92, 0.32);
+  border-radius: var(--radius-pill);
+  color: #2f7557;
+  background: rgba(47, 125, 92, 0.1);
+  font-size: 10px;
+  font-weight: 800;
+  vertical-align: 1px;
+}
+
+.explanation-view ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.explanation-view li {
+  margin: 3px 0;
+}
+
+.explanation-section.general {
+  border-style: dashed;
+  border-color: #e3cf9f;
+  background: #fdf8ec;
+}
+
+.explanation-section.general .explanation-heading {
+  color: #8a6a33;
+}
+
+.general-tag {
+  padding: 1px 8px;
+  border: 1px solid #e3cf9f;
+  border-radius: var(--radius-pill);
+  color: #8a6a33;
+  background: #fbf1d9;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.explanation-section.notice {
+  border-color: #ead9bc;
+  background: #fffaf0;
+}
+
+.explanation-section.notice .explanation-heading {
+  color: #9a6b23;
+}
+
+.explanation-section.raw {
+  background: #f3f6f4;
+}
+
+.explanation-section.raw .explanation-heading,
+.explanation-section.raw li {
+  color: var(--color-muted);
+}
+
+.explanation-section.raw li {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}

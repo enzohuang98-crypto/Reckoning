@@ -24,6 +24,8 @@ export interface AppSettings {
   aiProvider: AIProviderId
   /** 真實 API model id，不得用 "default"（§2.19.4） */
   aiModel: string
+  /** OpenAI-compatible 服務端點；不含金鑰，可安全存入一般設定。 */
+  aiBaseUrl: string
   /** 使用者棋力 */
   userLevel: UserLevel
   /** 解說語言（本專案擴充，SDS 未定義） */
@@ -49,6 +51,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   multiPv: 3,
   aiProvider: 'anthropic',
   aiModel: 'claude-sonnet-4-6',
+  aiBaseUrl: '',
   userLevel: 'intermediate',
   language: 'zh-TW',
   crossEngineEnabled: false,
@@ -61,5 +64,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   harnessResearchMaxOutputTokens: 10_000,
   harnessFocusedMaxModelCalls: 4,
   harnessFocusedMaxOutputTokens: 4_000,
-  version: 3
+  version: 4
 }

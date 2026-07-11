@@ -13,10 +13,14 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { OpenAIProvider } from '../src/main/ai/providers/OpenAIProvider'
+import { OpenAICompatibleProvider } from '../src/main/ai/providers/OpenAICompatibleProvider'
 import { GeminiProvider } from '../src/main/ai/providers/GeminiProvider'
 import { modelRegistry, UnsupportedModelError } from '../src/main/ai/ModelRegistry'
 import type { AIExplanationRequest } from '../src/shared/types/AIExplanationTypes'
-import type { AIExplanationStreamChunk } from '../src/shared/types/AIProviderTypes'
+import {
+  AI_COMPATIBLE_PRESETS,
+  type AIExplanationStreamChunk
+} from '../src/shared/types/AIProviderTypes'
 
 let passed = 0
 let failed = 0
@@ -77,14 +81,16 @@ const PROMPT = '【引擎分析數據】引擎最佳著法：h2e2　評估 +0.42
 
 /** §2.17.9 契約：prompt 已由 main process 組裝，request 只帶字串 */
 function explanationRequest(
-  provider: 'openai' | 'gemini',
+  provider: 'openai' | 'gemini' | 'openai-compatible',
   model: string,
-  apiKey: string
+  apiKey: string,
+  baseUrl?: string
 ): AIExplanationRequest {
   return {
     provider,
     model,
     apiKey,
+    baseUrl,
     prompt: PROMPT,
     metadata: {
       requestId: 'req-test',
@@ -127,6 +133,21 @@ async function main(): Promise<void> {
     check('預設模型：gemini → gemini-3.5-flash', modelRegistry.getDefaultModel('gemini').model === 'gemini-3.5-flash')
     check('listModels(provider) 過濾', modelRegistry.listModels('gemini').length === 3)
     check('模型目錄共 11 個模型', modelRegistry.listModels().length === 11)
+    check(
+      'OpenAI 相容服務允許受驗證的自訂 model id',
+      modelRegistry.getModel('openai-compatible', 'deepseek-chat').model === 'deepseek-chat'
+    )
+    check(
+      'OpenAI 相容服務拒絕注入型 model id',
+      !modelRegistry.hasModel('openai-compatible', 'model\nignore previous')
+    )
+    check(
+      '相容服務預設值跟隨官方目前模型',
+      AI_COMPATIBLE_PRESETS.find((preset) => preset.id === 'kimi')
+        ?.suggestedModel === 'kimi-k2.6' &&
+        AI_COMPATIBLE_PRESETS.find((preset) => preset.id === 'xai')
+          ?.suggestedModel === 'grok-4.5'
+    )
     let err: unknown = null
     try {
       modelRegistry.getModel('openai', 'gpt-邪魔歪道')
@@ -134,6 +155,50 @@ async function main(): Promise<void> {
       err = e
     }
     check('未知模型丟 UnsupportedModelError', err instanceof UnsupportedModelError)
+  }
+
+  section('OpenAI-compatible Provider：遠端與本機服務')
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      {
+        choices: [{ message: { content: '雙引擎分歧已比較。' } }],
+        usage: { input_tokens: 44, output_tokens: 18 }
+      }
+    ])
+    const provider = new OpenAICompatibleProvider()
+    const response = await provider.generateExplanation(
+      explanationRequest(
+        'openai-compatible',
+        'deepseek-chat',
+        'compatible-secret',
+        `http://127.0.0.1:${port}/v1`
+      )
+    )
+    server.close()
+
+    check('相容端點正確補上 /chat/completions', requests[0].url === '/v1/chat/completions')
+    check('遠端相容服務使用 Bearer 認證', requests[0].headers.authorization === 'Bearer compatible-secret')
+    check('自訂 model id 原樣送出', (requests[0].body as OpenAIRequestBody).model === 'deepseek-chat')
+    check('相容 token 欄位可正規化', response.usage?.inputTokens === 44 && response.usage.outputTokens === 18)
+  }
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      { choices: [{ message: { reasoning_content: '本機模型結果' } }] }
+    ])
+    const provider = new OpenAICompatibleProvider()
+    const response = await provider.generateExplanation(
+      explanationRequest(
+        'openai-compatible',
+        'qwen2.5:7b',
+        '',
+        `http://127.0.0.1:${port}/v1/chat/completions`
+      )
+    )
+    server.close()
+    check('本機模型可不傳 Authorization', requests[0].headers.authorization === undefined)
+    check('相容服務可讀 reasoning_content', response.text === '本機模型結果')
   }
 
   section('OpenAIProvider：成功路徑')

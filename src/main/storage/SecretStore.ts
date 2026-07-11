@@ -13,7 +13,10 @@
 import { app, safeStorage } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { AIProviderId } from '@shared/types/AIProviderTypes'
+import {
+  ALL_PROVIDER_IDS,
+  type AIProviderId
+} from '@shared/types/AIProviderTypes'
 import { MAX_SECRET_FILE_BYTES } from '../security/InputValidation'
 import { readJsonFile, writeJsonFileAtomic } from './SecureJsonFile'
 
@@ -64,7 +67,7 @@ export class SecretStore {
     if (data.activeProvider && this.hasEncryptedKey(data, data.activeProvider)) {
       return data.activeProvider
     }
-    return (['anthropic', 'openai', 'gemini'] as AIProviderId[]).find((provider) =>
+    return ALL_PROVIDER_IDS.find((provider) =>
       this.hasEncryptedKey(data, provider)
     ) ?? null
   }
@@ -80,7 +83,7 @@ export class SecretStore {
     const provider =
       data.activeProvider && this.hasEncryptedKey(data, data.activeProvider)
         ? data.activeProvider
-        : (['anthropic', 'openai', 'gemini'] as AIProviderId[]).find((candidate) =>
+        : ALL_PROVIDER_IDS.find((candidate) =>
             this.hasEncryptedKey(data, candidate)
           ) ?? null
     if (!provider) return { provider: null, configured: false, needsReentry: false }
@@ -150,17 +153,15 @@ export class SecretStore {
       const secrets = Object.fromEntries(
         Object.entries(parsed.secrets).filter(
           ([provider, value]) =>
-            ['anthropic', 'openai', 'gemini'].includes(provider) &&
+            ALL_PROVIDER_IDS.includes(provider as AIProviderId) &&
             typeof value === 'string' &&
             value.length <= MAX_SECRET_FILE_BYTES
         )
       )
       const activeProvider =
         'activeProvider' in parsed &&
-        (parsed.activeProvider === 'anthropic' ||
-          parsed.activeProvider === 'openai' ||
-          parsed.activeProvider === 'gemini')
-          ? parsed.activeProvider
+        ALL_PROVIDER_IDS.includes(parsed.activeProvider as AIProviderId)
+          ? (parsed.activeProvider as AIProviderId)
           : null
       return { secrets, activeProvider, version: 2 }
     } catch {

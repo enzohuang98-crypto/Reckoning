@@ -13,6 +13,7 @@ export type HarnessPhase =
   | 'validating'
   | 'quality_check'
   | 'repairing'
+  | 'provider_retry'
   | 'completed'
 
 export interface HarnessBudget {
@@ -71,6 +72,8 @@ export interface HarnessClaim {
   id: string
   text: string
   evidenceIds: string[]
+  /** 直接連到已通過具體後果審查的 K 編號，讓系統可確定性驗證寫作者沒有另造結論。 */
+  findingIds?: string[]
   /** 核心區塊（錯失／對手利用／後果／比較）的 claim 必須附完整因果鏈。 */
   causal?: CausalChain
 }

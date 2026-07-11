@@ -37,6 +37,10 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
       typeof candidate.aiModel === 'string' && candidate.aiModel.trim()
         ? candidate.aiModel.trim()
         : fallback.aiModel,
+    aiBaseUrl:
+      typeof candidate.aiBaseUrl === 'string'
+        ? candidate.aiBaseUrl.trim().slice(0, 2048)
+        : fallback.aiBaseUrl,
     rootAnalysisMovetimeMs: clampInteger(
       candidate.rootAnalysisMovetimeMs,
       1_000,

@@ -11,16 +11,26 @@
 import type { AIExplanationRequest, AIExplanationResponse } from './AIExplanationTypes'
 
 /** 支援的 Provider 識別碼 */
-export type AIProviderId = 'anthropic' | 'openai' | 'gemini'
+export type AIProviderId =
+  | 'anthropic'
+  | 'openai'
+  | 'gemini'
+  | 'openai-compatible'
 
 /** 所有 Provider 識別碼（UI 列舉用） */
-export const ALL_PROVIDER_IDS: AIProviderId[] = ['anthropic', 'openai', 'gemini']
+export const ALL_PROVIDER_IDS: AIProviderId[] = [
+  'anthropic',
+  'openai',
+  'gemini',
+  'openai-compatible'
+]
 
 /** Provider 顯示名稱 */
 export const PROVIDER_LABEL: Record<AIProviderId, string> = {
   anthropic: 'Anthropic Claude',
   openai: 'OpenAI',
-  gemini: 'Google Gemini'
+  gemini: 'Google Gemini',
+  'openai-compatible': 'OpenAI 相容／本機模型'
 }
 
 /** Token 用量 */
@@ -90,5 +100,62 @@ export const PROVIDER_DEFAULT_MODELS: Record<AIProviderId, AIModelInfo[]> = {
     { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', isDefault: true },
     { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro' },
     { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite' }
+  ],
+  'openai-compatible': [
+    { id: 'custom-model', label: '自行輸入模型 ID', isDefault: true }
   ]
 }
+
+export interface AICompatiblePreset {
+  id: 'deepseek' | 'kimi' | 'xai' | 'ollama' | 'lm-studio' | 'custom'
+  label: string
+  baseUrl: string
+  suggestedModel: string
+  local: boolean
+}
+
+/** 官方文件確認為 OpenAI Chat Completions 相容的常用端點。 */
+export const AI_COMPATIBLE_PRESETS: readonly AICompatiblePreset[] = [
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    suggestedModel: 'deepseek-v4-flash',
+    local: false
+  },
+  {
+    id: 'kimi',
+    label: 'Kimi / Moonshot',
+    baseUrl: 'https://api.moonshot.ai/v1',
+    suggestedModel: 'kimi-k2.6',
+    local: false
+  },
+  {
+    id: 'xai',
+    label: 'xAI Grok',
+    baseUrl: 'https://api.x.ai/v1',
+    suggestedModel: 'grok-4.5',
+    local: false
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama（本機）',
+    baseUrl: 'http://127.0.0.1:11434/v1',
+    suggestedModel: 'qwen3:8b',
+    local: true
+  },
+  {
+    id: 'lm-studio',
+    label: 'LM Studio（本機）',
+    baseUrl: 'http://127.0.0.1:1234/v1',
+    suggestedModel: 'local-model',
+    local: true
+  },
+  {
+    id: 'custom',
+    label: '自訂相容端點',
+    baseUrl: '',
+    suggestedModel: 'custom-model',
+    local: false
+  }
+]

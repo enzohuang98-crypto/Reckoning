@@ -357,6 +357,10 @@ export class PikafishAdapter {
         return
       }
 
+      // 子行程可能在取消與自然結束的競態中先關閉 stdin。stream 的 EPIPE
+      // 由 error event 非同步回報，無法只靠 write() 外層 try/catch 攔截。
+      child.stdin.on('error', () => undefined)
+
       let buffer = ''
       let settled = false
       let trying = 0
@@ -369,6 +373,7 @@ export class PikafishAdapter {
       let exitHandler: (() => void) | null = null
 
       const send = (cmd: string): void => {
+        if (child.stdin.destroyed || !child.stdin.writable) return
         try {
           child.stdin.write(cmd + '\n')
         } catch {

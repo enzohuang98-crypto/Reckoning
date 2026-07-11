@@ -20,7 +20,6 @@ import type {
 } from '@shared/types/EngineRegistry'
 import type {
   HarnessEvidence,
-  HarnessPhase,
   HarnessProgressPayload
 } from '@shared/types/Harness'
 import type {
@@ -30,21 +29,35 @@ import type {
 } from '@shared/types/AppData'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
 import { validateMoveInput } from '@shared/logic/ValidationUtils'
-import { ExplanationView } from './ExplanationView'
+import { CoachView } from '../features/analysis/CoachView'
+import { DetailsView } from '../features/analysis/DetailsView'
+import {
+  hasVerifiedActiveEngine,
+  retryOnce
+} from '../features/analysis/engineHealth'
+import {
+  EngineConsole,
+  thoughtSignature,
+  type EngineThoughtEntry
+} from '../features/analysis/EngineConsole'
+import { EngineResultSummary } from '../features/analysis/EngineResultSummary'
+import type {
+  AnalysisPanelHandle,
+  AnalysisPanelStatus,
+  AnalysisView
+} from '../features/analysis/types'
+import {
+  automaticRootMovetimeMs,
+  automaticUserMoveMovetimeMs,
+  isSameAnalysisTarget
+} from '../features/analysis/liveAnalysis'
 
-export interface AnalysisPanelStatus {
-  canAnalyze: boolean
-  analysisBusy: boolean
-  analysisCancelling: boolean
-  aiBusy: boolean
-  aiCancelling: boolean
-  hasExplanation: boolean
-  hasResult: boolean
-  analysisBlockedReason: string | null
-  aiBlockedReason: string | null
-}
+export type { AnalysisPanelHandle, AnalysisPanelStatus } from '../features/analysis/types'
 
 interface Props {
+  visible: boolean
+  activeView: Exclude<AnalysisView, 'guess'>
+  onActiveViewChange: (view: AnalysisView) => void
   board: BoardState
   settings: AppSettings
   submittedGuess: SubmittedGuess | null
@@ -61,21 +74,6 @@ interface PendingAiRequest {
   conversationId: string
 }
 
-interface EngineThoughtEntry {
-  id: string
-  phase: EngineAnalysisProgressPayload['phase']
-  elapsedMs: number
-  depth: number | null
-  selDepth?: number | null
-  nodes?: number | null
-  nps?: number | null
-  scoreRaw: string | null
-  displayMove?: string
-  displayPrincipalVariation: string[]
-}
-
-const AUTO_ROOT_ANALYSIS_MAX_MS = 1500
-const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 700
 const MAX_ENGINE_THOUGHTS = 80
 
 function hasBothKings(board: BoardState): boolean {
@@ -89,46 +87,6 @@ function hasBothKings(board: BoardState): boolean {
     }
   }
   return red && black
-}
-
-function progressPhaseText(phase: EngineAnalysisProgressPayload['phase']): string {
-  switch (phase) {
-    case 'preparing_engine':
-      return '正在啟動象棋引擎'
-    case 'root_analysis':
-      return '正在分析目前局面'
-    case 'user_move_analysis':
-      return '正在驗證你的著法'
-    case 'finalizing':
-      return '正在整理分析結果'
-  }
-}
-
-function harnessPhaseText(phase: HarnessPhase): string {
-  switch (phase) {
-    case 'understanding':
-      return '理解問題'
-    case 'planning':
-      return '規劃研究任務'
-    case 'engine_research':
-      return '引擎加深研究'
-    case 'cross_verification':
-      return '交叉驗證'
-    case 'consequence_review':
-      return '檢查具體後果'
-    case 'waiting_for_user':
-      return '等待你決定'
-    case 'writing':
-      return '撰寫說明'
-    case 'validating':
-      return '檢查因果鏈與證據'
-    case 'quality_check':
-      return '品質檢查'
-    case 'repairing':
-      return '重寫未達標區塊'
-    case 'completed':
-      return '完成'
-  }
 }
 
 function estimateTokens(text: string): number {
@@ -146,79 +104,11 @@ function newMessage(role: ConversationMessage['role'], text: string): Conversati
   }
 }
 
-function formatLargeNumber(value?: number | null): string | null {
-  if (value === undefined || value === null) return null
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
-  return String(value)
-}
-
-function formatElapsedMs(value: number): string {
-  return `${(value / 1000).toFixed(1)}s`
-}
-
-function formatConsoleScore(entry: EngineThoughtEntry): string {
-  return entry.scoreRaw ?? '等待分數'
-}
-
-function consolePhaseLabel(phase: EngineThoughtEntry['phase']): string {
-  return phase === 'user_move_analysis' ? '你的著法後' : '局面分析'
-}
-
-function EngineThoughtRow({
-  item,
-  latest
-}: {
-  item: EngineThoughtEntry
-  latest?: boolean
-}): JSX.Element {
-  return (
-    <div className={`engine-console-row${latest ? ' latest' : ''}`}>
-      <div className="engine-console-meta">
-        <b>{consolePhaseLabel(item.phase)}</b>
-        <span>深度: {item.depth ?? '—'}</span>
-        <span>分數: {formatConsoleScore(item)}</span>
-        <span>耗時: {formatElapsedMs(item.elapsedMs)}</span>
-        <span>NPS: {formatLargeNumber(item.nps) ?? '—'}</span>
-        {item.nodes !== undefined && item.nodes !== null && (
-          <span>節點: {formatLargeNumber(item.nodes)}</span>
-        )}
-      </div>
-      <div className="engine-console-pv">
-        {item.displayPrincipalVariation.length > 0
-          ? item.displayPrincipalVariation.slice(0, 18).join('  ')
-          : item.displayMove
-            ? item.displayMove
-            : '引擎尚未輸出主線'}
-      </div>
-    </div>
-  )
-}
-
-function thoughtSignature(entry: EngineThoughtEntry): string {
-  return [
-    entry.phase,
-    entry.depth ?? 'none',
-    entry.selDepth ?? 'none',
-    entry.scoreRaw ?? 'none',
-    entry.displayMove ?? 'none',
-    entry.displayPrincipalVariation.join('|')
-  ].join('::')
-}
-
-export interface AnalysisPanelHandle {
-  /** 由外部（例如猜著模式的「請 AI 解釋為什麼」按鈕）觸發生成 AI 解說。 */
-  requestExplanation: () => void
-  /** 由外部頂部工具列觸發「開始／重新分析」。 */
-  startAnalysis: () => void
-  /** 由外部頂部工具列觸發「停止分析」。 */
-  cancelAnalysis: () => void
-  /** 由外部頂部工具列觸發「停止」AI 生成。 */
-  cancelExplain: () => void
-}
-
 export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function AnalysisPanel(
   {
+    visible,
+    activeView,
+    onActiveViewChange,
     board,
     settings,
     submittedGuess,
@@ -233,6 +123,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 ): JSX.Element {
   const [status, setStatus] = useState<EngineStatus | null>(null)
   const [busy, setBusy] = useState(false)
+  const [refining, setRefining] = useState(false)
+  const [livePaused, setLivePaused] = useState(false)
   const [progress, setProgress] = useState<EngineAnalysisProgressPayload | null>(null)
   const [engineThoughts, setEngineThoughts] = useState<EngineThoughtEntry[]>([])
   const [cancelling, setCancelling] = useState(false)
@@ -280,34 +172,51 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     conversationRef.current = conversation
   }, [conversation])
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const registry = await window.api.engine.listInstallations()
-        setEngineRegistry(registry)
-        setPrimaryEngineId(registry.activeEngineId)
-        setVerificationEngineId(registry.verificationEngineId)
-        const current = await window.api.engine.status()
-        if (!current.available) {
-          setStatus(current)
-          return
-        }
-        const test = await window.api.engine.test()
-        setEngineDiagnostics(test.ok ? [] : test.diagnostics ?? [])
-        setStatus(
-          test.ok
-            ? { ...current, protocol: test.protocol ?? current.protocol }
-            : {
-                ...current,
-                available: false,
-                message: test.message ?? '引擎無法完成搜尋測試。'
-              }
-        )
-      } catch {
-        setStatus({ available: false, engineName: '引擎', message: '無法查詢引擎狀態' })
+  const refreshEngineState = useCallback(async (): Promise<void> => {
+    try {
+      const registry = await window.api.engine.listInstallations()
+      setEngineRegistry(registry)
+      setPrimaryEngineId(registry.activeEngineId)
+      setVerificationEngineId(registry.verificationEngineId)
+      const current = await window.api.engine.status()
+      if (!current.available) {
+        setStatus(current)
+        return
       }
-    })()
+
+      const active = registry.installations.find(
+        (installation) => installation.id === registry.activeEngineId
+      )
+      if (hasVerifiedActiveEngine(registry)) {
+        setEngineDiagnostics([])
+        setStatus({ ...current, protocol: active?.protocol ?? current.protocol })
+        return
+      }
+
+      const test = await retryOnce(
+        () => window.api.engine.test(),
+        (result) => result.ok,
+        600
+      )
+      setEngineDiagnostics(test.ok ? [] : test.diagnostics ?? [])
+      setStatus(
+        test.ok
+          ? { ...current, protocol: test.protocol ?? current.protocol }
+          : {
+              ...current,
+              available: false,
+              message: test.message ?? '引擎無法完成搜尋測試。'
+            }
+      )
+    } catch {
+      setStatus({ available: false, engineName: '引擎', message: '無法查詢引擎狀態' })
+    }
   }, [])
+
+  useEffect(() => {
+    if (!visible) return
+    void refreshEngineState()
+  }, [refreshEngineState, visible])
 
   useEffect(() => {
     if (activeRequestId.current) window.api.engine.cancelAnalysis(activeRequestId.current)
@@ -321,12 +230,15 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     analysisStartedAtRef.current = null
     lastThoughtAtRef.current = null
     setBusy(false)
+    setRefining(false)
+    setLivePaused(false)
     setProgress(null)
     setEngineThoughts([])
     setCancelling(false)
     setAiBusy(false)
     setAiCancelling(false)
     setResult(null)
+    resultRef.current = null
     setExplanation(null)
     setStreamingText('')
     setFollowUp('')
@@ -340,7 +252,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setNotice(null)
     onResult(null)
     onExplanation(null)
-  }, [board.fen])
+  }, [board.fen, submittedGuess?.move])
 
   useEffect(() => {
     const offProgress = window.api.engine.onAnalysisProgress((payload) => {
@@ -366,7 +278,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         nps: payload.nps,
         scoreRaw: payload.score?.raw ?? null,
         displayMove: payload.displayMove,
-        displayPrincipalVariation: payload.displayPrincipalVariation
+        displayPrincipalVariation: payload.displayPrincipalVariation,
+        engineRole: payload.engineRole,
+        engineName: payload.engineName
       }
       setEngineThoughts((previous) => {
         const last = previous[previous.length - 1]
@@ -383,9 +297,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       analysisStartedAtRef.current = null
       lastThoughtAtRef.current = null
       setBusy(false)
+      setRefining(false)
       setProgress(null)
       setCancelling(false)
       setResult(payload)
+      resultRef.current = payload
       onResult(payload)
     })
     const offError = window.api.engine.onAnalysisError((payload) => {
@@ -395,6 +311,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       analysisStartedAtRef.current = null
       lastThoughtAtRef.current = null
       setBusy(false)
+      setRefining(false)
       setProgress(null)
       setCancelling(false)
       if (payload.code === 'cancelled') setNotice('已取消分析。')
@@ -494,7 +411,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       if (!automatic) setError('棋盤需要同時有紅帥與黑將才能分析。')
       return
     }
+    if (!automatic) setLivePaused(false)
     const move = submittedGuess?.move ?? ''
+    const refinement =
+      automatic &&
+      isSameAnalysisTarget(resultRef.current?.engineAnalysis ?? null, board.fen, move)
     if (move) {
       const check = validateMoveInput(board, move)
       if (!check.ok) {
@@ -504,16 +425,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     }
 
     const rootAnalysisMovetimeMs = automatic
-      ? Math.min(settings.rootAnalysisMovetimeMs, AUTO_ROOT_ANALYSIS_MAX_MS)
+      ? automaticRootMovetimeMs(settings.rootAnalysisMovetimeMs, refinement)
       : settings.rootAnalysisMovetimeMs
     const userMoveEvalMovetimeMs = automatic
-      ? Math.min(
-          settings.userMoveEvalMovetimeMs,
-          AUTO_USER_MOVE_ANALYSIS_MAX_MS
-        )
+      ? automaticUserMoveMovetimeMs(settings.userMoveEvalMovetimeMs)
       : settings.userMoveEvalMovetimeMs
     const analysisKey = [
-      automatic ? 'auto' : 'manual',
+      automatic ? (refinement ? 'auto-refine' : 'auto-initial') : 'manual',
       board.fen,
       move,
       primaryEngineId ?? '',
@@ -546,6 +464,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     lastThoughtAtRef.current = Date.now()
     setLiveNow(Date.now())
     setBusy(true)
+    setRefining(refinement)
     setProgress({
       requestId,
       phase: 'preparing_engine',
@@ -557,8 +476,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       displayPrincipalVariation: []
     })
     setEngineThoughts([])
-    setResult(null)
-    onResult(null)
+    if (!refinement) {
+      setResult(null)
+      resultRef.current = null
+      onResult(null)
+    }
     window.api.engine.startAnalysis({
       requestId,
       engineId: primaryEngineId ?? undefined,
@@ -588,19 +510,69 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   ])
 
   useEffect(() => {
-    if (!status?.available || !hasBothKings(board)) return
+    if (livePaused || !visible || !status?.available || !hasBothKings(board)) return
     const timer = window.setTimeout(() => startAnalysis(true), 180)
     return () => window.clearTimeout(timer)
-  }, [board.fen, startAnalysis, status?.available, submittedGuess?.move])
+  }, [
+    board.fen,
+    livePaused,
+    startAnalysis,
+    status?.available,
+    submittedGuess?.move,
+    visible
+  ])
+
+  useEffect(() => {
+    if (
+      livePaused ||
+      !visible ||
+      !status?.available ||
+      !result ||
+      aiBusy ||
+      explanation ||
+      conversationRef.current ||
+      activeRequestId.current
+    ) {
+      return
+    }
+    const timer = window.setTimeout(() => startAnalysis(true), 320)
+    return () => window.clearTimeout(timer)
+  }, [
+    aiBusy,
+    conversation?.id,
+    explanation,
+    livePaused,
+    result?.analysisId,
+    startAnalysis,
+    status?.available,
+    visible
+  ])
 
   const cancelAnalysis = (): void => {
     if (!activeRequestId.current) return
+    setLivePaused(true)
     setCancelling(true)
     window.api.engine.cancelAnalysis(activeRequestId.current)
   }
 
+  const stopAll = (): void => {
+    setLivePaused(true)
+    if (activeRequestId.current) {
+      setCancelling(true)
+      window.api.engine.cancelAnalysis(activeRequestId.current)
+    }
+    if (activeAiRequestId.current) {
+      setAiCancelling(true)
+      window.api.ai.cancelExplanation(activeAiRequestId.current)
+    }
+  }
+
   const generateExplanation = (question: string | null, regenerate = false): void => {
     if (!result) return
+    if (refining && activeRequestId.current) {
+      window.api.engine.cancelAnalysis(activeRequestId.current)
+      setRefining(false)
+    }
     const cleanedQuestion = question?.trim() || null
     const currentConversation = regenerate ? null : conversationRef.current
     const conversationId = currentConversation?.id ?? crypto.randomUUID()
@@ -629,6 +601,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       analysisId: result.analysisId,
       provider: settings.aiProvider,
       model: settings.aiModel,
+      baseUrl:
+        settings.aiProvider === 'openai-compatible'
+          ? settings.aiBaseUrl
+          : undefined,
       userLevel: settings.userLevel,
       explanationStyle: 'long_analytical',
       language: settings.language,
@@ -674,12 +650,17 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   useImperativeHandle(ref, () => ({
     requestExplanation: () => {
       if (!result || aiBusy) return
-      generateExplanation(null)
+      onActiveViewChange('coach')
+      generateExplanation(
+        null,
+        explanation !== null || conversationRef.current !== null
+      )
       explanationAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     },
     startAnalysis: () => startAnalysis(false),
     cancelAnalysis,
-    cancelExplain
+    cancelExplain,
+    stopAll
   }))
 
   const submitFollowUp = (): void => {
@@ -753,7 +734,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }
 
   const ea = result?.engineAnalysis ?? null
-  const confidence = result?.moveComparison.confidence
   const canAnalyze = Boolean(status?.available && hasBothKings(board) && !busy && !aiBusy)
   const analysisBlockedReason = !hasBothKings(board)
     ? '棋盤需要同時有紅帥與黑將才能分析。'
@@ -766,7 +746,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
           : null
   const aiBlockedReason = !result
     ? '請先等引擎分析完成，再請 AI 解說。'
-    : busy
+    : busy && !refining
       ? '引擎分析中，完成後才能解說。'
       : aiBusy
         ? 'AI 正在生成解說。'
@@ -805,430 +785,139 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const sinceLastThoughtMs =
     busy && lastThoughtAtRef.current !== null ? liveNow - lastThoughtAtRef.current : null
 
+  const selectPrimaryEngine = async (id: string): Promise<void> => {
+    try {
+      const nextVerification = verificationEngineId === id ? null : verificationEngineId
+      setPrimaryEngineId(id)
+      setVerificationEngineId(nextVerification)
+      setEngineRegistry(
+        await window.api.engine.selectInstallation(id, nextVerification)
+      )
+      setStatus(await window.api.engine.status())
+      setError(null)
+    } catch {
+      setError('無法切換主引擎，請到設定頁重新測試該引擎。')
+    }
+  }
+
+  const selectVerificationEngine = async (id: string | null): Promise<void> => {
+    if (!primaryEngineId) return
+    try {
+      setVerificationEngineId(id)
+      setEngineRegistry(
+        await window.api.engine.selectInstallation(primaryEngineId, id)
+      )
+      setError(null)
+    } catch {
+      setError('無法切換複核引擎；主引擎與複核引擎必須不同。')
+    }
+  }
+
   return (
-    <div className="analysis-panel">
-      <div className="panel-heading compact">
-        <div>
-          <span className="eyebrow">即時分析與解說</span>
-          <h3>引擎與 AI 教練</h3>
-        </div>
-      </div>
-      {status && (
-        <div className={`engine-status ${status.available ? 'ok' : 'warn'}`}>
-          {status.available
-            ? `✓ ${status.engineName} 就緒`
-            : `⚠ ${status.message ?? `${status.engineName} 未就緒`}`}
-        </div>
-      )}
-      {engineRegistry.installations.length > 0 && (
-        <div className="analysis-engine-selectors">
-          <div className="field">
-            <label className="field-label">本次主引擎</label>
-            <select
-              className="select"
-              value={primaryEngineId ?? ''}
-              disabled={busy || aiBusy}
-              onChange={async (event) => {
-                const id = event.target.value
-                setPrimaryEngineId(id)
-                if (verificationEngineId === id) setVerificationEngineId(null)
-                setEngineRegistry(
-                  await window.api.engine.selectInstallation(
-                    id,
-                    verificationEngineId === id ? null : verificationEngineId
-                  )
-                )
-                setStatus(await window.api.engine.status())
-              }}
-            >
-              {engineRegistry.installations.map((engine) => (
-                <option key={engine.id} value={engine.id}>
-                  {engine.displayName}{engine.verified ? '' : '（未驗證）'}
-                </option>
-              ))}
-            </select>
+    <div className={`analysis-panel analysis-view-${activeView}`}>
+      <div className="inspector-context-bar">
+        {status && (
+          <div className={`engine-status ${status.available ? 'ok' : 'warn'}`}>
+            {status.available
+              ? `${status.engineName} 已連線`
+              : status.message ?? `${status.engineName} 未就緒`}
           </div>
-          {settings.crossEngineEnabled && (
-            <div className="field">
-              <label className="field-label">本次複核引擎</label>
-              <select
-                className="select"
-                value={verificationEngineId ?? ''}
-                disabled={busy || aiBusy}
-                onChange={async (event) => {
-                  const id = event.target.value || null
-                  setVerificationEngineId(id)
-                  if (primaryEngineId) {
-                    setEngineRegistry(
-                      await window.api.engine.selectInstallation(
-                        primaryEngineId,
-                        id
-                      )
-                    )
-                  }
-                }}
-              >
-                <option value="">不複核</option>
-                {engineRegistry.installations
-                  .filter((engine) => engine.id !== primaryEngineId)
-                  .map((engine) => (
-                    <option key={engine.id} value={engine.id}>
-                      {engine.displayName}{engine.verified ? '' : '（未驗證）'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
-
-      <section className="engine-console" aria-live="polite">
-        <div className="engine-console-tabs" role="tablist" aria-label="analysis tabs">
-          <button className="engine-console-tab active" type="button">
-            {(status?.engineName ?? '引擎')}分析
-          </button>
-          <button className="engine-console-tab" type="button" disabled>
-            中國象棋題庫
-          </button>
-          <button className="engine-console-tab" type="button" disabled>
-            局勢
-          </button>
-          <button className="engine-console-tab" type="button" disabled>
-            注釋
-          </button>
-        </div>
-        <div className="engine-console-status">
-          <span>
-            {busy && progress
-              ? `${progressPhaseText(progress.phase)} · 仍在分析中 · ${progress.percent}%`
-              : ea
-                ? `分析完成 · 深度 ${ea.depth ?? '—'}`
-                : '尚未開始分析'}
-          </span>
-          {busy && liveElapsedMs !== null && (
-            <span>
-              已進行 {formatElapsedMs(liveElapsedMs)}
-              {sinceLastThoughtMs !== null && sinceLastThoughtMs >= 3000
-                ? `（引擎思考中，${formatElapsedMs(sinceLastThoughtMs)}未回報新資料）`
-                : ''}
-            </span>
-          )}
-        </div>
-        <div className="engine-console-feed">
-          {engineThoughts.length === 0 ? (
-            <div className="engine-console-empty">
-              {busy
-                ? '引擎已啟動，正在等待第一筆深度資料…仍在分析中。'
-                : '開始分析後，這裡會持續列出引擎每次回傳的深度、原始分數、耗時、NPS 與主線。'}
-            </div>
-          ) : (
-            (() => {
-              const reversed = engineThoughts.slice().reverse()
-              const [latestThought, ...historyThoughts] = reversed
-              return (
-                <>
-                  <EngineThoughtRow item={latestThought} latest />
-                  {historyThoughts.length > 0 && (
-                    <div className="engine-console-history">
-                      {historyThoughts.map((item) => (
-                        <EngineThoughtRow item={item} key={item.id} />
-                      ))}
-                    </div>
-                  )}
-                </>
-              )
-            })()
-          )}
-        </div>
-      </section>
-
-      <div className="analysis-helper-strip">
-        <span>
-          {busy
-            ? '局面已變更，正在自動更新分析結果。'
-            : `自動分析已開啟：快速模式最多 ${(
-                Math.min(
-                  settings.rootAnalysisMovetimeMs,
-                  AUTO_ROOT_ANALYSIS_MAX_MS
-                ) / 1000
-              ).toFixed(1)} 秒；手動重跑會使用完整設定時間（可在頂部工具列操作）。`}
-        </span>
-        {(analysisBlockedReason || aiBlockedReason) && !busy && (
-          <span className="muted small">
-            {analysisBlockedReason ?? aiBlockedReason}
-          </span>
         )}
+        {error && <div className="error-text">{error}</div>}
+        {notice && <div className="notice-text">{notice}</div>}
       </div>
 
-      <div ref={explanationAnchorRef} />
-
-      {result && (
-        <div className="row gap analysis-bookmark-row">
-          <input
-            className="text-input"
-            value={collectionReason}
-            placeholder="收藏原因，例如：看不懂中炮交換（選填）"
-            onChange={(event) => setCollectionReason(event.target.value)}
+      {activeView === 'live' && (
+        <div className="analysis-view-content">
+          <EngineConsole
+            status={status}
+            progress={progress}
+            busy={busy}
+            completedDepth={ea?.depth ?? null}
+            thoughts={engineThoughts}
+            liveElapsedMs={liveElapsedMs}
+            sinceLastThoughtMs={sinceLastThoughtMs}
           />
-          <button className="btn ghost small" onClick={saveMisunderstood}>
-            收藏待理解
-          </button>
-        </div>
-      )}
 
-      {aiBusy && harnessProgress && (
-        <div
-          className={`harness-progress${harnessProgress.awaitingDecision ? ' awaiting' : ''}`}
-          aria-live="polite"
-        >
-          <div className="live-analysis-head">
-            <div>
-              <b>{harnessProgress.message}</b>
-              <span className="muted small">
-                階段：{harnessPhaseText(harnessProgress.phase)} · 模型呼叫{' '}
-                {harnessProgress.modelCallsUsed} · 引擎輪數{' '}
-                {harnessProgress.engineRoundsUsed} · 證據{' '}
-                {harnessProgress.evidenceCount}
-                {harnessProgress.elapsedMs !== undefined
-                  ? ` · 已進行 ${Math.floor(harnessProgress.elapsedMs / 1000)} 秒`
-                  : ''}
-                {harnessProgress.depth !== undefined
-                  ? ` · 深度 ${harnessProgress.depth ?? '—'}`
-                  : ''}
-                {` · 已確認 ${harnessProgress.verifiedConsequenceCount ?? 0} 項具體後果`}
-              </span>
-            </div>
-            <span className={`badge ${harnessProgress.awaitingDecision ? 'warn' : 'on'}`}>
-              {harnessProgress.awaitingDecision
-                ? '等待你決定'
-                : settings.harnessAnswerMode === 'research'
-                  ? '完整研究'
-                  : '聚焦回答'}
+          <div className="analysis-helper-strip">
+            <span>
+              {busy
+                ? refining
+                  ? 'Live 分析持續加深中；可直接請 AI 解說，系統會保留目前最佳結果。'
+                  : '棋盤已變更，正在快速建立第一份可用結果。'
+                : livePaused
+                  ? 'Live 分析已暫停；按頂部「重新分析」即可恢復。'
+                  : 'Live 分析已開啟：先快速出結果，再持續加深；需要時可按「停止」。'}
             </span>
-          </div>
-          {(harnessProgress.displayPrincipalVariation ?? []).length > 0 && (
-            <div className="muted small harness-current-line">
-              目前比較主線：
-              {harnessProgress.displayPrincipalVariation?.join('、')}
-            </div>
-          )}
-          {harnessProgress.awaitingDecision && (
-            <div className="row gap harness-decision">
+            {(analysisBlockedReason || aiBlockedReason) && !busy && (
               <span className="muted small">
-                120 秒內沒有回應會自動用目前證據產生保守版分析。
+                {analysisBlockedReason ?? aiBlockedReason}
               </span>
-              <button className="btn" onClick={continueExplain}>
-                繼續分析
-              </button>
-              <button className="btn ghost" onClick={cancelExplain}>
-                取消
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {tokenEstimate && (
-        <div className="muted small">
-          呼叫前 token 粗估：輸入約 {tokenEstimate.input}、輸出上限約 {tokenEstimate.output}。
-        </div>
-      )}
-      {error && <div className="error-text">⚠ {error}</div>}
-      {engineDiagnostics.length > 0 && (
-        <details className="raw-engine-analysis">
-          <summary>查看引擎診斷輸出</summary>
-          <pre>{engineDiagnostics.join('\n')}</pre>
-        </details>
-      )}
-      {notice && <div className="muted" style={{ marginTop: 8 }}>{notice}</div>}
-
-      {ea && (
-        <div className="analysis-result">
-          <div className="result-head">
-            最佳著法 <b>{ea.displayBestMove ?? '無法辨識著法'}</b>　原始分數{' '}
-            {ea.scoreAfterBestMove?.raw ?? '無'}
-            　深度 {ea.depth ?? '—'}
-            {ea.analysisTimeMs !== undefined && (
-              <span className="muted small">　({(ea.analysisTimeMs / 1000).toFixed(1)}s)</span>
             )}
           </div>
-          {(ea.incomplete || confidence === 'low') && (
-            <div className="engine-status warn">
-              ⚠ {ea.warnings.length > 0
-                ? ea.warnings.join('；')
-                : `本次引擎資料不足：${result?.moveComparison.uncertaintyReasons.join('；')}`}
+
+          {result ? (
+            <EngineResultSummary result={result} />
+          ) : (
+            <div className="panel-empty-state">
+              <span className="empty-state-mark">棋</span>
+              <h3>等待引擎結果</h3>
+              <p>棋盤變動後會自動開始快速分析，也可以使用頂部按鈕執行完整分析。</p>
             </div>
           )}
-          {result?.engineDisagreement && (
-            <div className="engine-status warn">
-              主引擎與複核引擎判斷不同；系統保留兩份結果，不會平均分數。
-            </div>
-          )}
-          <ol className="line-list">
-            {ea.candidateMoves.map((candidate, index) => (
-              <li key={`${index}-${candidate.move}`}>
-                <b>{candidate.displayMove ?? '無法辨識著法'}</b>　原始分數{' '}
-                {candidate.score?.raw ?? '無'}
-                　<span className="pv">
-                  {(candidate.displayPrincipalVariation ?? [])
-                    .slice(0, 6)
-                    .join('、')}
-                </span>
-              </li>
-            ))}
-          </ol>
-          {ea.rawAnalysis && (
-            <details className="raw-engine-analysis">
-              <summary>查看 {ea.engineName} 原始分析</summary>
-              <h5>主局面分析</h5>
-              <pre>{ea.rawAnalysis.root.join('\n') || '（沒有原始輸出）'}</pre>
-              {ea.rawAnalysis.userMove && (
-                <>
-                  <h5>猜測著法二次分析</h5>
-                  <pre>{ea.rawAnalysis.userMove.join('\n') || '（沒有原始輸出）'}</pre>
-                </>
-              )}
-            </details>
-          )}
-          {result?.verificationEngineAnalysis?.rawAnalysis && (
-            <details className="raw-engine-analysis">
-              <summary>
-                查看 {result.verificationEngineAnalysis.engineName} 複核原始分析
-              </summary>
-              <pre>
-                {result.verificationEngineAnalysis.rawAnalysis.root.join('\n') ||
-                  '（沒有原始輸出）'}
-              </pre>
-            </details>
-          )}
         </div>
       )}
 
-      {(aiBusy || (!explanation && streamingText)) && streamingText && (
-        <div className="ai-explanation">
-          <h4>AI 解說（{settings.aiModel}）{aiBusy ? '　生成中…' : '　（未完成）'}</h4>
-          <ExplanationView text={streamingText} />
+      {activeView === 'coach' && (
+        <div ref={explanationAnchorRef}>
+          <CoachView
+            settings={settings}
+            result={result}
+            explanation={explanation}
+            conversation={conversation}
+            submittedGuess={submittedGuess}
+            aiBusy={aiBusy}
+            streamingText={streamingText}
+            harnessProgress={harnessProgress}
+            harnessEvidence={harnessEvidence}
+            harnessWarnings={harnessWarnings}
+            traceId={traceId}
+            tokenEstimate={tokenEstimate}
+            aiBlockedReason={aiBlockedReason}
+            followUp={followUp}
+            onFollowUpChange={setFollowUp}
+            onGenerate={() => generateExplanation(null)}
+            onContinue={continueExplain}
+            onCancel={cancelExplain}
+            onSubmitFollowUp={submitFollowUp}
+            onCopy={() => void copyExplanation()}
+            onFeedback={(feedback) => {
+              if (!traceId) return
+              void window.api.ai
+                .setHarnessFeedback(traceId, feedback)
+                .then(() => setNotice('已記錄這次解說回饋。'))
+                .catch(() => setError('回饋儲存失敗，請稍後再試。'))
+            }}
+          />
         </div>
       )}
 
-      {conversation && conversation.messages.length > 0 && (
-        <div className="ai-explanation">
-          <h4>AI 解說（{settings.aiModel}）</h4>
-          {(() => {
-            const latestMessage = conversation.messages[conversation.messages.length - 1]
-            const historyMessages = conversation.messages.slice(0, -1)
-            return (
-              <>
-                {latestMessage.role === 'assistant' ? (
-                  <ExplanationView text={latestMessage.text} />
-                ) : (
-                  <p className="explanation-text">{latestMessage.text}</p>
-                )}
-                {explanation?.usage && (
-                  <div className="usage">
-                    token：輸入 {explanation.usage.inputTokens} / 輸出{' '}
-                    {explanation.usage.outputTokens}
-                  </div>
-                )}
-                {historyMessages.length > 0 && (
-                  <details className="conversation-history">
-                    <summary>先前追問紀錄（{historyMessages.length} 則）</summary>
-                    {historyMessages.map((message) => (
-                      <div className="conversation-history-message" key={message.id}>
-                        <b>{message.role === 'user' ? '問' : '答'}</b>
-                        <span>{message.text}</span>
-                      </div>
-                    ))}
-                  </details>
-                )}
-              </>
-            )
-          })()}
-          <div className="row gap follow-up-row">
-            <input
-              className="text-input"
-              value={followUp}
-              placeholder="針對這個局面繼續追問…"
-              disabled={aiBusy}
-              onChange={(event) => setFollowUp(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) submitFollowUp()
-              }}
-            />
-            <button
-              className="btn small"
-              onClick={submitFollowUp}
-              disabled={aiBusy || !result || !followUp.trim()}
-            >
-              追問
-            </button>
-            <button className="btn ghost small" onClick={() => void copyExplanation()}>
-              複製
-            </button>
-          </div>
-          {submittedGuess?.move && (
-            <div className="muted small">
-              追問會附加棋盤上選取的著法：
-              {ea?.displayUserMove ?? '目前選取著法'}
-            </div>
-          )}
-          {!result && (
-            <div className="muted small">請先重新分析此局面，再繼續追問。</div>
-          )}
-        </div>
-      )}
-
-      {harnessWarnings.length > 0 && (
-        <div className="engine-status warn">
-          {harnessWarnings.join('；')}
-        </div>
-      )}
-
-      {harnessEvidence.length > 0 && (
-        <details className="harness-evidence">
-          <summary>展開 AI 解說證據（{harnessEvidence.length} 筆）</summary>
-          {harnessEvidence.map((item) => (
-            <div className="evidence-card" key={item.id}>
-              <b>
-                [{item.id}] {item.engineName} · {item.purpose}
-              </b>
-              <div className="muted small">
-                深度 {item.depth ?? '—'} · 原始分數 {item.score?.raw ?? '無'}
-              </div>
-              <div>
-                主線：{item.displayPrincipalVariation.slice(0, 8).join('、') || '無'}
-              </div>
-            </div>
-          ))}
-        </details>
-      )}
-
-      {traceId && (
-        <div className="harness-feedback">
-          <span className="muted small">這次解說是否有幫助？</span>
-          <div className="feedback-segment" role="group" aria-label="解說回饋">
-            {(
-              [
-                ['helpful', '有幫助'],
-                ['unclear', '不清楚'],
-                ['incorrect', '內容不正確'],
-                ['missing_evidence', '證據不足']
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                type="button"
-                className="feedback-segment-btn"
-                key={value}
-                onClick={async () => {
-                  await window.api.ai.setHarnessFeedback(traceId, value)
-                  setNotice('已記錄這次 Harness 回饋。')
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
+      {activeView === 'details' && (
+        <DetailsView
+          result={result}
+          settings={settings}
+          registry={engineRegistry}
+          primaryEngineId={primaryEngineId}
+          verificationEngineId={verificationEngineId}
+          busy={busy}
+          aiBusy={aiBusy}
+          collectionReason={collectionReason}
+          diagnostics={engineDiagnostics}
+          onCollectionReasonChange={setCollectionReason}
+          onSaveMisunderstood={saveMisunderstood}
+          onSelectPrimary={(id) => void selectPrimaryEngine(id)}
+          onSelectVerification={(id) => void selectVerificationEngine(id)}
+        />
       )}
     </div>
   )

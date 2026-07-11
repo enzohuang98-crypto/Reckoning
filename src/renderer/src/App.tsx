@@ -1,139 +1,68 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BoardEditor } from './components/BoardEditor'
-import { FenInput } from './components/FenInput'
-import { GameImportPanel } from './components/GameImportPanel'
-import {
-  AnalysisPanel,
-  type AnalysisPanelHandle,
-  type AnalysisPanelStatus
-} from './components/AnalysisPanel'
-import { AnalysisToolbar } from './components/AnalysisToolbar'
-import { GuessModePanel } from './components/GuessModePanel'
-import { SettingsPage } from './pages/SettingsPage'
-import { SetupWizard } from './pages/SetupWizard'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { parseFen } from '@shared/logic/fen'
+import type {
+  AIConversation,
+  MisunderstoodPosition,
+  SavedPosition
+} from '@shared/types/AppData'
+import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
+import { PROVIDER_DEFAULT_MODELS } from '@shared/types/AIProviderTypes'
+import type { AppSettings } from '@shared/types/Settings'
+import type { UserGuess } from '@shared/types/UserGuess'
+import { AppShell, type AppTab } from './app/AppShell'
+import { LICENSE_GATE_DISABLED } from './app/productFlags'
+import { StartupScreen } from './app/StartupScreen'
+import { AnalysisWorkspace } from './features/workspace/AnalysisWorkspace'
+import { useAppDataStore } from './features/app-data/useAppDataStore'
+import { useBoardWorkspace } from './features/board/useBoardWorkspace'
 import { LicensePage } from './pages/LicensePage'
 import { MistakeBookPage } from './pages/MistakeBookPage'
 import { MisunderstoodPage } from './pages/MisunderstoodPage'
-import { parseFen } from '@shared/logic/fen'
+import { SettingsPage } from './pages/SettingsPage'
+import { SetupWizard } from './pages/SetupWizard'
 import {
-  commitBoard,
-  createBoardTimeline,
-  redoBoard,
-  undoBoard
-} from '@shared/logic/BoardTimeline'
-import { START_FEN, type BoardState } from '@shared/types/BoardState'
-import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
-import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
-import {
-  clearLegacyMistakeBook,
   isSetupCompleted,
-  loadLegacyMistakeBook,
   loadSettings,
   markSetupCompleted,
   saveSettings
 } from './storage/localSettings'
-import type { AppSettings } from '@shared/types/Settings'
-import { PROVIDER_DEFAULT_MODELS } from '@shared/types/AIProviderTypes'
-import {
-  EMPTY_APP_DATA,
-  type AIConversation,
-  type AppDataSnapshot,
-  type MisunderstoodPosition,
-  type SavedPosition
-} from '@shared/types/AppData'
-import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
-import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
+import { withTimeout } from './utils/withTimeout'
 
-type Tab = 'analyze' | 'settings' | 'mistakes' | 'misunderstood'
 type SetupState = 'checking' | 'wizard' | 'done'
 type LicenseState = 'checking' | 'locked' | 'ok'
 
-const LICENSE_GATE_DISABLED = true
-
-function initialBoard(): BoardState {
-  const parsed = parseFen(START_FEN)
-  if (parsed.valid) return parsed.board
-  throw new Error('內建開局 FEN 無效')
-}
-
 export function App(): JSX.Element {
-  const [tab, setTab] = useState<Tab>('analyze')
-  const [boardTimeline, setBoardTimeline] = useState(() =>
-    createBoardTimeline(initialBoard())
-  )
-  const board = boardTimeline.entries[boardTimeline.index]
+  const [activeTab, setActiveTab] = useState<AppTab>('analyze')
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings())
-  const [draftMove, setDraftMove] = useState('')
-  const [draftReason, setDraftReason] = useState('')
-  const [submittedGuess, setSubmittedGuess] = useState<SubmittedGuess | null>(null)
-  const [guessSelectionActive, setGuessSelectionActive] = useState(false)
-  const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
-  const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
-  const [importOpen, setImportOpen] = useState(false)
-  const [boardToolsOpen, setBoardToolsOpen] = useState(false)
-  const [analysisStatus, setAnalysisStatus] = useState<AnalysisPanelStatus>({
-    canAnalyze: false,
-    analysisBusy: false,
-    analysisCancelling: false,
-    aiBusy: false,
-    aiCancelling: false,
-    hasExplanation: false,
-    hasResult: false,
-    analysisBlockedReason: null,
-    aiBlockedReason: null
-  })
   const [activeConversation, setActiveConversation] = useState<AIConversation | null>(null)
-  const [appData, setAppData] = useState<AppDataSnapshot>(EMPTY_APP_DATA)
-  const [dataReady, setDataReady] = useState(false)
-  const [dataError, setDataError] = useState<string | null>(null)
   const [setupState, setSetupState] = useState<SetupState>(() =>
     isSetupCompleted() ? 'done' : 'checking'
   )
   const [licenseState, setLicenseState] = useState<LicenseState>('checking')
-  const saveQueue = useRef(Promise.resolve())
   const pendingConversationId = useRef<string | null>(null)
-  const appDataRef = useRef(appData)
-  const analysisPanelRef = useRef<AnalysisPanelHandle>(null)
 
-  const resetPositionInteraction = useCallback((): void => {
-    setResult(null)
-    setExplanation(null)
-    setDraftMove('')
-    setDraftReason('')
-    setSubmittedGuess(null)
-    setGuessSelectionActive(false)
-  }, [])
-
-  const changeBoard = useCallback(
-    (next: BoardState): void => {
-      resetPositionInteraction()
-      setBoardTimeline((current) => commitBoard(current, next))
-    },
-    [resetPositionInteraction]
-  )
-
-  const undoCurrentBoard = useCallback((): void => {
-    resetPositionInteraction()
-    setBoardTimeline((current) => undoBoard(current))
-  }, [resetPositionInteraction])
-
-  const redoCurrentBoard = useCallback((): void => {
-    resetPositionInteraction()
-    setBoardTimeline((current) => redoBoard(current))
-  }, [resetPositionInteraction])
-
-  const restoreOriginalBoard = useCallback((): void => {
-    changeBoard(initialBoard())
-  }, [changeBoard])
-
-  useEffect(() => {
-    appDataRef.current = appData
-  }, [appData])
+  const {
+    appData,
+    dataReady,
+    dataError,
+    setDataError,
+    saveCurrentData,
+    updateAppData,
+    importData
+  } = useAppDataStore()
+  const {
+    board,
+    canUndo,
+    canRedo,
+    changeBoard,
+    undo,
+    redo,
+    restoreOriginal
+  } = useBoardWorkspace()
 
   useEffect(() => {
     let cancelled = false
-    void window.api.secret
-      .status()
+    void withTimeout(window.api.secret.status(), 10_000, 'API Key 狀態查詢逾時')
       .then((status) => {
         if (cancelled || !status.provider || status.provider === settings.aiProvider) return
         const defaultModel =
@@ -157,70 +86,35 @@ export function App(): JSX.Element {
     }
   }, [])
 
-  const saveCurrentData = useCallback((snapshot: AppDataSnapshot): void => {
-    saveQueue.current = saveQueue.current
-      .then(async () => {
-        const saved = await window.api.data.save(snapshot)
-        if (!saved.ok) setDataError(saved.message)
-        else setDataError(null)
+  useEffect(() => {
+    if (setupState !== 'checking') return
+    let cancelled = false
+    void withTimeout(
+      Promise.all([window.api.engine.getPath(), window.api.secret.status()]),
+      10_000,
+      '初始設定檢查逾時'
+    )
+      .then(([path, secretStatus]) => {
+        if (cancelled) return
+        if (path || secretStatus.configured) {
+          const marked = markSetupCompleted()
+          if (!marked.ok) setDataError(marked.message ?? '無法保存初始設定狀態。')
+          setSetupState('done')
+        } else {
+          setSetupState('wizard')
+        }
       })
       .catch(() => {
-        setDataError('儲存失敗，畫面內容仍保留；請稍後重試或匯出備份。')
+        if (!cancelled) setSetupState('wizard')
       })
-  }, [])
-
-  const updateAppData = useCallback(
-    (updater: (current: AppDataSnapshot) => AppDataSnapshot): void => {
-      const next = updater(appDataRef.current)
-      appDataRef.current = next
-      setAppData(next)
-      if (dataReady) saveCurrentData(next)
-    },
-    [dataReady, saveCurrentData]
-  )
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      const loaded = await window.api.data.load()
-      if (cancelled) return
-      let snapshot = loaded.ok ? loaded.snapshot : EMPTY_APP_DATA
-      if (!loaded.ok) setDataError(loaded.message)
-
-      const legacy = loadLegacyMistakeBook()
-      if (legacy.entries.length > 0) {
-        const existingIds = new Set(snapshot.mistakeBookEntries.map((entry) => entry.id))
-        const additions = legacy.entries.filter((entry) => !existingIds.has(entry.id))
-        if (additions.length > 0) {
-          snapshot = {
-            ...snapshot,
-            mistakeBookEntries: [...snapshot.mistakeBookEntries, ...additions]
-          }
-          const migrated = await window.api.data.save(snapshot)
-          if (migrated.ok) void clearLegacyMistakeBook()
-          else setDataError(migrated.message)
-        }
-      }
-      if (!cancelled) {
-        appDataRef.current = snapshot
-        setAppData(snapshot)
-        setDataReady(true)
-      }
-    })().catch(() => {
-      if (!cancelled) {
-        setDataError('無法讀取本機資料，已使用空白資料。')
-        setDataReady(true)
-      }
-    })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [setupState, setDataError])
 
   useEffect(() => {
     let cancelled = false
-    window.api.license
-      .status()
+    void withTimeout(window.api.license.status(), 10_000, '授權狀態查詢逾時')
       .then((status) => {
         if (!cancelled) setLicenseState(status.activated ? 'ok' : 'locked')
       })
@@ -233,73 +127,43 @@ export function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    setResult(null)
-    setExplanation(null)
-    setDraftMove('')
-    setDraftReason('')
-    setSubmittedGuess(null)
-    setGuessSelectionActive(false)
     const conversationId = pendingConversationId.current
     pendingConversationId.current = null
     setActiveConversation(
       conversationId
-        ? appDataRef.current.conversations.find((item) => item.id === conversationId) ?? null
+        ? appData.conversations.find((item) => item.id === conversationId) ?? null
         : null
     )
   }, [board.fen])
 
-  useEffect(() => {
-    if (setupState !== 'checking') return
-    let cancelled = false
-    void (async () => {
-      try {
-        const [path, secretStatus] = await Promise.all([
-          window.api.engine.getPath(),
-          window.api.secret.status()
-        ])
-        if (cancelled) return
-        if (path || secretStatus.configured) {
-          const marked = markSetupCompleted()
-          if (!marked.ok) setDataError(marked.message ?? '無法保存初始設定狀態。')
-          setSetupState('done')
-        } else {
-          setSetupState('wizard')
-        }
-      } catch {
-        if (!cancelled) setSetupState('wizard')
+  const openPosition = useCallback(
+    (fen: string): void => {
+      const parsed = parseFen(fen)
+      if (!parsed.valid) {
+        setDataError(`無法開啟局面：${parsed.message}`)
+        return
       }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [setupState])
-
-  const tabs = useMemo(
-    () => [
-      { id: 'analyze' as const, label: '分析' },
-      { id: 'mistakes' as const, label: '錯題本' },
-      { id: 'misunderstood' as const, label: '待理解局面' },
-      { id: 'settings' as const, label: '設定' }
-    ],
-    []
+      changeBoard(parsed.board)
+      setActiveTab('analyze')
+    },
+    [changeBoard, setDataError]
   )
-
-  const openPosition = useCallback((fen: string): void => {
-    const parsed = parseFen(fen)
-    if (!parsed.valid) {
-      setDataError(`無法開啟局面：${parsed.message}`)
-      return
-    }
-    changeBoard(parsed.board)
-    setTab('analyze')
-  }, [changeBoard])
 
   const openMisunderstoodPosition = useCallback(
     (entry: MisunderstoodPosition): void => {
       pendingConversationId.current = entry.conversationId ?? null
+      if (entry.positionFen === board.fen) {
+        setActiveConversation(
+          entry.conversationId
+            ? appData.conversations.find((item) => item.id === entry.conversationId) ?? null
+            : null
+        )
+        setActiveTab('analyze')
+        return
+      }
       openPosition(entry.positionFen)
     },
-    [openPosition]
+    [appData.conversations, board.fen, openPosition]
   )
 
   const addMistake = useCallback(
@@ -319,10 +183,7 @@ export function App(): JSX.Element {
     (guess: UserGuess): void => {
       updateAppData((current) => ({
         ...current,
-        userGuesses: [
-          guess,
-          ...current.userGuesses.filter((item) => item.id !== guess.id)
-        ]
+        userGuesses: [guess, ...current.userGuesses.filter((item) => item.id !== guess.id)]
       }))
     },
     [updateAppData]
@@ -371,14 +232,9 @@ export function App(): JSX.Element {
     [board.fen, updateAppData]
   )
 
-  const importData = useCallback((snapshot: AppDataSnapshot): void => {
-    appDataRef.current = snapshot
-    setAppData(snapshot)
-  }, [])
-
-  if (licenseState === 'checking' || setupState === 'checking' || !dataReady) {
-    return <div className="app" />
-  }
+  if (licenseState === 'checking') return <StartupScreen phase="license" />
+  if (setupState === 'checking') return <StartupScreen phase="setup" />
+  if (!dataReady) return <StartupScreen phase="data" />
 
   if (licenseState === 'locked' && !LICENSE_GATE_DISABLED) {
     return <LicensePage onActivated={() => setLicenseState('ok')} />
@@ -395,156 +251,67 @@ export function App(): JSX.Element {
   }
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <div className="app-brand">
-          <span className="brand-seal" aria-hidden="true">象</span>
-          <div>
-            <div className="app-title">象理</div>
-            <div className="app-subtitle">本機象棋研究工具</div>
-          </div>
-        </div>
-        <nav className="app-nav">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              className={`nav-btn ${tab === item.id ? 'active' : ''}`}
-              onClick={() => setTab(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </header>
+    <AppShell
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      dataError={dataError}
+      onRetrySave={() => saveCurrentData(appData)}
+    >
+      <AnalysisWorkspace
+        hidden={activeTab !== 'analyze'}
+        board={board}
+        settings={settings}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onBoardChange={changeBoard}
+        onUndo={undo}
+        onRedo={redo}
+        onRestoreOriginal={restoreOriginal}
+        savedPositions={appData.savedPositions}
+        onSavePosition={savePosition}
+        onLoadSavedPosition={(position) => openPosition(position.fen)}
+        onDeleteSavedPosition={(id) =>
+          updateAppData((current) => ({
+            ...current,
+            savedPositions: current.savedPositions.filter((item) => item.id !== id)
+          }))
+        }
+        conversation={activeConversation}
+        onConversationChange={changeConversation}
+        onAddMistake={addMistake}
+        onRecordGuess={recordGuess}
+        onSaveMisunderstood={saveMisunderstood}
+      />
 
-      {dataError && (
-        <div className="global-storage-error">
-          <span>⚠ {dataError}</span>
-          <button className="btn ghost small" onClick={() => saveCurrentData(appData)}>
-            重試儲存
-          </button>
-        </div>
+      {activeTab === 'settings' && (
+        <SettingsPage
+          settings={settings}
+          onSettingsChange={setSettings}
+          onDataImported={importData}
+        />
       )}
 
-      <main className="app-main">
-        <div
-          className="analyze-page"
-          hidden={tab !== 'analyze'}
-          aria-hidden={tab !== 'analyze'}
-        >
-            <AnalysisToolbar
-              importOpen={importOpen}
-              onToggleImport={() => setImportOpen((current) => !current)}
-              boardToolsOpen={boardToolsOpen}
-              onToggleBoardTools={() => setBoardToolsOpen((current) => !current)}
-              canUndo={boardTimeline.index > 0}
-              canRedo={boardTimeline.index < boardTimeline.entries.length - 1}
-              onUndo={undoCurrentBoard}
-              onRedo={redoCurrentBoard}
-              onRestoreOriginal={restoreOriginalBoard}
-              status={analysisStatus}
-              onStartAnalysis={() => analysisPanelRef.current?.startAnalysis()}
-              onStopAnalysis={() => {
-                if (analysisStatus.analysisBusy) analysisPanelRef.current?.cancelAnalysis()
-                else if (analysisStatus.aiBusy) analysisPanelRef.current?.cancelExplain()
-              }}
-              onRequestExplanation={() => analysisPanelRef.current?.requestExplanation()}
-              onOpenSettings={() => setTab('settings')}
-            />
-            <div className="analyze-layout">
-              <div className="left-col">
-                <BoardEditor
-                  board={board}
-                  onChange={changeBoard}
-                  toolsOpen={boardToolsOpen}
-                  guessSelectionActive={guessSelectionActive}
-                  onGuessMoveSelected={(move) => {
-                    setDraftMove(move)
-                    setGuessSelectionActive(false)
-                  }}
-                  onGuessSelectionCancel={() => setGuessSelectionActive(false)}
-                  savedPositions={appData.savedPositions}
-                  onSavePosition={savePosition}
-                  onLoadSavedPosition={(position) => openPosition(position.fen)}
-                  onDeleteSavedPosition={(id) =>
-                    updateAppData((current) => ({
-                      ...current,
-                      savedPositions: current.savedPositions.filter((item) => item.id !== id)
-                    }))
-                  }
-                />
-                {importOpen && (
-                  <div className="utility-drawer-body">
-                    <FenInput initialFen={board.fen} onValidBoard={changeBoard} />
-                    <GameImportPanel board={board} onBoardChange={changeBoard} />
-                  </div>
-                )}
-              </div>
-              <div className="right-col">
-                <AnalysisPanel
-                  ref={analysisPanelRef}
-                  board={board}
-                  settings={settings}
-                  submittedGuess={submittedGuess}
-                  conversation={activeConversation}
-                  onConversationChange={changeConversation}
-                  onResult={setResult}
-                  onExplanation={setExplanation}
-                  onSaveMisunderstood={saveMisunderstood}
-                  onStatusChange={setAnalysisStatus}
-                />
-                <GuessModePanel
-                  board={board}
-                  draftMove={draftMove}
-                  draftReason={draftReason}
-                  submittedGuess={submittedGuess}
-                  onDraftMoveChange={setDraftMove}
-                  onDraftReasonChange={setDraftReason}
-                  onSubmitGuess={setSubmittedGuess}
-                  onUnlockGuess={() => {
-                    setSubmittedGuess(null)
-                    setGuessSelectionActive(false)
-                  }}
-                  selectionActive={guessSelectionActive}
-                  onBeginMoveSelection={() => setGuessSelectionActive(true)}
-                  onCancelMoveSelection={() => setGuessSelectionActive(false)}
-                  result={result}
-                  explanation={explanation}
-                  onAddMistake={addMistake}
-                  onRecordGuess={recordGuess}
-                  onRequestExplanation={() => analysisPanelRef.current?.requestExplanation()}
-                />
-              </div>
-            </div>
-        </div>
-        {tab === 'settings' && (
-          <SettingsPage
-            settings={settings}
-            onSettingsChange={setSettings}
-            onDataImported={importData}
-          />
-        )}
-        {tab === 'mistakes' && (
-          <MistakeBookPage
-            entries={appData.mistakeBookEntries}
-            onOpenPosition={openPosition}
-            onChange={(entries) =>
-              updateAppData((current) => ({ ...current, mistakeBookEntries: entries }))
-            }
-          />
-        )}
-        {tab === 'misunderstood' && (
-          <MisunderstoodPage
-            entries={appData.misunderstoodPositions}
-            conversations={appData.conversations}
-            onOpenPosition={openMisunderstoodPosition}
-            onChange={(entries) =>
-              updateAppData((current) => ({ ...current, misunderstoodPositions: entries }))
-            }
-            onMoveToMistakeBook={addMistake}
-          />
-        )}
-      </main>
-    </div>
+      {activeTab === 'mistakes' && (
+        <MistakeBookPage
+          entries={appData.mistakeBookEntries}
+          onOpenPosition={openPosition}
+          onChange={(entries) =>
+            updateAppData((current) => ({ ...current, mistakeBookEntries: entries }))
+          }
+        />
+      )}
+
+      {activeTab === 'misunderstood' && (
+        <MisunderstoodPage
+          entries={appData.misunderstoodPositions}
+          conversations={appData.conversations}
+          onOpenPosition={openMisunderstoodPosition}
+          onChange={(entries) =>
+            updateAppData((current) => ({ ...current, misunderstoodPositions: entries }))
+          }
+          onMoveToMistakeBook={addMistake}
+        />
+      )}
+    </AppShell>
   )
 }

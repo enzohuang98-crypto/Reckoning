@@ -13,6 +13,7 @@
 
 import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
 import type { MoveComparisonResult } from '@shared/types/MoveComparisonResult'
+import type { DualEngineComparison } from '@shared/types/DualEngine'
 
 /** TTL：2 小時（§2.18.3） */
 export const DEFAULT_ANALYSIS_SESSION_TTL_MS = 2 * 60 * 60 * 1000
@@ -36,6 +37,8 @@ export interface AnalysisSession {
   engineAnalysis: EngineAnalysis
   verificationEngineAnalysis?: EngineAnalysis
   engineDisagreement?: boolean
+  dualEngineComparison?: DualEngineComparison
+  verificationWarning?: string
   moveComparison: MoveComparisonResult
 }
 

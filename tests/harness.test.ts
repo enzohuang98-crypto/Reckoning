@@ -3,6 +3,7 @@ import type { EngineAnalysis } from '../src/shared/types/EngineAnalysis'
 import { START_FEN } from '../src/shared/types/BoardState'
 import { convertCpScore } from '../src/main/engine/EngineOutputParser'
 import { compareMove } from '../src/shared/logic/MoveComparisonService'
+import { buildDualEngineComparison } from '../src/shared/logic/DualEngineComparison'
 import {
   runExplanationHarness,
   validateAnswer,
@@ -138,6 +139,25 @@ class FakeProvider implements AIProvider {
   }
 }
 
+class TransientRetryProvider implements AIProvider {
+  readonly id = 'openai' as const
+  readonly displayName = 'Fake transient retry provider'
+  attempts = 0
+  private readonly delegate = new FakeProvider()
+
+  async generateExplanation() {
+    this.attempts += 1
+    if (this.attempts === 1) {
+      throw new Error('OpenAI-compatible API 錯誤 (503)：temporarily unavailable')
+    }
+    return this.delegate.generateExplanation()
+  }
+
+  async *generateExplanationStream(): AsyncIterable<never> {
+    return
+  }
+}
+
 class StagnationProvider implements AIProvider {
   readonly id = 'openai' as const
   readonly displayName = 'Fake stagnation provider'
@@ -166,7 +186,7 @@ class StagnationProvider implements AIProvider {
   }
 }
 
-/** 規劃器 + 具體後果審查器都成功，但預算只夠這兩次呼叫，寫作階段會撞到上限。 */
+/** 具體後果審查器成功，但預算只夠這一次呼叫，寫作階段會撞到上限。 */
 class WriterBudgetProvider implements AIProvider {
   readonly id = 'openai' as const
   readonly displayName = 'Fake writer-budget provider'
@@ -175,7 +195,6 @@ class WriterBudgetProvider implements AIProvider {
   async generateExplanation() {
     this.calls++
     const outputs = [
-      '{"clarification":"","tasks":[{"kind":"root","purpose":"確認目前局面的最佳著法與後續主線"}]}',
       '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方補走炮二平五後中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}'
     ]
     return {
@@ -216,7 +235,6 @@ class RewriteLoopProvider implements AIProvider {
     const outputs = [
       GOOD_AUDIT_JSON,
       VAGUE_OPPONENT_WRITER_JSON,
-      '{"unsupportedClaimIds":[],"reasons":[]}',
       FIXED_OPPONENT_SECTION_JSON
     ]
     return {
@@ -244,8 +262,7 @@ class StubbornVagueProvider implements AIProvider {
     this.calls++
     const outputs = [
       GOOD_AUDIT_JSON,
-      VAGUE_OPPONENT_WRITER_JSON,
-      '{"unsupportedClaimIds":[],"reasons":[]}'
+      VAGUE_OPPONENT_WRITER_JSON
     ]
     return {
       text:
@@ -304,7 +321,7 @@ async function main(): Promise<void> {
     }
   )
 
-  check('Harness 依序執行具體後果審查、寫作與語意審查', provider.calls === 3)
+  check('Harness 以具體後果審查與寫作兩次模型呼叫完成', provider.calls === 2)
   check('回答以中文呈現且含證據引用', result.finalText.includes('[E1]'))
   check('回答先說最佳著法目的', result.finalText.includes('最佳著法想做什麼'))
   check('回答解釋錯失機會與對手利用', result.finalText.includes('你的著法錯失什麼') && result.finalText.includes('對手如何利用'))
@@ -323,6 +340,96 @@ async function main(): Promise<void> {
     '一般棋理補充保留寫作者提供的原則句',
     result.finalText.includes('一般而言，先出正馬再補中炮')
   )
+
+  const retryProvider = new TransientRetryProvider()
+  const retryProgress: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
+  const retryResult = await runExplanationHarness(
+    {
+      requestId: 'ai-request-transient-retry',
+      analysisId: session.analysisId,
+      provider: 'openai',
+      model: 'fake-model',
+      userLevel: 'intermediate',
+      explanationStyle: 'long_analytical',
+      language: 'zh-TW',
+      answerMode: 'research',
+      budget: {
+        engineTimeMs: 3000,
+        maxEngineRounds: 1,
+        maxModelCalls: 4,
+        maxOutputTokens: 8000
+      }
+    },
+    {
+      provider: retryProvider,
+      apiKey: 'secret',
+      model: 'fake-model',
+      session,
+      registry: {
+        list: () => ({
+          installations: [],
+          activeEngineId: 'engine-1',
+          verificationEngineId: null
+        }),
+        getAdapter: () => null
+      } as never,
+      traceStore: { save: () => undefined } as never,
+      signal: new AbortController().signal,
+      onProgress: (event) => retryProgress.push(event)
+    }
+  )
+  check(
+    '暫時性 503 會自動重試一次後完成，不整個失敗',
+    retryProvider.attempts === 3 && !retryResult.finalText.includes('保守版問答')
+  )
+  check(
+    '服務重試會在 UI 進度流顯示原因',
+    retryProgress.some((event) => event.phase === 'provider_retry')
+  )
+
+  const cancelledTraces: HarnessTrace[] = []
+  const cancelledController = new AbortController()
+  cancelledController.abort()
+  let cancelledError: unknown = null
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-cancelled',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW'
+      },
+      {
+        provider: new FakeProvider(),
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: {
+          save: (trace: HarnessTrace) => cancelledTraces.push(trace)
+        } as never,
+        signal: cancelledController.signal,
+        onProgress: () => undefined
+      }
+    )
+  } catch (error) {
+    cancelledError = error
+  }
+  check(
+    '取消訊號不會被模型 JSON fallback 吞掉',
+    cancelledError instanceof DOMException && cancelledError.name === 'AbortError'
+  )
+  check('取消的 Harness trace 標示 cancelled', cancelledTraces.at(-1)?.status === 'cancelled')
 
   const stagnationProvider = new StagnationProvider()
   const progressEvents: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
@@ -759,7 +866,7 @@ async function main(): Promise<void> {
     scoreSignatureResult.finalText.includes('最佳著法想做什麼')
   )
 
-  // 具體後果審查與規劃都成功，但預算只夠這兩次呼叫；寫作階段撞到上限時要走保守版問答，不能讓整個請求失敗。
+  // 具體後果審查成功，但預算只夠一次呼叫；寫作階段撞到上限時要走保守版問答，不能讓整個請求失敗。
   const writerBudgetProvider = new WriterBudgetProvider()
   const writerBudgetTraces: HarnessTrace[] = []
   let writerBudgetError: unknown = null
@@ -807,8 +914,8 @@ async function main(): Promise<void> {
   }
   check('寫作階段撞到模型呼叫上限時不會讓整個請求失敗', writerBudgetError === null, writerBudgetError)
   check(
-    '撞到上限前只用掉規劃與具體後果審查兩次呼叫，沒有嘗試呼叫寫作模型',
-    writerBudgetProvider.calls === 2
+    '撞到上限前只呼叫具體後果審查器，沒有嘗試呼叫寫作模型',
+    writerBudgetProvider.calls === 1
   )
   check(
     '撞到上限後改用引擎資料產生保守版問答',
@@ -873,11 +980,11 @@ async function main(): Promise<void> {
     }
   )
   check(
-    '空泛的對手利用區塊會觸發第 4 次呼叫（分段重寫）',
-    rewriteProvider.calls === 4,
+    '空泛的對手利用區塊會觸發第 3 次呼叫（分段重寫）',
+    rewriteProvider.calls === 3,
     rewriteProvider.calls
   )
-  const rewritePrompt = rewriteProvider.prompts[3] ?? ''
+  const rewritePrompt = rewriteProvider.prompts[2] ?? ''
   check('重寫提示明確標示是局部重寫', rewritePrompt.includes('只重寫下列區塊'))
   check('重寫提示指向失敗的「對手如何利用」區塊', rewritePrompt.includes('對手如何利用'))
   check(
@@ -952,8 +1059,8 @@ async function main(): Promise<void> {
     }
   )
   check(
-    '重寫兩輪仍空泛 → 恰好用掉 5 次呼叫（不無限重試）',
-    stubbornProvider.calls === 5,
+    '重寫兩輪仍空泛 → 恰好用掉 4 次呼叫（不無限重試）',
+    stubbornProvider.calls === 4,
     stubbornProvider.calls
   )
   check(
@@ -969,6 +1076,97 @@ async function main(): Promise<void> {
     (stubbornTraces[0]?.validationErrors ?? []).some((error) =>
       error.includes('修正上限')
     )
+  )
+
+  const verificationScore = convertCpScore(-120, 'score cp -120')
+  const verificationAnalysis: EngineAnalysis = {
+    ...engineAnalysis,
+    engineId: 'engine-2',
+    engineName: 'Verification Engine',
+    bestMove: 'b0c2',
+    displayBestMove: '馬八進七',
+    scoreAfterBestMove: verificationScore,
+    evaluationAfterBestMove: verificationScore.comparableValue,
+    principalVariation: ['b0c2', 'h9g7', 'h2e2', 'b9c7'],
+    displayPrincipalVariation: ['馬八進七', '馬8進7', '炮二平五', '馬2進3']
+  }
+  const dualComparison = buildDualEngineComparison(
+    engineAnalysis,
+    verificationAnalysis
+  )
+  const dualEvidence: HarnessEvidence[] = [
+    {
+      id: 'E1',
+      engineId: 'engine-1',
+      engineName: engineAnalysis.engineName,
+      purpose: '主引擎根局面',
+      positionFen: START_FEN,
+      depth: engineAnalysis.depth,
+      score: engineAnalysis.scoreAfterBestMove,
+      displayPrincipalVariation:
+        engineAnalysis.displayPrincipalVariation ?? [],
+      analysis: engineAnalysis
+    },
+    {
+      id: 'E3',
+      engineId: 'engine-2',
+      engineName: verificationAnalysis.engineName,
+      purpose: '複核引擎根局面',
+      positionFen: START_FEN,
+      depth: verificationAnalysis.depth,
+      score: verificationAnalysis.scoreAfterBestMove,
+      displayPrincipalVariation:
+        verificationAnalysis.displayPrincipalVariation ?? [],
+      analysis: verificationAnalysis
+    }
+  ]
+  const dualAudit: ConsequenceAudit = {
+    ...(JSON.parse(GOOD_AUDIT_JSON) as ConsequenceAudit),
+    dualEngineAdjudication: {
+      preferredMove: 'h2e2',
+      preferredDisplayMove: '炮二平五',
+      verdict: 'primary',
+      humanControlComparison:
+        '炮二平五的中路計畫較直接、分支較少且較可控；馬八進七容錯較低，若後續沒有補中炮容易讓對手完成部署而走歪。',
+      longTermComparison:
+        '炮二平五後續先限制中卒並保留中路攻勢；馬八進七的長期發展會讓黑方雙馬先完成部署，紅方子力與陣形節奏落後。',
+      decisionReason:
+        '兩條線都能走，但炮二平五的計畫較容易由人類控盤，馬八進七則需要後續精準補回中路。',
+      evidenceIds: ['E1', 'E3']
+    }
+  }
+  const dualAuditErrors = validateConsequenceAudit(
+    dualAudit,
+    dualEvidence,
+    true,
+    dualComparison
+  )
+  check(
+    '雙引擎裁決同時比較可控性、長期發展與兩邊證據時通過',
+    dualAuditErrors.length === 0,
+    dualAuditErrors.join('；')
+  )
+  const scoreOnlyDualAudit: ConsequenceAudit = {
+    ...dualAudit,
+    dualEngineAdjudication: {
+      ...dualAudit.dualEngineAdjudication!,
+      humanControlComparison: '炮二平五分數比較高，所以比馬八進七好。',
+      longTermComparison: '炮二平五後續分數高，馬八進七分數低。',
+      decisionReason: '因為引擎分數較高。',
+      evidenceIds: ['E1']
+    }
+  }
+  const scoreOnlyErrors = validateConsequenceAudit(
+    scoreOnlyDualAudit,
+    dualEvidence,
+    true,
+    dualComparison
+  )
+  check(
+    '雙引擎裁決只講分數或只引用單一引擎時會被擋下',
+    scoreOnlyErrors.some((error) => error.includes('分數')) &&
+      scoreOnlyErrors.some((error) => error.includes('兩個不同引擎')),
+    scoreOnlyErrors.join('；')
   )
 
   console.log(`結果：${passed} 通過，${failed} 失敗`)

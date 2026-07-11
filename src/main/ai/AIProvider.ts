@@ -10,10 +10,12 @@ import type { AIProvider, AIProviderId } from '@shared/types/AIProviderTypes'
 import { AnthropicProvider } from './providers/AnthropicProvider'
 import { OpenAIProvider } from './providers/OpenAIProvider'
 import { GeminiProvider } from './providers/GeminiProvider'
+import { OpenAICompatibleProvider } from './providers/OpenAICompatibleProvider'
 
 const anthropicProvider = new AnthropicProvider()
 const openAIProvider = new OpenAIProvider()
 const geminiProvider = new GeminiProvider()
+const openAICompatibleProvider = new OpenAICompatibleProvider()
 
 export function getAIProvider(providerName: AIProviderId): AIProvider {
   switch (providerName) {
@@ -23,6 +25,8 @@ export function getAIProvider(providerName: AIProviderId): AIProvider {
       return openAIProvider
     case 'gemini':
       return geminiProvider
+    case 'openai-compatible':
+      return openAICompatibleProvider
     default: {
       const _exhaustive: never = providerName
       throw new Error(`Unsupported AI provider: ${String(_exhaustive)}`)
@@ -30,4 +34,9 @@ export function getAIProvider(providerName: AIProviderId): AIProvider {
   }
 }
 
-export { AnthropicProvider, OpenAIProvider, GeminiProvider }
+export {
+  AnthropicProvider,
+  OpenAIProvider,
+  GeminiProvider,
+  OpenAICompatibleProvider
+}

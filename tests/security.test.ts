@@ -10,6 +10,7 @@ import { join, resolve } from 'node:path'
 import { START_FEN } from '../src/shared/types/BoardState'
 import {
   assertJsonSize,
+  normalizeAiBaseUrl,
   normalizeApiKey,
   normalizeEnginePath,
   SecurityValidationError,
@@ -159,6 +160,35 @@ check(
 check(
   '未知 API Key 格式被拒絕',
   rejects(() => normalizeApiKey('unknown-key'), SecurityValidationError)
+)
+check(
+  '明確選擇相容服務時可接受供應商自訂金鑰',
+  normalizeApiKey('moonshot-provider-key', 'openai-compatible').provider ===
+    'openai-compatible'
+)
+check(
+  '遠端相容服務只接受標準 HTTPS',
+  normalizeAiBaseUrl('https://api.deepseek.com/v1') ===
+    'https://api.deepseek.com/v1'
+)
+check(
+  'Ollama／LM Studio 可使用本機 HTTP loopback',
+  normalizeAiBaseUrl('http://127.0.0.1:11434/v1/') ===
+    'http://127.0.0.1:11434/v1'
+)
+check(
+  '拒絕非本機 HTTP AI 端點',
+  rejects(
+    () => normalizeAiBaseUrl('http://api.example.com/v1'),
+    SecurityValidationError
+  )
+)
+check(
+  '拒絕帶帳密或 query 的 AI 端點',
+  rejects(
+    () => normalizeAiBaseUrl('https://user:pass@example.com/v1?token=secret'),
+    SecurityValidationError
+  )
 )
 check(
   '相對引擎路徑被拒絕',

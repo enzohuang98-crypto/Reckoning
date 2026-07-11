@@ -31,10 +31,15 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const [error, setError] = useState<string | null>(null)
 
   const browse = async (): Promise<void> => {
-    const picked = await window.api.engine.browsePath()
-    if (!picked) return
-    setEnginePath(picked)
-    setTestResult(null)
+    try {
+      const picked = await window.api.engine.browsePath()
+      if (!picked) return
+      setEnginePath(picked)
+      setTestResult(null)
+      setError(null)
+    } catch {
+      setError('無法開啟檔案選擇器；請直接輸入引擎 EXE 的完整路徑。')
+    }
   }
 
   const runTest = async (): Promise<void> => {
