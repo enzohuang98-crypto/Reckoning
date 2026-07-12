@@ -324,6 +324,10 @@ const updaterPublishConfig = readFileSync(
   resolve('electron-builder.publish.cjs'),
   'utf8'
 )
+const updateBuildScript = readFileSync(
+  resolve('tools/build-github-update.ps1'),
+  'utf8'
+)
 const rendererHtml = readFileSync(resolve('src/renderer/index.html'), 'utf8')
 check(
   'Production renderer protocol avoids blocked file net.fetch',
@@ -367,6 +371,16 @@ check(
   updaterPublishConfig.includes("updateUrl.protocol !== 'https:'") &&
     updaterPublishConfig.includes('updateUrl.username') &&
     updaterPublishConfig.includes("updateUrl.port !== '443'")
+)
+check(
+  '更新封裝腳本不會吞掉 build 失敗',
+  updateBuildScript.includes('if ($LASTEXITCODE -ne 0)') &&
+    updateBuildScript.includes('npm.cmd run dist:update failed')
+)
+check(
+  '更新封裝腳本拒絕缺失或過期產物',
+  updateBuildScript.includes('Missing auto-update artifact') &&
+    updateBuildScript.includes('Auto-update artifact was not freshly built')
 )
 
 console.log(`結果：${passed} 通過，${failed} 失敗`)

@@ -48,9 +48,8 @@ src/
       EngineOutputParser.ts  #   解析 UCI/UCCI info/bestmove 行（純函式）
     ai/
       AIProvider.ts          #   getAIProvider 工廠（§2.17.8：只依名稱回傳 adapter）
-      ModelRegistry.ts       #   模型 id 與定價唯一查詢入口（§2.19）
+      ModelRegistry.ts       #   官方 Provider 模型 id 查詢入口（§2.19）
       promptBuilder.ts       #   由引擎資料組 prompt（內含護欄規則；禁用 EngineScore.raw）
-      cost.ts                #   TokenCostEstimator；與 ModelRegistry 共讀 model_pricing.json
       providers/
         AnthropicProvider.ts #   @anthropic-ai/sdk；真 SSE streaming
         OpenAIProvider.ts    #   內建 fetch；streaming 為 §2.17.1 包裝模式
@@ -70,7 +69,7 @@ src/
   renderer/                  # React UI（瀏覽器環境，無 Node 權限）
     index.html
     src/
-      App.tsx                # 三分頁：分析 / 設定 / 錯題本；未授權鎖 LicensePage、首啟動 SetupWizard
+      App.tsx                # App Shell：分析 / 錯題本 / 待理解 / 設定；首啟動顯示 SetupWizard
       components/            # BoardEditor / FenInput / XiangqiBoard / AnalysisPanel / GuessModePanel
       pages/                 # SettingsPage / MistakeBookPage / SetupWizard / LicensePage
       logic/pieces.ts        # 棋子字形與調色盤
@@ -80,7 +79,7 @@ src/
     logic/
       fen.ts                 # FEN 解析/序列化
       MoveComparisonService.ts # 錯誤分級 + 信心值
-    config/model_pricing.json   # 模型定價（含 lastUpdated / sourceNote）
+    config/model_catalog.json   # 官方 Provider 模型白名單與顯示名稱
 ```
 
 ## 核心型別（src/shared/types）
@@ -129,16 +128,16 @@ src/
   （`uci`→`uciok`→`setoption MultiPV`+`isready`→`readyok`→`position`+`go`），
   `EngineOutputParser` 解析 multipv/cp/mate（已含單元驗證），`engine:analyze` / `engine:status` IPC，
   AnalysisPanel 顯示候選線。**引擎路徑**可於 SettingsPage 指定（含原生檔案選擇器），
-  經 `engine:setPath` 存入 main 的 `StorageService`（`engine-config.json`），啟動時讀回注入 adapter。
-  路徑優先序：使用者設定 > `PIKAFISH_PATH` > `resources/engine/pikafish.exe`。
+  經引擎 Registry IPC 存入 main 的 `StorageService`（`engine-registry.json`），啟動時讀回注入 adapter；
+  舊版 `engine-config.json` 僅供首次遷移。
 - Stage 4：AI 解釋流程。`AnthropicProvider` 真實呼叫 `@anthropic-ai/sdk`，
   `promptBuilder` 組裝引擎資料（含護欄），`ai:explain` IPC 自 `SecretStore` 取金鑰，
-  AnalysisPanel 顯示解說與 token/成本。
+    AnalysisPanel 顯示解說與 token 用量。
 - Stage 5：UCCI 引擎支援 + 初始設定嚮導 + 猜著模式精確 loss + 錯題本一鍵加入。
   - **UCI/UCCI 雙協定**（`PikafishAdapter`）：握手時自動偵測——先送 `uci` 等 `uciok`，
     2 秒逾時改送 `ucci` 等 `ucciok`；若引擎在偵測期間直接結束行程，以剩餘協定重啟再試。
-    偵測結果持久化於 `engine-config.json`（`engineProtocol` 欄位），下次直接以已知協定握手；
-    設定頁變更引擎路徑時重置為 null 重新偵測。
+    偵測結果持久化於 `engine-registry.json` 對應 installation 的 `protocol` 欄位，
+    下次直接以已知協定握手。
   - **UCCI 與 UCI 的差異處理**：`setoption <選項> <值>`（無 name/value 關鍵字）、
     握手後送 `setoption usemillisec true`（否則 `go time` 單位是秒）、
     限時搜尋用 `go time <ms>`（UCCI 無 `go movetime`）、`nobestmove` 表示無著法、
@@ -153,8 +152,8 @@ src/
     `position fen <fen> moves <m>` 兩協定皆支援；movesUci 經格式驗證防指令注入。
     走完即無合法著法（`bestmove (none)` / `nobestmove`）視為 mate in 1
     （象棋將死與困斃皆對手輸），analyze 對此以 `EngineNoLegalMovesError` 立即拒絕
-    而非等逾時。猜測著法先經 `shared/logic/moves.ts` 的 `basicMoveCheck`
-    （起點為輪走方棋子、終點非己方）；完整兵種規則驗證為後續工作。
+    而非等逾時。猜測著法經 `shared/logic/moves.ts` 的 `legalMoveCheck` 完整驗證，
+    非法著法不會送入引擎。
   - **錯題本一鍵加入**：猜著結果非 OK 時顯示「加入錯題本」按鈕，寫入 localStorage。
   - **測試基建**（`tests/`）：`FakeEngine.cs`（csc 編譯）模擬 UCI/UCCI/收指令即退/
     無著法四種引擎行為，`engine.e2e.ts` 以 tsx 直接驅動 PikafishAdapter 做端對端驗證。
@@ -168,19 +167,20 @@ src/
   - **棋譜匯入**（`GameImportPanel.tsx`）：貼上 UCI 著法序列，從開局或目前局面
     逐手驗證匯入（任一手非法即整批拒絕並指出第幾手與原因），
     匯入後以 ⏮◀▶⏭ 或點擊著法 chip 逐步檢視，棋盤即時同步，任一步皆可再分析。
-  - 規則測試：`tests/rules.test.ts`（49 條斷言，涵蓋各兵種與特殊規則）。
+  - 規則測試：`tests/rules.test.ts`（64 條斷言，涵蓋各兵種與特殊規則）。
 - Stage 7：OpenAI / Gemini Provider 真實實作 + electron-builder 打包。
   - **OpenAI / Gemini**：以內建 fetch 呼叫 REST API（不引入 SDK）。
     OpenAI 走 `/v1/chat/completions`（Bearer 認證）；Gemini 走
     `v1beta/models/<model>:generateContent`（金鑰走 `x-goog-api-key` header，
     不放 URL query）。兩者皆套用 promptBuilder 護欄與 `AIProviderConfig.baseUrl`
     覆寫（測試時指向本機 mock server）。預設模型：gpt-5.4 / gemini-3.5-flash
-    （定價未確認者不列入 model_pricing.json，UI 不顯示成本）。
+    （模型目錄不維護價格，UI 只顯示 token 用量，不估算成本）。
   - **打包**（`electron-builder.yml`）：`npm run pack` 產出未打包目錄驗證、
     `npm run dist` 產出 NSIS 安裝檔（`release/`，已 gitignore）。
-    引擎二進位不隨包散布，使用者安裝後自行指定。尚無自訂 icon 與簽章。
-  - Provider 測試：`tests/providers.test.ts`（20 條斷言，本機 HTTP mock 驗證
-    請求形狀與回應解析）。`npm test` 跑全部三套測試。
+    引擎二進位不隨包散布，使用者安裝後自行指定。已有自訂 icon，尚未簽章。
+  - Provider 測試：`tests/providers.test.ts`（43 條斷言，本機 HTTP mock 驗證
+    請求形狀、回應解析、大小上限、金鑰遮蔽與 UI／catalog 模型一致性）。
+    `npm test` 依序執行全部 14 個測試檔。
 - Stage 8：SDS v0.2 全面對齊 + 買斷授權 License Key
   （規格書：`docs/SDS_v0_2.docx`，差異分析：`docs/SDS_gap_analysis.md`）。
   - **資料契約對齊 SDS v0.2**：`EngineScore`（cp/mate、comparableValue、displayText、
@@ -194,23 +194,24 @@ src/
     Anthropic 真 SSE streaming；OpenAI/Gemini 為 §2.17.1 包裝模式（單一 text_delta + done）。
     `buildAIExplanationRequest()` 是唯一組 prompt / 注入金鑰入口；
     錯誤對應 §2.17.6 八種 code。renderer 逐段 append、可取消、錯誤保留 partial text。
-  - **ModelRegistry**（§2.19）：`model_pricing.json` 改 §2.19.3 schema、補齊 §2.19.2
-    全部 11 個模型（每筆帶 lastUpdated/sourceNote；OpenAI/Gemini id 待官方核對）；
-    cost.ts 與 registry 共讀同一份；未知模型丟 `UnsupportedModelError`，不得 fallback。
+  - **ModelRegistry**（§2.19）：`model_catalog.json` 保存 Anthropic、OpenAI、Gemini
+    共 13 個官方模型；設定頁清單與 catalog 有 parity regression test 防止漂移。
+    未知官方模型丟 `UnsupportedModelError`，OpenAI-compatible 則接受通過格式驗證的自訂 id。
   - **買斷授權 License Key**（SDS Q5）：離線 Ed25519 簽章驗證，key 格式
     `XQA1.<base64url(payload)>.<base64url(sig)>`；公鑰內嵌 `LicenseService`，
     私鑰只在發行者本機（`tools/keys/`，gitignore）。`license:status/activate/deactivate`
-    IPC；未啟用時 `LicensePage` 鎖主介面（優先於 SetupWizard）；設定頁可查狀態/解除。
+    IPC；授權頁與鎖定流程已實作，但測試版目前以 `LICENSE_GATE_DISABLED = true` 停用閘門；
+    正式商業發行改為 `false` 後，未啟用時才由 `LicensePage` 鎖定主介面。設定頁可查狀態/解除。
     已啟用 key 存 userData/`license.json`，每次啟動重新驗簽防手改。
     發行：`npx tsx --tsconfig tsconfig.node.json tools/license-keygen.ts init`（一次性產鑰）、
     `... issue --licensee "名字"`（簽發）。
-  - 測試共 **190 條**（`npm test`）：rules 49 + providers/registry 37 + license 18 + logger 9 +
-    engine 77（含 §2.14.6 必要單元測試、§2.13 分級邊界、取消機制 e2e；
-    `FakeEngine.cs` 新增 mate-after-move / slow 兩種模式）。
+  - 測試共 **434 條**（`npm test`）：rules 64 + appData 8 + providers 43 + knowledge 17 +
+    dual-engine 8 + license 18 + logger 9 + security 50 + session 3 + engine registry 18 +
+    harness 57 + quality 38 + renderer 13 + engine E2E 88。E2E 前須先編譯 `FakeEngine.cs`。
 
 ### 引擎執行前置（使用者需自備）
 
-- Pikafish 為閉源 NNUE 引擎：除 `pikafish.exe` 外，**還需把 `pikafish.nnue` 評估檔放在同目錄**
+- Pikafish 為 NNUE 引擎：除 `pikafish.exe` 外，**還需把 `pikafish.nnue` 評估檔放在同目錄**
   （或以 `setoption name EvalFile` 指定）。缺檔時引擎可能無法通過 `isready`。
   本軟體只負責驅動 UCI，不內含二進位與評估檔。
 
@@ -238,10 +239,6 @@ re-validate 的品質迴圈（`HarnessOrchestrator.runExplanationHarness`）：
 ## 尚未完成 / 後續
 
 - 內含或自動下載 Pikafish 二進位與 `pikafish.nnue`（目前需使用者自備並於設定頁指定）。
-- 猜著模式以點擊棋盤輸入著法（目前需手打 UCI 字串）。
 - PGN／中文記譜（炮二平五）格式匯入（目前支援 UCI 著法序列）。
-- OpenAI / Gemini 的 model id（gpt-5.4 等）依 SDS §2.19.2 標示「待官方核對」，
-  正式呼叫前請再向官方 model 列表確認並更新 model_pricing.json。
-- 多輪追問（ai_conversations）context 策略 — SDS v0.2 明列為下一個待補規格。
-- 看不懂局面（MisunderstoodPosition）獨立收藏頁（目前以錯題本涵蓋）。
-- 應用程式 icon 與程式碼簽章（electron-builder 目前用預設 icon、未簽章）。
+- 官方與相容服務的 model id 需在發行前依各服務商目前模型頁重新核對。
+- Windows 程式碼簽章（目前已有自訂 icon，但個人測試版尚未簽章）。

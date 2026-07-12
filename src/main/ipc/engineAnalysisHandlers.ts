@@ -9,7 +9,7 @@ import {
   type EngineTestResult
 } from '@shared/types/ipc'
 import type { EngineAnalysis, EngineProtocol } from '@shared/types/EngineAnalysis'
-import type { EngineProfileId } from '@shared/types/EngineRegistry'
+import { isEngineProfileId } from '@shared/types/EngineRegistry'
 import { compareMove } from '@shared/logic/MoveComparisonService'
 import { buildDualEngineComparison } from '@shared/logic/DualEngineComparison'
 import {
@@ -122,15 +122,6 @@ function validateEngineId(value: unknown): string {
   }
   return value
 }
-
-const PROFILE_IDS = new Set<EngineProfileId>([
-  'pikafish',
-  'chessmaster',
-  'cyclone',
-  'bugchess',
-  'alphacat',
-  'custom'
-])
 
 export function registerEngineAnalysisHandlers(
   registry: EngineRegistryService,
@@ -480,10 +471,7 @@ export function registerEngineAnalysisHandlers(
       throw new SecurityValidationError('引擎資料格式無效。')
     }
     const input = raw as Record<string, unknown>
-    if (
-      typeof input.profileId !== 'string' ||
-      !PROFILE_IDS.has(input.profileId as EngineProfileId)
-    ) {
+    if (!isEngineProfileId(input.profileId)) {
       throw new SecurityValidationError('引擎類型無效。')
     }
     const executablePath = normalizeEnginePath(input.executablePath)
@@ -495,7 +483,7 @@ export function registerEngineAnalysisHandlers(
         ? input.displayName.trim().slice(0, 80)
         : undefined
     return registry.add({
-      profileId: input.profileId as EngineProfileId,
+      profileId: input.profileId,
       displayName,
       executablePath
     })

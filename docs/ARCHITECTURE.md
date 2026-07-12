@@ -141,6 +141,8 @@ deterministic plan
 - `openai-compatible` adapter：DeepSeek、Kimi / Moonshot、xAI、Ollama、LM Studio 與使用者自訂 Chat Completions 相容服務。
 - 遠端 Base URL 只允許標準 HTTPS；HTTP 只允許 `localhost`、`127.0.0.1`、`::1`。禁止帳密、query 與 fragment，避免憑證外洩與明顯 SSRF。
 - 本機 loopback 服務可免 API Key；遠端服務必須使用單一加密 Key 欄位。renderer 不得取得解密後金鑰。
+- OpenAI 相容服務的加密 Key 會綁定使用者儲存時確認的 Base URL；網址變更後必須重新確認並儲存，避免 renderer 遭入侵時把既有 Key 轉送到其他端點。
+- Provider JSON 回應採串流讀取並設 5 MB 上限；錯誤文字會遮蔽官方格式與本次請求的精確 Key，避免惡意或故障端點造成記憶體耗盡或日誌洩漏。
 - 相容服務的 model ID 允許使用受限制字元的自訂值；設定頁預設值只提供方便，不形成永久白名單。
 
 官方相容契約參考：

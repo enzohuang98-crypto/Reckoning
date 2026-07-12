@@ -1,4 +1,9 @@
 import { EngineRegistryService } from '../src/main/engine/EngineRegistryService'
+import {
+  ENGINE_PROFILES,
+  getEngineProfile,
+  isEngineProfileId
+} from '../src/shared/types/EngineRegistry'
 
 let passed = 0
 let failed = 0
@@ -42,6 +47,33 @@ const cyclone = registry.add({
 check('可加入多個引擎', registry.list().installations.length === 2)
 check('第一個引擎自動成為主引擎', registry.list().activeEngineId === pikafish.id)
 check('預設協定依引擎 profile 設定', cyclone.protocol === 'ucci')
+check(
+  '常見引擎選項包含小蟲、旋風、烏雲與 Px0',
+  ['bugchess', 'cyclone', 'wuyun', 'px0'].every((id) =>
+    ENGINE_PROFILES.some((profile) => profile.id === id)
+  )
+)
+check(
+  '所有顯示的引擎 profile 都能通過 main 邊界驗證',
+  ENGINE_PROFILES.every((profile) => isEngineProfileId(profile.id))
+)
+check('其他 UCI／UCCI 引擎仍可使用自訂 profile', getEngineProfile('unknown' as never).id === 'custom')
+
+const profileStorage = new FakeStorage()
+const profileRegistry = new EngineRegistryService(profileStorage as never)
+for (const [index, profile] of ENGINE_PROFILES.entries()) {
+  profileRegistry.add({
+    profileId: profile.id,
+    executablePath: `C:\\Engines\\profile-${index}.exe`
+  })
+}
+const reloadedProfiles = new EngineRegistryService(profileStorage as never)
+  .list()
+  .installations.map((installation) => installation.profileId)
+check(
+  '所有引擎 profile 儲存後重啟仍可保留',
+  ENGINE_PROFILES.every((profile) => reloadedProfiles.includes(profile.id))
+)
 
 registry.select(cyclone.id, pikafish.id)
 check('可分別選擇主引擎與複核引擎', registry.list().verificationEngineId === pikafish.id)

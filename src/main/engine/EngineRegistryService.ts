@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import {
   EMPTY_ENGINE_REGISTRY,
   getEngineProfile,
+  isEngineProfileId,
   type EngineCapabilities,
   type EngineInstallation,
   type EngineProfileId,
@@ -83,15 +84,9 @@ function sanitizeInstallation(value: unknown): EngineInstallation | null {
   } catch {
     return null
   }
-  const profileId: EngineProfileId =
-    item.profileId === 'pikafish' ||
-    item.profileId === 'chessmaster' ||
-    item.profileId === 'cyclone' ||
-    item.profileId === 'bugchess' ||
-    item.profileId === 'alphacat' ||
-    item.profileId === 'custom'
-      ? item.profileId
-      : 'custom'
+  const profileId: EngineProfileId = isEngineProfileId(item.profileId)
+    ? item.profileId
+    : 'custom'
   const profile = getEngineProfile(profileId)
   return {
     id: item.id,

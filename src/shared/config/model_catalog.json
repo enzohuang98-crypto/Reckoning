@@ -1,5 +1,7 @@
 {
   "models": [
+    { "provider": "anthropic", "model": "claude-fable-5", "displayName": "Claude Fable 5" },
+    { "provider": "anthropic", "model": "claude-sonnet-5", "displayName": "Claude Sonnet 5" },
     { "provider": "anthropic", "model": "claude-opus-4-8", "displayName": "Claude Opus 4.8" },
     { "provider": "anthropic", "model": "claude-opus-4-7", "displayName": "Claude Opus 4.7" },
     { "provider": "anthropic", "model": "claude-sonnet-4-6", "displayName": "Claude Sonnet 4.6" },

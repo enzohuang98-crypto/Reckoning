@@ -20,6 +20,7 @@ import { modelRegistry, UnsupportedModelError } from '../src/main/ai/ModelRegist
 import type { AIExplanationRequest } from '../src/shared/types/AIExplanationTypes'
 import {
   AI_COMPATIBLE_PRESETS,
+  PROVIDER_DEFAULT_MODELS,
   type AIExplanationStreamChunk
 } from '../src/shared/types/AIProviderTypes'
 
@@ -127,13 +128,28 @@ async function main(): Promise<void> {
   {
     const sonnet = modelRegistry.getModel('anthropic', 'claude-sonnet-4-6')
     check('getModel 回傳模型目錄資料', sonnet.displayName === 'Claude Sonnet 4.6')
+    check('Anthropic 新模型可選用',
+      modelRegistry.hasModel('anthropic', 'claude-fable-5') &&
+      modelRegistry.hasModel('anthropic', 'claude-sonnet-5'))
     check('hasModel true', modelRegistry.hasModel('openai', 'gpt-5.4'))
     check('hasModel false（跨 provider 不混用）', !modelRegistry.hasModel('openai', 'claude-sonnet-4-6'))
     check('預設模型：anthropic → claude-sonnet-4-6', modelRegistry.getDefaultModel('anthropic').model === 'claude-sonnet-4-6')
     check('預設模型：openai → gpt-5.4', modelRegistry.getDefaultModel('openai').model === 'gpt-5.4')
     check('預設模型：gemini → gemini-3.5-flash', modelRegistry.getDefaultModel('gemini').model === 'gemini-3.5-flash')
     check('listModels(provider) 過濾', modelRegistry.listModels('gemini').length === 3)
-    check('模型目錄共 11 個模型', modelRegistry.listModels().length === 11)
+    check('模型目錄共 13 個模型', modelRegistry.listModels().length === 13)
+    const officialProviders = ['anthropic', 'openai', 'gemini'] as const
+    const uiModels = officialProviders.flatMap((provider) =>
+      PROVIDER_DEFAULT_MODELS[provider].map((model) => `${provider}/${model.id}`)
+    )
+    const catalogModels = modelRegistry
+      .listModels()
+      .map((model) => `${model.provider}/${model.model}`)
+    check(
+      '官方模型目錄與設定頁選項完全一致',
+      uiModels.length === catalogModels.length &&
+        uiModels.every((model) => catalogModels.includes(model))
+    )
     check(
       'OpenAI 相容服務允許受驗證的自訂 model id',
       modelRegistry.getModel('openai-compatible', 'deepseek-chat').model === 'deepseek-chat'

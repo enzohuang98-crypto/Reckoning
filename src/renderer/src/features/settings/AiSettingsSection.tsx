@@ -95,7 +95,8 @@ export function AiSettingsSection({
 
         <p className="muted">
           同一欄位支援 Claude、Gemini、OpenAI 與 OpenAI 相容服務。先選服務後貼上金鑰；
-          金鑰只透過作業系統 safeStorage 加密保存在本機。
+          金鑰只透過作業系統 safeStorage 加密保存在本機。AI 用量由所選服務商另外計費，
+          本軟體不包含 API 額度。
         </p>
 
         <div className="key-row">
@@ -200,7 +201,7 @@ export function AiSettingsSection({
               <input
                 className="text-input"
                 value={settings.aiModel}
-                placeholder="例如 deepseek-v4-flash、grok-4.3 或本機模型名稱"
+                placeholder="例如 deepseek-v4-flash、grok-4.5 或本機模型名稱"
                 onChange={(event) => update({ aiModel: event.target.value })}
               />
             </div>

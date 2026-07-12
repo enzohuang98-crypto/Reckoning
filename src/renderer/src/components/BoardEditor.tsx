@@ -79,6 +79,13 @@ export function BoardEditor({
   }, [guessSelectionActive])
 
   useEffect(() => {
+    if (toolsOpen) return
+    setSelected(null)
+    setMoveError(null)
+    setTool({ kind: 'move' })
+  }, [toolsOpen])
+
+  useEffect(() => {
     const cancelSelection = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         setSelected(null)
@@ -246,6 +253,9 @@ export function BoardEditor({
       <div className="board-wrap">
         <XiangqiBoard grid={board.grid} selected={selected} onCellClick={handleCellClick} />
       </div>
+      {!toolsOpen && moveError && (
+        <div className="error-text small board-move-error">{moveError}</div>
+      )}
       {toolsOpen && <div className="editor-controls">
         <div className="panel-heading compact">
           <div>

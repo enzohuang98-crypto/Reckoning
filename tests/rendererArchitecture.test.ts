@@ -211,6 +211,15 @@ async function main(): Promise<void> {
     )
   })
 
+  await check('收起擺棋工具會退出替換／清除模式', () => {
+    const source = readFileSync(
+      resolve('src/renderer/src/components/BoardEditor.tsx'),
+      'utf8'
+    )
+    assert.match(source, /if \(toolsOpen\) return[\s\S]*setTool\(\{ kind: 'move' \}\)/)
+    assert.match(source, /!toolsOpen && moveError/)
+  })
+
   console.log(`結果：${passed} 通過，${failed} 失敗`)
   if (failed > 0) process.exitCode = 1
 }
