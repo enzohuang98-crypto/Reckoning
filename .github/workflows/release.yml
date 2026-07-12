@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to release, for example v0.3.0
+        required: true
+        type: string
+      allow_unsigned:
+        description: Permit an explicitly marked unsigned Windows release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish GitHub Release
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the requested tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate tag and release notes
+        shell: pwsh
+        run: |
+          $version = (Get-Content -Raw -Encoding UTF8 package.json | ConvertFrom-Json).version
+          $expectedTag = "v$version"
+          if ('${{ inputs.tag }}' -ne $expectedTag) {
+            throw "Requested tag '${{ inputs.tag }}' does not match package version '$expectedTag'."
+          }
+          $pointingTags = @(git tag --points-at HEAD)
+          if ($expectedTag -notin $pointingTags) {
+            throw "HEAD is not the commit referenced by $expectedTag."
+          }
+          $notes = "docs/releases/$version.md"
+          if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
+            throw "Release notes are missing: $notes"
+          }
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile the test engine
+        shell: pwsh
+        run: |
+          $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+            throw "Required C# compiler was not found: $compiler"
+          }
+          & $compiler /nologo /out:tests\fake-engine.exe tests\FakeEngine.cs
+          if ($LASTEXITCODE -ne 0) {
+            throw "Fake engine compilation failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Audit dependencies
+        run: npm run security:audit
+
+      - name: Enforce signing policy
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+        run: |
+          $hasSigningCertificate = -not [string]::IsNullOrWhiteSpace($env:CSC_LINK)
+          $allowUnsigned = '${{ inputs.allow_unsigned }}' -eq 'true'
+          if (-not $hasSigningCertificate -and -not $allowUnsigned) {
+            throw 'WINDOWS_CSC_LINK is not configured and allow_unsigned is false.'
+          }
+          if (-not $hasSigningCertificate) {
+            Write-Warning 'Building an explicitly approved unsigned Windows release.'
+          }
+
+      - name: Build update package
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: npm run dist:update:github
+
+      - name: Verify update artifacts and signature
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+        run: |
+          npm run verify:update
+          $version = (Get-Content -Raw -Encoding UTF8 package.json | ConvertFrom-Json).version
+          $setup = "release/xiangqi-analyzer-$version-setup.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          $hasSigningCertificate = -not [string]::IsNullOrWhiteSpace($env:CSC_LINK)
+          if ($hasSigningCertificate -and $signature.Status -ne 'Valid') {
+            throw "Signed release verification failed: $($signature.Status)"
+          }
+          if (-not $hasSigningCertificate -and $signature.Status -ne 'NotSigned') {
+            throw "Unexpected unsigned release signature status: $($signature.Status)"
+          }
+          Write-Host "Authenticode status: $($signature.Status)"
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content -Raw -Encoding UTF8 package.json | ConvertFrom-Json).version
+          $tag = "v$version"
+          $setup = "release/xiangqi-analyzer-$version-setup.exe"
+          $blockmap = "$setup.blockmap"
+          $notes = "docs/releases/$version.md"
+          gh release create $tag $setup $blockmap release/latest.yml `
+            --verify-tag `
+            --title "象棋 AI 分析講解 $tag" `
+            --notes-file $notes

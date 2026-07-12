@@ -328,6 +328,16 @@ const updateBuildScript = readFileSync(
   resolve('tools/build-github-update.ps1'),
   'utf8'
 )
+const updateVerifyScript = readFileSync(
+  resolve('tools/verify-update-artifacts.ps1'),
+  'utf8'
+)
+const updatePublishScript = readFileSync(
+  resolve('tools/publish-github-update.ps1'),
+  'utf8'
+)
+const ciWorkflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
+const releaseWorkflow = readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
 const rendererHtml = readFileSync(resolve('src/renderer/index.html'), 'utf8')
 check(
   'Production renderer protocol avoids blocked file net.fetch',
@@ -381,6 +391,32 @@ check(
   '更新封裝腳本拒絕缺失或過期產物',
   updateBuildScript.includes('Missing auto-update artifact') &&
     updateBuildScript.includes('Auto-update artifact was not freshly built')
+)
+check(
+  '更新 metadata 會驗證版本、路徑與安裝檔 SHA-512',
+  updateVerifyScript.includes('latest.yml version does not match') &&
+    updateVerifyScript.includes('latest.yml path does not match') &&
+    updateVerifyScript.includes('SHA-512 does not match')
+)
+check(
+  '更新發布保留歷史版本並檢查 Git push 失敗',
+  !updatePublishScript.includes("Get-ChildItem -LiteralPath $downloadDir -File -Filter 'xiangqi-analyzer-*-setup.exe*'") &&
+    updatePublishScript.includes('Unable to push update artifacts')
+)
+check(
+  'CI 會編譯假引擎並執行完整品質門檻',
+  ciWorkflow.includes('tests\\fake-engine.exe') &&
+    ciWorkflow.includes('npm run typecheck') &&
+    ciWorkflow.includes('npm test') &&
+    ciWorkflow.includes('npm run security:audit') &&
+    ciWorkflow.includes('npm run build')
+)
+check(
+  'Release workflow 預設拒絕缺少受信任憑證的未簽章發行',
+  releaseWorkflow.includes('WINDOWS_CSC_LINK') &&
+    releaseWorkflow.includes('allow_unsigned') &&
+    releaseWorkflow.includes('Get-AuthenticodeSignature') &&
+    releaseWorkflow.includes("$signature.Status -ne 'Valid'")
 )
 
 console.log(`結果：${passed} 通過，${failed} 失敗`)

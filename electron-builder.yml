@@ -23,7 +23,8 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
-# 不簽章（個人散布）；正式發行前再加 codeSigning 設定
+# Release workflow 會讀取 WINDOWS_CSC_LINK / WINDOWS_CSC_KEY_PASSWORD。
+# forceCodeSigning 保持 false 只為允許明確核准的過渡版；正式發布門檻預設拒絕未簽章產物。
 forceCodeSigning: false
 electronFuses:
   runAsNode: false

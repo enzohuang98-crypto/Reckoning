@@ -164,6 +164,8 @@ deterministic plan
 
 ## 9. 發行門檻
 
+GitHub Actions、Windows 簽章、Release 與公開更新來源的責任及操作順序，統一記錄於 [`RELEASE.md`](RELEASE.md)。
+
 每個可交付版本至少必須完成：
 
 ```text

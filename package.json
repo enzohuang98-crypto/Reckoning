@@ -21,6 +21,7 @@
     "dist": "npm run build && electron-builder",
     "dist:update": "npm run build && electron-builder --config electron-builder.publish.cjs --publish never",
     "dist:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-github-update.ps1",
+    "verify:update": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-update-artifacts.ps1",
     "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/publish-github-update.ps1"
   },
   "dependencies": {

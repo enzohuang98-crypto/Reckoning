@@ -27,6 +27,8 @@ foreach ($path in $artifacts) {
   }
 }
 
+& (Join-Path $PSScriptRoot 'verify-update-artifacts.ps1') -ExpectedVersion $version
+
 Write-Host ''
 Write-Host 'Auto-update artifacts are in release/:'
 Get-Item -LiteralPath $artifacts | Select-Object FullName, Length, LastWriteTime
