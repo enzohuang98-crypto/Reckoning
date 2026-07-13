@@ -6,7 +6,7 @@
 
 ```text
 main 原始碼
-  ├─ CI workflow：typecheck、438 項測試、dependency audit、production build
+  ├─ CI workflow：typecheck、446 項測試、dependency audit、production build
   └─ vX.Y.Z tag
        └─ Release workflow：重跑門檻、封裝、驗證 metadata／SHA-512／簽章
             └─ GitHub Release：setup.exe、blockmap、latest.yml

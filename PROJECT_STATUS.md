@@ -10,6 +10,8 @@
 - GitHub：`https://github.com/enzohuang98-crypto/xiangqi-analyzer`
 - 本次工作基底 commit：`4ccfc9f8a70ce590489019d244c05386e92b2549`
 - 本次交付 commit：本文件所在的 `main` HEAD
+- v0.3.0 Release commit／tag：`413d02d023688b40cbdea50f06500027a890cd1f`／`v0.3.0`
+- GitHub Release：`https://github.com/enzohuang98-crypto/xiangqi-analyzer/releases/tag/v0.3.0`
 - 本次 commit 訊息：`complete v0.3.0 release readiness and handoff`
 - 前一個主要產品 commit：`2c23feb9f91fa333e776d8294669697d30c96cf1`
 - 前一個主要產品 commit 訊息：`complete resilient analysis loop and product UI architecture`
@@ -117,16 +119,19 @@
 本次最終 diff 已完成：
 
 - `npm run typecheck`：通過。
-- 定向回歸：providers 43、engine registry 18、renderer architecture 13、security 50，全部通過。
+- 定向回歸：providers 43、engine registry 18、renderer architecture 18、security 55，全部通過。
 - `npm test`：446 項通過、0 失敗；engine E2E 88 項實際執行，沒有跳過。
 - `npm run security:audit`：0 vulnerabilities。
 - `git diff --check`：通過，只有 Windows LF／CRLF 提示。
-- Codex Security working-tree diff scan：8/8 個工作列完整覆蓋，0 個候選、0 個 deferred、無 reportable finding。
 - `npm run build`：main、preload、renderer production build 通過。
 - `npm run pack`：`release/win-unpacked` 成功；實體 `npm ci` 依賴樹可完整封裝 production modules。
 - `npm run dist:update:github`：成功產生 v0.3.0 NSIS 安裝檔、blockmap、`latest.yml` 與 `app-update.yml`，沒有公開上傳。
 - 執行檔 `ProductVersion`：`0.3.0.0`。
-- 最新 renderer 已用 Electron 本機除錯通道驗證 1720、1240、980 px：無水平溢位、棋盤約 444 px、右上只有 AI 教練／猜著、底部 Live 首屏可見、頂部資料抽屜可展開、設定四分類水平排列。最終 Release 安裝版仍需在發布後再做啟動與版本核對。
+- 最新 renderer 已用 Electron 本機除錯通道驗證 1720、1240、980 px：無水平溢位、棋盤約 444 px、右上只有 AI 教練／猜著、底部 Live 首屏可見、頂部資料抽屜可展開、設定四分類水平排列。
+- GitHub CI 與 Release workflow 已成功；Release 三項資產下載回本機後通過版本、大小、SHA-512 與公開更新站 Git blob 一致性驗證。Release 安裝檔 SHA-256：`B14D9A6FA2AA4BE54729E7E7DA7F50B3F88A36EF9FC9446ECECE31B824706D01`。
+- 公開更新來源 `xiangqi-analyzer-site` commit `e26c3b9631dec241cf8c71e103c42226d339d72f`，`latest.yml` 已為 `0.3.0`。
+- 桌機已由 0.2.6 升級到 Release 原檔 0.3.0；登錄與執行檔 `ProductVersion` 都是 `0.3.0`／`0.3.0.0`，啟動後有 main + 3 個 Electron child processes。
+- 安裝版已同時啟動 AVX2 主引擎與 SSE4.1 複核引擎；跨 20 秒觀察窗兩邊 PID 都更新，證明 Live refinement 完成一輪後仍持續串接。
 - 已設定真實 Gemini Key，但為避免未經確認產生服務商費用，本次只驗證 AI 解說入口與設定狀態，未發送付費模型請求。
 
 ## 5. 本次完成的變更
@@ -186,8 +191,8 @@
 
 ### 本次已關閉
 
-1. 最新 UI／profile／模型變更已完成 typecheck、定向測試、434 項完整測試與 diff check。
-2. 最終 Codex Security diff scan 已完成，沒有未處理候選。
+1. 最新 UI／profile／模型變更已完成 typecheck、定向測試、446 項完整測試與 diff check。
+2. AI 多輪上下文、目標語言、Live 排程／退避與快照一致性均有回歸測試。
 3. build、pack 與 auto-update packaging 已完成並驗證產物。
 4. 封裝版核心滑鼠流程已實測；發現的 dependency-junction 封裝缺模組問題已改用實體 `npm ci` 排除。
 5. auto-update wrapper 已不再吞掉 build 失敗或接受舊產物。
@@ -197,17 +202,16 @@
 - App 不內含第三方引擎二進位與 NNUE 權重；使用者仍需自行合法取得並在設定頁加入。
 - 尚未支援 PGN 或中文著法棋譜匯入；目前支援 FEN 與 UCI 著法序列。
 - Windows 安裝檔尚未程式碼簽章，可能出現 SmartScreen 警告。
-- 真實外接 AI 呼叫需要使用者自己的 API Key 並由服務商計費。
+- 真實外接 AI 呼叫需要使用者自己的 API Key 並由服務商計費；目前仍等待使用者在執行當下明確回覆「同意付費測試」。
 - 雙引擎真實運行需要本機安裝兩個可用引擎；只有一個引擎時會使用單引擎流程。
 - 授權閘門目前按使用者要求維持測試停用狀態，不代表商業授權流程已準備公開發售。
-- 本機已驗證單一 Pikafish 與 Gemini Key 狀態；雙引擎實機裁決仍需要第二個合法引擎。
+- 本機已驗證兩個不同 Pikafish 執行檔可同時作為主／複核引擎；尚未做真實付費模型參與的完整雙引擎解說品質驗收。
 
 ## 7. 後續建議
 
-1. 以 `release/xiangqi-analyzer-0.3.0-setup.exe` 交給象棋老師安裝測試；若要替換現有安裝版與桌面捷徑，重新執行此安裝檔。
-2. 正式公開發售前完成 Windows 程式碼簽章並重新驗證 SmartScreen、安裝與更新流程。
-3. 若要驗證雙引擎裁決，加入第二個合法 UCI／UCCI 引擎，再重跑分歧局面。
-4. 若要做真實 AI 端到端品質驗收，先明確同意服務商費用，再使用目前設定的 Key 執行代表性回歸題組。
+1. 正式公開發售前取得受信任 CA Windows 程式碼簽章憑證，設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD`，再重新驗證 SmartScreen、安裝與更新流程。
+2. 若要做真實 AI 端到端品質驗收，先在執行當下明確同意服務商費用，再使用目前設定的 Key 執行代表性回歸題組。
+3. 用兩個不同家族／不同評估風格的合法引擎補做分歧局面裁決；目前兩個實體執行檔皆為 Pikafish build，能驗證雙程序管線但不等於獨立棋力來源。
 
 ## 8. 不可遺忘的實作原則
 
