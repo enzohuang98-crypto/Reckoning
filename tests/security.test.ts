@@ -422,7 +422,8 @@ check(
     releaseWorkflow.includes('allow_unsigned') &&
     releaseWorkflow.includes('signtool.exe') &&
     releaseWorkflow.includes('No signature found') &&
-    releaseWorkflow.includes('$verifyExitCode -ne 0')
+    releaseWorkflow.includes('$verifyExitCode -ne 0') &&
+    releaseWorkflow.includes('$global:LASTEXITCODE = 0')
 )
 
 console.log(`結果：${passed} 通過，${failed} 失敗`)

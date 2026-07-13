@@ -135,6 +135,9 @@ jobs:
           } else {
             Write-Host 'Authenticode status: Valid.'
           }
+          # An accepted unsigned verification intentionally returns signtool exit code 1.
+          # Reset it so pwsh does not report a failed step after the policy checks passed.
+          $global:LASTEXITCODE = 0
 
       - name: Create GitHub Release
         shell: pwsh
