@@ -146,6 +146,9 @@
   - 多輪歷史與目標語言真正進入 Harness writer／repair prompt。
 - `tests/harness.test.ts`、`tests/rendererArchitecture.test.ts`
   - 新增多輪上下文、語言、Live 排程／重試、AI 快照與首頁資訊架構回歸測試。
+- `.github/workflows/release.yml`、`tools/verify-update-artifacts.ps1`、`tests/security.test.ts`
+  - metadata 驗證不再因 GitHub runner 無法載入 `Microsoft.PowerShell.Security` 而失敗；簽章政策改由 Windows SDK `signtool verify` 獨立執行。
+  - 有憑證時必須驗證為有效簽章；明確允許未簽章時仍只接受 `No signature found`，其他驗證錯誤照樣阻擋 Release。
 
 - `src/renderer/src/components/BoardEditor.tsx`
   - 收起擺棋工具時強制回到移動模式。

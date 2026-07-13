@@ -399,6 +399,11 @@ check(
     updateVerifyScript.includes('SHA-512 does not match')
 )
 check(
+  '更新 metadata 驗證不依賴 runner 可能缺失的 PowerShell Security 模組',
+  !updateVerifyScript.includes('Get-AuthenticodeSignature') &&
+    updateVerifyScript.includes('Authenticode policy is verified separately')
+)
+check(
   '更新發布保留歷史版本並檢查 Git push 失敗',
   !updatePublishScript.includes("Get-ChildItem -LiteralPath $downloadDir -File -Filter 'xiangqi-analyzer-*-setup.exe*'") &&
     updatePublishScript.includes('Unable to push update artifacts')
@@ -415,8 +420,9 @@ check(
   'Release workflow 預設拒絕缺少受信任憑證的未簽章發行',
   releaseWorkflow.includes('WINDOWS_CSC_LINK') &&
     releaseWorkflow.includes('allow_unsigned') &&
-    releaseWorkflow.includes('Get-AuthenticodeSignature') &&
-    releaseWorkflow.includes("$signature.Status -ne 'Valid'")
+    releaseWorkflow.includes('signtool.exe') &&
+    releaseWorkflow.includes('No signature found') &&
+    releaseWorkflow.includes('$verifyExitCode -ne 0')
 )
 
 console.log(`結果：${passed} 通過，${failed} 失敗`)

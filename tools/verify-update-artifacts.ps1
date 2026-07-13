@@ -53,4 +53,4 @@ if ($publishedHashes.Count -eq 0 -or $expectedSha512 -notin $publishedHashes) {
 
 Write-Host "Verified update artifacts for version $ExpectedVersion"
 Write-Host "Setup: $setupName"
-Write-Host "Authenticode: $((Get-AuthenticodeSignature -LiteralPath $setup).Status)"
+Write-Host 'Authenticode policy is verified separately by the Release workflow.'
