@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react'
-import { parseFen } from '@shared/logic/fen'
+import { parseFen } from '@shared/logic/board/fen'
 import {
   commitBoard,
   createBoardTimeline,
   redoBoard,
   undoBoard
-} from '@shared/logic/BoardTimeline'
+} from '@shared/logic/board/BoardTimeline'
 import { START_FEN, type BoardState } from '@shared/types/BoardState'
 
 function createInitialBoard(): BoardState {

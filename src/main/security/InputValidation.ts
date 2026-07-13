@@ -1,13 +1,13 @@
 import { isAbsolute, resolve } from 'node:path'
-import { parseFen } from '@shared/logic/fen'
-import { detectApiKeyProvider } from '@shared/logic/ApiKeyProvider'
+import { parseFen } from '@shared/logic/board/fen'
+import { detectApiKeyProvider } from '@shared/logic/validation/ApiKeyProvider'
 import {
   ALL_PROVIDER_IDS,
   type AIProviderId
 } from '@shared/types/AIProviderTypes'
 import type { AnalyzePositionStartPayload, GenerateExplanationStartPayload } from '@shared/types/ipc'
 import type { ConversationMessage } from '@shared/types/AppData'
-import { maskSecrets } from '../Logger'
+import { maskSecrets } from '../logger'
 
 export const MAX_APP_DATA_BYTES = 5 * 1024 * 1024
 export const MAX_BACKUP_BYTES = 10 * 1024 * 1024

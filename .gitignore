@@ -8,11 +8,11 @@ install.log
 .vite/
 # 引擎二進位（請自行放置，勿提交）
 resources/engine/
-# 測試用假引擎編譯產物（由 tests/FakeEngine.cs 以 csc 編譯）
-tests/fake-engine.exe
+# 測試用假引擎編譯產物（由 tests/support/FakeEngine.cs 以 csc 編譯）
+tests/support/fake-engine.exe
 # 機密：safeStorage 加密檔仍不應進版控
 secrets.enc.json
 # License 發行私鑰（發行者本機保管，絕不 commit）
-tools/keys/
+tools/license/keys/
 # 本機代理設定，不屬於產品原始碼
 .claude/

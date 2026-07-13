@@ -8,7 +8,7 @@
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/types/Settings'
 import type { MistakeBook, MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import { ALL_PROVIDER_IDS, type AIProviderId } from '@shared/types/AIProviderTypes'
-import { normalizeSettings } from '@shared/logic/ValidationUtils'
+import { normalizeSettings } from '@shared/logic/validation/ValidationUtils'
 
 const SETTINGS_KEY = 'xiangqi.settings'
 const MISTAKE_BOOK_KEY = 'xiangqi.mistakeBook'

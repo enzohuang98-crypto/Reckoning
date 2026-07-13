@@ -14,15 +14,15 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "tsx --tsconfig tsconfig.node.json tests/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/knowledge.test.ts && tsx --tsconfig tsconfig.node.json tests/dualEngine.test.ts && tsx --tsconfig tsconfig.node.json tests/license.test.ts && tsx --tsconfig tsconfig.node.json tests/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security.test.ts && tsx --tsconfig tsconfig.node.json tests/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/quality.test.ts && tsx --tsconfig tsconfig.node.json tests/rendererArchitecture.test.ts && tsx --tsconfig tsconfig.node.json tests/engine.e2e.ts",
-    "security:check": "tsx --tsconfig tsconfig.node.json tests/security.test.ts",
+    "test": "tsx --tsconfig tsconfig.node.json tests/unit/shared/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/knowledge.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/dualEngine.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/license.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security/security.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/integration/ai/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/quality.test.ts && tsx --tsconfig tsconfig.node.json tests/architecture/rendererArchitecture.test.ts && tsx --tsconfig tsconfig.node.json tests/e2e/engine.e2e.ts",
+    "security:check": "tsx --tsconfig tsconfig.node.json tests/security/security.test.ts",
     "security:audit": "npm audit --audit-level=moderate",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "dist:update": "npm run build && electron-builder --config electron-builder.publish.cjs --publish never",
-    "dist:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-github-update.ps1",
-    "verify:update": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-update-artifacts.ps1",
-    "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/publish-github-update.ps1"
+    "dist:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/build-github-update.ps1",
+    "verify:update": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/verify-update-artifacts.ps1",
+    "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/publish-github-update.ps1"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",

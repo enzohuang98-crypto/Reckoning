@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
-import { parseFen } from '@shared/logic/fen'
-import { formatChineseMove } from '@shared/logic/ChineseNotation'
-import { ExplanationView } from '../components/ExplanationView'
+import { parseFen } from '@shared/logic/board/fen'
+import { formatChineseMove } from '@shared/logic/board/ChineseNotation'
+import { ExplanationView } from '../features/explanations/ExplanationView'
 
 interface Props {
   entries: MistakeBookEntry[]

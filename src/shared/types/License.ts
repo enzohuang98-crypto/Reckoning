@@ -6,7 +6,7 @@
  * 不建置自有後端」的整體架構（SDS §2.1.1、附錄 B）。
  *
  * Key 格式：XQA1.<base64url(payload JSON)>.<base64url(Ed25519 簽章)>
- * 私鑰只存在於發行者手上（tools/license-keygen.ts），絕不進入程式碼或安裝檔。
+ * 私鑰只存在於發行者手上（tools/license/license-keygen.ts），絕不進入程式碼或安裝檔。
  */
 
 /** 簽章內的授權資料（payload） */

@@ -3,7 +3,7 @@ import type {
   MisunderstoodPosition
 } from '@shared/types/AppData'
 import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
-import { ExplanationView } from '../components/ExplanationView'
+import { ExplanationView } from '../features/explanations/ExplanationView'
 
 interface Props {
   entries: MisunderstoodPosition[]

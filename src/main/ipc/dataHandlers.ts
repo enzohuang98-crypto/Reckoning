@@ -8,7 +8,7 @@ import {
 } from '@shared/types/ipc'
 import { mergeAppData, sanitizeAppData, type AppDataSnapshot } from '@shared/types/AppData'
 import type { StorageService } from '../storage/StorageService'
-import { logger } from '../Logger'
+import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
 import {
   assertJsonSize,

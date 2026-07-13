@@ -8,7 +8,7 @@ import type {
   HarnessTrace
 } from '@shared/types/Harness'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
-import { ExplanationView } from '../../components/ExplanationView'
+import { ExplanationView } from '../explanations/ExplanationView'
 import { HarnessProgressCard } from './HarnessProgressCard'
 
 interface TokenEstimate {

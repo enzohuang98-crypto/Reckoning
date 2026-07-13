@@ -35,7 +35,7 @@ import { getAIProvider } from '../ai/AIProvider'
 import { runExplanationHarness } from '../ai/HarnessOrchestrator'
 import { buildExplanationPrompt } from '../ai/promptBuilder'
 import { modelRegistry, UnsupportedModelError } from '../ai/ModelRegistry'
-import { logger } from '../Logger'
+import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
 import {
   MAX_AI_RESPONSE_CHARS,

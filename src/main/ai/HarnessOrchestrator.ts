@@ -10,17 +10,17 @@ import type {
   HarnessTrace
 } from '@shared/types/Harness'
 import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
-import { parseFen } from '@shared/logic/fen'
-import { legalMoveCheck } from '@shared/logic/moves'
+import { parseFen } from '@shared/logic/board/fen'
+import { legalMoveCheck } from '@shared/logic/board/moves'
 import {
   CONCRETE_TERM_EXAMPLES,
   containsConcreteXiangqiTerm
-} from '@shared/logic/xiangqiTerms'
+} from '@shared/logic/ai/xiangqiTerms'
 import {
   formatXiangqiKnowledgeForPrompt,
   selectXiangqiKnowledge
-} from '@shared/logic/xiangqiKnowledge'
-import { buildDualEngineComparison } from '@shared/logic/DualEngineComparison'
+} from '@shared/logic/ai/xiangqiKnowledge'
+import { buildDualEngineComparison } from '@shared/logic/analysis/DualEngineComparison'
 import type { DualEngineComparison } from '@shared/types/DualEngine'
 import {
   compactChineseText,
@@ -32,7 +32,7 @@ import {
   SECTION_KEYS,
   textSimilarity,
   type QualityReport
-} from '@shared/logic/ExplanationQualityScorer'
+} from '@shared/logic/ai/ExplanationQualityScorer'
 import type { CausalChain } from '@shared/types/Harness'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'

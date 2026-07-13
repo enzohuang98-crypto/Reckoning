@@ -34,12 +34,12 @@ import type {
   EngineAnalysisErrorCode,
   EngineTestResult
 } from '@shared/types/ipc'
-import { parseFen } from '@shared/logic/fen'
-import { applyUciMove, legalMoveCheck } from '@shared/logic/moves'
+import { parseFen } from '@shared/logic/board/fen'
+import { applyUciMove, legalMoveCheck } from '@shared/logic/board/moves'
 import {
   formatChineseMove,
   formatChineseVariation
-} from '@shared/logic/ChineseNotation'
+} from '@shared/logic/board/ChineseNotation'
 import { START_FEN } from '@shared/types/BoardState'
 import {
   MultiPvAccumulator,

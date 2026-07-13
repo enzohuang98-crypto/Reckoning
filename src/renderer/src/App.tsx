@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { parseFen } from '@shared/logic/fen'
+import { parseFen } from '@shared/logic/board/fen'
 import type {
   AIConversation,
   MisunderstoodPosition,

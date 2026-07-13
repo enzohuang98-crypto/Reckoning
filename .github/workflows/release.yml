@@ -66,7 +66,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
             throw "Required C# compiler was not found: $compiler"
           }
-          & $compiler /nologo /out:tests\fake-engine.exe tests\FakeEngine.cs
+          & $compiler /nologo /out:tests\support\fake-engine.exe tests\support\FakeEngine.cs
           if ($LASTEXITCODE -ne 0) {
             throw "Fake engine compilation failed with exit code $LASTEXITCODE."
           }

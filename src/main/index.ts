@@ -72,7 +72,7 @@ function createWindow(rendererUrl: string): void {
     title: '象棋 AI 分析講解 - 啟動中',
     icon: app.isPackaged
       ? join(process.resourcesPath, 'icon.png')
-      : join(process.cwd(), 'build/icon.png'),
+      : join(process.cwd(), 'resources/packaging/icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

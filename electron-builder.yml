@@ -8,15 +8,15 @@ productName: 象棋AI分析講解
 artifactName: ${name}-${version}-setup.${ext}
 directories:
   output: release
-  buildResources: build
+  buildResources: resources/packaging
 files:
   - out/**
   - package.json
 extraResources:
-  - from: build/icon.png
+  - from: resources/packaging/icon.png
     to: icon.png
 win:
-  icon: build/icon.ico
+  icon: resources/packaging/icon.ico
   target:
     - nsis
 nsis:

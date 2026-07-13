@@ -6,7 +6,7 @@
  */
 
 import catalog from '@shared/config/model_catalog.json'
-import { isValidModelConfig } from '@shared/logic/ValidationUtils'
+import { isValidModelConfig } from '@shared/logic/validation/ValidationUtils'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
 
 /** 模型設定 */

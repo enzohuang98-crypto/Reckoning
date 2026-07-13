@@ -21,8 +21,8 @@ export const LICENSE_FILE = 'license.json'
 
 /**
  * 發行者公鑰（Ed25519 SPKI PEM）。
- * 對應私鑰由 tools/license-keygen.ts 產生並保存在發行者本機
- * （tools/keys/，已 gitignore），絕不進入程式碼或安裝檔。
+ * 對應私鑰由 tools/license/license-keygen.ts 產生並保存在發行者本機
+ * （tools/license/keys/，已 gitignore），絕不進入程式碼或安裝檔。
  */
 const EMBEDDED_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAR/YWP5i+K0NWJXCD36RFmSdR+W8PolrjMS2doeBsjuY=

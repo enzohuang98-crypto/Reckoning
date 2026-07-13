@@ -10,15 +10,15 @@ import {
 } from '@shared/types/ipc'
 import type { EngineAnalysis, EngineProtocol } from '@shared/types/EngineAnalysis'
 import { isEngineProfileId } from '@shared/types/EngineRegistry'
-import { compareMove } from '@shared/logic/MoveComparisonService'
-import { buildDualEngineComparison } from '@shared/logic/DualEngineComparison'
+import { compareMove } from '@shared/logic/analysis/MoveComparisonService'
+import { buildDualEngineComparison } from '@shared/logic/analysis/DualEngineComparison'
 import {
   EngineAnalysisError,
   type EngineProcessControls
 } from '../engine/PikafishAdapter'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { StorageService } from '../storage/StorageService'
-import { logger } from '../Logger'
+import { logger } from '../logger'
 import {
   DEFAULT_ANALYSIS_SESSION_TTL_MS,
   type AnalysisSession,

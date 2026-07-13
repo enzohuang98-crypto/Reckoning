@@ -8,7 +8,7 @@ import electronUpdater, {
 } from 'electron-updater'
 import { IPC } from '@shared/types/ipc'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
-import { logger } from '../Logger'
+import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
 
 function getAutoUpdater(): AppUpdater {

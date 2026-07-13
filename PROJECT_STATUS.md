@@ -5,14 +5,14 @@
 ## 1. 專案位置與目前代碼
 
 - 本次交付工作樹：`C:\Users\enzoh\Documents\Codex\2026-07-11\project-status-md-commit-github`
-- 舊來源工作樹：`C:\Users\enzoh\Claude\象棋軟體專案\xiangqi-analyzer`（仍保留本次工作前的未提交狀態；未先核對不可直接 reset 或 pull）
+- 舊來源工作樹：`C:\Users\enzoh\Claude\象棋軟體專案\xiangqi-analyzer`（另行保留，不納入本次目錄重整；更新前必須先核對工作樹）
 - Git 分支：`main`
 - GitHub：`https://github.com/enzohuang98-crypto/xiangqi-analyzer`
 - 本次工作基底 commit：`4ccfc9f8a70ce590489019d244c05386e92b2549`
 - 本次交付 commit：本文件所在的 `main` HEAD
 - v0.3.0 Release commit／tag：`413d02d023688b40cbdea50f06500027a890cd1f`／`v0.3.0`
 - GitHub Release：`https://github.com/enzohuang98-crypto/xiangqi-analyzer/releases/tag/v0.3.0`
-- 本次 commit 訊息：`complete v0.3.0 release readiness and handoff`
+- 本次 commit 訊息：`reorganize project structure without logic changes`
 - 前一個主要產品 commit：`2c23feb9f91fa333e776d8294669697d30c96cf1`
 - 前一個主要產品 commit 訊息：`complete resilient analysis loop and product UI architecture`
 - 應用程式版本：`0.3.0`
@@ -138,7 +138,13 @@
 
 本次交付包括：
 
-- `src/renderer/src/components/AnalysisPanel.tsx`、`features/analysis/liveAnalysis.ts`
+- 專案目錄結構重整（純 `git mv` 與路徑修正，沒有改動程式邏輯）
+  - Renderer 改為 feature-first；`components/` 只保留無業務狀態的 `ui/`。
+  - `shared/logic` 分成 `board/`、`analysis/`、`ai/`、`validation/`。
+  - 測試分成 `unit/`、`integration/`、`e2e/`、`architecture/`、`security/` 與 `support/`。
+  - 文件、工具及封裝資源分別整理到 `docs/*`、`tools/license|release` 與 `resources/packaging`。
+
+- `src/renderer/src/features/analysis/AnalysisPanel.tsx`、`features/analysis/liveAnalysis.ts`
   - 修正 AI 解說／既有 conversation 會使 Live 永久停止的生命週期缺口。
   - refinement 不再清空既有解說與思考紀錄，失敗會退避重試。
   - AI request 捕捉 analysis ID、FEN 與結果快照，避免並行 Live 更新造成 conversation 錯綁。
@@ -149,13 +155,13 @@
 - `src/main/ipc/aiExplanationHandlers.ts`、`src/main/ai/HarnessOrchestrator.ts`
   - 把 production AI handler 接回唯一 PromptBuilder 入口。
   - 多輪歷史與目標語言真正進入 Harness writer／repair prompt。
-- `tests/harness.test.ts`、`tests/rendererArchitecture.test.ts`
+- `tests/integration/ai/harness.test.ts`、`tests/architecture/rendererArchitecture.test.ts`
   - 新增多輪上下文、語言、Live 排程／重試、AI 快照與首頁資訊架構回歸測試。
-- `.github/workflows/release.yml`、`tools/verify-update-artifacts.ps1`、`tests/security.test.ts`
+- `.github/workflows/release.yml`、`tools/release/verify-update-artifacts.ps1`、`tests/security/security.test.ts`
   - metadata 驗證不再因 GitHub runner 無法載入 `Microsoft.PowerShell.Security` 而失敗；簽章政策改由 Windows SDK `signtool verify` 獨立執行。
   - 有憑證時必須驗證為有效簽章；明確允許未簽章時仍只接受 `No signature found`，其他驗證錯誤照樣阻擋 Release。
 
-- `src/renderer/src/components/BoardEditor.tsx`
+- `src/renderer/src/features/board/BoardEditor.tsx`
   - 收起擺棋工具時強制回到移動模式。
   - 一般走子錯誤在工具收起時也可見。
 - `src/shared/types/EngineRegistry.ts`
@@ -171,17 +177,17 @@
 - `src/renderer/src/features/settings/AiSettingsSection.tsx`
   - 明示 API 用量由服務商另行計費，本軟體不含額度。
   - 更新 xAI placeholder 為 `grok-4.5`。
-- `tests/providers.test.ts`
+- `tests/unit/main/providers.test.ts`
   - 新模型、模型總數與 UI／main catalog 完全一致測試。
-- `tests/engineRegistry.test.ts`
+- `tests/unit/main/engineRegistry.test.ts`
   - 常見引擎 profile、main 邊界、持久化 round-trip 與 custom fallback 測試。
-- `tests/rendererArchitecture.test.ts`
+- `tests/architecture/rendererArchitecture.test.ts`
   - 收起擺棋工具必須退出替換／清除模式的回歸測試。
 - `CLAUDE.md`
   - 移除已完成卻被錯列為未完成的猜著、多輪追問、待理解頁與 icon 項目。
-- `docs/ARCHITECTURE.md`
+- `docs/architecture/overview.md`
   - 補上相容端點金鑰綁定與 5 MB Provider JSON 回應限制。
-- `tools/build-github-update.ps1`、`tests/security.test.ts`
+- `tools/release/build-github-update.ps1`、`tests/security/security.test.ts`
   - 修正 auto-update wrapper 吞掉內層 build 失敗、誤把舊產物當成功的問題。
   - 現在會傳遞非零 exit code，並要求當前版本三項產物存在、非空且為本次新建。
 - `PROJECT_STATUS.md`

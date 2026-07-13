@@ -13,12 +13,12 @@ import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
 import {
   AnalysisPanel,
   type AnalysisPanelHandle
-} from '../../components/AnalysisPanel'
-import { AnalysisToolbar } from '../../components/AnalysisToolbar'
-import { BoardEditor } from '../../components/BoardEditor'
-import { FenInput } from '../../components/FenInput'
-import { GameImportPanel } from '../../components/GameImportPanel'
-import { GuessModePanel } from '../../components/GuessModePanel'
+} from '../analysis/AnalysisPanel'
+import { AnalysisToolbar } from './AnalysisToolbar'
+import { BoardEditor } from '../board/BoardEditor'
+import { FenInput } from '../board/FenInput'
+import { GameImportPanel } from '../board/GameImportPanel'
+import { GuessModePanel } from '../guessing/GuessModePanel'
 import { AnalysisInspectorTabs } from '../analysis/AnalysisInspectorTabs'
 import {
   EMPTY_ANALYSIS_STATUS,
