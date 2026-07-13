@@ -8,6 +8,8 @@ import {
   AUTO_INITIAL_ANALYSIS_MAX_MS,
   LIVE_REFINEMENT_ANALYSIS_MIN_MS,
   automaticRootMovetimeMs,
+  canScheduleLiveAnalysis,
+  liveAnalysisRetryDelayMs,
   isSameAnalysisTarget
 } from '../src/renderer/src/features/analysis/liveAnalysis'
 import { withTimeout } from '../src/renderer/src/utils/withTimeout'
@@ -172,6 +174,69 @@ async function main(): Promise<void> {
     assert.equal(isSameAnalysisTarget(analysis, 'same-fen', 'a0a1'), true)
     assert.equal(isSameAnalysisTarget(analysis, 'other-fen', 'a0a1'), false)
     assert.equal(isSameAnalysisTarget(analysis, 'same-fen', 'b0b1'), false)
+  })
+
+  await check('持續分析只會被使用者暫停、頁面狀態、引擎、棋盤或既有分析工作阻擋', () => {
+    const ready = {
+      livePaused: false,
+      visible: true,
+      engineAvailable: true,
+      boardValid: true,
+      analysisBusy: false
+    }
+    assert.equal(canScheduleLiveAnalysis(ready), true)
+    assert.equal(canScheduleLiveAnalysis({ ...ready, livePaused: true }), false)
+    assert.equal(canScheduleLiveAnalysis({ ...ready, visible: false }), false)
+    assert.equal(canScheduleLiveAnalysis({ ...ready, analysisBusy: true }), false)
+  })
+
+  await check('即時分析錯誤會以有上限的退避時間自動重試', () => {
+    assert.equal(liveAnalysisRetryDelayMs(0), 0)
+    assert.equal(liveAnalysisRetryDelayMs(1), 1_000)
+    assert.equal(liveAnalysisRetryDelayMs(3), 4_000)
+    assert.equal(liveAnalysisRetryDelayMs(8), 5_000)
+  })
+
+  await check('首頁只在右上保留 AI 教練與猜著，Live 分析固定在底部', () => {
+    const tabs = readFileSync(
+      resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
+      'utf8'
+    )
+    const workspace = readFileSync(
+      resolve('src/renderer/src/features/workspace/AnalysisWorkspace.tsx'),
+      'utf8'
+    )
+    assert.doesNotMatch(tabs, /id: 'live'/)
+    assert.doesNotMatch(tabs, /id: 'details'/)
+    assert.match(workspace, /className="live-analysis-dock"/)
+    assert.match(workspace, /boardCompact/)
+    assert.match(workspace, /analysis-data-drawer/)
+    assert.match(workspace, /<AnalysisPanel[\s\S]*?visible[\s\S]*?activeView="coach"/)
+  })
+
+  await check('AI 對話使用發問當下的分析快照，不會被後續 Live 結果改綁', () => {
+    const panel = readFileSync(
+      resolve('src/renderer/src/components/AnalysisPanel.tsx'),
+      'utf8'
+    )
+    assert.match(panel, /analysisId: pending\.analysisId/)
+    assert.match(panel, /positionFen: pending\.positionFen/)
+    assert.match(panel, /resultSnapshot/)
+  })
+
+  await check('AI IPC 透過單一 PromptBuilder 入口把多輪上下文交給 Harness', () => {
+    const handler = readFileSync(
+      resolve('src/main/ipc/aiExplanationHandlers.ts'),
+      'utf8'
+    )
+    const harness = readFileSync(
+      resolve('src/main/ai/HarnessOrchestrator.ts'),
+      'utf8'
+    )
+    assert.match(handler, /const request = await buildAIExplanationRequest/)
+    assert.match(handler, /explanationPrompt: request\.prompt/)
+    assert.match(harness, /deps\.explanationPrompt/)
+    assert.match(harness, /所有給使用者閱讀的自然語言欄位/)
   })
 
   await check('renderer 維持 Electron / Node / main process 信任邊界', () => {

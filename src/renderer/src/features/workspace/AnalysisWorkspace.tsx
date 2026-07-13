@@ -67,7 +67,7 @@ export function AnalysisWorkspace({
   onRecordGuess,
   onSaveMisunderstood
 }: Props): JSX.Element {
-  const [activeView, setActiveView] = useState<AnalysisView>('live')
+  const [activeView, setActiveView] = useState<AnalysisView>('coach')
   const [draftMove, setDraftMove] = useState('')
   const [draftReason, setDraftReason] = useState('')
   const [submittedGuess, setSubmittedGuess] = useState<SubmittedGuess | null>(null)
@@ -76,6 +76,10 @@ export function AnalysisWorkspace({
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [boardToolsOpen, setBoardToolsOpen] = useState(false)
+  const [boardCompact, setBoardCompact] = useState(true)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [liveDockElement, setLiveDockElement] = useState<HTMLElement | null>(null)
+  const [detailsDockElement, setDetailsDockElement] = useState<HTMLElement | null>(null)
   const [analysisStatus, setAnalysisStatus] =
     useState<AnalysisPanelStatus>(EMPTY_ANALYSIS_STATUS)
   const analysisPanelRef = useRef<AnalysisPanelHandle>(null)
@@ -111,6 +115,10 @@ export function AnalysisWorkspace({
         onUndo={onUndo}
         onRedo={onRedo}
         onRestoreOriginal={onRestoreOriginal}
+        boardCompact={boardCompact}
+        onToggleBoardSize={() => setBoardCompact((current) => !current)}
+        detailsOpen={detailsOpen}
+        onToggleDetails={() => setDetailsOpen((current) => !current)}
         activeView={activeView}
         onViewChange={setActiveView}
         status={analysisStatus}
@@ -119,7 +127,20 @@ export function AnalysisWorkspace({
         onRequestExplanation={requestExplanation}
       />
 
-      <div className="analyze-layout">
+      <section className="analysis-data-drawer" hidden={!detailsOpen} aria-label="當前局面分析資料">
+        <div className="analysis-data-drawer-heading">
+          <div>
+            <span className="eyebrow">POSITION DATA</span>
+            <h2>當前局面資料</h2>
+          </div>
+          <button type="button" className="secondary-btn" onClick={() => setDetailsOpen(false)}>
+            收起資料
+          </button>
+        </div>
+        <div ref={setDetailsDockElement} />
+      </section>
+
+      <div className={`analyze-layout${boardCompact ? ' board-compact' : ''}`}>
         <div className="left-col">
           <BoardEditor
             board={board}
@@ -151,7 +172,6 @@ export function AnalysisWorkspace({
             <AnalysisInspectorTabs
               activeView={activeView}
               onChange={setActiveView}
-              analysisBusy={analysisStatus.analysisBusy}
               aiBusy={analysisStatus.aiBusy}
               hasExplanation={analysisStatus.hasExplanation}
             />
@@ -160,8 +180,10 @@ export function AnalysisWorkspace({
               <div hidden={activeView === 'guess'}>
                 <AnalysisPanel
                   ref={analysisPanelRef}
-                  visible={!hidden}
-                  activeView={activeView === 'guess' ? 'live' : activeView}
+                  visible
+                  activeView="coach"
+                  liveDockElement={liveDockElement}
+                  detailsDockElement={detailsDockElement}
                   onActiveViewChange={setActiveView}
                   board={board}
                   settings={settings}
@@ -175,7 +197,12 @@ export function AnalysisWorkspace({
                 />
               </div>
 
-              <div hidden={activeView !== 'guess'}>
+              <div
+                hidden={activeView !== 'guess'}
+                role="tabpanel"
+                id="analysis-panel-guess"
+                aria-labelledby="analysis-tab-guess"
+              >
                 <GuessModePanel
                   board={board}
                   draftMove={draftMove}
@@ -204,6 +231,12 @@ export function AnalysisWorkspace({
           </div>
         </aside>
       </div>
+
+      <section
+        className="live-analysis-dock"
+        ref={setLiveDockElement}
+        aria-label="持續即時分析"
+      />
     </section>
   )
 }

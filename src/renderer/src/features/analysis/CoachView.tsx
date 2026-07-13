@@ -115,7 +115,7 @@ export function CoachView({
         <section className="ai-explanation streaming">
           <div className="section-heading">
             <h4>AI 解說生成中</h4>
-            <span className="badge on">即時輸出</span>
+            <span className="badge on">證據驗證完成</span>
           </div>
           <ExplanationView text={streamingText} />
         </section>

@@ -47,17 +47,17 @@
 }
 
 .settings-layout {
-  display: grid;
-  grid-template-columns: 225px minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+  display: block;
 }
 
 .settings-navigation {
   position: sticky;
-  top: 10px;
+  top: 0;
+  z-index: 20;
   display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
+  margin-bottom: 14px;
   padding: 7px;
   border: 1px solid var(--color-border);
   border-radius: 14px;
@@ -70,7 +70,7 @@
   grid-template-columns: 26px 1fr;
   gap: 9px;
   align-items: start;
-  padding: 11px 10px;
+  padding: 9px 12px;
   border: 1px solid transparent;
   border-radius: 10px;
   color: var(--color-text-soft);

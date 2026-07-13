@@ -1,7 +1,7 @@
 .inspector-shell {
   display: flex;
-  height: calc(100vh - 165px);
-  min-height: 560px;
+  height: clamp(520px, 62vh, 640px);
+  min-height: 520px;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--color-border);
@@ -13,10 +13,30 @@
 .inspector-tabs {
   display: grid;
   flex: 0 0 auto;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 6px;
   border-bottom: 1px solid var(--color-border);
   background: #f6f9f7;
+}
+
+.live-analysis-grid {
+  grid-template-columns: minmax(420px, 1.1fr) minmax(390px, 0.9fr);
+  align-items: start;
+}
+
+.live-console-column,
+.live-result-column {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.live-analysis-panel .engine-console-feed {
+  max-height: clamp(220px, 30vh, 390px);
+}
+
+.analysis-details-panel .details-view {
+  padding-top: 0;
 }
 
 .inspector-tab {

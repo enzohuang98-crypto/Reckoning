@@ -8,16 +8,13 @@ interface TabItem {
 }
 
 const tabs: TabItem[] = [
-  { id: 'live', label: '即時分析', icon: 'live' },
   { id: 'coach', label: 'AI 教練', icon: 'brain' },
-  { id: 'guess', label: '猜著', icon: 'target' },
-  { id: 'details', label: '資料', icon: 'details' }
+  { id: 'guess', label: '猜著', icon: 'target' }
 ]
 
 interface Props {
   activeView: AnalysisView
   onChange: (view: AnalysisView) => void
-  analysisBusy: boolean
   aiBusy: boolean
   hasExplanation: boolean
 }
@@ -25,7 +22,6 @@ interface Props {
 export function AnalysisInspectorTabs({
   activeView,
   onChange,
-  analysisBusy,
   aiBusy,
   hasExplanation
 }: Props): JSX.Element {
@@ -36,13 +32,23 @@ export function AnalysisInspectorTabs({
           key={tab.id}
           type="button"
           role="tab"
+          id={`analysis-tab-${tab.id}`}
+          aria-controls={`analysis-panel-${tab.id}`}
           aria-selected={activeView === tab.id}
+          tabIndex={activeView === tab.id ? 0 : -1}
           className={`inspector-tab${activeView === tab.id ? ' active' : ''}`}
           onClick={() => onChange(tab.id)}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+            event.preventDefault()
+            const index = tabs.findIndex((item) => item.id === tab.id)
+            const offset = event.key === 'ArrowRight' ? 1 : -1
+            const next = tabs[(index + offset + tabs.length) % tabs.length]
+            onChange(next.id)
+          }}
         >
           <Icon name={tab.icon} size={17} />
           <span>{tab.label}</span>
-          {tab.id === 'live' && analysisBusy && <span className="tab-activity" />}
           {tab.id === 'coach' && aiBusy && <span className="tab-activity" />}
           {tab.id === 'coach' && !aiBusy && hasExplanation && (
             <span className="tab-check">✓</span>

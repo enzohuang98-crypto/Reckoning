@@ -43,7 +43,7 @@ src/renderer/src/
     app-data/                AppData 載入、遷移、排隊儲存
     board/                   棋盤 timeline、悔棋、下一步、還原
     workspace/               分析工作區的功能組裝
-    analysis/                即時引擎、AI 教練、猜著、資料檢視
+    analysis/                持續引擎、AI 教練、猜著、局面資料檢視
     settings/                分類式設定 UI 與各領域 section
   components/
     ui/                      無業務狀態的共用元件與 SVG icon
@@ -57,8 +57,8 @@ src/renderer/src/
 ### 元件責任
 
 - `App.tsx`：只組裝頂層頁面、設定、資料 store 與棋盤工作階段。
-- `AnalysisWorkspace.tsx`：管理右側檢視選擇與猜著互動，不執行 IPC 驗證。
-- `AnalysisPanel.tsx`：分析與 AI IPC 的 controller；純顯示放到 `features/analysis`。
+- `AnalysisWorkspace.tsx`：管理首頁版面、右側教練／猜著選擇與猜著互動，不執行 IPC 驗證。
+- `AnalysisPanel.tsx`：唯一的分析與 AI IPC controller；同一份狀態透過 portal 餵給右側教練、頂部資料抽屜與底部 Live dock，禁止為不同區塊重複掛載 controller。
 - `SettingsPage.tsx`：設定 IPC controller；各分類畫面放到 `features/settings`。
 - `styles/*.css`：一個 selector 應只有一個主要定義；響應式覆蓋只放 `responsive.css`。
 
@@ -71,17 +71,20 @@ App Header
   分析 | 錯題本 | 待理解 | 設定
 
 Analysis Command Bar
-  局面工具 ▾ | 悔棋 | 下一步 | 重新分析 | 停止 | AI 解說 | 猜著模式
+  局面工具 ▾ | 悔棋 | 下一步 | 重新分析 | 停止 | AI 解說 | 棋盤尺寸 | 分析資料 | 猜著模式
 
 Workspace
-  ├─ 左：棋盤、擺棋抽屜、匯入抽屜
-  └─ 右：即時分析 | AI 教練 | 猜著 | 資料
+  ├─ 頂部：可收合的當前局面資料
+  ├─ 左上：可縮放棋盤、擺棋抽屜、匯入抽屜
+  ├─ 右上：AI 教練 | 猜著
+  └─ 底部：跨欄持續即時分析與最新引擎結果
 ```
 
-- 引擎監聽與 AI 生成不因切換右側檢視或頂層頁面而卸載。
+- 引擎監聽與 AI 生成不因切換右側檢視或頂層頁面而卸載；只有使用者按「停止」、局面不合法或引擎不可用才停止排程。
+- Live 採有界 movetime 搜尋區段連續串接：先快速產生可用結果，再以較長區段持續加深；錯誤使用 1、2、4、5 秒上限退避重試。不能直接改成 `go infinite`，因為每段完成後的穩定 analysis ID 是 AI session 與持久化的邊界。
 - 常用動作直接顯示；低頻局面功能放在「局面工具」選單。
-- 原始輸出、複核引擎與收藏工具集中在「資料」。
-- 設定依用途分成 AI、本機引擎、解說品質、資料與系統四類。
+- 原始輸出、複核引擎與收藏工具由頂部「分析資料」展開，不占用右側教練／猜著空間。
+- 設定依用途分成 AI、本機引擎、解說品質、資料與系統四類，分類導覽固定在設定內容上方。
 
 ## 4. 資料流
 
@@ -91,7 +94,9 @@ BoardState change
   → progress events (live view)
   → EngineAnalysis session stored in main
   → renderer receives analysisId
-  → AI Harness reads session by analysisId
+  → AI request captures that analysisId / FEN / result snapshot
+  → Live refinement continues independently
+  → AI Harness reads the captured session by analysisId
   → quality loop validates and rewrites failed sections
   → conversation / feedback saved to AppData
 ```
@@ -121,6 +126,8 @@ deterministic plan
 ```
 
 - 一般成功路徑只需要「後果審查 + 寫作」兩次模型呼叫；規劃、證據關聯、術語檢查與品質評分都在本機完成。
+- `buildAIExplanationRequest()` 是 production 的唯一 PromptBuilder／API Key／session 組裝入口；多輪 `conversationHistory`、追問與目標語言必須經此入口送進 Harness 寫作，不可只停留在 renderer 顯示或 IPC 型別。
+- AI 請求與 Live refinement 可平行執行。Conversation 必須綁定發問當下捕捉的 analysis ID 與 FEN，AI 完成事件不得改用當時最新的 Live result。
 - 每個核心主張必須引用 `evidenceIds`，並連到已驗證的 `findingIds`；空泛標籤、唯分數理由、虛構主線與不完整因果鏈都不得通過。
 - 暫時性 429 / 5xx / timeout 只自動重試一次；模型呼叫與引擎加深都有固定預算，不能形成無限 loop。
 - `xiangqiKnowledge.ts` 是可檢索的結構化本機知識庫；只把與局面相關的小段放進 prompt。它協助低階模型理解術語，但永遠不能冒充本局引擎證據。

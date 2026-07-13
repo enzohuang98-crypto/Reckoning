@@ -7,6 +7,7 @@ import {
   useRef,
   useState
 } from 'react'
+import { createPortal } from 'react-dom'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
 import type {
@@ -49,7 +50,9 @@ import type {
 import {
   automaticRootMovetimeMs,
   automaticUserMoveMovetimeMs,
-  isSameAnalysisTarget
+  canScheduleLiveAnalysis,
+  isSameAnalysisTarget,
+  liveAnalysisRetryDelayMs
 } from '../features/analysis/liveAnalysis'
 
 export type { AnalysisPanelHandle, AnalysisPanelStatus } from '../features/analysis/types'
@@ -57,6 +60,8 @@ export type { AnalysisPanelHandle, AnalysisPanelStatus } from '../features/analy
 interface Props {
   visible: boolean
   activeView: Exclude<AnalysisView, 'guess'>
+  liveDockElement: HTMLElement | null
+  detailsDockElement: HTMLElement | null
   onActiveViewChange: (view: AnalysisView) => void
   board: BoardState
   settings: AppSettings
@@ -72,6 +77,9 @@ interface Props {
 interface PendingAiRequest {
   question: string | null
   conversationId: string
+  analysisId: string
+  positionFen: string
+  resultSnapshot: EngineAnalysisResultPayload
 }
 
 const MAX_ENGINE_THOUGHTS = 80
@@ -108,6 +116,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   {
     visible,
     activeView,
+    liveDockElement,
+    detailsDockElement,
     onActiveViewChange,
     board,
     settings,
@@ -133,6 +143,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [notice, setNotice] = useState<string | null>(null)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
+  const [explainedResult, setExplainedResult] =
+    useState<EngineAnalysisResultPayload | null>(null)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiCancelling, setAiCancelling] = useState(false)
   const [streamingText, setStreamingText] = useState('')
@@ -163,6 +175,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const analysisStartedAtRef = useRef<number | null>(null)
   const lastThoughtAtRef = useRef<number | null>(null)
   const [liveNow, setLiveNow] = useState(() => Date.now())
+  const [liveRetryCount, setLiveRetryCount] = useState(0)
 
   useEffect(() => {
     settingsRef.current = settings
@@ -240,6 +253,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setResult(null)
     resultRef.current = null
     setExplanation(null)
+    setExplainedResult(null)
+    setLiveRetryCount(0)
     setStreamingText('')
     setFollowUp('')
     setCollectionReason('')
@@ -300,6 +315,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setRefining(false)
       setProgress(null)
       setCancelling(false)
+      setLiveRetryCount(0)
       setResult(payload)
       resultRef.current = payload
       onResult(payload)
@@ -316,6 +332,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setCancelling(false)
       if (payload.code === 'cancelled') setNotice('已取消分析。')
       else {
+        setLiveRetryCount((current) => current + 1)
         setError(payload.message)
         setEngineDiagnostics(payload.diagnostics ?? [])
       }
@@ -351,7 +368,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setExplanation(response)
       onExplanation(response)
 
-      if (pending && resultRef.current) {
+      if (pending) {
         const now = new Date().toISOString()
         const current = conversationRef.current
         const messages =
@@ -364,13 +381,14 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               ]
         const next: AIConversation = {
           id: pending.conversationId,
-          analysisId: resultRef.current.analysisId,
-          positionFen: resultRef.current.engineAnalysis.positionFen,
+          analysisId: pending.analysisId,
+          positionFen: pending.positionFen,
           createdAt: current?.createdAt ?? now,
           updatedAt: now,
           messages
         }
         conversationRef.current = next
+        setExplainedResult(pending.resultSnapshot)
         onConversationChange(next)
       }
     })
@@ -454,8 +472,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setError(null)
     setEngineDiagnostics([])
     setNotice(null)
-    setExplanation(null)
-    onExplanation(null)
+    if (!refinement) {
+      setExplanation(null)
+      if (!conversationRef.current) setExplainedResult(null)
+      onExplanation(null)
+    }
 
     const requestId = crypto.randomUUID()
     activeRequestId.current = requestId
@@ -475,8 +496,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       score: null,
       displayPrincipalVariation: []
     })
-    setEngineThoughts([])
     if (!refinement) {
+      setEngineThoughts([])
       setResult(null)
       resultRef.current = null
       onResult(null)
@@ -510,41 +531,30 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   ])
 
   useEffect(() => {
-    if (livePaused || !visible || !status?.available || !hasBothKings(board)) return
-    const timer = window.setTimeout(() => startAnalysis(true), 180)
-    return () => window.clearTimeout(timer)
-  }, [
-    board.fen,
-    livePaused,
-    startAnalysis,
-    status?.available,
-    submittedGuess?.move,
-    visible
-  ])
-
-  useEffect(() => {
     if (
-      livePaused ||
-      !visible ||
-      !status?.available ||
-      !result ||
-      aiBusy ||
-      explanation ||
-      conversationRef.current ||
+      !canScheduleLiveAnalysis({
+        livePaused,
+        visible,
+        engineAvailable: Boolean(status?.available),
+        boardValid: hasBothKings(board),
+        analysisBusy: busy
+      }) ||
       activeRequestId.current
-    ) {
-      return
-    }
-    const timer = window.setTimeout(() => startAnalysis(true), 320)
+    ) return
+
+    const retryDelay = liveAnalysisRetryDelayMs(liveRetryCount)
+    const delay = retryDelay || (result ? 320 : 180)
+    const timer = window.setTimeout(() => startAnalysis(true), delay)
     return () => window.clearTimeout(timer)
   }, [
-    aiBusy,
-    conversation?.id,
-    explanation,
+    board,
+    busy,
     livePaused,
+    liveRetryCount,
     result?.analysisId,
     startAnalysis,
     status?.available,
+    submittedGuess?.move,
     visible
   ])
 
@@ -569,16 +579,26 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
   const generateExplanation = (question: string | null, regenerate = false): void => {
     if (!result) return
-    if (refining && activeRequestId.current) {
-      window.api.engine.cancelAnalysis(activeRequestId.current)
-      setRefining(false)
-    }
     const cleanedQuestion = question?.trim() || null
     const currentConversation = regenerate ? null : conversationRef.current
     const conversationId = currentConversation?.id ?? crypto.randomUUID()
+    const resultSnapshot =
+      !regenerate && currentConversation && explainedResult
+        ? explainedResult
+        : result
+    const analysisId = currentConversation?.analysisId ?? resultSnapshot.analysisId
+    const positionFen =
+      currentConversation?.positionFen ?? resultSnapshot.engineAnalysis.positionFen
     const requestId = crypto.randomUUID()
     activeAiRequestId.current = requestId
-    pendingAiRequest.current = { question: cleanedQuestion, conversationId }
+    pendingAiRequest.current = {
+      question: cleanedQuestion,
+      conversationId,
+      analysisId,
+      positionFen,
+      resultSnapshot
+    }
+    setExplainedResult(resultSnapshot)
     setAiBusy(true)
     setAiCancelling(false)
     setError(null)
@@ -598,7 +618,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     }
     window.api.ai.startExplanation({
       requestId,
-      analysisId: result.analysisId,
+      analysisId,
       provider: settings.aiProvider,
       model: settings.aiModel,
       baseUrl:
@@ -685,18 +705,20 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     }
   }
 
+  const coachResult = explainedResult ?? result
+
   const saveMisunderstood = (): void => {
-    if (!result) return
+    if (!coachResult) return
     const now = new Date().toISOString()
     onSaveMisunderstood({
       id: crypto.randomUUID(),
-      positionFen: result.engineAnalysis.positionFen,
+      positionFen: coachResult.engineAnalysis.positionFen,
       reason: collectionReason.trim() || '需要之後再研究',
       createdAt: now,
       updatedAt: now,
-      analysisId: result.analysisId,
-      engineAnalysis: result.engineAnalysis,
-      moveComparison: result.moveComparison,
+      analysisId: coachResult.analysisId,
+      engineAnalysis: coachResult.engineAnalysis,
+      moveComparison: coachResult.moveComparison,
       explanation: explanation?.text,
       conversationId: conversation?.id
     })
@@ -705,19 +727,19 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }
 
   const tokenEstimate = useMemo(() => {
-    if (!result) return null
+    if (!coachResult) return null
     const engineText = JSON.stringify({
-      fen: result.engineAnalysis.positionFen,
-      bestMove: result.engineAnalysis.bestMove,
-      candidates: result.engineAnalysis.candidateMoves,
-      comparison: result.moveComparison,
+      fen: coachResult.engineAnalysis.positionFen,
+      bestMove: coachResult.engineAnalysis.bestMove,
+      candidates: coachResult.engineAnalysis.candidateMoves,
+      comparison: coachResult.moveComparison,
       conversation: conversation?.messages ?? []
     })
     return {
       input: estimateTokens(engineText),
       output: conversation ? 700 : 1800
     }
-  }, [conversation, result])
+  }, [coachResult, conversation])
 
   const cancelExplain = (): void => {
     if (!activeAiRequestId.current) return
@@ -813,9 +835,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     }
   }
 
-  return (
-    <div className={`analysis-panel analysis-view-${activeView}`}>
-      <div className="inspector-context-bar">
+  const liveDock = (
+    <div className="analysis-panel live-analysis-panel">
+      <div className="live-dock-heading">
+        <div>
+          <span className="eyebrow">CONTINUOUS ENGINE</span>
+          <h2>即時分析</h2>
+        </div>
         {status && (
           <div className={`engine-status ${status.available ? 'ok' : 'warn'}`}>
             {status.available
@@ -823,12 +849,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               : status.message ?? `${status.engineName} 未就緒`}
           </div>
         )}
-        {error && <div className="error-text">{error}</div>}
-        {notice && <div className="notice-text">{notice}</div>}
       </div>
-
-      {activeView === 'live' && (
-        <div className="analysis-view-content">
+      {error && <div className="error-text live-dock-message">{error}</div>}
+      {notice && <div className="notice-text live-dock-message">{notice}</div>}
+      <div className="analysis-view-content live-analysis-grid">
+        <div className="live-console-column">
           <EngineConsole
             status={status}
             progress={progress}
@@ -843,19 +868,21 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
             <span>
               {busy
                 ? refining
-                  ? 'Live 分析持續加深中；可直接請 AI 解說，系統會保留目前最佳結果。'
+                  ? '即時分析持續加深中；AI 教練會固定使用發問當下的分析快照。'
                   : '棋盤已變更，正在快速建立第一份可用結果。'
                 : livePaused
-                  ? 'Live 分析已暫停；按頂部「重新分析」即可恢復。'
-                  : 'Live 分析已開啟：先快速出結果，再持續加深；需要時可按「停止」。'}
+                  ? '即時分析已暫停；按頂部「重新分析」即可恢復。'
+                  : liveRetryCount > 0
+                    ? `引擎暫時失敗，將自動進行第 ${liveRetryCount + 1} 次嘗試。`
+                    : '即時分析已開啟：每輪完成後會自動繼續加深，直到按下「停止」。'}
             </span>
-            {(analysisBlockedReason || aiBlockedReason) && !busy && (
-              <span className="muted small">
-                {analysisBlockedReason ?? aiBlockedReason}
-              </span>
+            {analysisBlockedReason && !busy && (
+              <span className="muted small">{analysisBlockedReason}</span>
             )}
           </div>
+        </div>
 
+        <div className="live-result-column">
           {result ? (
             <EngineResultSummary result={result} />
           ) : (
@@ -866,59 +893,74 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
             </div>
           )}
         </div>
-      )}
-
-      {activeView === 'coach' && (
-        <div ref={explanationAnchorRef}>
-          <CoachView
-            settings={settings}
-            result={result}
-            explanation={explanation}
-            conversation={conversation}
-            submittedGuess={submittedGuess}
-            aiBusy={aiBusy}
-            streamingText={streamingText}
-            harnessProgress={harnessProgress}
-            harnessEvidence={harnessEvidence}
-            harnessWarnings={harnessWarnings}
-            traceId={traceId}
-            tokenEstimate={tokenEstimate}
-            aiBlockedReason={aiBlockedReason}
-            followUp={followUp}
-            onFollowUpChange={setFollowUp}
-            onGenerate={() => generateExplanation(null)}
-            onContinue={continueExplain}
-            onCancel={cancelExplain}
-            onSubmitFollowUp={submitFollowUp}
-            onCopy={() => void copyExplanation()}
-            onFeedback={(feedback) => {
-              if (!traceId) return
-              void window.api.ai
-                .setHarnessFeedback(traceId, feedback)
-                .then(() => setNotice('已記錄這次解說回饋。'))
-                .catch(() => setError('回饋儲存失敗，請稍後再試。'))
-            }}
-          />
-        </div>
-      )}
-
-      {activeView === 'details' && (
-        <DetailsView
-          result={result}
-          settings={settings}
-          registry={engineRegistry}
-          primaryEngineId={primaryEngineId}
-          verificationEngineId={verificationEngineId}
-          busy={busy}
-          aiBusy={aiBusy}
-          collectionReason={collectionReason}
-          diagnostics={engineDiagnostics}
-          onCollectionReasonChange={setCollectionReason}
-          onSaveMisunderstood={saveMisunderstood}
-          onSelectPrimary={(id) => void selectPrimaryEngine(id)}
-          onSelectVerification={(id) => void selectVerificationEngine(id)}
-        />
-      )}
+      </div>
     </div>
+  )
+
+  const detailsDock = (
+    <div className="analysis-panel analysis-details-panel">
+      <DetailsView
+        result={result}
+        settings={settings}
+        registry={engineRegistry}
+        primaryEngineId={primaryEngineId}
+        verificationEngineId={verificationEngineId}
+        busy={busy}
+        aiBusy={aiBusy}
+        collectionReason={collectionReason}
+        diagnostics={engineDiagnostics}
+        onCollectionReasonChange={setCollectionReason}
+        onSaveMisunderstood={saveMisunderstood}
+        onSelectPrimary={(id) => void selectPrimaryEngine(id)}
+        onSelectVerification={(id) => void selectVerificationEngine(id)}
+      />
+    </div>
+  )
+
+  return (
+    <>
+      <div className={`analysis-panel analysis-view-${activeView}`}>
+        {activeView === 'coach' && (
+          <div
+            ref={explanationAnchorRef}
+            role="tabpanel"
+            id="analysis-panel-coach"
+            aria-labelledby="analysis-tab-coach"
+          >
+            <CoachView
+              settings={settings}
+              result={coachResult}
+              explanation={explanation}
+              conversation={conversation}
+              submittedGuess={submittedGuess}
+              aiBusy={aiBusy}
+              streamingText={streamingText}
+              harnessProgress={harnessProgress}
+              harnessEvidence={harnessEvidence}
+              harnessWarnings={harnessWarnings}
+              traceId={traceId}
+              tokenEstimate={tokenEstimate}
+              aiBlockedReason={aiBlockedReason}
+              followUp={followUp}
+              onFollowUpChange={setFollowUp}
+              onGenerate={() => generateExplanation(null)}
+              onContinue={continueExplain}
+              onCancel={cancelExplain}
+              onSubmitFollowUp={submitFollowUp}
+              onCopy={() => void copyExplanation()}
+              onFeedback={(feedback) => {
+                if (!traceId) return
+                void window.api.ai
+                  .setHarnessFeedback(traceId, feedback)
+                  .then(() => setNotice('已記錄這次解說回饋。'))
+                  .catch(() => setError('回饋儲存失敗，請稍後再試。'))
+              }}
+            />
+          </div>
+        )}
+      </div>
+      {liveDockElement ? createPortal(liveDock, liveDockElement) : null}
+      {detailsDockElement ? createPortal(detailsDock, detailsDockElement) : null}
+    </>
   )
 })

@@ -1,5 +1,12 @@
 @media (max-width: 1240px) {
-  .analyze-layout {
+  .settings-section-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .analyze-layout,
+  .analyze-layout.board-compact {
     grid-template-columns: 1fr;
   }
 
@@ -11,7 +18,7 @@
     height: min(720px, calc(100vh - 130px));
   }
 
-  .settings-section-grid {
+  .live-analysis-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -56,10 +63,6 @@
   .settings-number-grid,
   .analysis-engine-selectors,
   .guess-steps {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-layout {
     grid-template-columns: 1fr;
   }
 

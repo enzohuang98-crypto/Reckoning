@@ -12,6 +12,10 @@ interface Props {
   onUndo: () => void
   onRedo: () => void
   onRestoreOriginal: () => void
+  boardCompact: boolean
+  onToggleBoardSize: () => void
+  detailsOpen: boolean
+  onToggleDetails: () => void
   activeView: AnalysisView
   onViewChange: (view: AnalysisView) => void
   status: AnalysisPanelStatus
@@ -62,6 +66,10 @@ export function AnalysisToolbar({
   onUndo,
   onRedo,
   onRestoreOriginal,
+  boardCompact,
+  onToggleBoardSize,
+  detailsOpen,
+  onToggleDetails,
   activeView,
   onViewChange,
   status,
@@ -135,10 +143,7 @@ export function AnalysisToolbar({
           title={status.analysisBlockedReason ?? '使用完整設定重新分析目前局面'}
           variant="primary"
           disabled={!status.canAnalyze}
-          onClick={() => {
-            onViewChange('live')
-            onStartAnalysis()
-          }}
+          onClick={onStartAnalysis}
         />
         <ToolbarButton
           icon="stop"
@@ -163,13 +168,29 @@ export function AnalysisToolbar({
 
       <div className="toolbar-spacer" />
 
-      <ToolbarButton
-        icon="target"
-        label="猜著模式"
-        title="先選擇你的著法，再與引擎比較"
-        active={activeView === 'guess'}
-        onClick={() => onViewChange('guess')}
-      />
+      <div className="toolbar-group">
+        <ToolbarButton
+          icon="board"
+          label={boardCompact ? '放大棋盤' : '縮小棋盤'}
+          title={boardCompact ? '放大棋盤工作區' : '縮小棋盤，騰出更多教練空間'}
+          active={boardCompact}
+          onClick={onToggleBoardSize}
+        />
+        <ToolbarButton
+          icon="details"
+          label="分析資料"
+          title="在工具列下方展開當前局面的分析資料"
+          active={detailsOpen}
+          onClick={onToggleDetails}
+        />
+        <ToolbarButton
+          icon="target"
+          label="猜著模式"
+          title="先選擇你的著法，再與引擎比較"
+          active={activeView === 'guess'}
+          onClick={() => onViewChange('guess')}
+        />
+      </div>
     </div>
   )
 }

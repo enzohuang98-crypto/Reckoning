@@ -4,6 +4,7 @@ import { START_FEN } from '../src/shared/types/BoardState'
 import { convertCpScore } from '../src/main/engine/EngineOutputParser'
 import { compareMove } from '../src/shared/logic/MoveComparisonService'
 import { buildDualEngineComparison } from '../src/shared/logic/DualEngineComparison'
+import { buildExplanationPrompt } from '../src/main/ai/promptBuilder'
 import {
   runExplanationHarness,
   validateAnswer,
@@ -116,9 +117,11 @@ class FakeProvider implements AIProvider {
   readonly id = 'openai' as const
   readonly displayName = 'Fake'
   calls = 0
+  prompts: string[] = []
 
-  async generateExplanation() {
+  async generateExplanation(request: { prompt: string }) {
     this.calls++
+    this.prompts.push(request.prompt)
     const outputs = [
       '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方補走炮二平五後中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}',
       '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。","directAnswerEvidenceIds":["E1"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五立即控制中路並保留先手。","evidenceIds":["E1"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七先出子，錯過立即控制中路的時機。","evidenceIds":["E1"],"causal":{"cause":"因為先走馬八進七而不是炮二平五","mechanism":"開局第一時間的中路壓制被推遲","affected":"紅方中炮與中路攻勢","opponentUse":"黑方趁機馬8進7完成出子","consequence":"紅方補走炮二平五時黑方已多完成一步部署"}}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方以馬8進7和馬2進3完成兩翼馬部署。","evidenceIds":["E1"],"causal":{"cause":"因為馬八進七沒有立即施壓","mechanism":"黑方獲得連續出子的節奏，完成兩翼部署","affected":"黑方雙馬與整體陣形","opponentUse":"黑方接連走馬8進7與馬2進3","consequence":"黑方陣形完整，紅方中路計畫慢一拍"}}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。","evidenceIds":["E1"],"causal":{"cause":"因為馬八進七後黑方馬8進7","mechanism":"紅方被迫在第三手才補炮二平五控制中路","affected":"紅方中路與先手節奏","opponentUse":"黑方再走馬2進3補齊另一翼","consequence":"黑方多完成一步部署，紅方攻勢延後"}}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。","evidenceIds":["E1"],"causal":{"cause":"因為炮二平五與馬八進七的次序互換","mechanism":"中路控制與出子節奏易手","affected":"紅方先手與黑方陣形","opponentUse":"黑方按馬8進7、馬2進3從容應對","consequence":"紅方需要多花一手補回中炮，黑方部署領先"}}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。","evidenceIds":["E1"]}]}],"generalNotes":["一般而言，先出正馬再補中炮，容易讓對手搶先完成部署。"],"warnings":[]}',
@@ -145,12 +148,12 @@ class TransientRetryProvider implements AIProvider {
   attempts = 0
   private readonly delegate = new FakeProvider()
 
-  async generateExplanation() {
+  async generateExplanation(request: { prompt: string }) {
     this.attempts += 1
     if (this.attempts === 1) {
       throw new Error('OpenAI-compatible API 錯誤 (503)：temporarily unavailable')
     }
-    return this.delegate.generateExplanation()
+    return this.delegate.generateExplanation(request)
   }
 
   async *generateExplanationStream(): AsyncIterable<never> {
@@ -285,6 +288,24 @@ async function main(): Promise<void> {
   console.log('\n## AI 解說 Harness')
   const traces: HarnessTrace[] = []
   const provider = new FakeProvider()
+  const explanationPrompt = buildExplanationPrompt({
+    engineAnalysis: session.engineAnalysis,
+    moveComparison: session.moveComparison,
+    userLevel: 'intermediate',
+    explanationStyle: 'long_analytical',
+    language: 'en',
+    conversationHistory: [
+      {
+        id: 'message-1',
+        role: 'assistant',
+        text: 'Previous coach context marker',
+        createdAt: new Date().toISOString()
+      }
+    ],
+    followUpQuestion: 'Why does that previous point matter?'
+  })
+  check('PromptBuilder 實際納入目標語言', explanationPrompt.includes('English'))
+  check('PromptBuilder 實際納入既有對話', explanationPrompt.includes('Previous coach context marker'))
   const result = await runExplanationHarness(
     {
       requestId: 'ai-request-1',
@@ -317,11 +338,13 @@ async function main(): Promise<void> {
       } as never,
       traceStore: { save: (trace: HarnessTrace) => traces.push(trace) } as never,
       signal: new AbortController().signal,
-      onProgress: () => undefined
+      onProgress: () => undefined,
+      explanationPrompt
     }
   )
 
   check('Harness 以具體後果審查與寫作兩次模型呼叫完成', provider.calls === 2)
+  check('Harness 寫作階段收到 PromptBuilder 的多輪上下文', provider.prompts.some((prompt) => prompt.includes('Previous coach context marker')))
   check('回答以中文呈現且含證據引用', result.finalText.includes('[E1]'))
   check('回答先說最佳著法目的', result.finalText.includes('最佳著法想做什麼'))
   check('回答解釋錯失機會與對手利用', result.finalText.includes('你的著法錯失什麼') && result.finalText.includes('對手如何利用'))

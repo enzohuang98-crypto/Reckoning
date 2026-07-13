@@ -391,34 +391,22 @@ export function registerAiExplanationHandlers(
       activeExplanationRequests.set(requestId, controller)
       let completedNormally = false
       try {
-        const provider = getAIProvider(payload.provider)
-        const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
-        const apiKey = secretStore.getApiKey(payload.provider) ?? ''
-        if (!apiKey && !(
-          payload.provider === 'openai-compatible' &&
-          isLoopbackAiBaseUrl(payload.baseUrl)
-        )) {
-          throw new MissingApiKeyError(
-            payload.provider,
-            secretStore.hasApiKey(payload.provider)
-          )
-        }
-        assertProviderEndpointBinding(
-          payload.provider,
-          payload.baseUrl,
-          apiKey,
-          secretStore.getBoundBaseUrl(payload.provider)
-        )
+        const request = await buildAIExplanationRequest(payload, {
+          secretStore,
+          analysisSessionStore: sessionStore
+        })
+        const provider = getAIProvider(request.provider)
         const session = await sessionStore.get(payload.analysisId)
         if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
         const result = await runExplanationHarness(payload, {
           provider,
-          apiKey,
-          model: modelConfig.model,
+          apiKey: request.apiKey,
+          model: request.model,
           session,
           registry: engineRegistry,
           traceStore,
           signal: controller.signal,
+          explanationPrompt: request.prompt,
           onProgress: (progress) => {
             event.reply(IPC.AI_HARNESS_PROGRESS, {
               requestId,

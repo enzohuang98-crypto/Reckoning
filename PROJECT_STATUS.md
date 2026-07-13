@@ -1,6 +1,6 @@
 # 象棋 AI 分析講解：專案交接狀態
 
-最後更新：2026-07-12
+最後更新：2026-07-13
 
 ## 1. 專案位置與目前代碼
 
@@ -59,7 +59,9 @@
 
 - UCI／UCCI 自動偵測、握手、短搜尋測試與多引擎登錄。
 - 主引擎與複核引擎可分別選擇。
-- 自動即時分析先快速回傳，再持續加深；切換右側檢視不卸載分析工作。
+- 自動即時分析先快速回傳，再以有界搜尋區段持續加深；切換右側或頂層頁面不卸載分析工作。
+- AI 解說與 Live refinement 可平行執行；AI 對話固定綁定發問當下的 analysis ID、FEN 與結果快照，不會被後續 Live 結果改綁。
+- Live 區段失敗會以 1、2、4、5 秒上限退避自動重試；只有使用者按「停止」、棋盤不合法或引擎不可用才停止排程。
 - 即時顯示引擎角色、深度、分數、時間、NPS、中文主線與歷史動態。
 - 原始引擎輸出可展開查看。
 - 複核引擎失敗時保留主引擎結果並顯示降級警告。
@@ -77,6 +79,7 @@
 - 相容服務金鑰綁定儲存時確認的 Base URL；網址變更後必須重新確認並儲存。
 - Provider JSON 回應上限 5 MB；官方格式與本次請求的精確金鑰都會從錯誤文字遮蔽。
 - 單一 API Key 欄位可依前綴辨識官方服務，或配合使用者明確選擇相容服務。
+- Production AI IPC 已統一經 `buildAIExplanationRequest()` 組裝金鑰、分析 session 與 prompt；多輪歷史、追問與繁中／簡中／英文設定會真正進入 Harness 寫作，不再只有 UI 保存。
 
 ### Harness / Loop Engineering
 
@@ -101,10 +104,11 @@
 ### UI 架構
 
 - Task-first App Shell：分析、錯題本、待理解、設定。
-- 分析工具列集中局面工具、悔棋、下一步、分析／停止、AI 解說與猜著模式。
+- 分析工具列集中局面工具、悔棋、下一步、分析／停止、AI 解說、棋盤尺寸、分析資料與猜著模式。
 - 擺棋與匯入工具採收合式入口。
-- 右側固定為即時分析、AI 教練、猜著、資料四種檢視。
-- 引擎與 AI 工作不因切換檢視而中斷。
+- 棋盤預設縮小並可切換尺寸；右上只保留 AI 教練與猜著，當前局面資料由頂部工具列展開，持續即時分析跨欄固定在底部。
+- 引擎與 AI 工作不因切換檢視或頂層頁面而中斷。
+- 設定四分類改為內容上方的水平導覽，減少左側欄與卡片同時競爭寬度的雜亂感。
 - renderer 已拆成 app、feature、page、shared logic 與多個 CSS 模組，不再是單一大型樣式檔。
 - 靜態測試要求每個原生按鈕都有 `onClick` 與可辨識名稱。
 
@@ -114,7 +118,7 @@
 
 - `npm run typecheck`：通過。
 - 定向回歸：providers 43、engine registry 18、renderer architecture 13、security 50，全部通過。
-- `npm test`：434 項通過、0 失敗；已先以 Windows 內建 `csc.exe` 編譯 `tests/fake-engine.exe`，engine E2E 88 項實際執行，沒有跳過。
+- `npm test`：446 項通過、0 失敗；engine E2E 88 項實際執行，沒有跳過。
 - `npm run security:audit`：0 vulnerabilities。
 - `git diff --check`：通過，只有 Windows LF／CRLF 提示。
 - Codex Security working-tree diff scan：8/8 個工作列完整覆蓋，0 個候選、0 個 deferred、無 reportable finding。
@@ -122,12 +126,26 @@
 - `npm run pack`：`release/win-unpacked` 成功；實體 `npm ci` 依賴樹可完整封裝 production modules。
 - `npm run dist:update:github`：成功產生 v0.3.0 NSIS 安裝檔、blockmap、`latest.yml` 與 `app-update.yml`，沒有公開上傳。
 - 執行檔 `ProductVersion`：`0.3.0.0`。
-- 最終 `win-unpacked` 實機滑鼠驗證：啟動、單一實例、走子、悔棋／下一步、擺棋清除模式退出、即時分析、四個分析檢視、猜著棋盤選棋、四個主頁、四個設定分類、原始引擎輸出與版本／更新來源皆通過。
+- 最新 renderer 已用 Electron 本機除錯通道驗證 1720、1240、980 px：無水平溢位、棋盤約 444 px、右上只有 AI 教練／猜著、底部 Live 首屏可見、頂部資料抽屜可展開、設定四分類水平排列。最終 Release 安裝版仍需在發布後再做啟動與版本核對。
 - 已設定真實 Gemini Key，但為避免未經確認產生服務商費用，本次只驗證 AI 解說入口與設定狀態，未發送付費模型請求。
 
 ## 5. 本次完成的變更
 
 本次交付包括：
+
+- `src/renderer/src/components/AnalysisPanel.tsx`、`features/analysis/liveAnalysis.ts`
+  - 修正 AI 解說／既有 conversation 會使 Live 永久停止的生命週期缺口。
+  - refinement 不再清空既有解說與思考紀錄，失敗會退避重試。
+  - AI request 捕捉 analysis ID、FEN 與結果快照，避免並行 Live 更新造成 conversation 錯綁。
+- `src/renderer/src/features/workspace/AnalysisWorkspace.tsx`、`AnalysisToolbar.tsx`、`AnalysisInspectorTabs.tsx`、`styles/*.css`
+  - 重整為左上縮小棋盤、右上 AI 教練／猜著、底部全寬 Live；資料移至頂部工具列抽屜。
+  - Tabs 補上 `aria-controls`、roving `tabIndex` 與左右方向鍵切換。
+  - 設定分類改為水平導覽。
+- `src/main/ipc/aiExplanationHandlers.ts`、`src/main/ai/HarnessOrchestrator.ts`
+  - 把 production AI handler 接回唯一 PromptBuilder 入口。
+  - 多輪歷史與目標語言真正進入 Harness writer／repair prompt。
+- `tests/harness.test.ts`、`tests/rendererArchitecture.test.ts`
+  - 新增多輪上下文、語言、Live 排程／重試、AI 快照與首頁資訊架構回歸測試。
 
 - `src/renderer/src/components/BoardEditor.tsx`
   - 收起擺棋工具時強制回到移動模式。
