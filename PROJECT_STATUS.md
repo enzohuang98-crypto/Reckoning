@@ -9,12 +9,14 @@
 - Git 分支：`main`
 - GitHub：`https://github.com/enzohuang98-crypto/xiangqi-analyzer`
 - 本輪工作基底：`6cf40bfa34f4d434a34465008f4941f99391d10b`（`reorganize project structure without logic changes`）
-- 已發布基線：`v0.3.0`
-- 本輪目標版本：`v0.3.1`
+- 上一個已發布版本：`v0.3.0`
+- 目前已發布版本：`v0.3.1`
+- v0.3.1 annotated tag 指向：`c4b7e9fd5774b12703d85773d6d4eb4612820496`
+- GitHub Release：`https://github.com/enzohuang98-crypto/xiangqi-analyzer/releases/tag/v0.3.1`
 - v0.3.1 release notes：`docs/releases/0.3.1.md`
 - CI／Release workflow 使用目前官方 `actions/checkout@v7` 與 `actions/setup-node@v7`，不再依賴 GitHub 已棄用的 Node 20 action runtime。
 
-本文件記錄 v0.3.1 候選版的實際狀態。程式變更目前仍須完成最後全套門檻、封裝、安裝、commit、push、tag、GitHub Release 與公開更新來源回讀後，才能宣告 v0.3.1 已正式交付。
+本文件記錄 v0.3.1 的實際交付狀態。程式門檻、封裝、安裝、commit、push、tag、GitHub Release、公開更新來源與桌面端回讀均已完成；v0.3.1 已於 2026-07-14 正式發布為未簽章過渡版。
 
 ## 2. 本輪已實作的修正
 
@@ -90,9 +92,9 @@
 
 最後一輪 `npm.cmd run typecheck`、完整 `npm.cmd test`、`npm.cmd run security:audit`、`git diff --check` 與 `npm.cmd run build` 已全部通過。安全測試為 56／56；雙引擎假程序 E2E 為 88／88，完整測試命令零失敗。
 
-最終本機候選產物也已完成 `dist:update:github` 與 `verify:update`：安裝檔 104,213,045 bytes，距 100 MiB Git blob 上限仍有 644,555 bytes；ProductVersion `0.3.1`、App ProductVersion `0.3.1.0`、blockmap 110,229 bytes、`latest.yml` size／SHA-512 與 `app-update.yml` URL 均一致。SHA-256 為 `8B37A3F5DD7F1DE8B5B56FE3AC22A02225B15D5A8D43A27E7347EBB1395850CE`，Authenticode 如預期為 `NotSigned`。
+最終本機候選產物也已完成 `dist:update:github` 與 `verify:update`：安裝檔 104,213,045 bytes，距 100 MiB Git blob 上限仍有 644,555 bytes；ProductVersion `0.3.1`、App ProductVersion `0.3.1.0`、blockmap 110,229 bytes、`latest.yml` size／SHA-512 與 `app-update.yml` URL 均一致。該候選檔 SHA-256 為 `8B37A3F5DD7F1DE8B5B56FE3AC22A02225B15D5A8D43A27E7347EBB1395850CE`，Authenticode 如預期為 `NotSigned`；它只用於發布前驗證，正式安裝與公開更新使用下述 GitHub Release 產物。
 
-本機候選安裝完成後，解除安裝登錄為 0.3.1，桌面捷徑指向 `%LOCALAPPDATA%\Programs\xiangqi-analyzer\象棋AI分析講解.exe`。實際安裝版已驗證 compact／expanded 棋盤尺寸明顯不同、棋盤／AI 教練／底部 Live 分析同時可見、資料抽屜開啟時背景退出可存取樹、Escape 關閉後焦點返回觸發按鈕，以及 AI 教練／猜著可用左右鍵來回切換。
+本機候選安裝完成後，解除安裝登錄為 0.3.1，桌面捷徑指向 `%LOCALAPPDATA%\Programs\xiangqi-analyzer\象棋AI分析講解.exe`。實際安裝版已驗證 compact／expanded 棋盤尺寸明顯不同、棋盤／AI 教練／底部 Live 分析同時可見、資料抽屜開啟時背景退出可存取樹、Escape 關閉後焦點返回觸發按鈕，以及 AI 教練／猜著可用左右鍵來回切換。正式 Release 建立後已再用從 GitHub 下載的安裝檔覆蓋安裝，檔案版本為 `0.3.1`、ProductVersion 為 `0.3.1.0`、解除安裝登錄為 `0.3.1`；程式內「資料與系統」頁顯示 `v0.3.1`，手動更新檢查回覆「目前已是最新版本」。
 
 ### 3.3 真實 Gemini 與雙引擎基線
 
@@ -118,12 +120,13 @@
 - 實際 API 曾以 HTTP 400 拒絕較新的 `responseFormat.text.mimeType` 形狀；改用同一 `generateContent` 端點實際接受的 `responseMimeType` 後成功，避免把尚未全面佈署的文件形狀當成已驗收能力。
 - `gemini-3.1-flash-lite` 已以桌面 UI 完成真實結構化解說；`gemini-3.1-pro-preview` 的真實請求與一次自動重試都被免費額度 rate limit 拒絕，因此只能確認錯誤處理正常，不能宣稱該模型已完成成功端到端驗收。設定已還原為預設 `gemini-3.5-flash`。
 
-## 4. v0.3.1 發布前尚待完成
+## 4. v0.3.1 正式發布完成
 
-1. commit 並 push `main`，等待 CI 通過；建立並 push annotated `v0.3.1` tag。
-2. 執行 Release workflow；若仍無受信任憑證，只能明確使用過渡版 `allow_unsigned=true`，且 Release notes 必須保留未簽章警告。
-3. 從 GitHub Release 下載同一組三項產物回本機驗證，再發布到 `xiangqi-analyzer-site/downloads/`。
-4. 使用 Release 下載的安裝檔再次覆蓋安裝，回讀 GitHub Release、公開 `latest.yml` 與桌機 ProductVersion；三者都必須是 v0.3.1／0.3.1。
+1. 功能提交 `9ee178fccb79933439a807823790d37255f02ac3` 與 Actions runtime 提交 `c4b7e9fd5774b12703d85773d6d4eb4612820496` 已推到 `main`；annotated `v0.3.1` tag 指向後者。
+2. `main` CI run `29322063006` 與 tag CI run `29322228300` 均完整通過，沒有 annotations；Release run `29322370380` 以明確的 `allow_unsigned=true` 通過全部門檻並建立非 draft、非 prerelease、標記為 latest 的 v0.3.1 Release。
+3. GitHub Release 三項產物已下載回本機並重新驗證：`latest.yml` 361 bytes、安裝檔 103,213,881 bytes、blockmap 110,627 bytes。安裝檔 SHA-256 為 `9A2EC7C8EE33B146CA9E019CC51BD09064CCCC61DF451AFDA859A0DE03F1C24D`，低於 100 MiB Git blob 上限。
+4. 同一組產物已發布到 `xiangqi-analyzer-site` commit `891b835505440067e9c092a24eb18a45aade46de`；三個遠端 Git blob 與本機檔案逐一相符。公開 `latest.yml` 回傳 `version: 0.3.1`、`path: xiangqi-analyzer-0.3.1-setup.exe`、`size: 103213881`。
+5. 桌機已用 GitHub Release 的安裝檔覆蓋安裝並啟動一次；桌面捷徑、檔案版本、解除安裝登錄與程式內更新頁均回讀為 v0.3.1／0.3.1.0，手動更新檢查確認目前為最新版。
 
 ## 5. 唯一外部發行阻塞：受信任 Windows 簽章
 
