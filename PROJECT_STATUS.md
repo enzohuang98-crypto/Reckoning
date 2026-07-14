@@ -12,6 +12,7 @@
 - 已發布基線：`v0.3.0`
 - 本輪目標版本：`v0.3.1`
 - v0.3.1 release notes：`docs/releases/0.3.1.md`
+- CI／Release workflow 使用目前官方 `actions/checkout@v7` 與 `actions/setup-node@v7`，不再依賴 GitHub 已棄用的 Node 20 action runtime。
 
 本文件記錄 v0.3.1 候選版的實際狀態。程式變更目前仍須完成最後全套門檻、封裝、安裝、commit、push、tag、GitHub Release 與公開更新來源回讀後，才能宣告 v0.3.1 已正式交付。
 

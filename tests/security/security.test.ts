@@ -418,7 +418,9 @@ check(
 )
 check(
   'CI 會編譯假引擎並執行完整品質門檻',
-  ciWorkflow.includes('tests\\support\\fake-engine.exe') &&
+  ciWorkflow.includes('actions/checkout@v7') &&
+    ciWorkflow.includes('actions/setup-node@v7') &&
+    ciWorkflow.includes('tests\\support\\fake-engine.exe') &&
     ciWorkflow.includes('npm run typecheck') &&
     ciWorkflow.includes('npm test') &&
     ciWorkflow.includes('npm run security:audit') &&
@@ -426,7 +428,9 @@ check(
 )
 check(
   'Release workflow 預設拒絕缺少受信任憑證的未簽章發行',
-  releaseWorkflow.includes('WINDOWS_CSC_LINK') &&
+  releaseWorkflow.includes('actions/checkout@v7') &&
+    releaseWorkflow.includes('actions/setup-node@v7') &&
+    releaseWorkflow.includes('WINDOWS_CSC_LINK') &&
     releaseWorkflow.includes('allow_unsigned') &&
     releaseWorkflow.includes('signtool.exe') &&
     releaseWorkflow.includes('No signature found') &&
