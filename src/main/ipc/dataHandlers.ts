@@ -23,7 +23,10 @@ export function registerDataHandlers(storage: StorageService): void {
       return { ok: true, snapshot: storage.readAppData() }
     } catch (error) {
       logger.error('讀取永久資料失敗', error)
-      return { ok: false, message: '無法讀取本機資料，已使用空白資料。' }
+      return {
+        ok: false,
+        message: '無法讀取本機資料；原始資料檔已保留，程式不會以空白資料覆蓋它。'
+      }
     }
   })
 

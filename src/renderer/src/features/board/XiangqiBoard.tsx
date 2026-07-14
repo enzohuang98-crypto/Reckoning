@@ -5,6 +5,8 @@
  * 並在交叉點上渲染棋子。支援點擊交叉點回呼。
  */
 
+import { useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import type { BoardGrid } from '@shared/types/BoardState'
 import { BOARD_COLS, BOARD_ROWS } from '@shared/types/BoardState'
 import { pieceGlyph } from './pieces'
@@ -14,6 +16,8 @@ const MARGIN = 34
 const WIDTH = MARGIN * 2 + CELL * (BOARD_COLS - 1)
 const HEIGHT = MARGIN * 2 + CELL * (BOARD_ROWS - 1)
 const PIECE_R = 23
+
+type BoardArrowKey = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight'
 
 interface Props {
   grid: BoardGrid
@@ -29,7 +33,56 @@ function py(row: number): number {
   return MARGIN + row * CELL
 }
 
+export function nextBoardCell(
+  row: number,
+  col: number,
+  key: BoardArrowKey
+): [number, number] {
+  switch (key) {
+    case 'ArrowUp':
+      return [Math.max(0, row - 1), col]
+    case 'ArrowDown':
+      return [Math.min(BOARD_ROWS - 1, row + 1), col]
+    case 'ArrowLeft':
+      return [row, Math.max(0, col - 1)]
+    case 'ArrowRight':
+      return [row, Math.min(BOARD_COLS - 1, col + 1)]
+  }
+}
+
+export function boardCellAriaLabel(grid: BoardGrid, row: number, col: number): string {
+  const coordinate = `第 ${row + 1} 橫列、第 ${col + 1} 直行`
+  const piece = grid[row][col]
+  if (!piece) return `${coordinate}，空位`
+  return `${coordinate}，${piece.color === 'red' ? '紅方' : '黑方'}${pieceGlyph(piece)}`
+}
+
 export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Element {
+  const interactive = Boolean(onCellClick)
+  const [activeCell, setActiveCell] = useState<[number, number]>(() => selected ?? [0, 0])
+  const cellRefs = useRef<Array<SVGRectElement | null>>([])
+
+  const focusCell = (row: number, col: number): void => {
+    setActiveCell([row, col])
+    cellRefs.current[row * BOARD_COLS + col]?.focus()
+  }
+
+  const handleCellKeyDown = (
+    event: KeyboardEvent<SVGRectElement>,
+    row: number,
+    col: number
+  ): void => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onCellClick?.(row, col)
+      return
+    }
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return
+    event.preventDefault()
+    const [nextRow, nextCol] = nextBoardCell(row, col, event.key as BoardArrowKey)
+    focusCell(nextRow, nextCol)
+  }
+
   const horizontals = Array.from({ length: BOARD_ROWS }, (_, r) => (
     <line
       key={`h${r}`}
@@ -74,23 +127,10 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
     <line key="pb2" x1={px(5)} y1={py(7)} x2={px(3)} y2={py(9)} stroke="var(--board-line)" strokeWidth={1.5} />
   ]
 
-  const clickTargets: JSX.Element[] = []
   const pieces: JSX.Element[] = []
   for (let r = 0; r < BOARD_ROWS; r++) {
     for (let c = 0; c < BOARD_COLS; c++) {
       const isSelected = selected?.[0] === r && selected?.[1] === c
-      clickTargets.push(
-        <rect
-          key={`t${r}-${c}`}
-          x={px(c) - CELL / 2}
-          y={py(r) - CELL / 2}
-          width={CELL}
-          height={CELL}
-          fill="transparent"
-          className={onCellClick ? 'board-hit-target interactive' : 'board-hit-target'}
-          onClick={() => onCellClick?.(r, c)}
-        />
-      )
       if (isSelected) {
         pieces.push(
           <circle
@@ -146,13 +186,54 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
     }
   }
 
+  const cellRows = interactive
+    ? Array.from({ length: BOARD_ROWS }, (_, r) => (
+        <g key={`row-${r}`} role="row" aria-rowindex={r + 1}>
+          {Array.from({ length: BOARD_COLS }, (_, c) => {
+            const isActive = activeCell[0] === r && activeCell[1] === c
+            const isSelected = selected?.[0] === r && selected?.[1] === c
+            return (
+              <rect
+                key={`t${r}-${c}`}
+                ref={(element) => {
+                  cellRefs.current[r * BOARD_COLS + c] = element
+                }}
+                x={px(c) - CELL / 2}
+                y={py(r) - CELL / 2}
+                width={CELL}
+                height={CELL}
+                fill="transparent"
+                role="gridcell"
+                aria-rowindex={r + 1}
+                aria-colindex={c + 1}
+                aria-label={boardCellAriaLabel(grid, r, c)}
+                aria-selected={isSelected}
+                tabIndex={isActive ? 0 : -1}
+                className="board-hit-target interactive"
+                onFocus={() => setActiveCell([r, c])}
+                onKeyDown={(event) => handleCellKeyDown(event, r, c)}
+                onClick={() => {
+                  setActiveCell([r, c])
+                  onCellClick?.(r, c)
+                }}
+              />
+            )
+          })}
+        </g>
+      ))
+    : null
+
   return (
     <svg
       width={WIDTH}
       height={HEIGHT}
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-      role="img"
-      aria-label="象棋棋盤"
+      role={interactive ? 'grid' : 'img'}
+      aria-label={
+        interactive ? '象棋棋盤，使用方向鍵移動，Enter 或空白鍵操作格子' : '象棋棋盤'
+      }
+      aria-rowcount={interactive ? BOARD_ROWS : undefined}
+      aria-colcount={interactive ? BOARD_COLS : undefined}
       className="xiangqi-board"
     >
       <defs>
@@ -179,46 +260,48 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
           <feDropShadow dx="0" dy="3" stdDeviation="2.5" floodColor="#5b3a1f" floodOpacity="0.28" />
         </filter>
       </defs>
-      <rect x="1" y="1" width={WIDTH - 2} height={HEIGHT - 2} rx="14" fill="url(#board-surface)" />
-      <rect x="1" y="1" width={WIDTH - 2} height={HEIGHT - 2} rx="14" fill="url(#wood-grain)" />
-      <rect
-        x="8"
-        y="8"
-        width={WIDTH - 16}
-        height={HEIGHT - 16}
-        rx="10"
-        fill="none"
-        stroke="var(--board-line)"
-        strokeWidth="2"
-        opacity="0.75"
-      />
-      {horizontals}
-      {verticals}
-      {palaces}
-      <text
-        x={WIDTH / 4}
-        y={(py(4) + py(5)) / 2 + 8}
-        textAnchor="middle"
-        fontSize={22}
-        fill="var(--board-line)"
-        opacity={0.76}
-        className="river-label"
-      >
-        楚河
-      </text>
-      <text
-        x={(WIDTH / 4) * 3}
-        y={(py(4) + py(5)) / 2 + 8}
-        textAnchor="middle"
-        fontSize={22}
-        fill="var(--board-line)"
-        opacity={0.76}
-        className="river-label"
-      >
-        漢界
-      </text>
-      {pieces}
-      {clickTargets}
+      <g aria-hidden="true">
+        <rect x="1" y="1" width={WIDTH - 2} height={HEIGHT - 2} rx="14" fill="url(#board-surface)" />
+        <rect x="1" y="1" width={WIDTH - 2} height={HEIGHT - 2} rx="14" fill="url(#wood-grain)" />
+        <rect
+          x="8"
+          y="8"
+          width={WIDTH - 16}
+          height={HEIGHT - 16}
+          rx="10"
+          fill="none"
+          stroke="var(--board-line)"
+          strokeWidth="2"
+          opacity="0.75"
+        />
+        {horizontals}
+        {verticals}
+        {palaces}
+        <text
+          x={WIDTH / 4}
+          y={(py(4) + py(5)) / 2 + 8}
+          textAnchor="middle"
+          fontSize={22}
+          fill="var(--board-line)"
+          opacity={0.76}
+          className="river-label"
+        >
+          楚河
+        </text>
+        <text
+          x={(WIDTH / 4) * 3}
+          y={(py(4) + py(5)) / 2 + 8}
+          textAnchor="middle"
+          fontSize={22}
+          fill="var(--board-line)"
+          opacity={0.76}
+          className="river-label"
+        >
+          漢界
+        </text>
+        {pieces}
+      </g>
+      {cellRows}
     </svg>
   )
 }

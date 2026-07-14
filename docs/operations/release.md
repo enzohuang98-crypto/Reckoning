@@ -1,12 +1,12 @@
 # 發布架構與操作手冊
 
-本文件定義 Windows 安裝版、GitHub Release 與自動更新來源的唯一發布順序。產品內部模組請參考 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+本文件定義 Windows 安裝版、GitHub Release 與自動更新來源的唯一發布順序。產品內部模組請參考[架構總覽](../architecture/overview.md)。
 
 ## 1. 發布責任
 
 ```text
 main 原始碼
-  ├─ CI workflow：typecheck、446 項測試、dependency audit、production build
+  ├─ CI workflow：typecheck、完整測試套件、dependency audit、production build
   └─ vX.Y.Z tag
        └─ Release workflow：重跑門檻、封裝、驗證 metadata／SHA-512／簽章
             └─ GitHub Release：setup.exe、blockmap、latest.yml

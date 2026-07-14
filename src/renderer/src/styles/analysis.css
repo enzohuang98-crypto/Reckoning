@@ -1,7 +1,7 @@
 .inspector-shell {
   display: flex;
-  height: clamp(520px, 62vh, 640px);
-  min-height: 520px;
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--color-border);
@@ -21,18 +21,76 @@
 
 .live-analysis-grid {
   grid-template-columns: minmax(420px, 1.1fr) minmax(390px, 0.9fr);
-  align-items: start;
+  align-items: stretch;
 }
 
 .live-console-column,
 .live-result-column {
   display: grid;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   gap: 12px;
 }
 
+.live-console-column {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.live-result-column {
+  overflow: hidden;
+}
+
+.live-result-column > .panel-empty-state {
+  height: 100%;
+  min-height: 0;
+  padding: 16px;
+}
+
+.live-analysis-panel {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.live-analysis-panel .live-dock-heading {
+  flex: 0 0 auto;
+}
+
+.live-analysis-panel .live-analysis-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.live-analysis-panel .engine-console {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
 .live-analysis-panel .engine-console-feed {
-  max-height: clamp(220px, 30vh, 390px);
+  min-height: 0;
+  max-height: none;
+  flex: 1;
+  overflow: hidden;
+}
+
+.live-analysis-panel .engine-console-history {
+  display: none;
+}
+
+.live-analysis-panel .engine-console-row.latest {
+  position: static;
+}
+
+.live-analysis-panel .engine-console-row.latest .engine-console-pv {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .analysis-details-panel .details-view {
@@ -276,6 +334,71 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: #f8faf8;
+}
+
+.analysis-result.compact {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  align-content: start;
+  gap: 7px;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.analysis-result.compact .result-head {
+  margin-bottom: 0;
+}
+
+.analysis-result.compact > .engine-status {
+  display: -webkit-box;
+  overflow: hidden;
+  padding: 6px 9px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.dual-engine-summary.compact {
+  gap: 5px;
+  margin: 0;
+  padding: 7px 9px;
+}
+
+.dual-engine-summary.compact .section-heading {
+  gap: 6px;
+}
+
+.dual-engine-summary.compact .badge {
+  max-width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-dual-engine-lines {
+  display: grid;
+  gap: 3px;
+}
+
+.compact-dual-engine-line {
+  display: grid;
+  grid-template-columns: minmax(56px, auto) minmax(0, 1fr);
+  gap: 7px;
+  color: var(--color-text-soft);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.compact-dual-engine-line b {
+  color: var(--color-primary);
+}
+
+.compact-dual-engine-line span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .result-head {

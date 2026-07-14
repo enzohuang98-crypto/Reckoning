@@ -115,7 +115,7 @@ export function EngineConsole({
     : null
 
   return (
-    <section className="engine-console" aria-live="polite">
+    <section className="engine-console">
       <div className="engine-console-header">
         <div>
           <span className="eyebrow">LIVE ENGINE</span>
@@ -128,11 +128,14 @@ export function EngineConsole({
 
       <div className="engine-console-status">
         <span>
-          {busy && progress
-            ? `${activeEngineLabel} · ${phaseText(progress.phase)} · ${progress.percent}%`
-            : completedDepth
-              ? `分析完成 · 深度 ${completedDepth}`
-              : '尚未開始分析'}
+          <span role="status" aria-atomic="true">
+            {busy && progress
+              ? `${activeEngineLabel} · ${phaseText(progress.phase)}`
+              : completedDepth
+                ? `分析完成 · 深度 ${completedDepth}`
+                : '尚未開始分析'}
+          </span>
+          {busy && progress && <span aria-hidden="true"> · {progress.percent}%</span>}
         </span>
         {busy && liveElapsedMs !== null && (
           <span>

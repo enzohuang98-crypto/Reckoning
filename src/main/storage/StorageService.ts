@@ -60,9 +60,13 @@ export class StorageService {
   }
 
   readAppData(): AppDataSnapshot {
-    return sanitizeAppData(
-      this.read<unknown>(APP_DATA_FILE, EMPTY_APP_DATA, MAX_APP_DATA_BYTES)
-    )
+    const path = this.resolve(APP_DATA_FILE)
+    if (!existsSync(path)) return sanitizeAppData(EMPTY_APP_DATA)
+
+    // app-data.json contains user-created records. Unlike optional settings,
+    // an unreadable existing file must never be treated as an empty database:
+    // doing so would let the next save silently overwrite the recoverable file.
+    return sanitizeAppData(readJsonFile<unknown>(path, MAX_APP_DATA_BYTES))
   }
 
   writeAppData(data: AppDataSnapshot): void {

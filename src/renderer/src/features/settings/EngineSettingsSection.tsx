@@ -48,6 +48,11 @@ export function EngineSettingsSection({
   onRemove,
   onSelect
 }: Props): JSX.Element {
+  const removeEngine = (id: string, name: string): void => {
+    if (!window.confirm(`確定要從清單移除引擎「${name}」嗎？之後需要重新加入才能使用。`)) return
+    onRemove(id)
+  }
+
   return (
     <div className="settings-section-grid engine-settings-layout">
       <section className="card settings-feature-card">
@@ -94,7 +99,10 @@ export function EngineSettingsSection({
                 >
                   {testingEngineId === engine.id ? '測試中…' : '測試'}
                 </button>
-                <button className="btn danger small" onClick={() => onRemove(engine.id)}>
+                <button
+                  className="btn danger small"
+                  onClick={() => removeEngine(engine.id, engine.detectedName ?? engine.displayName)}
+                >
                   移除
                 </button>
               </div>

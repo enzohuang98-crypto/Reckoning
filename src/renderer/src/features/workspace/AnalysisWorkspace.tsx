@@ -83,6 +83,8 @@ export function AnalysisWorkspace({
   const [analysisStatus, setAnalysisStatus] =
     useState<AnalysisPanelStatus>(EMPTY_ANALYSIS_STATUS)
   const analysisPanelRef = useRef<AnalysisPanelHandle>(null)
+  const analysisLayoutRef = useRef<HTMLDivElement>(null)
+  const detailsCloseButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     setResult(null)
@@ -97,6 +99,36 @@ export function AnalysisWorkspace({
     setActiveView('coach')
     analysisPanelRef.current?.requestExplanation()
   }
+
+  const closeDetails = (): void => {
+    setDetailsOpen(false)
+    window.requestAnimationFrame(() => {
+      document.getElementById('analysis-details-toggle')?.focus()
+    })
+  }
+
+  useEffect(() => {
+    const layout = analysisLayoutRef.current
+    if (detailsOpen) {
+      layout?.setAttribute('inert', '')
+      window.requestAnimationFrame(() => detailsCloseButtonRef.current?.focus())
+    } else {
+      layout?.removeAttribute('inert')
+    }
+
+    return () => layout?.removeAttribute('inert')
+  }, [detailsOpen])
+
+  useEffect(() => {
+    if (!detailsOpen) return
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeDetails()
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [detailsOpen])
 
   return (
     <section
@@ -118,7 +150,10 @@ export function AnalysisWorkspace({
         boardCompact={boardCompact}
         onToggleBoardSize={() => setBoardCompact((current) => !current)}
         detailsOpen={detailsOpen}
-        onToggleDetails={() => setDetailsOpen((current) => !current)}
+        onToggleDetails={() => {
+          if (detailsOpen) closeDetails()
+          else setDetailsOpen(true)
+        }}
         activeView={activeView}
         onViewChange={setActiveView}
         status={analysisStatus}
@@ -127,20 +162,34 @@ export function AnalysisWorkspace({
         onRequestExplanation={requestExplanation}
       />
 
-      <section className="analysis-data-drawer" hidden={!detailsOpen} aria-label="當前局面分析資料">
+      <section
+        id="analysis-data-drawer"
+        className="analysis-data-drawer"
+        hidden={!detailsOpen}
+        aria-labelledby="analysis-data-drawer-title"
+      >
         <div className="analysis-data-drawer-heading">
           <div>
             <span className="eyebrow">POSITION DATA</span>
-            <h2>當前局面資料</h2>
+            <h2 id="analysis-data-drawer-title">當前局面資料</h2>
           </div>
-          <button type="button" className="secondary-btn" onClick={() => setDetailsOpen(false)}>
+          <button
+            ref={detailsCloseButtonRef}
+            type="button"
+            className="secondary-btn"
+            onClick={closeDetails}
+          >
             收起資料
           </button>
         </div>
         <div ref={setDetailsDockElement} />
       </section>
 
-      <div className={`analyze-layout${boardCompact ? ' board-compact' : ''}`}>
+      <div
+        ref={analysisLayoutRef}
+        className={`analyze-layout${boardCompact ? ' board-compact' : ''}`}
+        aria-hidden={detailsOpen}
+      >
         <div className="left-col">
           <BoardEditor
             board={board}

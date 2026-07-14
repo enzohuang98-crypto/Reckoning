@@ -160,6 +160,35 @@ async function main(): Promise<void> {
     assert.doesNotMatch(html, /<script/i)
   })
 
+  await check('永久資料讀取失敗時 renderer 會封鎖寫入並提供真正重新讀取', () => {
+    const dataStore = readFileSync(
+      resolve('src/renderer/src/features/app-data/useAppDataStore.ts'),
+      'utf8'
+    )
+    const appShell = readFileSync(
+      resolve('src/renderer/src/app/AppShell.tsx'),
+      'utf8'
+    )
+
+    assert.match(dataStore, /dataReadBlockedRef\.current = true/)
+    assert.match(
+      dataStore,
+      /if \(dataReadBlockedRef\.current\) \{[\s\S]*?return[\s\S]*?\}/
+    )
+    const updateStart = dataStore.indexOf('const updateAppData')
+    const importStart = dataStore.indexOf('const importData')
+    const updateSource = dataStore.slice(updateStart, importStart)
+    assert.match(
+      updateSource,
+      /if \(dataReadBlockedRef\.current\) \{[\s\S]*?return[\s\S]*?\}[\s\S]*?const next = updater/
+    )
+    assert.match(dataStore, /成功前新增、修改、刪除與儲存會保持暫停/)
+    assert.match(dataStore, /const retryLoadData = useCallback/)
+    assert.match(dataStore, /window\.api\.data\.load\(\)/)
+    assert.match(appShell, /dataRecoveryRequired \? onRetryLoad : onRetrySave/)
+    assert.match(appShell, /重新讀取資料/)
+  })
+
   await check('Live 分析先快速回傳，再切換為較長的持續加深搜尋', () => {
     assert.equal(automaticRootMovetimeMs(3_000, false), AUTO_INITIAL_ANALYSIS_MAX_MS)
     assert.equal(
@@ -214,14 +243,180 @@ async function main(): Promise<void> {
     assert.match(workspace, /<AnalysisPanel[\s\S]*?visible[\s\S]*?activeView="coach"/)
   })
 
-  await check('AI 對話使用發問當下的分析快照，不會被後續 Live 結果改綁', () => {
+  await check('分析分頁與 Live 引擎訊息具備穩定的鍵盤及朗讀語意', () => {
+    const tabs = readFileSync(
+      resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
+      'utf8'
+    )
+    const console = readFileSync(
+      resolve('src/renderer/src/features/analysis/EngineConsole.tsx'),
+      'utf8'
+    )
+    const panel = readFileSync(
+      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
+      'utf8'
+    )
+
+    assert.match(tabs, /useRef<Array<HTMLButtonElement \| null>>/)
+    assert.match(tabs, /event\.key === 'Home'/)
+    assert.match(tabs, /event\.key === 'End'/)
+    assert.match(tabs, /tabRefs\.current\[nextIndex\]\?\.focus\(\)/)
+    assert.doesNotMatch(console, /<section className="engine-console" aria-live=/)
+    assert.match(console, /<span role="status" aria-atomic="true">/)
+    assert.match(panel, /className="error-text live-dock-message" role="alert"/)
+    assert.match(panel, /className="notice-text live-dock-message" role="status"/)
+  })
+
+  await check('分析首頁以 viewport 三列固定顯示工具列、工作區與 Live 分析', () => {
+    const appShell = readFileSync(
+      resolve('src/renderer/src/app/AppShell.tsx'),
+      'utf8'
+    )
+    const shellStyles = readFileSync(
+      resolve('src/renderer/src/styles/shell.css'),
+      'utf8'
+    )
+    const workspaceStyles = readFileSync(
+      resolve('src/renderer/src/styles/workspace.css'),
+      'utf8'
+    )
+    const analysisStyles = readFileSync(
+      resolve('src/renderer/src/styles/analysis.css'),
+      'utf8'
+    )
+    const responsiveStyles = readFileSync(
+      resolve('src/renderer/src/styles/responsive.css'),
+      'utf8'
+    )
+
+    assert.match(appShell, /app-main-\$\{activeTab\}/)
+    assert.match(shellStyles, /\.app-main-analyze\s*\{[^}]*overflow:\s*hidden;/s)
+    assert.match(
+      workspaceStyles,
+      /\.analyze-page\s*\{[^}]*height:\s*100%;[^}]*grid-template-areas:[^}]*"toolbar"[^}]*"workspace"[^}]*"live"[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) clamp\(/s
+    )
+    assert.match(
+      workspaceStyles,
+      /\.live-analysis-dock\s*\{[^}]*min-height:\s*0;[^}]*grid-area:\s*live;/s
+    )
+    const expandedColumns = workspaceStyles.match(
+      /\.analyze-layout\s*\{[^}]*grid-template-columns:\s*minmax\((\d+)px,[^)]+\)\s+minmax\((\d+)px,[^)]+\);[^}]*gap:\s*(\d+)px;/s
+    )
+    assert.ok(expandedColumns, 'Expanded board columns must declare pixel minimums and a gap')
+    const minimumWindowsPageWidth = 1024 - 16 - 24
+    const expandedMinimumWidth =
+      Number(expandedColumns[1]) + Number(expandedColumns[2]) + Number(expandedColumns[3])
+    assert.ok(
+      expandedMinimumWidth <= minimumWindowsPageWidth,
+      `Expanded board needs ${expandedMinimumWidth}px but the minimum Windows viewport only provides ${minimumWindowsPageWidth}px`
+    )
+    assert.match(
+      analysisStyles,
+      /\.inspector-shell\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s
+    )
+    assert.match(
+      analysisStyles,
+      /\.live-analysis-panel \.engine-console-feed\s*\{[^}]*min-height:\s*0;[^}]*max-height:\s*none;[^}]*flex:\s*1;/s
+    )
+    assert.match(
+      analysisStyles,
+      /\.live-result-column > \.panel-empty-state\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*padding:\s*16px;/s
+    )
+    assert.match(
+      responsiveStyles,
+      /@media \(max-height:\s*900px\)[\s\S]*?\.analyze-page\s*\{[^}]*grid-template-rows:/
+    )
+    assert.match(
+      responsiveStyles,
+      /@media \(max-width:\s*900px\)[\s\S]*?\.live-analysis-grid\s*\{[^}]*repeat\(2,\s*minmax\(0,\s*1fr\)\)/
+    )
+    assert.match(
+      responsiveStyles,
+      /@media \(max-height:\s*900px\)[\s\S]*?\.inspector-content \.panel-empty-state\s*\{[^}]*min-height:\s*0;[^}]*padding:\s*10px;[^}]*\}[\s\S]*?\.inspector-content \.panel-empty-state \.empty-state-mark\s*\{[^}]*width:\s*40px;[^}]*height:\s*40px;/
+    )
+  })
+
+  await check('緊湊棋盤、Live 警告與分析資料抽屜不留下裁切或焦點陷阱', () => {
+    const workspace = readFileSync(
+      resolve('src/renderer/src/features/workspace/AnalysisWorkspace.tsx'),
+      'utf8'
+    )
+    const toolbar = readFileSync(
+      resolve('src/renderer/src/features/workspace/AnalysisToolbar.tsx'),
+      'utf8'
+    )
+    const result = readFileSync(
+      resolve('src/renderer/src/features/analysis/EngineResultSummary.tsx'),
+      'utf8'
+    )
+    const styles = readFileSync(
+      resolve('src/renderer/src/styles/workspace.css'),
+      'utf8'
+    )
+
+    assert.match(
+      styles,
+      /\.analyze-layout\.board-compact \.board-editor:not\(\.tools-open\) \.xiangqi-board\s*\{[^}]*height:\s*min\(84%,\s*450px\);[^}]*max-height:\s*84%;/s
+    )
+    assert.match(result, /const compactWarnings = \[analysisWarning, result\.verificationWarning\]/)
+    assert.match(result, /compactWarnings\.length > 1/)
+    assert.match(workspace, /layout\?\.setAttribute\('inert', ''\)/)
+    assert.match(workspace, /aria-hidden=\{detailsOpen\}/)
+    assert.match(workspace, /event\.key !== 'Escape'/)
+    assert.match(workspace, /analysis-details-toggle/)
+    assert.match(toolbar, /aria-expanded=\{ariaExpanded\}/)
+    assert.match(toolbar, /ariaControls="analysis-data-drawer"/)
+  })
+
+  await check('每次 AI 提問使用當下最新分析，並完整快照對話與模型來源', () => {
     const panel = readFileSync(
       resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
       'utf8'
     )
     assert.match(panel, /analysisId: pending\.analysisId/)
     assert.match(panel, /positionFen: pending\.positionFen/)
-    assert.match(panel, /resultSnapshot/)
+    assert.match(panel, /const resultSnapshot = result/)
+    assert.match(panel, /conversationMessages: currentConversation\?\.messages\.slice\(\) \?\? \[\]/)
+    assert.match(panel, /\.\.\.pending\.conversationMessages/)
+    assert.match(panel, /provider: pending\?\.provider/)
+    assert.match(panel, /model: pending\?\.model/)
+    assert.match(panel, /if \(!result \|\| activeAiRequestId\.current\) return/)
+  })
+
+  await check('自動 AI 每個局面只嘗試一次，取消或失敗不會隨持續分析重跑', () => {
+    const panel = readFileSync(
+      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
+      'utf8'
+    )
+    assert.match(panel, /const autoRunAttemptTarget = useRef<string \| null>\(null\)/)
+    assert.match(panel, /isSameAnalysisTarget\(result\.engineAnalysis, board\.fen, move\)/)
+    assert.match(panel, /autoRunAttemptTarget\.current !== target/)
+    assert.match(panel, /autoRunAttemptTarget\.current = target[\s\S]*?generateExplanation\(null\)/)
+    assert.match(
+      panel,
+      /pendingAiRequest\.current = null[\s\S]*?autoRunAttemptTarget\.current = null/
+    )
+  })
+
+  await check('AI 失敗就地顯示且不清除追問，成功後才清除草稿', () => {
+    const panel = readFileSync(
+      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
+      'utf8'
+    )
+    const coach = readFileSync(
+      resolve('src/renderer/src/features/analysis/CoachView.tsx'),
+      'utf8'
+    )
+    const submitStart = panel.indexOf('const submitFollowUp')
+    const copyStart = panel.indexOf('const copyExplanation')
+    assert.equal(submitStart >= 0 && copyStart > submitStart, true)
+    assert.doesNotMatch(panel.slice(submitStart, copyStart), /setFollowUp\(''\)/)
+    assert.match(panel, /if \(pending\.question !== null\) setFollowUp\(''\)/)
+    assert.match(panel, /error=\{aiError\}/)
+    assert.match(panel, /notice=\{aiNotice\}/)
+    assert.match(coach, /role="alert"/)
+    assert.match(coach, /role="status"/)
+    assert.match(coach, /整輪模型輸出總預算/)
   })
 
   await check('AI IPC 透過單一 PromptBuilder 入口把多輪上下文交給 Harness', () => {
@@ -283,6 +478,42 @@ async function main(): Promise<void> {
     )
     assert.match(source, /if \(toolsOpen\) return[\s\S]*setTool\(\{ kind: 'move' \}\)/)
     assert.match(source, /!toolsOpen && moveError/)
+  })
+
+  await check('不可逆刪除會先明確確認，取消時不會呼叫刪除 handler', () => {
+    const mistakeBook = readFileSync(
+      resolve('src/renderer/src/pages/MistakeBookPage.tsx'),
+      'utf8'
+    )
+    const misunderstood = readFileSync(
+      resolve('src/renderer/src/pages/MisunderstoodPage.tsx'),
+      'utf8'
+    )
+    const boardEditor = readFileSync(
+      resolve('src/renderer/src/features/board/BoardEditor.tsx'),
+      'utf8'
+    )
+    const aiSettings = readFileSync(
+      resolve('src/renderer/src/features/settings/AiSettingsSection.tsx'),
+      'utf8'
+    )
+    const engineSettings = readFileSync(
+      resolve('src/renderer/src/features/settings/EngineSettingsSection.tsx'),
+      'utf8'
+    )
+    const systemSettings = readFileSync(
+      resolve('src/renderer/src/features/settings/SystemSettingsSection.tsx'),
+      'utf8'
+    )
+
+    assert.match(mistakeBook, /const removeTag[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?update\(entry\.id/)
+    assert.match(mistakeBook, /const deleteEntry[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onChange\(/)
+    assert.match(misunderstood, /const deleteEntry[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onChange\(/)
+    assert.match(boardEditor, /const clearBoard[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?reserialize\(/)
+    assert.match(boardEditor, /const deleteSavedPosition[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeleteSavedPosition\(/)
+    assert.match(aiSettings, /const deleteApiKey[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeleteKey\(\)/)
+    assert.match(engineSettings, /const removeEngine[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onRemove\(id\)/)
+    assert.match(systemSettings, /const deactivateLicense[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeactivateLicense\(\)/)
   })
 
   console.log(`結果：${passed} 通過，${failed} 失敗`)

@@ -2,6 +2,10 @@ import type { EngineAnalysis } from './EngineAnalysis'
 import type { MistakeBookEntry } from './MistakeBookEntry'
 import type { MoveComparisonResult } from './MoveComparisonResult'
 import type { UserGuess } from './UserGuess'
+import {
+  ALL_PROVIDER_IDS,
+  type AIProviderId
+} from './AIProviderTypes'
 
 export const APP_DATA_SCHEMA_VERSION = 1
 
@@ -18,6 +22,8 @@ export interface ConversationMessage {
   role: 'user' | 'assistant'
   text: string
   createdAt: string
+  provider?: AIProviderId
+  model?: string
 }
 
 export interface AIConversation {
@@ -72,7 +78,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function hasString(value: Record<string, unknown>, key: string): boolean {
+function hasString<K extends string>(
+  value: Record<string, unknown>,
+  key: K
+): value is Record<string, unknown> & Record<K, string> {
   return typeof value[key] === 'string'
 }
 
@@ -134,27 +143,68 @@ function isSavedPosition(value: unknown): value is SavedPosition {
   )
 }
 
-function isConversationMessage(value: unknown): value is ConversationMessage {
+function isAIProviderId(value: unknown): value is AIProviderId {
   return (
-    isRecord(value) &&
-    hasString(value, 'id') &&
-    (value.role === 'user' || value.role === 'assistant') &&
-    hasString(value, 'text') &&
-    hasString(value, 'createdAt')
+    typeof value === 'string' &&
+    ALL_PROVIDER_IDS.includes(value as AIProviderId)
   )
 }
 
-function isConversation(value: unknown): value is AIConversation {
-  return (
-    isRecord(value) &&
-    hasString(value, 'id') &&
-    hasString(value, 'analysisId') &&
-    hasString(value, 'positionFen') &&
-    hasString(value, 'createdAt') &&
-    hasString(value, 'updatedAt') &&
-    Array.isArray(value.messages) &&
-    value.messages.every(isConversationMessage)
-  )
+function sanitizeConversationMessage(value: unknown): ConversationMessage | null {
+  if (
+    !isRecord(value) ||
+    !hasString(value, 'id') ||
+    (value.role !== 'user' && value.role !== 'assistant') ||
+    !hasString(value, 'text') ||
+    !hasString(value, 'createdAt')
+  ) {
+    return null
+  }
+
+  const message: ConversationMessage = {
+    id: value.id,
+    role: value.role,
+    text: value.text,
+    createdAt: value.createdAt
+  }
+  if (isAIProviderId(value.provider)) message.provider = value.provider
+  if (typeof value.model === 'string' && value.model.trim()) {
+    message.model = value.model.trim()
+  }
+  return message
+}
+
+function sanitizeConversation(value: unknown): AIConversation | null {
+  if (
+    !isRecord(value) ||
+    !hasString(value, 'id') ||
+    !hasString(value, 'analysisId') ||
+    !hasString(value, 'positionFen') ||
+    !hasString(value, 'createdAt') ||
+    !hasString(value, 'updatedAt') ||
+    !Array.isArray(value.messages)
+  ) {
+    return null
+  }
+
+  const messages = value.messages.map(sanitizeConversationMessage)
+  if (messages.some((message) => message === null)) return null
+  return {
+    id: value.id,
+    analysisId: value.analysisId,
+    positionFen: value.positionFen,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    messages: messages as ConversationMessage[]
+  }
+}
+
+function sanitizeConversations(value: unknown): AIConversation[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(sanitizeConversation)
+    .filter((conversation): conversation is AIConversation => conversation !== null)
+    .slice(0, 5000)
 }
 
 function isUserGuess(value: unknown): value is UserGuess {
@@ -178,7 +228,7 @@ export function sanitizeAppData(value: unknown): AppDataSnapshot {
       isMisunderstoodPosition
     ),
     savedPositions: sanitizeArray(value.savedPositions, isSavedPosition),
-    conversations: sanitizeArray(value.conversations, isConversation),
+    conversations: sanitizeConversations(value.conversations),
     userGuesses: sanitizeArray(value.userGuesses, isUserGuess)
   }
 }

@@ -1,232 +1,154 @@
 # 象棋 AI 分析講解：專案交接狀態
 
-最後更新：2026-07-13
+最後更新：2026-07-14
 
-## 1. 專案位置與目前代碼
+## 1. 目前工作位置與版本狀態
 
-- 本次交付工作樹：`C:\Users\enzoh\Documents\Codex\2026-07-11\project-status-md-commit-github`
-- 舊來源工作樹：`C:\Users\enzoh\Claude\象棋軟體專案\xiangqi-analyzer`（另行保留，不納入本次目錄重整；更新前必須先核對工作樹）
+- 主要工作樹：`C:\Users\enzoh\Documents\Codex\2026-07-11\project-status-md-commit-github`
+- 舊工作樹：`C:\Users\enzoh\Claude\象棋軟體專案\xiangqi-analyzer`（另行保留；不得直接覆蓋其未提交變更）
 - Git 分支：`main`
 - GitHub：`https://github.com/enzohuang98-crypto/xiangqi-analyzer`
-- 本次工作基底 commit：`4ccfc9f8a70ce590489019d244c05386e92b2549`
-- 本次交付 commit：本文件所在的 `main` HEAD
-- v0.3.0 Release commit／tag：`413d02d023688b40cbdea50f06500027a890cd1f`／`v0.3.0`
-- GitHub Release：`https://github.com/enzohuang98-crypto/xiangqi-analyzer/releases/tag/v0.3.0`
-- 本次 commit 訊息：`reorganize project structure without logic changes`
-- 前一個主要產品 commit：`2c23feb9f91fa333e776d8294669697d30c96cf1`
-- 前一個主要產品 commit 訊息：`complete resilient analysis loop and product UI architecture`
-- 應用程式版本：`0.3.0`
+- 本輪工作基底：`6cf40bfa34f4d434a34465008f4941f99391d10b`（`reorganize project structure without logic changes`）
+- 已發布基線：`v0.3.0`
+- 本輪目標版本：`v0.3.1`
+- v0.3.1 release notes：`docs/releases/0.3.1.md`
 
-本文件與 v0.3.0 發行收尾位於同一個交付 commit。後續工作仍應先檢查 `git status` 與遠端 HEAD，避免覆蓋使用者變更。
+本文件記錄 v0.3.1 候選版的實際狀態。程式變更目前仍須完成最後全套門檻、封裝、安裝、commit、push、tag、GitHub Release 與公開更新來源回讀後，才能宣告 v0.3.1 已正式交付。
 
-## 2. 使用者最終目標
+## 2. 本輪已實作的修正
 
-把「象棋 AI 分析講解」整理成可交給真實象棋老師測試的專業級 Windows 桌面 MVP，而不是只能展示的半成品。
+### 2.1 不需捲動整個頁面的分析工作區
 
-核心標準：
+- 分析頁改為「工具列／棋盤與 AI 工作區／底部即時分析」三列固定配置，頁面本身不再上下捲動。
+- 棋盤依可用高度等比例縮放；展開擺棋工具或內容過長時，只讓所屬區塊內部捲動。
+- 「放大／縮小棋盤」使用高度與寬度的雙重限制；在 1024×700 等低高度視窗也會產生可辨識的實際尺寸差異。
+- 即時分析固定在視窗底部並填滿分配高度；主引擎只保留最新主線、結果區使用 compact 雙引擎摘要，兩側皆不再出現捲軸。
+- compact 結果會把多個引擎警告合併成單一兩行摘要，避免最小視窗裁掉雙引擎方向；完整警告仍保留在分析資料抽屜。
+- 完整候選著法、雙引擎比較、主／複核引擎原始資料保留在上方「分析資料」抽屜，不會因 compact 首屏而遺失。
+- AI 教練與猜著保留在右上工作區；分析資料使用上方抽屜，不會把底部引擎分析推到首屏之外。
+- 矮視窗會縮短頁首、工具列、面板標題與間距；空白狀態不再因固定最小高度出現無意義的內部捲軸。
+- 非 compact 棋盤欄最低寬度由 560 px 調整為 520 px，避免 1024 px 寬視窗裁切右側 inspector。
 
-1. 桌面 App 可直接開啟，不卡在「啟動中」或空白畫面。
-2. 棋盤走子、擺棋、悔棋、下一步、還原原始棋盤與猜著都直覺可用。
-3. 引擎分析持續即時更新，不因切換頁籤或面板中斷，並能查看深度、分數、NPS、主線與原始輸出。
-4. AI 解說必須回答最佳著法的目的、使用者錯失什麼、為什麼不好、對手如何利用、後續具體後果，以及最佳著法與使用者著法的完整比較；不得只用分數或空泛標籤當理由。
-5. Harness 必須是有上限的 loop engineering：生成、驗證、診斷、只重寫失敗區塊、重新驗證，超限才使用有證據的保守版。
-6. 儘量把術語、規則、品質檢查與證據關聯留在本機，降低外接 AI 的 token、呼叫次數與模型能力需求，使低階模型也能產生可用解說。
-7. 支援雙引擎分歧裁決，不平均分數；比較人類可控性、容錯、失控風險、王區、子力活動、陣形、部署與長期發展。
-8. 支援 Anthropic、OpenAI、Gemini、DeepSeek、Kimi、xAI、Ollama、LM Studio 與其他 OpenAI Chat Completions 相容服務，維持單一 API Key 輸入欄位。
-9. UI 清楚、明亮、按鈕集中，不讓工具和操作散落；每顆按鈕都必須有實際作用。
-10. API Key 不可暴露；完成 typecheck、全部測試、security audit、build、packaging 與實際封裝版滑鼠操作後，才可宣告交付。
-11. 所有完成變更都要 commit 並 push 到 GitHub；接近額度上限時先做 checkpoint commit/push。
-12. 測試階段暫時保留授權閘門停用，方便使用者測試；不要擅自改成正式鎖定。
+### 2.2 持續引擎分析與可控的 AI 工作
 
-## 3. 已實現功能
+- 主引擎與複核引擎 Live refinement 持續排程，不因切換頁籤、資料抽屜或 AI 教練而卸載。
+- AI 解說固定使用送出當下的 FEN、analysis ID、主／複核引擎結果與對話歷史，後續 Live 更新不會改綁已送出的問題。
+- 自動 AI 解說以局面／猜著為目標只嘗試一次，避免持續產生的新引擎結果觸發無限重跑。
+- 使用者按停止或取消後，後續 Live 結果不會擅自重啟同一個 AI 請求。
+- 未提供使用者著法時，prompt、審查、驗證與 fallback 都改為「當前局面分析」，不得虛構或批評不存在的使用者著法。
+- 繁體中文、簡體中文與英文的具體棋理、因果、主線與證據不足判定使用各自可辨識的語言規則。
 
-### 桌面 App 與可靠性
+### 2.3 Gemini 與 Harness
 
-- Electron Windows 桌面應用、NSIS 安裝與桌面捷徑設定。
-- 單一實例鎖，避免多開造成 userData／safeStorage 狀態衝突。
-- 啟動逾時與獨立無腳本錯誤頁，避免永久空白畫面。
-- 自動更新服務、檢查／下載／重新啟動安裝 UI，以及 GitHub generic update channel 建置與發佈腳本。
-- 自訂 App icon；目前尚未做 Windows 程式碼簽章。
+- Gemini adapter 已使用 `generateContent` 端點實際接受的 `responseMimeType: application/json`，並使用低思考層級與不回傳 thought 的設定；解析時只組合非 thought 的最終文字部分。
+- `thinkingLevel` 只送給 Gemini 3.x；token 紀錄會把 `thoughtsTokenCount` 納入輸出用量，非 2xx 回應本文讀取中的取消訊號也不會被錯誤訊息吞掉。
+- 共用 AI request type 已能標示 text／JSON 回應格式，供 Harness 的結構化審查與寫作請求使用。
+- 目前局面初次解說只做審查與寫作兩次模型呼叫，不再重跑持續引擎已有的研究；審查 JSON 無效時立即收尾，確定性 fallback 不再觸發修復模型。
+- 同一 conversation 的追問改為一次模型呼叫、1,200 token 上限與零額外引擎輪次；會保留原問題並遵守句數／格式，無效 JSON 直接收斂到精簡引擎快照回答。
+- 英文 `one`～`five sentences` 與數字句數要求都會被辨識、正規化並以實際句界驗證。
+- JSON parser 可安全接受 fenced、雙重編碼與單一物件陣列，但所有結果仍須通過證據、著法、語言與 no-user hallucination 驗證。
+- 對話記錄保存 provider、model、局面與引擎快照，並避免非同步回傳覆蓋較新的狀態。
 
-### 棋盤與使用流程
+### 2.4 本機資料安全與錯誤回復
 
-- 合法走子、悔棋、下一步、還原標準棋盤。
-- 擺棋、替換／清除棋子、切換輪走方、清空棋盤、保存與載入局面。
-- FEN 匯入與 UCI 著法序列匯入。
-- 猜著模式可點「你的著法」後直接在棋盤選起點與終點，不必手打 UCI。
-- 錯題本、待理解局面、保存局面、猜著紀錄、備份與合併還原。
-- 多輪 AI 追問與同局面對話紀錄。
+- 只有資料檔不存在時才建立空白資料；損壞、過大或暫時讀不到的檔案會回報錯誤並保留原檔。
+- renderer 在讀取失敗後立即封鎖資料寫入與記憶體更新，避免使用者看似成功操作、重啟後卻全部消失，或以空白資料覆蓋原檔。
+- 畫面提供重試讀取；成功讀回或明確匯入有效備份後才解除封鎖。
+- 持久化資料會正規化 conversation 的 provider／model，並移除無效 optional 欄位，避免舊資料使 React 畫面崩潰。
+- 儲存失敗與資料回復阻塞使用不同訊息，避免一個錯誤狀態掩蓋另一個問題。
 
-### 引擎
+### 2.5 鍵盤、可理解性與安全操作
 
-- UCI／UCCI 自動偵測、握手、短搜尋測試與多引擎登錄。
-- 主引擎與複核引擎可分別選擇。
-- 自動即時分析先快速回傳，再以有界搜尋區段持續加深；切換右側或頂層頁面不卸載分析工作。
-- AI 解說與 Live refinement 可平行執行；AI 對話固定綁定發問當下的 analysis ID、FEN 與結果快照，不會被後續 Live 結果改綁。
-- Live 區段失敗會以 1、2、4、5 秒上限退避自動重試；只有使用者按「停止」、棋盤不合法或引擎不可用才停止排程。
-- 即時顯示引擎角色、深度、分數、時間、NPS、中文主線與歷史動態。
-- 原始引擎輸出可展開查看。
-- 複核引擎失敗時保留主引擎結果並顯示降級警告。
-- 雙引擎結果分開保存，不取平均；分歧時建立兩條候選線、人類可控性指標與交叉分析任務。
-- 已有 Pikafish、象棋名手、象棋旋風、象棋小蟲、阿爾法貓、Px0、烏雲、象眼、佳佳、MaxQi 與自訂引擎 profile。底層仍以通用 UCI／UCCI 支援其他引擎。
+- 10×9 象棋盤改為可存取的 grid；方向鍵移動焦點，Enter／空白鍵操作格子，並提供格子座標、棋子與選取狀態標籤。
+- 焦點使用 roving `tabIndex`，不會讓 Tab 鍵逐一停在 90 個格子。
+- AI 教練／猜著分頁支援方向鍵、Home／End 並同步移動焦點；分析資料抽屜開啟時會把後方 workspace 設為 inert，可用 Escape 關閉並返回觸發按鈕。
+- Live 引擎移除整區每秒觸發的 `aria-live`；只播報穩定階段，錯誤與一般通知分別使用 alert／status。
+- 清空、刪除等破壞性操作加入確認，減少誤觸造成資料或局面遺失。
+- 設定頁與空白狀態文字改得更直接；支援的新 Gemini model ID 與 provider 顯示同步更新。
 
-### AI Provider 與金鑰
+## 3. 已完成的實際驗證
 
-- 官方 adapter：Anthropic、OpenAI、Gemini。
-- OpenAI-compatible adapter：DeepSeek、Kimi／Moonshot、xAI、Ollama、LM Studio 與自訂服務。
-- 遠端 Base URL 只允許無帳密、無 query／fragment 的標準 HTTPS；HTTP 只允許本機 loopback。
-- 本機 Ollama／LM Studio 可免 API Key。
-- API Key 僅在 main process 使用，透過 Electron `safeStorage` 加密；renderer 無法讀回明文。
-- 金鑰健康檢查可辨識「檔案存在但已無法解密」，UI 會要求重新輸入，而不是錯誤顯示已設定。
-- 相容服務金鑰綁定儲存時確認的 Base URL；網址變更後必須重新確認並儲存。
-- Provider JSON 回應上限 5 MB；官方格式與本次請求的精確金鑰都會從錯誤文字遮蔽。
-- 單一 API Key 欄位可依前綴辨識官方服務，或配合使用者明確選擇相容服務。
-- Production AI IPC 已統一經 `buildAIExplanationRequest()` 組裝金鑰、分析 session 與 prompt；多輪歷史、追問與繁中／簡中／英文設定會真正進入 Harness 寫作，不再只有 UI 保存。
+### 3.1 視窗比例與消費者操作檢查
 
-### Harness / Loop Engineering
+使用獨立 Electron 視窗檢查：
 
-- 本機 deterministic plan，不再浪費一次 LLM 規劃呼叫。
-- 一般成功路徑為「具體後果審查 + 結構化寫作」兩次模型呼叫。
-- 品質評分器檢查六個必要問答、唯分數理由、空泛詞、欄位互抄、術語與主線連結。
-- 核心 claim 要有原因、機制、受影響對象、對手利用與具體後果。
-- `generate -> validate -> diagnose -> rewrite failed section only -> validate`，最多固定兩輪，不能無限重生整篇。
-- 429、5xx 與 timeout 只額外重試一次，並向 UI 回報 provider retry。
-- 等待使用者繼續有 120 秒上限；逾時後用已有引擎證據產生保守版，不讓整個請求失敗。
-- 模型呼叫達上限時走 evidence-based fallback，不以分數當理由，也不虛構主線。
-- 雙引擎分歧解說必須引用兩邊證據並比較可控性與長期發展；只講分數或單一引擎會被擋下。
-- trace 保存 finalText、證據、警告、階段、使用者回饋；「不清楚／不正確／證據不足」可匯出成 regression cases。
+- `1024×700`：預設與展開棋盤工具兩種狀態下，document、main 與分析頁都不需要捲動；工作區可用寬度與實際寬度皆為 984 px，右側 inspector 完整位於頁面內。
+- `1024×700` 空白狀態：inspector 與 Live result 都不產生無意義的內部捲動。
+- `1366×768`：棋盤、AI 教練與底部 Live 分析同時可見，空白狀態無多餘捲軸。
+- `1920×1080`：核心功能同時可見；長引擎輸出仍只在自己的面板內捲動。
 
-### 本機象棋知識
+### 3.2 自動回歸狀態
 
-- `xiangqiKnowledge.ts` 目前有 137 條結構化知識，涵蓋規則、棋盤位置、棋子狀態、戰術、殺法、開局、策略、殘局與記譜。
-- 繁簡體與別名索引；只檢索與當前問題相關的小段，避免把整個詞庫塞進 prompt。
-- 知識庫只能解釋術語，不能冒充本局引擎證據。
-- 「緩手、失先、陣形變差」等評價標籤不能單獨通過具體性檢查。
+- 版面、資料回復與自動 AI 排程修正後，`typecheck:web` 通過。
+- app-data 定向測試：20／20 通過。
+- renderer architecture 定向測試：25／25 通過。
+- Provider 定向測試：47／47 通過，含 Gemini 3.x／2.5 thinking 欄位邊界、thought token 與錯誤本文取消競態。
+- Harness 定向測試：89／89 通過，涵蓋繁中／簡中／英文、no-user 幻覺、fenced／陣列 JSON 格式邊界、單次追問與句數 fallback。
+- `git diff --check` 通過；Windows 工作樹只出現既有 LF／CRLF 轉換提示。
+- 本輪新增棋盤鍵盤操作與可存取性架構測試。
 
-### UI 架構
+最後一輪 `npm.cmd run typecheck`、完整 `npm.cmd test`、`npm.cmd run security:audit`、`git diff --check` 與 `npm.cmd run build` 已全部通過。安全測試為 56／56；雙引擎假程序 E2E 為 88／88，完整測試命令零失敗。
 
-- Task-first App Shell：分析、錯題本、待理解、設定。
-- 分析工具列集中局面工具、悔棋、下一步、分析／停止、AI 解說、棋盤尺寸、分析資料與猜著模式。
-- 擺棋與匯入工具採收合式入口。
-- 棋盤預設縮小並可切換尺寸；右上只保留 AI 教練與猜著，當前局面資料由頂部工具列展開，持續即時分析跨欄固定在底部。
-- 引擎與 AI 工作不因切換檢視或頂層頁面而中斷。
-- 設定四分類改為內容上方的水平導覽，減少左側欄與卡片同時競爭寬度的雜亂感。
-- renderer 已拆成 app、feature、page、shared logic 與多個 CSS 模組，不再是單一大型樣式檔。
-- 靜態測試要求每個原生按鈕都有 `onClick` 與可辨識名稱。
+最終本機候選產物也已完成 `dist:update:github` 與 `verify:update`：安裝檔 104,213,045 bytes，距 100 MiB Git blob 上限仍有 644,555 bytes；ProductVersion `0.3.1`、App ProductVersion `0.3.1.0`、blockmap 110,229 bytes、`latest.yml` size／SHA-512 與 `app-update.yml` URL 均一致。SHA-256 為 `8B37A3F5DD7F1DE8B5B56FE3AC22A02225B15D5A8D43A27E7347EBB1395850CE`，Authenticode 如預期為 `NotSigned`。
 
-## 4. 最終已通過的驗證
+本機候選安裝完成後，解除安裝登錄為 0.3.1，桌面捷徑指向 `%LOCALAPPDATA%\Programs\xiangqi-analyzer\象棋AI分析講解.exe`。實際安裝版已驗證 compact／expanded 棋盤尺寸明顯不同、棋盤／AI 教練／底部 Live 分析同時可見、資料抽屜開啟時背景退出可存取樹、Escape 關閉後焦點返回觸發按鈕，以及 AI 教練／猜著可用左右鍵來回切換。
 
-本次最終 diff 已完成：
+### 3.3 真實 Gemini 與雙引擎基線
 
-- `npm run typecheck`：通過。
-- 定向回歸：providers 43、engine registry 18、renderer architecture 18、security 55，全部通過。
-- `npm test`：446 項通過、0 失敗；engine E2E 88 項實際執行，沒有跳過。
-- `npm run security:audit`：0 vulnerabilities。
-- `git diff --check`：通過，只有 Windows LF／CRLF 提示。
-- `npm run build`：main、preload、renderer production build 通過。
-- `npm run pack`：`release/win-unpacked` 成功；實體 `npm ci` 依賴樹可完整封裝 production modules。
-- `npm run dist:update:github`：成功產生 v0.3.0 NSIS 安裝檔、blockmap、`latest.yml` 與 `app-update.yml`，沒有公開上傳。
-- 執行檔 `ProductVersion`：`0.3.0.0`。
-- 最新 renderer 已用 Electron 本機除錯通道驗證 1720、1240、980 px：無水平溢位、棋盤約 444 px、右上只有 AI 教練／猜著、底部 Live 首屏可見、頂部資料抽屜可展開、設定四分類水平排列。
-- GitHub CI 與 Release workflow 已成功；Release 三項資產下載回本機後通過版本、大小、SHA-512 與公開更新站 Git blob 一致性驗證。Release 安裝檔 SHA-256：`B14D9A6FA2AA4BE54729E7E7DA7F50B3F88A36EF9FC9446ECECE31B824706D01`。
-- 公開更新來源 `xiangqi-analyzer-site` commit `e26c3b9631dec241cf8c71e103c42226d339d72f`，`latest.yml` 已為 `0.3.0`。
-- 桌機已由 0.2.6 升級到 Release 原檔 0.3.0；登錄與執行檔 `ProductVersion` 都是 `0.3.0`／`0.3.0.0`，啟動後有 main + 3 個 Electron child processes。
-- 安裝版已同時啟動 AVX2 主引擎與 SSE4.1 複核引擎；跨 20 秒觀察窗兩邊 PID 都更新，證明 Live refinement 完成一輪後仍持續串接。
-- 已設定真實 Gemini Key，但為避免未經確認產生服務商費用，本次只驗證 AI 解說入口與設定狀態，未發送付費模型請求。
+已使用桌機現有 Gemini API Key 執行一次真實端到端請求，並讓主／複核引擎在 AI 工作期間持續更新：
 
-## 5. 本次完成的變更
+- model：`gemini-3.5-flash`
+- trace ID：`3e50fc3d-21b3-48f6-ad6d-52af0680ed77`
+- request ID：`b55c69a9-da15-417b-bac4-df296f9814a0`
+- 狀態：completed
+- 耗時：422,484 ms
+- token：input 33,354／output 1,096
+- 未提供使用者著法時，最終答案沒有虛構使用者走法。
+- 主／複核引擎在 AI 請求期間仍持續更新，證明兩條工作管線可並行。
 
-本次交付包括：
+這次基線也揭露消費者不可接受的等待時間：模型多次回傳無效 JSON，觸發三輪審查、額外引擎研究、writer 與 repair，最後才使用保守 fallback。
 
-- 專案目錄結構重整（純 `git mv` 與路徑修正，沒有改動程式邏輯）
-  - Renderer 改為 feature-first；`components/` 只保留無業務狀態的 `ui/`。
-  - `shared/logic` 分成 `board/`、`analysis/`、`ai/`、`validation/`。
-  - 測試分成 `unit/`、`integration/`、`e2e/`、`architecture/`、`security/` 與 `support/`。
-  - 文件、工具及封裝資源分別整理到 `docs/*`、`tools/license|release` 與 `resources/packaging`。
+最佳化後已再次執行真實 Gemini 與持續雙引擎：
 
-- `src/renderer/src/features/analysis/AnalysisPanel.tsx`、`features/analysis/liveAnalysis.ts`
-  - 修正 AI 解說／既有 conversation 會使 Live 永久停止的生命週期缺口。
-  - refinement 不再清空既有解說與思考紀錄，失敗會退避重試。
-  - AI request 捕捉 analysis ID、FEN 與結果快照，避免並行 Live 更新造成 conversation 錯綁。
-- `src/renderer/src/features/workspace/AnalysisWorkspace.tsx`、`AnalysisToolbar.tsx`、`AnalysisInspectorTabs.tsx`、`styles/*.css`
-  - 重整為左上縮小棋盤、右上 AI 教練／猜著、底部全寬 Live；資料移至頂部工具列抽屜。
-  - Tabs 補上 `aria-controls`、roving `tabIndex` 與左右方向鍵切換。
-  - 設定分類改為水平導覽。
-- `src/main/ipc/aiExplanationHandlers.ts`、`src/main/ai/HarnessOrchestrator.ts`
-  - 把 production AI handler 接回唯一 PromptBuilder 入口。
-  - 多輪歷史與目標語言真正進入 Harness writer／repair prompt。
-- `tests/integration/ai/harness.test.ts`、`tests/architecture/rendererArchitecture.test.ts`
-  - 新增多輪上下文、語言、Live 排程／重試、AI 快照與首頁資訊架構回歸測試。
-- `.github/workflows/release.yml`、`tools/release/verify-update-artifacts.ps1`、`tests/security/security.test.ts`
-  - metadata 驗證不再因 GitHub runner 無法載入 `Microsoft.PowerShell.Security` 而失敗；簽章政策改由 Windows SDK `signtool verify` 獨立執行。
-  - 有憑證時必須驗證為有效簽章；明確允許未簽章時仍只接受 `No signature found`，其他驗證錯誤照樣阻擋 Release。
+- 初次完整解說 trace `cc834e83-2df2-4cb1-ac84-0881929a3020`：34,478 ms、2 次模型呼叫、0 額外引擎輪次、input 8,149／output 1,539 tokens、0 validation error。
+- 同一 conversation 的「請用三句話」追問 trace `6d4b7eb4-6960-4d04-9780-7736d3daf242`：11,945 ms、1 次模型呼叫、0 額外引擎輪次、input 4,271／output 528 tokens、0 validation error。
+- 初次解說沒有虛構使用者著法；追問保留原問題並依三個重點回答，後續再加上確定性句數正規化。
+- 執行中按停止後同時顯示「已取消生成；追問內容仍保留」與引擎取消狀態；等待後 AI 沒有自動重啟，使用者可手動恢復持續分析。
+- 實際 API 曾以 HTTP 400 拒絕較新的 `responseFormat.text.mimeType` 形狀；改用同一 `generateContent` 端點實際接受的 `responseMimeType` 後成功，避免把尚未全面佈署的文件形狀當成已驗收能力。
+- `gemini-3.1-flash-lite` 已以桌面 UI 完成真實結構化解說；`gemini-3.1-pro-preview` 的真實請求與一次自動重試都被免費額度 rate limit 拒絕，因此只能確認錯誤處理正常，不能宣稱該模型已完成成功端到端驗收。設定已還原為預設 `gemini-3.5-flash`。
 
-- `src/renderer/src/features/board/BoardEditor.tsx`
-  - 收起擺棋工具時強制回到移動模式。
-  - 一般走子錯誤在工具收起時也可見。
-- `src/shared/types/EngineRegistry.ts`
-  - 加入 Px0、烏雲、象眼、佳佳、MaxQi profile。
-  - 修正 `getEngineProfile` 不可依固定陣列索引尋找 custom fallback。
-  - 建立共用 `isEngineProfileId`，讓 renderer、IPC 與持久化使用同一份精確白名單。
-- `src/main/ipc/engineAnalysisHandlers.ts`、`src/main/engine/EngineRegistryService.ts`
-  - 修正新 profile 在 UI 可選、但 IPC 拒絕或重啟後退回 `custom` 的跨邊界回歸。
-- `src/shared/types/AIProviderTypes.ts`
-  - 加入 `claude-fable-5`、`claude-sonnet-5`。
-- `src/shared/config/model_catalog.json`
-  - 加入上述 Anthropic 模型。
-- `src/renderer/src/features/settings/AiSettingsSection.tsx`
-  - 明示 API 用量由服務商另行計費，本軟體不含額度。
-  - 更新 xAI placeholder 為 `grok-4.5`。
-- `tests/unit/main/providers.test.ts`
-  - 新模型、模型總數與 UI／main catalog 完全一致測試。
-- `tests/unit/main/engineRegistry.test.ts`
-  - 常見引擎 profile、main 邊界、持久化 round-trip 與 custom fallback 測試。
-- `tests/architecture/rendererArchitecture.test.ts`
-  - 收起擺棋工具必須退出替換／清除模式的回歸測試。
-- `CLAUDE.md`
-  - 移除已完成卻被錯列為未完成的猜著、多輪追問、待理解頁與 icon 項目。
-- `docs/architecture/overview.md`
-  - 補上相容端點金鑰綁定與 5 MB Provider JSON 回應限制。
-- `tools/release/build-github-update.ps1`、`tests/security/security.test.ts`
-  - 修正 auto-update wrapper 吞掉內層 build 失敗、誤把舊產物當成功的問題。
-  - 現在會傳遞非零 exit code，並要求當前版本三項產物存在、非空且為本次新建。
-- `PROJECT_STATUS.md`
-  - 本交接檔案。
+## 4. v0.3.1 發布前尚待完成
 
-## 6. 交付風險
+1. commit 並 push `main`，等待 CI 通過；建立並 push annotated `v0.3.1` tag。
+2. 執行 Release workflow；若仍無受信任憑證，只能明確使用過渡版 `allow_unsigned=true`，且 Release notes 必須保留未簽章警告。
+3. 從 GitHub Release 下載同一組三項產物回本機驗證，再發布到 `xiangqi-analyzer-site/downloads/`。
+4. 使用 Release 下載的安裝檔再次覆蓋安裝，回讀 GitHub Release、公開 `latest.yml` 與桌機 ProductVersion；三者都必須是 v0.3.1／0.3.1。
 
-### 本次已關閉
+## 5. 唯一外部發行阻塞：受信任 Windows 簽章
 
-1. 最新 UI／profile／模型變更已完成 typecheck、定向測試、446 項完整測試與 diff check。
-2. AI 多輪上下文、目標語言、Live 排程／退避與快照一致性均有回歸測試。
-3. build、pack 與 auto-update packaging 已完成並驗證產物。
-4. 封裝版核心滑鼠流程已實測；發現的 dependency-junction 封裝缺模組問題已改用實體 `npm ci` 排除。
-5. auto-update wrapper 已不再吞掉 build 失敗或接受舊產物。
+目前 CurrentUser 憑證存放區沒有可用的程式碼簽章憑證，GitHub Actions 也沒有 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secrets。沒有受信任 CA 核發的憑證，就不能讓 Windows 對公開下載的安裝檔建立可信發行者身分。
 
-### 已知交付限制，不應偽裝成 Bug 已解決
+因此：
 
-- App 不內含第三方引擎二進位與 NNUE 權重；使用者仍需自行合法取得並在設定頁加入。
+- 可以發行明確標示風險的未簽章過渡版 v0.3.1。
+- 不可用自簽憑證宣稱已完成正式簽章，也不可保證 SmartScreen 不警告。
+- 正式公開販售前，必須取得受信任 CA 的 PFX、設定 GitHub secrets，保持 `allow_unsigned=false` 重新封裝，並重新驗證簽章、安裝與自動更新。
+
+## 6. 其他已知產品限制
+
+- App 不包含第三方象棋引擎二進位或 NNUE 權重；使用者須自行合法取得並在設定頁加入。
 - 尚未支援 PGN 或中文著法棋譜匯入；目前支援 FEN 與 UCI 著法序列。
-- Windows 安裝檔尚未程式碼簽章，可能出現 SmartScreen 警告。
-- 真實外接 AI 呼叫需要使用者自己的 API Key 並由服務商計費；目前仍等待使用者在執行當下明確回覆「同意付費測試」。
-- 雙引擎真實運行需要本機安裝兩個可用引擎；只有一個引擎時會使用單引擎流程。
-- 授權閘門目前按使用者要求維持測試停用狀態，不代表商業授權流程已準備公開發售。
-- 本機已驗證兩個不同 Pikafish 執行檔可同時作為主／複核引擎；尚未做真實付費模型參與的完整雙引擎解說品質驗收。
+- 本機雙引擎實測使用兩個不同 Pikafish 執行檔，可證明雙程序、不中斷 Live 與 AI 證據整合管線，但不等同兩個獨立棋力家族的分歧裁決品質驗收。
+- 授權閘門依使用者要求維持測試停用；這不代表商業授權與付費流程已可公開販售。
 
-## 7. 後續建議
+## 7. 發布與維護原則
 
-1. 正式公開發售前取得受信任 CA Windows 程式碼簽章憑證，設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD`，再重新驗證 SmartScreen、安裝與更新流程。
-2. 若要做真實 AI 端到端品質驗收，先在執行當下明確同意服務商費用，再使用目前設定的 Key 執行代表性回歸題組。
-3. 用兩個不同家族／不同評估風格的合法引擎補做分歧局面裁決；目前兩個實體執行檔皆為 Pikafish build，能驗證雙程序管線但不等於獨立棋力來源。
-
-## 8. 不可遺忘的實作原則
-
-- 不可用分數高低代替象棋因果解釋。
-- 不可讓術語本身冒充證據。
-- 不可平均雙引擎分數。
-- 不可在 renderer 暴露 API Key 或 Node／Electron 權限。
-- 不可讓 loop 無限重試或整篇反覆重生。
-- 不可因切換 UI 檢視而取消引擎或 AI 工作。
-- 不可只看 source code 就宣告桌面 App 可用；必須驗證封裝版與桌面操作。
-- 不可遺失使用者／前一代理留下的既有變更。
-- 接近模型額度上限時，先 checkpoint commit 並 push，再繼續長時間驗證。
+- 不可用分數高低代替象棋因果解釋，術語也不能冒充本局證據。
+- 不可平均主引擎與複核引擎分數；分歧時必須保留兩邊證據。
+- API Key 不可進入 renderer、log、trace、Git 或安裝產物。
+- Harness 必須有呼叫、token、研究輪次與重寫輪次上限，不可無限重試。
+- 不可因切換 UI 檢視而取消引擎或 AI 工作；使用者明確停止時也不可自動重啟。
+- 資料讀取失敗時不可用空白資料覆蓋原檔。
+- 不可只看 source code 宣告桌面 App 可用；必須驗證封裝版、安裝版與實際桌面操作。
+- 發布失敗時保留 tag、Release 與產物證據，另建修正版號，不覆寫既有版本。
+- 不可遺失使用者或其他代理留下的工作樹變更；任何同步前先檢查 `git status` 與遠端 HEAD。

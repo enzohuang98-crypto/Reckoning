@@ -393,10 +393,18 @@ check(
     updateBuildScript.includes('Auto-update artifact was not freshly built')
 )
 check(
-  '更新 metadata 會驗證版本、路徑與安裝檔 SHA-512',
+  '更新 metadata 會驗證版本、路徑、大小、ProductVersion 與安裝檔 SHA-512',
   updateVerifyScript.includes('latest.yml version does not match') &&
     updateVerifyScript.includes('latest.yml path does not match') &&
+    updateVerifyScript.includes('latest.yml size does not match') &&
+    updateVerifyScript.includes('Setup ProductVersion') &&
     updateVerifyScript.includes('SHA-512 does not match')
+)
+check(
+  '更新封裝與發布會驗證公開 URL 並拒絕超過 Git blob 上限',
+  updateBuildScript.includes('Packaged updater URL does not match') &&
+    updateVerifyScript.includes('$maximumGitBlobBytes = 100MB') &&
+    updatePublishScript.includes('$setupBytes -ge 100MB')
 )
 check(
   '更新 metadata 驗證不依賴 runner 可能缺失的 PowerShell Security 模組',

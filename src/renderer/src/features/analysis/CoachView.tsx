@@ -14,6 +14,7 @@ import { HarnessProgressCard } from './HarnessProgressCard'
 interface TokenEstimate {
   input: number
   output: number
+  modelCalls: number
 }
 
 interface Props {
@@ -30,6 +31,8 @@ interface Props {
   traceId: string | null
   tokenEstimate: TokenEstimate | null
   aiBlockedReason: string | null
+  error: string | null
+  notice: string | null
   followUp: string
   onFollowUpChange: (value: string) => void
   onGenerate: () => void
@@ -54,6 +57,8 @@ export function CoachView({
   traceId,
   tokenEstimate,
   aiBlockedReason,
+  error,
+  notice,
   followUp,
   onFollowUpChange,
   onGenerate,
@@ -66,16 +71,22 @@ export function CoachView({
   const engineAnalysis = result?.engineAnalysis
   const latestMessage = conversation?.messages.at(-1)
   const historyMessages = conversation?.messages.slice(0, -1) ?? []
+  const modelBadge = conversation
+    ? latestMessage?.model ?? '歷史回答'
+    : explanation?.model ?? `目前選用：${settings.aiModel}`
 
   return (
     <div className="analysis-view-content coach-view">
       <div className="view-heading">
         <div>
           <span className="eyebrow">GROUNDED AI COACH</span>
-          <h3>有證據的中文解說</h3>
+          <h3>有證據的 AI 教練解說</h3>
         </div>
-        <span className="badge plain">{settings.aiModel}</span>
+        <span className="badge plain">{modelBadge}</span>
       </div>
+
+      {error && <div className="error-text" role="alert">{error}</div>}
+      {notice && <div className="notice-text" role="status">{notice}</div>}
 
       {aiBusy && harnessProgress && (
         <HarnessProgressCard
@@ -88,8 +99,8 @@ export function CoachView({
 
       {tokenEstimate && !conversation && !aiBusy && (
         <div className="coach-cost-note">
-          呼叫前估算：輸入約 {tokenEstimate.input} tokens，輸出上限約{' '}
-          {tokenEstimate.output} tokens。
+          AI 研究預算：目前棋局資料約 {tokenEstimate.input} tokens；整輪模型輸出總預算{' '}
+          {tokenEstimate.output} tokens，最多 {tokenEstimate.modelCalls} 次模型呼叫。實際輸入會再加入驗證規則與引擎證據。
         </div>
       )}
 

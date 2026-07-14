@@ -25,28 +25,37 @@ interface Props {
 }
 
 function ToolbarButton({
+  buttonId,
   icon,
   label,
   title,
   active,
   variant,
   disabled,
+  ariaExpanded,
+  ariaControls,
   onClick
 }: {
+  buttonId?: string
   icon: IconName
   label: string
   title: string
   active?: boolean
   variant?: 'primary' | 'danger'
   disabled?: boolean
+  ariaExpanded?: boolean
+  ariaControls?: string
   onClick: () => void
 }): JSX.Element {
   return (
     <button
+      id={buttonId}
       type="button"
       className={`toolbar-btn${active ? ' active' : ''}${variant ? ` ${variant}` : ''}`}
       title={title}
       aria-label={title}
+      aria-expanded={ariaExpanded}
+      aria-controls={ariaControls}
       disabled={disabled}
       onClick={onClick}
     >
@@ -156,7 +165,7 @@ export function AnalysisToolbar({
         <ToolbarButton
           icon="sparkles"
           label={status.aiBusy ? '解說中' : status.hasExplanation ? '重新解說' : 'AI 解說'}
-          title={status.aiBlockedReason ?? '請 AI 用中文解說目前局面'}
+          title={status.aiBlockedReason ?? '請 AI 依照設定語言解說目前局面'}
           active={activeView === 'coach'}
           disabled={Boolean(status.aiBlockedReason)}
           onClick={() => {
@@ -177,10 +186,13 @@ export function AnalysisToolbar({
           onClick={onToggleBoardSize}
         />
         <ToolbarButton
+          buttonId="analysis-details-toggle"
           icon="details"
           label="分析資料"
           title="在工具列下方展開當前局面的分析資料"
           active={detailsOpen}
+          ariaExpanded={detailsOpen}
+          ariaControls="analysis-data-drawer"
           onClick={onToggleDetails}
         />
         <ToolbarButton

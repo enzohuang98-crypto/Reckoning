@@ -27,6 +27,15 @@ foreach ($path in $artifacts) {
   }
 }
 
+$appUpdate = Join-Path 'release' 'win-unpacked\resources\app-update.yml'
+if (-not (Test-Path -LiteralPath $appUpdate -PathType Leaf)) {
+  throw "Missing packaged updater configuration: $appUpdate"
+}
+$appUpdateText = Get-Content -Raw -Encoding UTF8 -LiteralPath $appUpdate
+if ($appUpdateText -notmatch [regex]::Escape($updateUrl)) {
+  throw "Packaged updater URL does not match $updateUrl."
+}
+
 & (Join-Path $PSScriptRoot 'verify-update-artifacts.ps1') -ExpectedVersion $version
 
 Write-Host ''

@@ -20,6 +20,9 @@ interface Props {
   activeTab: AppTab
   onTabChange: (tab: AppTab) => void
   dataError: string | null
+  dataRecoveryRequired: boolean
+  dataRecoveryBusy: boolean
+  onRetryLoad: () => void
   onRetrySave: () => void
   children: ReactNode
 }
@@ -28,6 +31,9 @@ export function AppShell({
   activeTab,
   onTabChange,
   dataError,
+  dataRecoveryRequired,
+  dataRecoveryBusy,
+  onRetryLoad,
   onRetrySave,
   children
 }: Props): JSX.Element {
@@ -71,11 +77,21 @@ export function AppShell({
       {dataError && (
         <div className="global-storage-error" role="alert">
           <span>{dataError}</span>
-          <button className="btn ghost small" onClick={onRetrySave}>重試儲存</button>
+          <button
+            className="btn ghost small"
+            disabled={dataRecoveryBusy}
+            onClick={dataRecoveryRequired ? onRetryLoad : onRetrySave}
+          >
+            {dataRecoveryRequired
+              ? dataRecoveryBusy
+                ? '重新讀取中…'
+                : '重新讀取資料'
+              : '重試儲存'}
+          </button>
         </div>
       )}
 
-      <main className="app-main">{children}</main>
+      <main className={`app-main app-main-${activeTab}`}>{children}</main>
     </div>
   )
 }

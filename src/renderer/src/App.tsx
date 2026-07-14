@@ -45,8 +45,11 @@ export function App(): JSX.Element {
     appData,
     dataReady,
     dataError,
+    dataRecoveryRequired,
+    dataRecoveryBusy,
     setDataError,
     saveCurrentData,
+    retryLoadData,
     updateAppData,
     importData
   } = useAppDataStore()
@@ -255,6 +258,9 @@ export function App(): JSX.Element {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       dataError={dataError}
+      dataRecoveryRequired={dataRecoveryRequired}
+      dataRecoveryBusy={dataRecoveryBusy}
+      onRetryLoad={retryLoadData}
       onRetrySave={() => saveCurrentData(appData)}
     >
       <AnalysisWorkspace

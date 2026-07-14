@@ -7,19 +7,11 @@
 @media (max-width: 900px) {
   .analyze-layout,
   .analyze-layout.board-compact {
-    grid-template-columns: 1fr;
-  }
-
-  .right-col {
-    position: static;
-  }
-
-  .inspector-shell {
-    height: min(720px, calc(100vh - 130px));
+    grid-template-columns: minmax(260px, 0.82fr) minmax(340px, 1.18fr);
   }
 
   .live-analysis-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -117,6 +109,97 @@
 
   .result-metrics {
     justify-content: flex-start;
+  }
+}
+
+@media (max-height: 900px) {
+  .app-header {
+    min-height: 56px;
+  }
+
+  .brand-seal {
+    width: 34px;
+    height: 34px;
+    font-size: 20px;
+  }
+
+  .app-subtitle {
+    display: none;
+  }
+
+  .nav-btn {
+    min-height: 32px;
+  }
+
+  .app-main {
+    padding: 8px 12px;
+  }
+
+  .analyze-page {
+    grid-template-rows: auto minmax(0, 1fr) clamp(250px, 34vh, 300px);
+    gap: 8px;
+  }
+
+  .app-toolbar {
+    min-height: 50px;
+    padding: 4px 6px;
+  }
+
+  .toolbar-btn {
+    min-height: 40px;
+  }
+
+  .board-editor {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .board-editor-toolbar {
+    min-height: 30px;
+  }
+
+  .board-wrap,
+  .live-analysis-grid {
+    padding: 8px;
+  }
+
+  .live-dock-heading {
+    min-height: 46px;
+    padding: 6px 12px;
+  }
+
+  .live-dock-heading .eyebrow {
+    display: none;
+  }
+
+  .live-dock-heading h2 {
+    font-size: 17px;
+  }
+
+  .engine-console-header {
+    min-height: 44px;
+    padding: 6px 10px;
+  }
+
+  .engine-console-status {
+    padding: 5px 10px;
+  }
+
+  .analysis-helper-strip {
+    padding: 6px 8px;
+    line-height: 1.4;
+  }
+
+  .inspector-content .panel-empty-state {
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .inspector-content .panel-empty-state .empty-state-mark {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 8px;
+    font-size: 18px;
   }
 }
 

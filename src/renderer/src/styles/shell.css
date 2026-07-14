@@ -147,6 +147,10 @@
   padding: 12px 16px 20px;
 }
 
+.app-main-analyze {
+  overflow: hidden;
+}
+
 .global-storage-error {
   display: flex;
   align-items: center;

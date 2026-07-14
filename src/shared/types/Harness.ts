@@ -1,5 +1,6 @@
 import type { EngineAnalysis, EngineScore } from './EngineAnalysis'
-import type { TokenUsage } from './AIProviderTypes'
+import type { AIProviderId, TokenUsage } from './AIProviderTypes'
+import type { ExplanationLanguage } from './AIExplanationTypes'
 
 export type HarnessAnswerMode = 'focused' | 'research'
 export type HarnessPhase =
@@ -93,6 +94,13 @@ export interface HarnessAnswer {
 export interface HarnessTrace {
   id: string
   createdAt: string
+  requestId?: string
+  analysisId?: string
+  provider?: AIProviderId
+  model?: string
+  language?: ExplanationLanguage
+  historyMessageCount?: number
+  durationMs?: number
   positionFen: string
   question?: string
   attachedMove?: string

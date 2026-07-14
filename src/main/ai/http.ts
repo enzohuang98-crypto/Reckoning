@@ -42,7 +42,16 @@ export async function extractApiErrorMessage(res: Response): Promise<string> {
       64 * 1024
     )
     if (body?.error?.message) return body.error.message
-  } catch {
+  } catch (error) {
+    // Cancelling after the response headers arrive can abort the body reader.
+    // Preserve that signal so callers report cancellation instead of replacing
+    // it with the HTTP status text.
+    if (
+      (error instanceof DOMException && error.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError')
+    ) {
+      throw error
+    }
     /* 非 JSON 回應 */
   }
   return res.statusText || '未知錯誤'

@@ -60,6 +60,11 @@ export function AiSettingsSection({
     update({ aiBaseUrl: preset.baseUrl, aiModel: preset.suggestedModel })
   }
 
+  const deleteApiKey = (): void => {
+    if (!window.confirm('確定要刪除本機保存的 AI API Key 嗎？刪除後需要重新輸入才能使用對應服務。')) return
+    onDeleteKey()
+  }
+
   return (
     <div className="settings-section-grid">
       <section className="card settings-feature-card">
@@ -136,7 +141,7 @@ export function AiSettingsSection({
               儲存金鑰
             </button>
             {(secretStatus.configured || secretStatus.needsReentry) && (
-              <button className="btn danger" onClick={onDeleteKey}>刪除</button>
+              <button className="btn danger" onClick={deleteApiKey}>刪除</button>
             )}
           </div>
         </div>

@@ -14,7 +14,10 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { OpenAIProvider } from '../../../src/main/ai/providers/OpenAIProvider'
 import { OpenAICompatibleProvider } from '../../../src/main/ai/providers/OpenAICompatibleProvider'
-import { readJsonResponseBounded } from '../../../src/main/ai/http'
+import {
+  extractApiErrorMessage,
+  readJsonResponseBounded
+} from '../../../src/main/ai/http'
 import { GeminiProvider } from '../../../src/main/ai/providers/GeminiProvider'
 import { modelRegistry, UnsupportedModelError } from '../../../src/main/ai/ModelRegistry'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
@@ -112,7 +115,12 @@ interface OpenAIRequestBody {
 
 interface GeminiRequestBody {
   contents?: Array<{ role?: string; parts?: Array<{ text?: string }> }>
-  generationConfig?: { maxOutputTokens?: number; temperature?: number }
+  generationConfig?: {
+    maxOutputTokens?: number
+    temperature?: number
+    thinkingConfig?: { thinkingLevel?: string; includeThoughts?: boolean }
+    responseMimeType?: string
+  }
 }
 
 async function collect(
@@ -262,6 +270,27 @@ async function main(): Promise<void> {
       error instanceof Error && error.message.includes('超過允許大小')
     )
   }
+  {
+    const abort = new DOMException('cancelled while reading error body', 'AbortError')
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(abort)
+        }
+      }),
+      { status: 503, statusText: 'Service Unavailable' }
+    )
+    let error: unknown = null
+    try {
+      await extractApiErrorMessage(response)
+    } catch (caught) {
+      error = caught
+    }
+    check(
+      '讀取非 2xx 錯誤 body 時的 AbortError 不會被 statusText 吞掉',
+      error === abort
+    )
+  }
 
   section('OpenAIProvider：成功路徑')
   {
@@ -372,14 +401,27 @@ async function main(): Promise<void> {
     const { server, port, requests } = await startMockServer(() => [
       200,
       {
-        candidates: [{ content: { role: 'model', parts: [{ text: '黑方應跳馬防守。' }] } }],
-        usageMetadata: { promptTokenCount: 80, candidatesTokenCount: 30, totalTokenCount: 110 }
+        candidates: [{
+          content: {
+            role: 'model',
+            parts: [
+              { text: '內部推理不應顯示。', thought: true },
+              { text: '黑方應跳馬防守。' }
+            ]
+          }
+        }],
+        usageMetadata: {
+          promptTokenCount: 80,
+          candidatesTokenCount: 30,
+          thoughtsTokenCount: 12,
+          totalTokenCount: 122
+        }
       }
     ])
     const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const res = await provider.generateExplanation(
-      explanationRequest('gemini', 'gemini-3.5-flash', 'AIza-test')
-    )
+    const request = explanationRequest('gemini', 'gemini-3.5-flash', 'AIza-test')
+    request.responseFormat = 'json'
+    const res = await provider.generateExplanation(request)
     server.close()
 
     check(
@@ -399,8 +441,39 @@ async function main(): Promise<void> {
       body.generationConfig?.maxOutputTokens === 4096 && body.generationConfig.temperature === 0.3,
       body.generationConfig
     )
-    check('回應文字解析', res.text === '黑方應跳馬防守。')
-    check('token 用量解析', res.usage?.inputTokens === 80 && res.usage.outputTokens === 30)
+    check(
+      'Gemini 使用低延遲 thinking 且不回傳推理內容',
+      body.generationConfig?.thinkingConfig?.thinkingLevel === 'low' &&
+        body.generationConfig.thinkingConfig.includeThoughts === false,
+      body.generationConfig?.thinkingConfig
+    )
+    check(
+      'JSON 請求使用 generateContent 實際支援的 application/json MIME type',
+      body.generationConfig?.responseMimeType === 'application/json',
+      body.generationConfig
+    )
+    check('回應文字解析並排除 thought parts', res.text === '黑方應跳馬防守。')
+    check(
+      'token 用量解析包含 Gemini thinking tokens',
+      res.usage?.inputTokens === 80 && res.usage.outputTokens === 42
+    )
+  }
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      { candidates: [{ content: { parts: [{ text: '舊版模型回應' }] } }] }
+    ])
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    await provider.generateExplanation(
+      explanationRequest('gemini', 'gemini-2.5-flash', 'AIza-test')
+    )
+    server.close()
+    const body = requests[0].body as GeminiRequestBody
+    check(
+      'Gemini 2.5 不會收到僅適用 3.x 的 thinkingLevel',
+      body.generationConfig?.thinkingConfig === undefined,
+      body.generationConfig
+    )
   }
 
   section('GeminiProvider：streaming 包裝與空回應防護')

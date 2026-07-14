@@ -57,6 +57,11 @@ export function MisunderstoodPage({
     onChange(entries.filter((item) => item.id !== entry.id))
   }
 
+  const deleteEntry = (entry: MisunderstoodPosition): void => {
+    if (!window.confirm('確定要永久刪除這個待理解局面嗎？此動作無法復原。')) return
+    onChange(entries.filter((item) => item.id !== entry.id))
+  }
+
   return (
     <div className="mistake-page">
       <div className="page-heading">
@@ -127,7 +132,7 @@ export function MisunderstoodPage({
                   </button>
                   <button
                     className="btn danger"
-                    onClick={() => onChange(entries.filter((item) => item.id !== entry.id))}
+                    onClick={() => deleteEntry(entry)}
                   >
                     刪除
                   </button>

@@ -1,6 +1,7 @@
 import type { EngineRegistrySnapshot } from '@shared/types/EngineRegistry'
 import type { AppSettings } from '@shared/types/Settings'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
+import { EngineResultSummary } from './EngineResultSummary'
 
 interface Props {
   result: EngineAnalysisResultPayload | null
@@ -95,6 +96,8 @@ export function DetailsView({
 
       {result ? (
         <>
+          <EngineResultSummary result={result} />
+
           <section className="detail-card">
             <div className="section-heading">
               <h4>收藏目前局面</h4>

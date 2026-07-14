@@ -1,6 +1,6 @@
 {
   "name": "xiangqi-analyzer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "象棋 AI 分析講解軟體 — Pikafish 引擎 + LLM 結構化解釋 (MVP)",
   "main": "./out/main/index.js",
   "author": "xiangqi-analyzer",
@@ -14,7 +14,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "tsx --tsconfig tsconfig.node.json tests/unit/shared/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/knowledge.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/dualEngine.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/license.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security/security.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/integration/ai/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/quality.test.ts && tsx --tsconfig tsconfig.node.json tests/architecture/rendererArchitecture.test.ts && tsx --tsconfig tsconfig.node.json tests/e2e/engine.e2e.ts",
+    "test": "tsx --tsconfig tsconfig.node.json tests/unit/shared/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/knowledge.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/dualEngine.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/license.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security/security.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/integration/ai/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/quality.test.ts && tsx --tsconfig tsconfig.node.json tests/architecture/rendererArchitecture.test.ts && tsx --tsconfig tsconfig.web.json tests/architecture/boardAccessibility.test.ts && tsx --tsconfig tsconfig.node.json tests/e2e/engine.e2e.ts",
     "security:check": "tsx --tsconfig tsconfig.node.json tests/security/security.test.ts",
     "security:audit": "npm audit --audit-level=moderate",
     "pack": "npm run build && electron-builder --dir",

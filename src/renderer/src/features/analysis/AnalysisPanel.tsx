@@ -77,9 +77,13 @@ interface Props {
 interface PendingAiRequest {
   question: string | null
   conversationId: string
+  conversationCreatedAt: string | null
+  conversationMessages: ConversationMessage[]
   analysisId: string
   positionFen: string
   resultSnapshot: EngineAnalysisResultPayload
+  provider: AIExplanationResponse['provider']
+  model: string
 }
 
 const MAX_ENGINE_THOUGHTS = 80
@@ -103,12 +107,17 @@ function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(ascii / 4 + nonAscii / 1.6))
 }
 
-function newMessage(role: ConversationMessage['role'], text: string): ConversationMessage {
+function newMessage(
+  role: ConversationMessage['role'],
+  text: string,
+  provenance?: Pick<PendingAiRequest, 'provider' | 'model'>
+): ConversationMessage {
   return {
     id: crypto.randomUUID(),
     role,
     text,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    ...(role === 'assistant' && provenance ? provenance : {})
   }
 }
 
@@ -141,6 +150,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [error, setError] = useState<string | null>(null)
   const [engineDiagnostics, setEngineDiagnostics] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
   const [explainedResult, setExplainedResult] =
@@ -168,6 +179,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const activeAnalysisKey = useRef<string | null>(null)
   const activeAiRequestId = useRef<string | null>(null)
   const pendingAiRequest = useRef<PendingAiRequest | null>(null)
+  const autoRunAttemptTarget = useRef<string | null>(null)
   const settingsRef = useRef(settings)
   const conversationRef = useRef(conversation)
   const resultRef = useRef(result)
@@ -240,6 +252,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     activeAnalysisKey.current = null
     activeAiRequestId.current = null
     pendingAiRequest.current = null
+    autoRunAttemptTarget.current = null
     analysisStartedAtRef.current = null
     lastThoughtAtRef.current = null
     setBusy(false)
@@ -265,6 +278,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setError(null)
     setEngineDiagnostics([])
     setNotice(null)
+    setAiError(null)
+    setAiNotice(null)
     onResult(null)
     onExplanation(null)
   }, [board.fen, submittedGuess?.move])
@@ -359,8 +374,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setTraceId(payload.traceId ?? null)
       const response: AIExplanationResponse = {
         text: payload.finalText,
-        provider: settingsRef.current.aiProvider,
-        model: settingsRef.current.aiModel,
+        provider: pending?.provider ?? settingsRef.current.aiProvider,
+        model: pending?.model ?? settingsRef.current.aiModel,
         usage: payload.usage,
         createdAt: Date.now(),
         groundedOnEngineData: true
@@ -370,25 +385,25 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
       if (pending) {
         const now = new Date().toISOString()
-        const current = conversationRef.current
         const messages =
           pending.question === null
-            ? [newMessage('assistant', payload.finalText)]
+            ? [newMessage('assistant', payload.finalText, pending)]
             : [
-                ...(current?.messages ?? []),
+                ...pending.conversationMessages,
                 newMessage('user', pending.question),
-                newMessage('assistant', payload.finalText)
+                newMessage('assistant', payload.finalText, pending)
               ]
         const next: AIConversation = {
           id: pending.conversationId,
           analysisId: pending.analysisId,
           positionFen: pending.positionFen,
-          createdAt: current?.createdAt ?? now,
+          createdAt: pending.conversationCreatedAt ?? now,
           updatedAt: now,
           messages
         }
         conversationRef.current = next
         setExplainedResult(pending.resultSnapshot)
+        if (pending.question !== null) setFollowUp('')
         onConversationChange(next)
       }
     })
@@ -399,8 +414,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setAiBusy(false)
       setAiCancelling(false)
       setHarnessProgress(null)
-      if (payload.code === 'cancelled') setNotice('已取消生成。')
-      else setError(payload.message)
+      if (payload.code === 'cancelled') setAiNotice('已取消生成；追問內容仍保留。')
+      else setAiError(payload.message)
     })
     return () => {
       offProgress()
@@ -578,31 +593,34 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }
 
   const generateExplanation = (question: string | null, regenerate = false): void => {
-    if (!result) return
+    if (!result || activeAiRequestId.current) return
     const cleanedQuestion = question?.trim() || null
     const currentConversation = regenerate ? null : conversationRef.current
     const conversationId = currentConversation?.id ?? crypto.randomUUID()
-    const resultSnapshot =
-      !regenerate && currentConversation && explainedResult
-        ? explainedResult
-        : result
-    const analysisId = currentConversation?.analysisId ?? resultSnapshot.analysisId
-    const positionFen =
-      currentConversation?.positionFen ?? resultSnapshot.engineAnalysis.positionFen
+    // Analysis sessions live in main-process memory and may expire while a saved
+    // conversation remains. Bind each new question to the latest completed
+    // result for this board, while preserving the conversation messages.
+    const resultSnapshot = result
+    const analysisId = resultSnapshot.analysisId
+    const positionFen = resultSnapshot.engineAnalysis.positionFen
     const requestId = crypto.randomUUID()
     activeAiRequestId.current = requestId
     pendingAiRequest.current = {
       question: cleanedQuestion,
       conversationId,
+      conversationCreatedAt: currentConversation?.createdAt ?? null,
+      conversationMessages: currentConversation?.messages.slice() ?? [],
       analysisId,
       positionFen,
-      resultSnapshot
+      resultSnapshot,
+      provider: settings.aiProvider,
+      model: settings.aiModel
     }
     setExplainedResult(resultSnapshot)
     setAiBusy(true)
     setAiCancelling(false)
-    setError(null)
-    setNotice(null)
+    setAiError(null)
+    setAiNotice(null)
     setStreamingText('')
     setHarnessProgress(null)
     setHarnessEvidence([])
@@ -654,16 +672,24 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }
 
   useEffect(() => {
+    const move = submittedGuess?.move ?? ''
+    const target = `${board.fen}|${move}`
     if (
       settings.harnessAutoRun &&
       result &&
+      isSameAnalysisTarget(result.engineAnalysis, board.fen, move) &&
       !aiBusy &&
       !explanation &&
-      !conversationRef.current
+      !conversationRef.current &&
+      autoRunAttemptTarget.current !== target
     ) {
+      // A continuous engine produces a new analysisId every refinement round.
+      // Record the board target before starting so a failed or cancelled AI
+      // request cannot silently restart on the next engine result.
+      autoRunAttemptTarget.current = target
       generateExplanation(null)
     }
-  }, [result?.analysisId, settings.harnessAutoRun])
+  }, [board.fen, result?.analysisId, settings.harnessAutoRun, submittedGuess?.move])
 
   // 不傳 deps：generateExplanation/startAnalysis 等閉包捕捉了 settings/引擎選擇等會變動的值，
   // 每次 render 都重建這個 handle 才能避免呼叫到過期的閉包。
@@ -686,7 +712,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const submitFollowUp = (): void => {
     const question = followUp.trim()
     if (!question) return
-    setFollowUp('')
     generateExplanation(question)
   }
 
@@ -699,9 +724,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     if (!text) return
     try {
       await navigator.clipboard.writeText(text)
-      setNotice('已複製 AI 解說。')
+      setAiNotice('已複製 AI 解說。')
+      setAiError(null)
     } catch {
-      setError('無法存取剪貼簿，請手動選取文字複製。')
+      setAiError('無法存取剪貼簿，請手動選取文字複製。')
+      setAiNotice(null)
     }
   }
 
@@ -724,6 +751,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     })
     setCollectionReason('')
     setNotice('已收藏到「待理解局面」。')
+    setError(null)
   }
 
   const tokenEstimate = useMemo(() => {
@@ -737,9 +765,24 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     })
     return {
       input: estimateTokens(engineText),
-      output: conversation ? 700 : 1800
+      output:
+        settings.harnessAnswerMode === 'research'
+          ? settings.harnessResearchMaxOutputTokens
+          : settings.harnessFocusedMaxOutputTokens,
+      modelCalls:
+        settings.harnessAnswerMode === 'research'
+          ? settings.harnessResearchMaxModelCalls
+          : settings.harnessFocusedMaxModelCalls
     }
-  }, [coachResult, conversation])
+  }, [
+    coachResult,
+    conversation,
+    settings.harnessAnswerMode,
+    settings.harnessFocusedMaxModelCalls,
+    settings.harnessFocusedMaxOutputTokens,
+    settings.harnessResearchMaxModelCalls,
+    settings.harnessResearchMaxOutputTokens
+  ])
 
   const cancelExplain = (): void => {
     if (!activeAiRequestId.current) return
@@ -850,8 +893,16 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
           </div>
         )}
       </div>
-      {error && <div className="error-text live-dock-message">{error}</div>}
-      {notice && <div className="notice-text live-dock-message">{notice}</div>}
+      {error && (
+        <div className="error-text live-dock-message" role="alert">
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div className="notice-text live-dock-message" role="status">
+          {notice}
+        </div>
+      )}
       <div className="analysis-view-content live-analysis-grid">
         <div className="live-console-column">
           <EngineConsole
@@ -884,7 +935,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
         <div className="live-result-column">
           {result ? (
-            <EngineResultSummary result={result} />
+            <EngineResultSummary result={result} compact />
           ) : (
             <div className="panel-empty-state">
               <span className="empty-state-mark">棋</span>
@@ -941,6 +992,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               traceId={traceId}
               tokenEstimate={tokenEstimate}
               aiBlockedReason={aiBlockedReason}
+              error={aiError}
+              notice={aiNotice}
               followUp={followUp}
               onFollowUpChange={setFollowUp}
               onGenerate={() => generateExplanation(null)}
@@ -952,8 +1005,14 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
                 if (!traceId) return
                 void window.api.ai
                   .setHarnessFeedback(traceId, feedback)
-                  .then(() => setNotice('已記錄這次解說回饋。'))
-                  .catch(() => setError('回饋儲存失敗，請稍後再試。'))
+                  .then(() => {
+                    setAiNotice('已記錄這次解說回饋。')
+                    setAiError(null)
+                  })
+                  .catch(() => {
+                    setAiError('回饋儲存失敗，請稍後再試。')
+                    setAiNotice(null)
+                  })
               }}
             />
           </div>

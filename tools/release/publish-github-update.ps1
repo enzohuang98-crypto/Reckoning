@@ -16,6 +16,11 @@ foreach ($path in @($setup, $blockmap, $latest)) {
   }
 }
 
+$setupBytes = (Get-Item -LiteralPath $setup).Length
+if ($setupBytes -ge 100MB) {
+  throw "Refusing to publish a $setupBytes-byte installer to the Git-backed update site; the file must remain below 100 MiB."
+}
+
 & (Join-Path $PSScriptRoot 'verify-update-artifacts.ps1') -ExpectedVersion $version
 
 $tempRoot = [IO.Path]::GetTempPath()

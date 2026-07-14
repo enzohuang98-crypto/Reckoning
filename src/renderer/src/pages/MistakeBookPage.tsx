@@ -62,6 +62,16 @@ export function MistakeBookPage({
     setTagDrafts((current) => ({ ...current, [entry.id]: '' }))
   }
 
+  const removeTag = (entry: MistakeBookEntry, tag: string): void => {
+    if (!window.confirm(`確定要移除標籤「${tag}」嗎？`)) return
+    update(entry.id, { tags: entry.tags.filter((item) => item !== tag) })
+  }
+
+  const deleteEntry = (entry: MistakeBookEntry): void => {
+    if (!window.confirm('確定要永久刪除這筆錯題嗎？此動作無法復原。')) return
+    onChange(entries.filter((item) => item.id !== entry.id))
+  }
+
   return (
     <div className="mistake-page">
       <div className="page-heading">
@@ -120,7 +130,7 @@ export function MistakeBookPage({
                     key={tag}
                     className="badge on"
                     title="點擊移除標籤"
-                    onClick={() => update(entry.id, { tags: entry.tags.filter((item) => item !== tag) })}
+                    onClick={() => removeTag(entry, tag)}
                   >
                     {tag} ×
                   </button>
@@ -168,7 +178,7 @@ export function MistakeBookPage({
                 </button>
                 <button
                   className="btn danger small"
-                  onClick={() => onChange(entries.filter((item) => item.id !== entry.id))}
+                  onClick={() => deleteEntry(entry)}
                 >
                   刪除
                 </button>

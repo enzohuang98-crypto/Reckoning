@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { Icon, type IconName } from '../../components/ui/Icon'
 import type { AnalysisView } from './types'
 
@@ -25,11 +26,16 @@ export function AnalysisInspectorTabs({
   aiBusy,
   hasExplanation
 }: Props): JSX.Element {
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+
   return (
     <div className="inspector-tabs" role="tablist" aria-label="研究檢視">
-      {tabs.map((tab) => (
+      {tabs.map((tab, index) => (
         <button
           key={tab.id}
+          ref={(element) => {
+            tabRefs.current[index] = element
+          }}
           type="button"
           role="tab"
           id={`analysis-tab-${tab.id}`}
@@ -39,12 +45,25 @@ export function AnalysisInspectorTabs({
           className={`inspector-tab${activeView === tab.id ? ' active' : ''}`}
           onClick={() => onChange(tab.id)}
           onKeyDown={(event) => {
-            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+            if (
+              event.key !== 'ArrowLeft' &&
+              event.key !== 'ArrowRight' &&
+              event.key !== 'Home' &&
+              event.key !== 'End'
+            ) {
+              return
+            }
             event.preventDefault()
-            const index = tabs.findIndex((item) => item.id === tab.id)
-            const offset = event.key === 'ArrowRight' ? 1 : -1
-            const next = tabs[(index + offset + tabs.length) % tabs.length]
+            const nextIndex =
+              event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? tabs.length - 1
+                  : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) %
+                    tabs.length
+            const next = tabs[nextIndex]
             onChange(next.id)
+            tabRefs.current[nextIndex]?.focus()
           }}
         >
           <Icon name={tab.icon} size={17} />

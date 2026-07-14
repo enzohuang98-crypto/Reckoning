@@ -11,7 +11,7 @@
     { "provider": "openai", "model": "gpt-5.4-mini", "displayName": "GPT-5.4 Mini" },
     { "provider": "openai", "model": "gpt-5.4-nano", "displayName": "GPT-5.4 Nano" },
     { "provider": "gemini", "model": "gemini-3.5-flash", "displayName": "Gemini 3.5 Flash" },
-    { "provider": "gemini", "model": "gemini-3.1-pro", "displayName": "Gemini 3.1 Pro" },
+    { "provider": "gemini", "model": "gemini-3.1-pro-preview", "displayName": "Gemini 3.1 Pro (Preview)" },
     { "provider": "gemini", "model": "gemini-3.1-flash-lite", "displayName": "Gemini 3.1 Flash-Lite" }
   ]
 }

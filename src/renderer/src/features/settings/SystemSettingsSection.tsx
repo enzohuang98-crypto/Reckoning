@@ -26,6 +26,11 @@ export function SystemSettingsSection({
   onInstallUpdate,
   onDeactivateLicense
 }: Props): JSX.Element {
+  const deactivateLicense = (): void => {
+    if (!window.confirm('確定要解除這台電腦上的授權嗎？解除後需要重新輸入 License Key 才能再次啟用。')) return
+    onDeactivateLicense()
+  }
+
   return (
     <div className="settings-section-grid">
       <div className="settings-stack">
@@ -68,7 +73,7 @@ export function SystemSettingsSection({
                   </div>
                 )}
               </div>
-              <button className="btn danger" onClick={onDeactivateLicense}>解除啟用</button>
+              <button className="btn danger" onClick={deactivateLicense}>解除啟用</button>
               <p className="muted small system-note">
                 解除只會清除本機紀錄；重新輸入同一組 License Key 即可再次啟用。
               </p>

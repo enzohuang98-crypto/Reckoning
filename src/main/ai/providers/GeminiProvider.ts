@@ -20,8 +20,14 @@ const MAX_OUTPUT_TOKENS = 4096
 
 /** generateContent 回應中本實作會使用的欄位 */
 interface GeminiGenerateContentResponse {
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string; thought?: boolean }> }
+  }>
+  usageMetadata?: {
+    promptTokenCount?: number
+    candidatesTokenCount?: number
+    thoughtsTokenCount?: number
+  }
 }
 
 export class GeminiProvider implements AIProvider {
@@ -35,6 +41,16 @@ export class GeminiProvider implements AIProvider {
     signal?: AbortSignal
   ): Promise<AIExplanationResponse> {
     const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const thinkingOptions = /^gemini-3(?:[.-]|$)/.test(request.model)
+      ? {
+          // Gemini 3 uses thinkingLevel. Earlier thinking models use a
+          // different contract, so do not send a 3.x-only field to them.
+          thinkingConfig: {
+            thinkingLevel: 'low',
+            includeThoughts: false
+          }
+        }
+      : {}
 
     const res = await fetch(
       `${baseUrl}/models/${encodeURIComponent(request.model)}:generateContent`,
@@ -50,7 +66,21 @@ export class GeminiProvider implements AIProvider {
           contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
           generationConfig: {
             maxOutputTokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
-            temperature: 0.3
+            temperature: 0.3,
+            // Gemini 3.5 Flash defaults to medium thinking. Harness already
+            // separates planning, validation and repair into explicit calls,
+            // so low thinking preserves reasoning while reducing UI latency.
+            ...thinkingOptions,
+            ...(request.responseFormat === 'json'
+              ? {
+                  // generateContent still accepts the stable legacy field even
+                  // when the newer responseFormat shape is not rolled out for
+                  // a given v1beta endpoint. A real gemini-3.5-flash request
+                  // returned HTTP 400 for responseFormat.text.mimeType, while
+                  // responseMimeType is supported by the same endpoint.
+                  responseMimeType: 'application/json'
+                }
+              : {})
           }
         })
       }
@@ -62,6 +92,7 @@ export class GeminiProvider implements AIProvider {
 
     const data = await readJsonResponseBounded<GeminiGenerateContentResponse>(res)
     const text = data.candidates?.[0]?.content?.parts
+      ?.filter((part) => !part.thought)
       ?.map((part) => part.text ?? '')
       .join('\n')
       .trim()
@@ -72,7 +103,9 @@ export class GeminiProvider implements AIProvider {
     const usage = data.usageMetadata
       ? {
           inputTokens: data.usageMetadata.promptTokenCount ?? 0,
-          outputTokens: data.usageMetadata.candidatesTokenCount ?? 0
+          outputTokens:
+            (data.usageMetadata.candidatesTokenCount ?? 0) +
+            (data.usageMetadata.thoughtsTokenCount ?? 0)
         }
       : undefined
 

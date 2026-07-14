@@ -2,15 +2,26 @@ import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 
 interface Props {
   result: EngineAnalysisResultPayload
+  compact?: boolean
 }
 
-export function EngineResultSummary({ result }: Props): JSX.Element {
+export function EngineResultSummary({ result, compact = false }: Props): JSX.Element {
   const analysis = result.engineAnalysis
   const confidence = result.moveComparison.confidence
   const dual = result.dualEngineComparison
+  const analysisWarning =
+    analysis.incomplete || confidence === 'low'
+      ? analysis.warnings.length > 0
+        ? analysis.warnings.join('；')
+        : `本次引擎資料不足：${result.moveComparison.uncertaintyReasons.join('；')}`
+      : null
+  const compactWarnings = [analysisWarning, result.verificationWarning].filter(
+    (warning): warning is string => Boolean(warning)
+  )
+  const compactWarningText = compactWarnings.join('；')
 
   return (
-    <section className="analysis-result">
+    <section className={`analysis-result${compact ? ' compact' : ''}`}>
       <div className="result-head">
         <div>
           <span className="eyebrow">CURRENT RESULT</span>
@@ -25,19 +36,60 @@ export function EngineResultSummary({ result }: Props): JSX.Element {
         </div>
       </div>
 
-      {(analysis.incomplete || confidence === 'low') && (
-        <div className="engine-status warn">
-          {analysis.warnings.length > 0
-            ? analysis.warnings.join('；')
-            : `本次引擎資料不足：${result.moveComparison.uncertaintyReasons.join('；')}`}
-        </div>
+      {compact ? (
+        compactWarningText && (
+          <div
+            className="engine-status warn"
+            aria-label={compactWarningText}
+            title={compactWarningText}
+          >
+            {compactWarnings.length > 1
+              ? `${compactWarnings.length} 項分析限制：${compactWarningText}`
+              : compactWarningText}
+          </div>
+        )
+      ) : (
+        <>
+          {analysisWarning && <div className="engine-status warn">{analysisWarning}</div>}
+          {result.verificationWarning && (
+            <div className="engine-status warn">{result.verificationWarning}</div>
+          )}
+        </>
       )}
 
-      {result.verificationWarning && (
-        <div className="engine-status warn">{result.verificationWarning}</div>
+      {dual && compact && (
+        <section className={`dual-engine-summary compact ${dual.status}`}>
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">DUAL ENGINE</span>
+              <h4>
+                {dual.status === 'agreement'
+                  ? '兩個引擎方向一致'
+                  : dual.status === 'disagreement'
+                    ? '兩個引擎出現分歧'
+                    : '雙引擎資料仍不足'}
+              </h4>
+            </div>
+            <span className={`badge ${dual.status === 'agreement' ? 'on' : 'warn'}`}>
+              {dual.primaryEngineName} × {dual.verificationEngineName}
+            </span>
+          </div>
+          <div className="compact-dual-engine-lines">
+            {dual.candidateLines.slice(0, 2).map((line) => (
+              <div key={line.move} className="compact-dual-engine-line">
+                <b>{line.displayMove}</b>
+                <span>
+                  {line.engineViews
+                    .map((view) => `${view.engineName} ${view.score?.raw ?? '無分數'}`)
+                    .join(' · ')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
-      {dual && (
+      {dual && !compact && (
         <section className={`dual-engine-summary ${dual.status}`}>
           <div className="section-heading">
             <div>
@@ -87,21 +139,23 @@ export function EngineResultSummary({ result }: Props): JSX.Element {
         </section>
       )}
 
-      <ol className="line-list">
-        {analysis.candidateMoves.map((candidate, index) => (
-          <li key={`${index}-${candidate.move}`}>
-            <span className="candidate-rank">{index + 1}</span>
-            <div>
-              <b>{candidate.displayMove ?? '無法辨識著法'}</b>
-              <span className="candidate-score">原始分數 {candidate.score?.raw ?? '無'}</span>
-              <div className="pv">
-                {(candidate.displayPrincipalVariation ?? []).slice(0, 8).join('、') ||
-                  '引擎沒有回傳後續主線'}
+      {!compact && (
+        <ol className="line-list">
+          {analysis.candidateMoves.map((candidate, index) => (
+            <li key={`${index}-${candidate.move}`}>
+              <span className="candidate-rank">{index + 1}</span>
+              <div>
+                <b>{candidate.displayMove ?? '無法辨識著法'}</b>
+                <span className="candidate-score">原始分數 {candidate.score?.raw ?? '無'}</span>
+                <div className="pv">
+                  {(candidate.displayPrincipalVariation ?? []).slice(0, 8).join('、') ||
+                    '引擎沒有回傳後續主線'}
+                </div>
               </div>
-            </div>
-          </li>
-        ))}
-      </ol>
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   )
 }

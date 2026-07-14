@@ -197,10 +197,16 @@ export function BoardEditor({
   }
 
   const clearBoard = (): void => {
+    if (!window.confirm('確定要清空目前棋盤嗎？棋盤上的所有棋子都會被移除。')) return
     setSelected(null)
     setTool({ kind: 'move' })
     setMoveError(null)
     reserialize({ ...board, grid: createEmptyGrid(), halfmoveClock: 0, fullmoveNumber: 1 })
+  }
+
+  const deleteSavedPosition = (position: SavedPosition): void => {
+    if (!window.confirm(`確定要刪除保存局面「${position.name}」嗎？此動作無法復原。`)) return
+    onDeleteSavedPosition(position.id)
   }
 
   const savePosition = (): void => {
@@ -339,7 +345,7 @@ export function BoardEditor({
                   </button>
                   <button
                     className="btn ghost small"
-                    onClick={() => onDeleteSavedPosition(position.id)}
+                    onClick={() => deleteSavedPosition(position)}
                   >
                     刪除
                   </button>

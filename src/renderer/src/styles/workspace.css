@@ -5,6 +5,25 @@
   margin: 0 auto;
 }
 
+.analyze-page {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-areas:
+    "toolbar"
+    "workspace"
+    "live";
+  grid-template-rows: auto minmax(0, 1fr) clamp(280px, 34vh, 360px);
+  gap: 10px;
+}
+
+.analyze-page > .app-toolbar {
+  position: relative;
+  top: auto;
+  grid-area: toolbar;
+  margin: 0;
+}
+
 .app-toolbar {
   position: sticky;
   top: 0;
@@ -188,9 +207,13 @@
 
 .analyze-layout {
   display: grid;
-  grid-template-columns: minmax(560px, 0.95fr) minmax(420px, 1.05fr);
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(520px, 0.95fr) minmax(420px, 1.05fr);
+  grid-area: workspace;
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .analyze-layout.board-compact {
@@ -200,15 +223,22 @@
 .left-col,
 .right-col {
   display: flex;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   flex-direction: column;
   gap: 12px;
 }
 
+.left-col {
+  overflow: auto;
+}
+
 .right-col {
-  position: sticky;
-  top: 75px;
-  align-self: start;
+  position: static;
+  top: auto;
+  align-self: stretch;
+  overflow: hidden;
 }
 
 .board-editor {
@@ -225,6 +255,13 @@
 
 .board-editor.tools-open {
   grid-template-columns: minmax(430px, 1fr) 240px;
+  overflow: auto;
+}
+
+.board-editor:not(.tools-open) {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .board-editor-toolbar {
@@ -246,6 +283,7 @@
 
 .board-wrap {
   display: grid;
+  min-height: 0;
   min-width: 0;
   place-items: center;
   padding: 14px;
@@ -270,6 +308,20 @@
   width: min(100%, 450px);
 }
 
+.analyze-layout .board-editor:not(.tools-open) .xiangqi-board {
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+}
+
+.analyze-layout.board-compact .board-editor:not(.tools-open) .xiangqi-board {
+  width: auto;
+  max-width: min(100%, 450px);
+  height: min(84%, 450px);
+  max-height: 84%;
+}
+
 .analyze-layout.board-compact .board-editor.tools-open {
   grid-template-columns: 1fr;
 }
@@ -285,7 +337,20 @@
 }
 
 .analysis-data-drawer {
-  margin: 0 0 14px;
+  z-index: 15;
+  height: 100%;
+  min-height: 0;
+  grid-area: workspace;
+  align-self: stretch;
+  margin: 0;
+  overflow: auto;
+}
+
+.live-analysis-dock {
+  height: 100%;
+  min-height: 0;
+  grid-area: live;
+  margin: 0;
 }
 
 .analysis-data-drawer-heading,
@@ -327,6 +392,13 @@
 
 .board-hit-target.interactive {
   cursor: pointer;
+}
+
+.board-hit-target.interactive:focus-visible {
+  fill: rgba(47, 125, 92, 0.16);
+  stroke: var(--jade);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
 }
 
 .editor-controls {
