@@ -226,7 +226,7 @@ async function main(): Promise<void> {
     assert.equal(liveAnalysisRetryDelayMs(8), 5_000)
   })
 
-  await check('首頁只在右上保留 AI 教練與猜著，Live 分析固定在底部', () => {
+  await check('首頁只在右側保留 AI 教練與猜著，局面分析固定在底部', () => {
     const tabs = readFileSync(
       resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
       'utf8'
@@ -238,18 +238,19 @@ async function main(): Promise<void> {
     assert.doesNotMatch(tabs, /id: 'live'/)
     assert.doesNotMatch(tabs, /id: 'details'/)
     assert.match(workspace, /className="live-analysis-dock"/)
-    assert.match(workspace, /boardCompact/)
+    assert.match(workspace, /boardExpanded/)
+    assert.match(workspace, /createPortal\(/)
     assert.match(workspace, /analysis-data-drawer/)
     assert.match(workspace, /<AnalysisPanel[\s\S]*?visible[\s\S]*?activeView="coach"/)
   })
 
-  await check('分析分頁與 Live 引擎訊息具備穩定的鍵盤及朗讀語意', () => {
+  await check('分析分頁與逐深度局面表具備穩定的鍵盤及朗讀語意', () => {
     const tabs = readFileSync(
       resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
       'utf8'
     )
-    const console = readFileSync(
-      resolve('src/renderer/src/features/analysis/EngineConsole.tsx'),
+    const table = readFileSync(
+      resolve('src/renderer/src/features/analysis/LiveAnalysisTable.tsx'),
       'utf8'
     )
     const panel = readFileSync(
@@ -261,13 +262,14 @@ async function main(): Promise<void> {
     assert.match(tabs, /event\.key === 'Home'/)
     assert.match(tabs, /event\.key === 'End'/)
     assert.match(tabs, /tabRefs\.current\[nextIndex\]\?\.focus\(\)/)
-    assert.doesNotMatch(console, /<section className="engine-console" aria-live=/)
-    assert.match(console, /<span role="status" aria-atomic="true">/)
-    assert.match(panel, /className="error-text live-dock-message" role="alert"/)
-    assert.match(panel, /className="notice-text live-dock-message" role="status"/)
+    assert.match(table, /<section className="live-analysis-table" aria-live="polite">/)
+    assert.match(table, /<table aria-label="逐深度局面分析">/)
+    assert.match(table, /<thead>/)
+    assert.match(table, /<tbody>/)
+    assert.match(panel, /<LiveAnalysisTable[\s\S]*?error=\{engineError\}/)
   })
 
-  await check('分析首頁以 viewport 三列固定顯示工具列、工作區與 Live 分析', () => {
+  await check('分析首頁以 Header 命令列與 viewport 兩列固定顯示工作區和局面分析', () => {
     const appShell = readFileSync(
       resolve('src/renderer/src/app/AppShell.tsx'),
       'utf8'
@@ -290,37 +292,31 @@ async function main(): Promise<void> {
     )
 
     assert.match(appShell, /app-main-\$\{activeTab\}/)
+    assert.match(appShell, /analysis-command-mount/)
     assert.match(shellStyles, /\.app-main-analyze\s*\{[^}]*overflow:\s*hidden;/s)
     assert.match(
       workspaceStyles,
-      /\.analyze-page\s*\{[^}]*height:\s*100%;[^}]*grid-template-areas:[^}]*"toolbar"[^}]*"workspace"[^}]*"live"[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) clamp\(/s
+      /\.analyze-page\s*\{[^}]*height:\s*100%;[^}]*grid-template-areas:[^}]*"workspace"[^}]*"live"[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\) clamp\(/s
     )
     assert.match(
       workspaceStyles,
       /\.live-analysis-dock\s*\{[^}]*min-height:\s*0;[^}]*grid-area:\s*live;/s
     )
-    const expandedColumns = workspaceStyles.match(
-      /\.analyze-layout\s*\{[^}]*grid-template-columns:\s*minmax\((\d+)px,[^)]+\)\s+minmax\((\d+)px,[^)]+\);[^}]*gap:\s*(\d+)px;/s
-    )
-    assert.ok(expandedColumns, 'Expanded board columns must declare pixel minimums and a gap')
-    const minimumWindowsPageWidth = 1024 - 16 - 24
-    const expandedMinimumWidth =
-      Number(expandedColumns[1]) + Number(expandedColumns[2]) + Number(expandedColumns[3])
-    assert.ok(
-      expandedMinimumWidth <= minimumWindowsPageWidth,
-      `Expanded board needs ${expandedMinimumWidth}px but the minimum Windows viewport only provides ${minimumWindowsPageWidth}px`
+    assert.match(
+      workspaceStyles,
+      /\.analyze-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*56fr\)\s+minmax\(360px,\s*44fr\);/s
     )
     assert.match(
       analysisStyles,
-      /\.inspector-shell\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s
+      /\.inspector-shell\s*\{[^}]*max-height:\s*100%;[^}]*align-self:\s*start;/s
     )
     assert.match(
       analysisStyles,
-      /\.live-analysis-panel \.engine-console-feed\s*\{[^}]*min-height:\s*0;[^}]*max-height:\s*none;[^}]*flex:\s*1;/s
+      /\.live-analysis-panel \.live-analysis-table\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*flex:\s*1;/s
     )
     assert.match(
       analysisStyles,
-      /\.live-result-column > \.panel-empty-state\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*padding:\s*16px;/s
+      /\.live-analysis-table th\.live-analysis-column\s*\{\s*width:\s*56%;\s*\}/s
     )
     assert.match(
       responsiveStyles,
@@ -328,7 +324,7 @@ async function main(): Promise<void> {
     )
     assert.match(
       responsiveStyles,
-      /@media \(max-width:\s*900px\)[\s\S]*?\.live-analysis-grid\s*\{[^}]*repeat\(2,\s*minmax\(0,\s*1fr\)\)/
+      /@media \(max-width:\s*1179px\)[\s\S]*?\.analyze-layout\.board-expanded\s*\{[^}]*grid-template-columns:\s*1fr;/
     )
     assert.match(
       responsiveStyles,
@@ -336,7 +332,7 @@ async function main(): Promise<void> {
     )
   })
 
-  await check('緊湊棋盤、Live 警告與分析資料抽屜不留下裁切或焦點陷阱', () => {
+  await check('緊湊棋盤、進階診斷與分析資料抽屜不留下裁切或焦點陷阱', () => {
     const workspace = readFileSync(
       resolve('src/renderer/src/features/workspace/AnalysisWorkspace.tsx'),
       'utf8'
@@ -345,8 +341,12 @@ async function main(): Promise<void> {
       resolve('src/renderer/src/features/workspace/AnalysisToolbar.tsx'),
       'utf8'
     )
-    const result = readFileSync(
-      resolve('src/renderer/src/features/analysis/EngineResultSummary.tsx'),
+    const table = readFileSync(
+      resolve('src/renderer/src/features/analysis/LiveAnalysisTable.tsx'),
+      'utf8'
+    )
+    const details = readFileSync(
+      resolve('src/renderer/src/features/analysis/DetailsView.tsx'),
       'utf8'
     )
     const styles = readFileSync(
@@ -356,16 +356,19 @@ async function main(): Promise<void> {
 
     assert.match(
       styles,
-      /\.analyze-layout\.board-compact \.board-editor:not\(\.tools-open\) \.xiangqi-board\s*\{[^}]*height:\s*min\(84%,\s*450px\);[^}]*max-height:\s*84%;/s
+      /\.analyze-layout\.board-expanded \.xiangqi-board\s*\{[^}]*width:\s*min\(100%,\s*650px\);/s
     )
-    assert.match(result, /const compactWarnings = \[analysisWarning, result\.verificationWarning\]/)
-    assert.match(result, /compactWarnings\.length > 1/)
+    assert.match(table, /主引擎與複核引擎出現分歧/)
+    assert.match(table, /請到「設定」完成引擎設定或重新測試/)
+    assert.match(details, /進階診斷（原始引擎輸出）/)
+    assert.doesNotMatch(details, /raw-engine-analysis" open/)
     assert.match(workspace, /layout\?\.setAttribute\('inert', ''\)/)
     assert.match(workspace, /aria-hidden=\{detailsOpen\}/)
     assert.match(workspace, /event\.key !== 'Escape'/)
     assert.match(workspace, /analysis-details-toggle/)
     assert.match(toolbar, /aria-expanded=\{ariaExpanded\}/)
     assert.match(toolbar, /ariaControls="analysis-data-drawer"/)
+    assert.doesNotMatch(toolbar, /猜著模式/)
   })
 
   await check('每次 AI 提問使用當下最新分析，並完整快照對話與模型來源', () => {
@@ -412,11 +415,11 @@ async function main(): Promise<void> {
     assert.equal(submitStart >= 0 && copyStart > submitStart, true)
     assert.doesNotMatch(panel.slice(submitStart, copyStart), /setFollowUp\(''\)/)
     assert.match(panel, /if \(pending\.question !== null\) setFollowUp\(''\)/)
-    assert.match(panel, /error=\{aiError\}/)
-    assert.match(panel, /notice=\{aiNotice\}/)
+    assert.match(panel, /error=\{aiError \?\? error\}/)
+    assert.match(panel, /notice=\{aiNotice \?\? notice\}/)
     assert.match(coach, /role="alert"/)
     assert.match(coach, /role="status"/)
-    assert.match(coach, /整輪模型輸出總預算/)
+    assert.match(coach, /coach-advanced-info/)
   })
 
   await check('AI IPC 透過單一 PromptBuilder 入口把多輪上下文交給 Harness', () => {

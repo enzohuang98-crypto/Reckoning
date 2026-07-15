@@ -11,7 +11,6 @@ import { createPortal } from 'react-dom'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
 import type {
-  EngineAnalysisProgressPayload,
   EngineAnalysisResultPayload,
   EngineStatus
 } from '@shared/types/ipc'
@@ -37,11 +36,10 @@ import {
   retryOnce
 } from './engineHealth'
 import {
-  EngineConsole,
-  thoughtSignature,
+  LiveAnalysisTable,
+  appendThought,
   type EngineThoughtEntry
-} from './EngineConsole'
-import { EngineResultSummary } from './EngineResultSummary'
+} from './LiveAnalysisTable'
 import type {
   AnalysisPanelHandle,
   AnalysisPanelStatus,
@@ -85,8 +83,6 @@ interface PendingAiRequest {
   provider: AIExplanationResponse['provider']
   model: string
 }
-
-const MAX_ENGINE_THOUGHTS = 80
 
 function hasBothKings(board: BoardState): boolean {
   let red = false
@@ -144,13 +140,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [busy, setBusy] = useState(false)
   const [refining, setRefining] = useState(false)
   const [livePaused, setLivePaused] = useState(false)
-  const [progress, setProgress] = useState<EngineAnalysisProgressPayload | null>(null)
   const [engineThoughts, setEngineThoughts] = useState<EngineThoughtEntry[]>([])
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [engineError, setEngineError] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
   const [engineDiagnostics, setEngineDiagnostics] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
-  const [aiError, setAiError] = useState<string | null>(null)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
@@ -184,9 +180,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const conversationRef = useRef(conversation)
   const resultRef = useRef(result)
   const explanationAnchorRef = useRef<HTMLDivElement>(null)
-  const analysisStartedAtRef = useRef<number | null>(null)
-  const lastThoughtAtRef = useRef<number | null>(null)
-  const [liveNow, setLiveNow] = useState(() => Date.now())
   const [liveRetryCount, setLiveRetryCount] = useState(0)
 
   useEffect(() => {
@@ -253,12 +246,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     activeAiRequestId.current = null
     pendingAiRequest.current = null
     autoRunAttemptTarget.current = null
-    analysisStartedAtRef.current = null
-    lastThoughtAtRef.current = null
     setBusy(false)
     setRefining(false)
     setLivePaused(false)
-    setProgress(null)
     setEngineThoughts([])
     setCancelling(false)
     setAiBusy(false)
@@ -276,9 +266,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setHarnessWarnings([])
     setTraceId(null)
     setError(null)
+    setEngineError(null)
+    setAiError(null)
     setEngineDiagnostics([])
     setNotice(null)
-    setAiError(null)
     setAiNotice(null)
     onResult(null)
     onExplanation(null)
@@ -287,8 +278,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   useEffect(() => {
     const offProgress = window.api.engine.onAnalysisProgress((payload) => {
       if (payload.requestId !== activeRequestId.current) return
-      lastThoughtAtRef.current = Date.now()
-      setProgress(payload)
       if (
         payload.phase === 'preparing_engine' ||
         (payload.depth === null &&
@@ -304,33 +293,25 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         elapsedMs: payload.elapsedMs,
         depth: payload.depth,
         selDepth: payload.selDepth,
-        nodes: payload.nodes,
-        nps: payload.nps,
-        scoreRaw: payload.score?.raw ?? null,
+        displayScore: payload.score?.displayText ?? null,
         displayMove: payload.displayMove,
         displayPrincipalVariation: payload.displayPrincipalVariation,
         engineRole: payload.engineRole,
         engineName: payload.engineName
       }
       setEngineThoughts((previous) => {
-        const last = previous[previous.length - 1]
-        if (last && thoughtSignature(last) === thoughtSignature(entry)) {
-          return previous
-        }
-        return [...previous, entry].slice(-MAX_ENGINE_THOUGHTS)
+        return appendThought(previous, entry)
       })
     })
     const offResult = window.api.engine.onAnalysisResult((payload) => {
       if (payload.requestId !== activeRequestId.current) return
       activeRequestId.current = null
       activeAnalysisKey.current = null
-      analysisStartedAtRef.current = null
-      lastThoughtAtRef.current = null
       setBusy(false)
       setRefining(false)
-      setProgress(null)
       setCancelling(false)
       setLiveRetryCount(0)
+      setEngineError(null)
       setResult(payload)
       resultRef.current = payload
       onResult(payload)
@@ -339,16 +320,14 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       if (payload.requestId !== activeRequestId.current) return
       activeRequestId.current = null
       activeAnalysisKey.current = null
-      analysisStartedAtRef.current = null
-      lastThoughtAtRef.current = null
       setBusy(false)
       setRefining(false)
-      setProgress(null)
       setCancelling(false)
       if (payload.code === 'cancelled') setNotice('已取消分析。')
       else {
         setLiveRetryCount((current) => current + 1)
         setError(payload.message)
+        setEngineError(payload.message)
         setEngineDiagnostics(payload.diagnostics ?? [])
       }
     })
@@ -372,6 +351,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setHarnessEvidence(payload.evidence ?? [])
       setHarnessWarnings(payload.warnings ?? [])
       setTraceId(payload.traceId ?? null)
+      setAiError(null)
       const response: AIExplanationResponse = {
         text: payload.finalText,
         provider: pending?.provider ?? settingsRef.current.aiProvider,
@@ -414,8 +394,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setAiBusy(false)
       setAiCancelling(false)
       setHarnessProgress(null)
-      if (payload.code === 'cancelled') setAiNotice('已取消生成；追問內容仍保留。')
-      else setAiError(payload.message)
+      if (payload.code === 'cancelled') setNotice('已取消生成。')
+      else {
+        setAiError(`AI 解說未完成：${payload.message}。請檢查 AI 設定或稍後重試。`)
+      }
     })
     return () => {
       offProgress()
@@ -431,13 +413,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   useEffect(() => {
     resultRef.current = result
   }, [result])
-
-  // 每秒重新渲染一次，讓「仍在分析中」的耗時持續走動，即使引擎暫時沒有新的 info 行也不會看起來像停止。
-  useEffect(() => {
-    if (!busy) return
-    const timer = window.setInterval(() => setLiveNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [busy])
 
   const startAnalysis = useCallback((automatic = false): void => {
     if (!hasBothKings(board)) {
@@ -485,6 +460,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       window.api.engine.cancelAnalysis(activeRequestId.current)
     }
     setError(null)
+    setEngineError(null)
     setEngineDiagnostics([])
     setNotice(null)
     if (!refinement) {
@@ -496,21 +472,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     const requestId = crypto.randomUUID()
     activeRequestId.current = requestId
     activeAnalysisKey.current = analysisKey
-    analysisStartedAtRef.current = Date.now()
-    lastThoughtAtRef.current = Date.now()
-    setLiveNow(Date.now())
     setBusy(true)
     setRefining(refinement)
-    setProgress({
-      requestId,
-      phase: 'preparing_engine',
-      elapsedMs: 0,
-      targetMs: null,
-      percent: 2,
-      depth: null,
-      score: null,
-      displayPrincipalVariation: []
-    })
     if (!refinement) {
       setEngineThoughts([])
       setResult(null)
@@ -798,7 +761,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     )
   }
 
-  const ea = result?.engineAnalysis ?? null
   const canAnalyze = Boolean(status?.available && hasBothKings(board) && !busy && !aiBusy)
   const analysisBlockedReason = !hasBothKings(board)
     ? '棋盤需要同時有紅帥與黑將才能分析。'
@@ -843,13 +805,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     onStatusChange
   ])
 
-  const liveElapsedMs =
-    busy && analysisStartedAtRef.current !== null
-      ? liveNow - analysisStartedAtRef.current
-      : null
-  const sinceLastThoughtMs =
-    busy && lastThoughtAtRef.current !== null ? liveNow - lastThoughtAtRef.current : null
-
   const selectPrimaryEngine = async (id: string): Promise<void> => {
     try {
       const nextVerification = verificationEngineId === id ? null : verificationEngineId
@@ -860,8 +815,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       )
       setStatus(await window.api.engine.status())
       setError(null)
+      setEngineError(null)
     } catch {
-      setError('無法切換主引擎，請到設定頁重新測試該引擎。')
+      const message = '無法切換主引擎，請到設定頁重新測試該引擎。'
+      setError(message)
+      setEngineError(message)
     }
   }
 
@@ -873,78 +831,23 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         await window.api.engine.selectInstallation(primaryEngineId, id)
       )
       setError(null)
+      setEngineError(null)
     } catch {
-      setError('無法切換複核引擎；主引擎與複核引擎必須不同。')
+      const message = '無法切換複核引擎；主引擎與複核引擎必須不同。'
+      setError(message)
+      setEngineError(message)
     }
   }
 
   const liveDock = (
     <div className="analysis-panel live-analysis-panel">
-      <div className="live-dock-heading">
-        <div>
-          <span className="eyebrow">CONTINUOUS ENGINE</span>
-          <h2>即時分析</h2>
-        </div>
-        {status && (
-          <div className={`engine-status ${status.available ? 'ok' : 'warn'}`}>
-            {status.available
-              ? `${status.engineName} 已連線`
-              : status.message ?? `${status.engineName} 未就緒`}
-          </div>
-        )}
-      </div>
-      {error && (
-        <div className="error-text live-dock-message" role="alert">
-          {error}
-        </div>
-      )}
-      {notice && (
-        <div className="notice-text live-dock-message" role="status">
-          {notice}
-        </div>
-      )}
-      <div className="analysis-view-content live-analysis-grid">
-        <div className="live-console-column">
-          <EngineConsole
-            status={status}
-            progress={progress}
-            busy={busy}
-            completedDepth={ea?.depth ?? null}
-            thoughts={engineThoughts}
-            liveElapsedMs={liveElapsedMs}
-            sinceLastThoughtMs={sinceLastThoughtMs}
-          />
-
-          <div className="analysis-helper-strip">
-            <span>
-              {busy
-                ? refining
-                  ? '即時分析持續加深中；AI 教練會固定使用發問當下的分析快照。'
-                  : '棋盤已變更，正在快速建立第一份可用結果。'
-                : livePaused
-                  ? '即時分析已暫停；按頂部「重新分析」即可恢復。'
-                  : liveRetryCount > 0
-                    ? `引擎暫時失敗，將自動進行第 ${liveRetryCount + 1} 次嘗試。`
-                    : '即時分析已開啟：每輪完成後會自動繼續加深，直到按下「停止」。'}
-            </span>
-            {analysisBlockedReason && !busy && (
-              <span className="muted small">{analysisBlockedReason}</span>
-            )}
-          </div>
-        </div>
-
-        <div className="live-result-column">
-          {result ? (
-            <EngineResultSummary result={result} compact />
-          ) : (
-            <div className="panel-empty-state">
-              <span className="empty-state-mark">棋</span>
-              <h3>等待引擎結果</h3>
-              <p>棋盤變動後會自動開始快速分析，也可以使用頂部按鈕執行完整分析。</p>
-            </div>
-          )}
-        </div>
-      </div>
+      <LiveAnalysisTable
+        status={status}
+        busy={busy}
+        thoughts={engineThoughts}
+        result={result}
+        error={engineError}
+      />
     </div>
   )
 
@@ -992,8 +895,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               traceId={traceId}
               tokenEstimate={tokenEstimate}
               aiBlockedReason={aiBlockedReason}
-              error={aiError}
-              notice={aiNotice}
+              error={aiError ?? error}
+              notice={aiNotice ?? notice}
               followUp={followUp}
               onFollowUpChange={setFollowUp}
               onGenerate={() => generateExplanation(null)}

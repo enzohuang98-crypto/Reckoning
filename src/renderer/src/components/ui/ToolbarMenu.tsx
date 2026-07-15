@@ -44,7 +44,11 @@ export function ToolbarMenu({ icon, label, active, children, items }: Props): JS
 
   return (
     <details className="toolbar-menu" ref={detailsRef}>
-      <summary className={`toolbar-btn${active ? ' active' : ''}`}>
+      <summary
+        className={`toolbar-btn${active ? ' active' : ''}`}
+        aria-label={label}
+        title={label}
+      >
         <Icon name={icon} className="toolbar-icon" />
         <span className="toolbar-label">{label}</span>
         <Icon name="chevronDown" size={14} className="toolbar-menu-chevron" />

@@ -8,6 +8,7 @@ import type {
   HarnessTrace
 } from '@shared/types/Harness'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
+import { PROVIDER_DEFAULT_MODELS } from '@shared/types/AIProviderTypes'
 import { ExplanationView } from '../explanations/ExplanationView'
 import { HarnessProgressCard } from './HarnessProgressCard'
 
@@ -71,17 +72,18 @@ export function CoachView({
   const engineAnalysis = result?.engineAnalysis
   const latestMessage = conversation?.messages.at(-1)
   const historyMessages = conversation?.messages.slice(0, -1) ?? []
+  const modelLabel =
+    PROVIDER_DEFAULT_MODELS[settings.aiProvider].find(
+      (model) => model.id === settings.aiModel
+    )?.label ?? settings.aiModel
   const modelBadge = conversation
     ? latestMessage?.model ?? '歷史回答'
-    : explanation?.model ?? `目前選用：${settings.aiModel}`
+    : explanation?.model ?? modelLabel
 
   return (
     <div className="analysis-view-content coach-view">
       <div className="view-heading">
-        <div>
-          <span className="eyebrow">GROUNDED AI COACH</span>
-          <h3>有證據的 AI 教練解說</h3>
-        </div>
+        <h3>AI 教練</h3>
         <span className="badge plain">{modelBadge}</span>
       </div>
 
@@ -97,11 +99,22 @@ export function CoachView({
         />
       )}
 
-      {tokenEstimate && !conversation && !aiBusy && (
-        <div className="coach-cost-note">
-          AI 研究預算：目前棋局資料約 {tokenEstimate.input} tokens；整輪模型輸出總預算{' '}
-          {tokenEstimate.output} tokens，最多 {tokenEstimate.modelCalls} 次模型呼叫。實際輸入會再加入驗證規則與引擎證據。
-        </div>
+      {(tokenEstimate || explanation?.usage) && (
+        <details className="coach-advanced-info">
+          <summary>進階資訊</summary>
+          {tokenEstimate && !conversation && (
+            <div>
+              預估輸入約 {tokenEstimate.input} tokens，輸出上限約 {tokenEstimate.output} tokens，
+              最多 {tokenEstimate.modelCalls} 次模型呼叫。
+            </div>
+          )}
+          {explanation?.usage && (
+            <div>
+              本次用量：輸入 {explanation.usage.inputTokens} / 輸出{' '}
+              {explanation.usage.outputTokens} tokens。
+            </div>
+          )}
+        </details>
       )}
 
       {!result && (
@@ -136,12 +149,6 @@ export function CoachView({
         <section className="ai-explanation">
           <div className="section-heading">
             <h4>AI 解說</h4>
-            {explanation?.usage && (
-              <span className="usage">
-                輸入 {explanation.usage.inputTokens} / 輸出{' '}
-                {explanation.usage.outputTokens} tokens
-              </span>
-            )}
           </div>
 
           {latestMessage.role === 'assistant' ? (
@@ -211,7 +218,7 @@ export function CoachView({
             <div className="evidence-card" key={item.id}>
               <b>[{item.id}] {item.engineName} · {item.purpose}</b>
               <div className="muted small">
-                深度 {item.depth ?? '—'} · 原始分數 {item.score?.raw ?? '無'}
+                深度 {item.depth ?? '—'} · 局面評估 {item.score?.displayText ?? '—'}
               </div>
               <div>
                 主線：{item.displayPrincipalVariation.slice(0, 8).join('、') || '無'}

@@ -33,6 +33,7 @@ type LicenseState = 'checking' | 'locked' | 'ok'
 
 export function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<AppTab>('analyze')
+  const [analysisCommandMount, setAnalysisCommandMount] = useState<HTMLDivElement | null>(null)
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings())
   const [activeConversation, setActiveConversation] = useState<AIConversation | null>(null)
   const [setupState, setSetupState] = useState<SetupState>(() =>
@@ -262,9 +263,11 @@ export function App(): JSX.Element {
       dataRecoveryBusy={dataRecoveryBusy}
       onRetryLoad={retryLoadData}
       onRetrySave={() => saveCurrentData(appData)}
+      onAnalysisCommandMountChange={setAnalysisCommandMount}
     >
       <AnalysisWorkspace
         hidden={activeTab !== 'analyze'}
+        headerCommandMount={analysisCommandMount}
         board={board}
         settings={settings}
         canUndo={canUndo}

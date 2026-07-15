@@ -1,4 +1,4 @@
-import type { AnalysisPanelStatus, AnalysisView } from '../analysis/types'
+import type { AnalysisPanelStatus } from '../analysis/types'
 import { Icon, type IconName } from '../../components/ui/Icon'
 import { ToolbarMenu } from '../../components/ui/ToolbarMenu'
 
@@ -12,12 +12,10 @@ interface Props {
   onUndo: () => void
   onRedo: () => void
   onRestoreOriginal: () => void
-  boardCompact: boolean
+  boardExpanded: boolean
   onToggleBoardSize: () => void
   detailsOpen: boolean
   onToggleDetails: () => void
-  activeView: AnalysisView
-  onViewChange: (view: AnalysisView) => void
   status: AnalysisPanelStatus
   onStartAnalysis: () => void
   onStopAnalysis: () => void
@@ -75,12 +73,10 @@ export function AnalysisToolbar({
   onUndo,
   onRedo,
   onRestoreOriginal,
-  boardCompact,
+  boardExpanded,
   onToggleBoardSize,
   detailsOpen,
   onToggleDetails,
-  activeView,
-  onViewChange,
   status,
   onStartAnalysis,
   onStopAnalysis,
@@ -91,7 +87,7 @@ export function AnalysisToolbar({
 
   return (
     <div className="app-toolbar" role="toolbar" aria-label="分析工具列">
-      <div className="toolbar-group">
+      <div className="toolbar-group toolbar-position-tools">
         <ToolbarMenu
           icon="board"
           label="局面工具"
@@ -166,41 +162,54 @@ export function AnalysisToolbar({
           icon="sparkles"
           label={status.aiBusy ? '解說中' : status.hasExplanation ? '重新解說' : 'AI 解說'}
           title={status.aiBlockedReason ?? '請 AI 依照設定語言解說目前局面'}
-          active={activeView === 'coach'}
           disabled={Boolean(status.aiBlockedReason)}
-          onClick={() => {
-            onViewChange('coach')
-            onRequestExplanation()
-          }}
+          onClick={onRequestExplanation}
         />
       </div>
 
-      <div className="toolbar-spacer" />
-
-      <div className="toolbar-group">
+      <div className="toolbar-secondary-inline">
         <ToolbarButton
           icon="board"
-          label={boardCompact ? '放大棋盤' : '縮小棋盤'}
-          title={boardCompact ? '放大棋盤工作區' : '縮小棋盤，騰出更多教練空間'}
-          active={boardCompact}
+          label={boardExpanded ? '縮小棋盤' : '放大棋盤'}
+          title={boardExpanded ? '使用預設棋盤大小' : '將棋盤放大至 650px'}
+          active={boardExpanded}
           onClick={onToggleBoardSize}
         />
         <ToolbarButton
           buttonId="analysis-details-toggle"
           icon="details"
           label="分析資料"
-          title="在工具列下方展開當前局面的分析資料"
+          title="展開引擎選擇、局面收藏與進階診斷"
           active={detailsOpen}
           ariaExpanded={detailsOpen}
           ariaControls="analysis-data-drawer"
           onClick={onToggleDetails}
         />
-        <ToolbarButton
-          icon="target"
-          label="猜著模式"
-          title="先選擇你的著法，再與引擎比較"
-          active={activeView === 'guess'}
-          onClick={() => onViewChange('guess')}
+      </div>
+
+      <div className="toolbar-secondary-menu">
+        <ToolbarMenu
+          icon="details"
+          label="更多"
+          active={detailsOpen || boardExpanded}
+          items={[
+            {
+              id: 'board-size',
+              icon: 'board',
+              label: boardExpanded ? '使用預設棋盤大小' : '放大棋盤',
+              description: boardExpanded ? '回到預設棋盤大小' : '放大至最多 650px',
+              active: boardExpanded,
+              onSelect: onToggleBoardSize
+            },
+            {
+              id: 'analysis-data',
+              icon: 'details',
+              label: detailsOpen ? '收起分析資料' : '分析資料',
+              description: '引擎選擇、局面收藏與進階診斷',
+              active: detailsOpen,
+              onSelect: onToggleDetails
+            }
+          ]}
         />
       </div>
     </div>

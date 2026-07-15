@@ -24,6 +24,7 @@ interface Props {
   dataRecoveryBusy: boolean
   onRetryLoad: () => void
   onRetrySave: () => void
+  onAnalysisCommandMountChange: (element: HTMLDivElement | null) => void
   children: ReactNode
 }
 
@@ -35,6 +36,7 @@ export function AppShell({
   dataRecoveryBusy,
   onRetryLoad,
   onRetrySave,
+  onAnalysisCommandMountChange,
   children
 }: Props): JSX.Element {
   return (
@@ -47,10 +49,7 @@ export function AppShell({
           onClick={() => onTabChange('analyze')}
         >
           <span className="brand-seal" aria-hidden="true">象</span>
-          <span>
-            <b className="app-title">象理</b>
-            <small className="app-subtitle">本機象棋研究工具</small>
-          </span>
+          <b className="app-title">象理</b>
         </button>
 
         <nav className="app-nav" aria-label="主要功能">
@@ -58,8 +57,10 @@ export function AppShell({
             <button
               key={item.id}
               type="button"
-              className={`nav-btn${activeTab === item.id ? ' active' : ''}`}
+              className={'nav-btn' + (activeTab === item.id ? ' active' : '')}
+              aria-label={item.label}
               aria-current={activeTab === item.id ? 'page' : undefined}
+              title={item.label}
               onClick={() => onTabChange(item.id)}
             >
               <Icon name={item.icon} size={16} />
@@ -68,10 +69,13 @@ export function AppShell({
           ))}
         </nav>
 
-        <div className="header-local-status" title="棋局與設定保存在這台電腦">
-          <span className="status-dot" />
-          本機模式
-        </div>
+        {activeTab === 'analyze' && (
+          <div
+            className="analysis-command-mount"
+            ref={onAnalysisCommandMountChange}
+            aria-label="分析命令"
+          />
+        )}
       </header>
 
       {dataError && (
