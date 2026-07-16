@@ -4,6 +4,7 @@ import type { SettingsUpdater } from './types'
 interface Props {
   settings: AppSettings
   update: SettingsUpdater
+  canUseCrossEngine: boolean
   traceCount: number
   onExportTraces: () => void
   onClearTraces: () => void
@@ -19,6 +20,7 @@ function boundedNumber(value: string, min: number, max: number): number | null {
 export function HarnessSettingsSection({
   settings,
   update,
+  canUseCrossEngine,
   traceCount,
   onExportTraces,
   onClearTraces
@@ -64,7 +66,7 @@ export function HarnessSettingsSection({
             />
             <span>
               <b>分析完成後自動解說</b>
-              <small>不需要再按一次 AI 解說按鈕。</small>
+              <small>只套用一般局面；點棋譜著法仍只跑引擎，按一次「AI 解說」才產生完整說明。</small>
             </span>
           </label>
           <label className="check-row">
@@ -78,17 +80,19 @@ export function HarnessSettingsSection({
               <small>關閉時每次追問都會重新驗證引擎資料。</small>
             </span>
           </label>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={settings.crossEngineEnabled}
-              onChange={(event) => update({ crossEngineEnabled: event.target.checked })}
-            />
-            <span>
-              <b>啟用複核引擎</b>
-              <small>需要先在「本機引擎」選擇另一個已加入引擎。</small>
-            </span>
-          </label>
+          {canUseCrossEngine && (
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={settings.crossEngineEnabled}
+                onChange={(event) => update({ crossEngineEnabled: event.target.checked })}
+              />
+              <span>
+                <b>啟用複核引擎</b>
+                <small>只會使用你另外加入並選定的第二個產品引擎。</small>
+              </span>
+            </label>
+          )}
         </div>
       </section>
 

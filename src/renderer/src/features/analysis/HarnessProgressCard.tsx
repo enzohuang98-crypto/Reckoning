@@ -1,5 +1,4 @@
 import type { HarnessPhase, HarnessProgressPayload } from '@shared/types/Harness'
-import type { AppSettings } from '@shared/types/Settings'
 
 function phaseText(phase: HarnessPhase): string {
   switch (phase) {
@@ -20,14 +19,12 @@ function phaseText(phase: HarnessPhase): string {
 
 interface Props {
   progress: HarnessProgressPayload
-  answerMode: AppSettings['harnessAnswerMode']
   onContinue: () => void
   onCancel: () => void
 }
 
 export function HarnessProgressCard({
   progress,
-  answerMode,
   onContinue,
   onCancel
 }: Props): JSX.Element {
@@ -38,24 +35,17 @@ export function HarnessProgressCard({
     >
       <div className="live-analysis-head">
         <div>
-          <span className="eyebrow">AI QUALITY LOOP</span>
-          <b>{progress.message}</b>
+          <span className="eyebrow">AI 解說生成中</span>
+          <b>正在整理實戰步、AI 首選與對手最強利用</b>
           <span className="muted small">
-            {phaseText(progress.phase)} · 模型 {progress.modelCallsUsed} 次 · 引擎{' '}
-            {progress.engineRoundsUsed} 輪 · 證據 {progress.evidenceCount} 筆
+            {phaseText(progress.phase)}
             {progress.elapsedMs !== undefined
               ? ` · ${Math.floor(progress.elapsedMs / 1000)} 秒`
               : ''}
-            {progress.depth !== undefined ? ` · 深度 ${progress.depth ?? '—'}` : ''}
-            {` · 已確認 ${progress.verifiedConsequenceCount ?? 0} 項具體後果`}
           </span>
         </div>
         <span className={`badge ${progress.awaitingDecision ? 'warn' : 'on'}`}>
-          {progress.awaitingDecision
-            ? '等待你決定'
-            : answerMode === 'research'
-              ? '完整研究'
-              : '聚焦回答'}
+          {progress.awaitingDecision ? '等待你決定' : '處理中'}
         </span>
       </div>
 
@@ -68,7 +58,7 @@ export function HarnessProgressCard({
 
       {progress.awaitingDecision && (
         <div className="harness-decision">
-          <span>120 秒內沒有回應，會自動用目前證據產生保守版分析。</span>
+          <span>一鍵解說不會停在這一步；手動研究可選擇繼續或取消。</span>
           <div className="row gap">
             <button className="btn" onClick={onContinue}>繼續分析</button>
             <button className="btn ghost" onClick={onCancel}>取消</button>

@@ -22,7 +22,9 @@ import { dialog, ipcMain } from 'electron'
 import {
   IPC,
   type GenerateExplanationErrorPayload,
-  type GenerateExplanationStartPayload
+  type GenerateExplanationStartPayload,
+  type SecretCredentialRef,
+  type SecretMutationResult
 } from '@shared/types/ipc'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
 import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
@@ -55,10 +57,11 @@ import { HarnessTraceStore } from '../storage/HarnessTraceStore'
 export class MissingApiKeyError extends Error {
   constructor(
     public readonly provider: AIProviderId,
+    public readonly model: string,
     /** 檔案裡有金鑰但解密失敗（needsReentry），與「從未設定」區分開來 */
     public readonly needsReentry = false
   ) {
-    super(`Missing API key for provider: ${provider}`)
+    super(`Missing API key for credential: ${provider}/${model}`)
     this.name = 'MissingApiKeyError'
   }
 }
@@ -99,21 +102,32 @@ export async function buildAIExplanationRequest(
 ): Promise<AIExplanationRequest> {
   // 不存在則丟 UnsupportedModelError（§2.19.1）
   const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
-  const apiKey = deps.secretStore.getApiKey(payload.provider) ?? ''
-  if (!apiKey && !(
-    payload.provider === 'openai-compatible' &&
-    isLoopbackAiBaseUrl(payload.baseUrl)
+  const apiKey = deps.secretStore.getCredential(
+    payload.provider,
+    modelConfig.model,
+    payload.baseUrl
+  ) ?? ''
+  const hasExactCredential = deps.secretStore.hasCredential(
+    payload.provider,
+    modelConfig.model,
+    payload.baseUrl
+  )
+  if (!apiKey && (
+    hasExactCredential ||
+    payload.provider !== 'openai-compatible' ||
+    !isLoopbackAiBaseUrl(payload.baseUrl)
   )) {
     throw new MissingApiKeyError(
       payload.provider,
-      deps.secretStore.hasApiKey(payload.provider)
+      modelConfig.model,
+      hasExactCredential
     )
   }
   assertProviderEndpointBinding(
     payload.provider,
     payload.baseUrl,
     apiKey,
-    deps.secretStore.getBoundBaseUrl(payload.provider)
+    hasExactCredential ? payload.baseUrl ?? null : null
   )
   const session = await deps.analysisSessionStore.get(payload.analysisId)
   if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
@@ -154,8 +168,8 @@ export function mapStreamingErrorToPayload(
       requestId,
       code: 'missing_api_key',
       message: error.needsReentry
-        ? `已保存的 ${error.provider} API 金鑰無法解密（系統加密金鑰已變動），請至設定頁重新輸入。`
-        : `尚未設定 ${error.provider} 的 API 金鑰，請至設定頁輸入。`
+        ? `已保存的 ${error.provider}/${error.model} API 金鑰無法解密（系統加密金鑰已變動），請至設定頁重新輸入。`
+        : `尚未設定 ${error.provider}/${error.model} 的 API 金鑰，請至設定頁輸入。`
     }
   }
   if (error instanceof UnsupportedModelError) {
@@ -234,6 +248,24 @@ export function registerAiExplanationHandlers(
   storage: StorageService
 ): void {
   const traceStore = new HarnessTraceStore(storage)
+
+  const normalizeCredential = (rawInput: unknown): SecretCredentialRef => {
+    if (typeof rawInput !== 'object' || rawInput === null) {
+      throw new SecurityValidationError('API 憑證格式無效。')
+    }
+    const value = rawInput as Record<string, unknown>
+    const provider = normalizeProviderId(value.provider)
+    if (typeof value.model !== 'string') {
+      throw new SecurityValidationError('模型 ID 格式無效。')
+    }
+    const model = modelRegistry.getModel(provider, value.model.trim()).model
+    const baseUrl =
+      provider === 'openai-compatible'
+        ? normalizeAiBaseUrl(value.baseUrl)
+        : undefined
+    return { provider, model, ...(baseUrl ? { baseUrl } : {}) }
+  }
+
   // ---- SecretStore 通道 ----
   ipcMain.handle(IPC.SECRET_IS_AVAILABLE, (event): boolean => {
     assertTrustedIpcSender(event)
@@ -245,26 +277,34 @@ export function registerAiExplanationHandlers(
     (
       event,
       rawInput: unknown
-    ): { ok: boolean; provider: AIProviderId } => {
+    ): SecretMutationResult => {
       assertTrustedIpcSender(event)
-      const isStructured =
-        typeof rawInput === 'object' && rawInput !== null
-      const value = isStructured
-        ? (rawInput as Record<string, unknown>)
-        : null
-      const preferredProvider = value?.preferredProvider
-        ? normalizeProviderId(value.preferredProvider)
-        : undefined
-      const baseUrl =
-        preferredProvider === 'openai-compatible'
-          ? normalizeAiBaseUrl(value?.baseUrl)
-          : undefined
-      const { provider, apiKey } = normalizeApiKey(
-        value ? value.apiKey : rawInput,
-        preferredProvider
+      const credential = normalizeCredential(rawInput)
+      const value = rawInput as Record<string, unknown>
+      const { apiKey } = normalizeApiKey(value.apiKey, credential.provider)
+      secretStore.setCredential(
+        credential.provider,
+        credential.model,
+        apiKey,
+        credential.baseUrl
       )
-      secretStore.setApiKey(provider, apiKey, baseUrl)
-      return { ok: true, provider }
+      return { ok: true, status: secretStore.getStatus() }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.SECRET_ACTIVATE,
+    (event, rawInput: unknown): SecretMutationResult => {
+      assertTrustedIpcSender(event)
+      const credential = normalizeCredential(rawInput)
+      if (!secretStore.setActiveCredential(
+        credential.provider,
+        credential.model,
+        credential.baseUrl
+      )) {
+        throw new SecurityValidationError('所選 API 憑證不存在或無法解密。')
+      }
+      return { ok: true, status: secretStore.getStatus() }
     }
   )
 
@@ -329,20 +369,20 @@ export function registerAiExplanationHandlers(
 
   ipcMain.handle(IPC.SECRET_STATUS, (event) => {
     assertTrustedIpcSender(event)
-    const health = secretStore.getKeyHealth()
-    return {
-      configured: health.configured,
-      provider: health.provider,
-      needsReentry: health.needsReentry
-    }
+    return secretStore.getStatus()
   })
 
   ipcMain.handle(
     IPC.SECRET_DELETE,
-    (event): { ok: boolean } => {
+    (event, rawInput: unknown): SecretMutationResult => {
       assertTrustedIpcSender(event)
-      secretStore.deleteActiveApiKey()
-      return { ok: true }
+      const credential = normalizeCredential(rawInput)
+      secretStore.deleteCredential(
+        credential.provider,
+        credential.model,
+        credential.baseUrl
+      )
+      return { ok: true, status: secretStore.getStatus() }
     }
   )
 

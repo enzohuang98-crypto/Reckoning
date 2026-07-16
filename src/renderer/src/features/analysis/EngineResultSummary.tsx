@@ -139,23 +139,21 @@ export function EngineResultSummary({ result, compact = false }: Props): JSX.Ele
         </section>
       )}
 
-      {!compact && (
-        <ol className="line-list">
-          {analysis.candidateMoves.map((candidate, index) => (
-            <li key={`${index}-${candidate.move}`}>
-              <span className="candidate-rank">{index + 1}</span>
-              <div>
-                <b>{candidate.displayMove ?? '無法辨識著法'}</b>
-                <span className="candidate-score">原始分數 {candidate.score?.raw ?? '無'}</span>
-                <div className="pv">
-                  {(candidate.displayPrincipalVariation ?? []).slice(0, 8).join('、') ||
-                    '引擎沒有回傳後續主線'}
-                </div>
+      <ol className="line-list" aria-label="候選著法與分析找法">
+        {analysis.candidateMoves.map((candidate, index) => (
+          <li key={`${index}-${candidate.move}`}>
+            <span className="candidate-rank">{index + 1}</span>
+            <div>
+              <b>{candidate.displayMove ?? '無法辨識著法'}</b>
+              <span className="candidate-score">原始分數 {candidate.score?.raw ?? '無'}</span>
+              <div className="pv">
+                {(candidate.displayPrincipalVariation ?? []).slice(0, 8).join('、') ||
+                  '引擎沒有回傳後續主線'}
               </div>
-            </li>
-          ))}
-        </ol>
-      )}
+            </div>
+          </li>
+        ))}
+      </ol>
     </section>
   )
 }

@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-16T02:08:17Z",
+  "criteria": {
+    "abandoned": false,
+    "minimumHalfMoves": 30,
+    "fullyReplayable": true,
+    "selection": "longest qualifying game per source"
+  },
+  "sha256Scope": "fixture UTF-8 bytes with LF line endings",
+  "sources": [
+    {
+      "sourceUrl": "https://www.playok.com/zh/stat.phtml?u=1487abc&g=xq&sk=2",
+      "gameId": "xq272174077",
+      "fixture": "xq272174077.wxf",
+      "players": {
+        "red": {
+          "id": "pwonglw",
+          "rating": 1283
+        },
+        "black": {
+          "id": "1487abc",
+          "rating": 1246
+        }
+      },
+      "result": "0.5-0.5",
+      "halfMoveCount": 153,
+      "downloadUrl": "https://www.playok.com/p/?g=xq272174077.txt",
+      "sha256": "5844b4a8e11dc68d32dad793f50f5faa63ff06b914e42cbae017f7489975f2e3",
+      "sourceSha256": "e176ebcd448dd8162def8444f3b0b7c46900af9915ecc7d50e46bce98515abd1",
+      "statRow": {
+        "date": "2026-05-06 09:28",
+        "durationMinutes": 23,
+        "resultLabel": "和",
+        "terminationLabel": null,
+        "abandoned": false
+      },
+      "selectionReason": "longest qualifying"
+    },
+    {
+      "sourceUrl": "https://www.playok.com/zh/stat.phtml?u=1487abc&g=xq&sk=2&page=2",
+      "gameId": "xq267431809",
+      "fixture": "xq267431809.wxf",
+      "players": {
+        "red": {
+          "id": "gmd8726g",
+          "rating": 1285
+        },
+        "black": {
+          "id": "1487abc",
+          "rating": 1242
+        }
+      },
+      "result": "1-0",
+      "halfMoveCount": 75,
+      "downloadUrl": "https://www.playok.com/p/?g=xq267431809.txt",
+      "sha256": "6353a7eb59ba4b4d56c362e25ac88bab81febe538d2e9b109f9f06ef44254fde",
+      "sourceSha256": "7fd610bf6ba3bfc5065d57e088b4f8d2409ebd476ae150a8d1afdabd5a3edf11",
+      "statRow": {
+        "date": "2026-02-07 17:23",
+        "durationMinutes": 22,
+        "resultLabel": "敗",
+        "terminationLabel": null,
+        "abandoned": false
+      },
+      "selectionReason": "longest qualifying"
+    },
+    {
+      "sourceUrl": "https://www.playok.com/zh/stat.phtml?u=hatrong&g=xq&sk=2",
+      "gameId": "xq276129901",
+      "fixture": "xq276129901.wxf",
+      "players": {
+        "red": {
+          "id": "hatrong",
+          "rating": 1060
+        },
+        "black": {
+          "id": "ckd2017",
+          "rating": 1264
+        }
+      },
+      "result": "1-0",
+      "halfMoveCount": 161,
+      "downloadUrl": "https://www.playok.com/p/?g=xq276129901.txt",
+      "sha256": "64276ec7bc398b73819b4ea3e8046322710a4d12a4b87858170f4fa9ad08d83e",
+      "sourceSha256": "6c4ed98830fa6ca04d811e71518c25300174675e307a348e7e58d1f3ebfabffb",
+      "statRow": {
+        "date": "2026-07-16 09:23",
+        "durationMinutes": 5,
+        "resultLabel": "勝",
+        "terminationLabel": null,
+        "abandoned": false
+      },
+      "selectionReason": "longest qualifying"
+    }
+  ]
+}

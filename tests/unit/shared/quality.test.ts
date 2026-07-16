@@ -22,7 +22,12 @@ import {
   type ScorableAnswer,
   type ScorableSection
 } from '../../../src/shared/logic/ai/ExplanationQualityScorer'
-import type { CausalChain } from '../../../src/shared/types/Harness'
+import {
+  HARNESS_SECTION_IDS,
+  INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS,
+  type CausalChain,
+  type HarnessSectionId
+} from '../../../src/shared/types/Harness'
 
 let passed = 0
 let failed = 0
@@ -54,81 +59,119 @@ const GOOD_CAUSAL: CausalChain = {
   consequence: '紅方補走炮二平五時黑方已多完成一步部署'
 }
 
-function section(heading: string, id: string, text: string, causal?: CausalChain): ScorableSection {
-  return { heading, claims: [{ id, text, causal }] }
+function sectionIdForLegacyHeading(heading: string): HarnessSectionId {
+  if (heading.includes('最佳著法')) return HARNESS_SECTION_IDS.bestMovePlan
+  if (heading.includes('錯失') || heading.includes('完整比較')) {
+    return HARNESS_SECTION_IDS.actualMoveProblem
+  }
+  if (heading.includes('對手如何利用') || heading.includes('後續主線')) {
+    return HARNESS_SECTION_IDS.opponentExploitation
+  }
+  return HARNESS_SECTION_IDS.practicalPrinciple
 }
 
-/** 六區塊皆合格的基準答案；用 overrides 替換單一區塊做各種變體。 */
+function section(heading: string, id: string, text: string, causal?: CausalChain): ScorableSection {
+  return { id: sectionIdForLegacyHeading(heading), heading, claims: [{ id, text, causal }] }
+}
+
+/** 五個具名區塊皆合格的基準答案；舊測試 key 只用來替換內容片段。 */
 function buildAnswer(overrides: Partial<Record<string, ScorableSection>> = {}): ScorableAnswer {
+  const directAnswer =
+    '馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。'
+  const purpose = overrides.purpose ??
+    section('AI 首選', 'C1', '炮二平五立即控制中路並保留先手。')
+  const missed = overrides.missed ??
+    section(
+      '實戰步問題',
+      'C2',
+      '馬八進七先出子，錯過立即控制中路的時機。',
+      GOOD_CAUSAL
+    )
+  const comparison = overrides.comparison ??
+    section(
+      '實戰步問題',
+      'C5',
+      '炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。',
+      {
+        cause: '因為炮二平五與馬八進七的次序互換',
+        mechanism: '中路控制與出子節奏易手',
+        affected: '紅方先手與黑方陣形',
+        opponentUse: '黑方按馬8進7、馬2進3從容應對',
+        consequence: '紅方需要多花一手補回中炮，黑方部署領先'
+      }
+    )
+  const opponent = overrides.opponent ??
+    section(
+      '對手利用與後果',
+      'C3',
+      '黑方以馬8進7和馬2進3完成兩翼馬部署。',
+      {
+        cause: '因為馬八進七沒有立即施壓',
+        mechanism: '黑方獲得連續出子的節奏，完成兩翼部署',
+        affected: '黑方雙馬與整體陣形',
+        opponentUse: '黑方接連走馬8進7與馬2進3',
+        consequence: '黑方陣形完整，紅方中路計畫慢一拍'
+      }
+    )
+  const consequences = overrides.consequences ??
+    section(
+      '對手利用與後果',
+      'C4',
+      '馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。',
+      {
+        cause: '因為馬八進七後黑方馬8進7',
+        mechanism: '紅方被迫在第三手才補炮二平五控制中路',
+        affected: '紅方中路與先手節奏',
+        opponentUse: '黑方再走馬2進3補齊另一翼',
+        consequence: '黑方多完成一步部署，紅方攻勢延後'
+      }
+    )
+  const checklist = overrides.checklist ??
+    section(
+      '實戰原則',
+      'C6',
+      '先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。'
+    )
   return {
-    directAnswer:
-      '馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。',
+    directAnswer,
     sections: [
-      overrides.purpose ??
-        section('問：最佳著法想做什麼？', 'C1', '炮二平五立即控制中路並保留先手。'),
-      overrides.missed ??
-        section(
-          '問：你的著法錯失什麼？',
-          'C2',
-          '馬八進七先出子，錯過立即控制中路的時機。',
-          GOOD_CAUSAL
-        ),
-      overrides.opponent ??
-        section(
-          '問：對手如何利用？',
-          'C3',
-          '黑方以馬8進7和馬2進3完成兩翼馬部署。',
-          {
-            cause: '因為馬八進七沒有立即施壓',
-            mechanism: '黑方獲得連續出子的節奏，完成兩翼部署',
-            affected: '黑方雙馬與整體陣形',
-            opponentUse: '黑方接連走馬8進7與馬2進3',
-            consequence: '黑方陣形完整，紅方中路計畫慢一拍'
-          }
-        ),
-      overrides.consequences ??
-        section(
-          '問：後續主線與具體後果是什麼？',
-          'C4',
-          '馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。',
-          {
-            cause: '因為馬八進七後黑方馬8進7',
-            mechanism: '紅方被迫在第三手才補炮二平五控制中路',
-            affected: '紅方中路與先手節奏',
-            opponentUse: '黑方再走馬2進3補齊另一翼',
-            consequence: '黑方多完成一步部署，紅方攻勢延後'
-          }
-        ),
-      overrides.comparison ??
-        section(
-          '問：兩種著法完整比較後，差別在哪裡？',
-          'C5',
-          '炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。',
-          {
-            cause: '因為炮二平五與馬八進七的次序互換',
-            mechanism: '中路控制與出子節奏易手',
-            affected: '紅方先手與黑方陣形',
-            opponentUse: '黑方按馬8進7、馬2進3從容應對',
-            consequence: '紅方需要多花一手補回中炮，黑方部署領先'
-          }
-        ),
-      overrides.checklist ??
-        section(
-          '問：下次遇到類似局面要先問自己什麼？',
-          'C6',
-          '先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。'
-        )
+      {
+        id: HARNESS_SECTION_IDS.directConclusion,
+        heading: '直接結論',
+        claims: [{ id: 'DIRECT', text: directAnswer }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.actualMoveProblem,
+        heading: '實戰步問題',
+        claims: [...missed.claims, ...comparison.claims]
+      },
+      { id: HARNESS_SECTION_IDS.bestMovePlan, heading: 'AI 首選', claims: purpose.claims },
+      {
+        id: HARNESS_SECTION_IDS.opponentExploitation,
+        heading: '對手利用與後果',
+        claims: [...opponent.claims, ...consequences.claims]
+      },
+      {
+        id: HARNESS_SECTION_IDS.practicalPrinciple,
+        heading: '實戰原則',
+        claims: checklist.claims
+      }
     ],
   }
 }
 
-function score(answer: ScorableAnswer, moves = AVAILABLE_MOVES) {
+function score(
+  answer: ScorableAnswer,
+  moves = AVAILABLE_MOVES,
+  minimumHanCharacters?: number
+) {
   return scoreExplanationAnswer({
     answer,
     availableMoves: moves,
     bestMoveDisplay: '炮二平五',
     userMoveDisplay: '馬八進七',
-    hasUserMove: true
+    hasUserMove: true,
+    minimumHanCharacters
   })
 }
 
@@ -143,6 +186,69 @@ async function main(): Promise<void> {
   check('具體回答（含完整因果鏈）通過全部準則', good.pass, good.summary)
   check('通過時沒有失敗區塊', good.failedSections.length === 0)
 
+  const emptyPrincipleAnswer = buildAnswer()
+  const emptyPrinciple = emptyPrincipleAnswer.sections.find(
+    (section) => section.id === HARNESS_SECTION_IDS.practicalPrinciple
+  )
+  if (emptyPrinciple) emptyPrinciple.claims = []
+  check(
+    '實戰原則為空會被品質評分器擋下',
+    criterionFailed(score(emptyPrincipleAnswer), 'practical_principle')
+  )
+
+  const multiplePrinciplesAnswer = buildAnswer()
+  multiplePrinciplesAnswer.sections
+    .find((section) => section.id === HARNESS_SECTION_IDS.practicalPrinciple)
+    ?.claims.push({ id: 'C7', text: '第二條原則不應混入首次完整解說。' })
+  check(
+    '實戰原則多於一條會被品質評分器擋下',
+    criterionFailed(score(multiplePrinciplesAnswer), 'practical_principle')
+  )
+
+  const shortDepthReport = score(
+    buildAnswer(),
+    AVAILABLE_MOVES,
+    INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS
+  )
+  check(
+    '五段形式齊全但不足 400 漢字仍會被完整度門檻擋下',
+    criterionFailed(shortDepthReport, 'sufficient_depth') &&
+      shortDepthReport.failedSections.some((section) =>
+        section.issues.some((issue) => issue.includes('至少需要 400 個漢字'))
+      )
+  )
+
+  const deepAnswer = buildAnswer()
+  const deepConsequence = deepAnswer.sections.find(
+    (section) => section.id === HARNESS_SECTION_IDS.opponentExploitation
+  )
+  if (deepConsequence?.claims.at(-1)) {
+    deepConsequence.claims.at(-1)!.text +=
+      '沿著實戰主線逐步看，馬八進七先出子後，黑方以馬8進7發展右翼馬；紅方到下一回合才補炮二平五，中炮壓到中線的時間因此延後。黑方接著馬2進3，另一匹馬也取得自然發展，兩翼馬在紅方只完成中炮部署時已經就位。這個差別不是抽象的分數高低，而是走子次序讓黑方多得到一個完整出子節奏；紅方原本可用炮二平五先限制中卒並迫使黑方先處理中路，實戰卻讓黑方按照馬8進7、馬2進3連續改善子力。後續判斷時要比較中炮壓力是否仍能限制黑方出車與中卒活動，也要檢查紅方補走炮二平五後是否還保有主動進攻的速度。若黑方已從容完成雙馬部署，紅方往後每一步都要同時顧及中路與兩翼，原先可直接建立的先手壓力便轉成追趕部署。'
+  }
+  const deepReport = score(
+    deepAnswer,
+    AVAILABLE_MOVES,
+    INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS
+  )
+  check(
+    '具體五段正文達到 400 漢字後可通過完整度與既有棋理準則',
+    deepReport.pass,
+    deepReport.summary
+  )
+  const renamedHeadings = score({
+    ...buildAnswer(),
+    sections: buildAnswer().sections.map((item, index) => ({
+      ...item,
+      heading: `任意顯示標題 ${index + 1}`
+    }))
+  })
+  check(
+    '品質評分只依穩定 section id，不依賴「問：」或標題文字',
+    renamedHeadings.pass,
+    renamedHeadings.summary
+  )
+
   const vague = score(
     buildAnswer({
       opponent: section('問：對手如何利用？', 'C3', '黑方大致上可以獲得不錯的機會。')
@@ -151,7 +257,9 @@ async function main(): Promise<void> {
   check('空泛回答被擋下', !vague.pass)
   check(
     '空泛回答被定位到正確區塊',
-    vague.failedSections.some((item) => item.heading.includes('對手如何利用'))
+    vague.failedSections.some(
+      (item) => item.sectionId === HARNESS_SECTION_IDS.opponentExploitation
+    )
   )
 
   const scoreOnly = score(
@@ -188,10 +296,19 @@ async function main(): Promise<void> {
   )
   check('只貼結論標籤被擋下', !labelOnly.pass)
 
+  const brokenPunctuationIssues = screenExplanationText(
+    '馬八進七未能控制中路。。因此黑方馬8進7從容出子。；紅方之後才補炮二平五。',
+    ['馬八進七', '馬8進7', '炮二平五']
+  )
+  check(
+    '連續或衝突的中文標點會被文字品質篩檢擋下',
+    brokenPunctuationIssues.some((issue) => issue.includes('中文標點'))
+  )
+
   const missingComparison = score({
     ...buildAnswer(),
     sections: buildAnswer().sections.filter(
-      (item) => !item.heading.includes('完整比較')
+      (item) => item.id !== HARNESS_SECTION_IDS.actualMoveProblem
     )
   })
   check('缺少完整比較區塊被擋下', criterionFailed(missingComparison, 'full_comparison'))

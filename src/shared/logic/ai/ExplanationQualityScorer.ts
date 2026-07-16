@@ -5,15 +5,17 @@
  * 回報「哪一個準則失敗、失敗在哪個區塊、具體缺什麼」，
  * 讓修正迴圈可以只重寫失敗的區塊，而不是整篇重生。
  *
- * 八項準則（全部通過才算合格）：
+ * 十項準則（全部通過才算合格）：
  *  1. best_move_purpose      — 說明最佳著法的具體目的
  *  2. missed_opportunity     — 說明使用者著法錯失什麼
  *  3. why_bad                — 說明為什麼不好（要有因果連接，不是貼標籤）
  *  4. opponent_exploitation  — 說明對手如何利用
  *  5. concrete_consequences  — 後續具體盤面後果（主線不足時必須誠實說不足）
  *  6. full_comparison        — 完成最佳著法 vs 使用者著法的完整比較
- *  7. no_score_as_reason     — 不得用分數高低代替棋理
- *  8. no_vague_wording       — 不得用空泛詞帶過
+ *  7. practical_principle    — 恰好一條非空、可帶走的實戰原則
+ *  8. sufficient_depth       — 一鍵完整解說不得短於設定的漢字下限
+ *  9. no_score_as_reason     — 不得用分數高低代替棋理
+ * 10. no_vague_wording       — 不得用空泛詞帶過
  *
  * 另含因果鏈驗證：核心 claim 必須具備
  * 原因（因為哪一步）→ 機制（造成什麼棋理/盤面變化）→ 受影響對象 →
@@ -23,7 +25,11 @@
  */
 
 import { containsConcreteXiangqiTerm } from './xiangqiTerms'
-import type { CausalChain } from '../../types/Harness'
+import {
+  HARNESS_SECTION_IDS,
+  type CausalChain,
+  type HarnessSectionId
+} from '../../types/Harness'
 
 /* ---------- 共用文字工具（Harness 驗證與評分器共用，單一事實來源） ---------- */
 
@@ -255,6 +261,8 @@ export type QualityCriterionId =
   | 'opponent_exploitation'
   | 'concrete_consequences'
   | 'full_comparison'
+  | 'practical_principle'
+  | 'sufficient_depth'
   | 'no_score_as_reason'
   | 'no_vague_wording'
   | 'causal_chains'
@@ -267,7 +275,9 @@ export interface QualityCriterionResult {
 }
 
 export interface SectionDiagnosis {
-  /** 區塊 heading（含「問：」前綴的原文）；'DIRECT' 代表 directAnswer。 */
+  /** Stable machine-readable repair key; DIRECT represents directAnswer. */
+  sectionId: HarnessSectionId | 'DIRECT'
+  /** User-facing label used only in diagnostics. */
   heading: string
   issues: string[]
 }
@@ -288,6 +298,7 @@ export interface ScorableClaim {
 }
 
 export interface ScorableSection {
+  id: HarnessSectionId
   heading: string
   claims: ScorableClaim[]
 }
@@ -304,23 +315,32 @@ export interface QualityScorerInput {
   bestMoveDisplay?: string | null
   userMoveDisplay?: string | null
   hasUserMove: boolean
+  /** 只計玩家實際看得到的正文漢字；未設定時不套用篇幅門檻。 */
+  minimumHanCharacters?: number
 }
 
-/** 區塊 heading 關鍵字（與 Harness 六問答結構對齊）。 */
-export const SECTION_KEYS = {
-  purpose: '最佳著法想做什麼',
-  missed: '你的著法錯失什麼',
-  opponent: '對手如何利用',
-  consequences: '後續主線與具體後果',
-  comparison: '完整比較',
-  checklist: '下次遇到類似局面'
-} as const
+/** Stable ids used by validation and repair; headings are display-only. */
+export const SECTION_IDS = HARNESS_SECTION_IDS
+
+export function countHanCharacters(text: string): number {
+  return text.match(/\p{Script=Han}/gu)?.length ?? 0
+}
+
+/** renderAnswer 會略過 direct_conclusion claim，避免把 directAnswer 顯示兩次。 */
+export function playerFacingAnswerText(answer: ScorableAnswer): string {
+  return [
+    answer.directAnswer,
+    ...answer.sections
+      .filter((section) => section.id !== SECTION_IDS.directConclusion)
+      .flatMap((section) => section.claims.map((claim) => claim.text))
+  ].join('\n')
+}
 
 function findSection(
   answer: ScorableAnswer,
-  key: string
+  id: HarnessSectionId
 ): ScorableSection | undefined {
-  return answer.sections.find((section) => section.heading.includes(key))
+  return answer.sections.find((section) => section.id === id)
 }
 
 /** 只取使用者看得到的 claim 正文（不含 causal 欄位）。 */
@@ -351,32 +371,49 @@ export const CAUSAL_CONNECTIVES =
   /(因為|因为|由於|由于|導致|导致|使得|使|造成|讓|让|迫使|所以|因此|於是|于是|結果|结果)/
 
 export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport {
-  const { answer, availableMoves, bestMoveDisplay, userMoveDisplay, hasUserMove } =
-    input
+  const {
+    answer,
+    availableMoves,
+    bestMoveDisplay,
+    userMoveDisplay,
+    hasUserMove,
+    minimumHanCharacters
+  } = input
   const criteria: QualityCriterionResult[] = []
-  const sectionIssues = new Map<string, string[]>()
-  const addSectionIssue = (heading: string, issue: string): void => {
-    const list = sectionIssues.get(heading) ?? []
+  const sectionIssues = new Map<
+    HarnessSectionId | 'DIRECT',
+    { heading: string; issues: string[] }
+  >()
+  const addSectionIssue = (
+    sectionId: HarnessSectionId | 'DIRECT',
+    heading: string,
+    issue: string
+  ): void => {
+    const current = sectionIssues.get(sectionId) ?? { heading, issues: [] }
+    const list = current.issues
     list.push(issue)
-    sectionIssues.set(heading, list)
+    sectionIssues.set(sectionId, { heading: current.heading, issues: list })
   }
   const record = (
     id: QualityCriterionId,
     label: string,
     issues: string[],
-    heading?: string
+    section?: ScorableSection,
+    missingSection?: { id: HarnessSectionId; heading: string }
   ): void => {
     criteria.push({ id, label, pass: issues.length === 0, issues })
-    if (heading) {
-      for (const issue of issues) addSectionIssue(heading, issue)
+    const target = section ?? missingSection
+    if (target) {
+      for (const issue of issues) addSectionIssue(target.id, target.heading, issue)
     }
   }
 
-  const purposeSection = findSection(answer, SECTION_KEYS.purpose)
-  const missedSection = findSection(answer, SECTION_KEYS.missed)
-  const opponentSection = findSection(answer, SECTION_KEYS.opponent)
-  const consequenceSection = findSection(answer, SECTION_KEYS.consequences)
-  const comparisonSection = findSection(answer, SECTION_KEYS.comparison)
+  const purposeSection = findSection(answer, SECTION_IDS.bestMovePlan)
+  const missedSection = findSection(answer, SECTION_IDS.actualMoveProblem)
+  const opponentSection = findSection(answer, SECTION_IDS.opponentExploitation)
+  const consequenceSection = opponentSection
+  const comparisonSection = missedSection
+  const principleSection = findSection(answer, SECTION_IDS.practicalPrinciple)
 
   // 1. 最佳著法目的
   {
@@ -396,7 +433,8 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       'best_move_purpose',
       '說明最佳著法的目的',
       issues,
-      purposeSection?.heading ?? SECTION_KEYS.purpose
+      purposeSection,
+      { id: SECTION_IDS.bestMovePlan, heading: 'AI 首選' }
     )
   }
 
@@ -420,7 +458,8 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       'missed_opportunity',
       '說明錯失什麼',
       issues,
-      missedSection?.heading ?? SECTION_KEYS.missed
+      missedSection,
+      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步問題' }
     )
   }
 
@@ -437,7 +476,8 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       'why_bad',
       '說明為什麼不好',
       issues,
-      missedSection?.heading ?? SECTION_KEYS.missed
+      missedSection,
+      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步問題' }
     )
   }
 
@@ -464,7 +504,8 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       'opponent_exploitation',
       '說明對手如何利用',
       issues,
-      opponentSection?.heading ?? SECTION_KEYS.opponent
+      opponentSection,
+      { id: SECTION_IDS.opponentExploitation, heading: '對手利用與後果' }
     )
   }
 
@@ -494,7 +535,8 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       'concrete_consequences',
       '後續具體盤面後果',
       issues,
-      consequenceSection?.heading ?? SECTION_KEYS.consequences
+      consequenceSection,
+      { id: SECTION_IDS.opponentExploitation, heading: '對手利用與後果' }
     )
   }
 
@@ -525,22 +567,67 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       'full_comparison',
       '最佳著法 vs 你的著法完整比較',
       issues,
-      comparisonSection?.heading ?? SECTION_KEYS.comparison
+      comparisonSection,
+      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步問題' }
     )
   }
 
-  // 7. 不得用分數當理由（全篇檢查，逐區塊定位）
+  // 7. 實戰原則：initial actual-move 解說固定只給一條非空原則
+  if (hasUserMove) {
+    const issues: string[] = []
+    if (!principleSection) {
+      issues.push('缺少「實戰原則」區塊。')
+    } else if (principleSection.claims.length !== 1) {
+      issues.push(
+        `「實戰原則」必須恰好一條，目前有 ${principleSection.claims.length} 條。`
+      )
+    } else if (!principleSection.claims[0]?.text.trim()) {
+      issues.push('「實戰原則」不可為空白。')
+    }
+    record(
+      'practical_principle',
+      '提供恰好一條實戰原則',
+      issues,
+      principleSection,
+      { id: SECTION_IDS.practicalPrinciple, heading: '實戰原則' }
+    )
+  }
+
+  // 8. 完整度：只計 render 後玩家真正會看到的正文，不把標題或 causal metadata 灌水
+  if (hasUserMove && minimumHanCharacters !== undefined) {
+    const issues: string[] = []
+    const hanCharacters = countHanCharacters(playerFacingAnswerText(answer))
+    if (hanCharacters < minimumHanCharacters) {
+      issues.push(
+        `一鍵完整解說正文只有 ${hanCharacters} 個漢字，至少需要 ${minimumHanCharacters} 個漢字；目標約 500–900 個中文字，請補足棋理因果與具體主線。`
+      )
+    }
+    record(
+      'sufficient_depth',
+      `完整解說至少 ${minimumHanCharacters} 個漢字`,
+      issues,
+      opponentSection,
+      { id: SECTION_IDS.opponentExploitation, heading: '對手利用與後果' }
+    )
+  }
+
+  // 9. 不得用分數當理由（全篇檢查，逐區塊定位）
   {
     const issues: string[] = []
     if (scoreUsedAsReason(answer.directAnswer)) {
       issues.push('直接回答以分數高低代替棋理原因。')
-      addSectionIssue('DIRECT', '直接回答以分數高低代替棋理原因，必須改寫為盤面因果。')
+      addSectionIssue(
+        'DIRECT',
+        '直接結論',
+        '直接回答以分數高低代替棋理原因，必須改寫為盤面因果。'
+      )
     }
     for (const section of answer.sections) {
       const text = sectionText(section)
       if (scoreUsedAsReason(text)) {
         issues.push(`「${section.heading}」以分數高低代替棋理原因。`)
         addSectionIssue(
+          section.id,
           section.heading,
           '此區塊以分數高低代替棋理原因，必須改寫為盤面因果。'
         )
@@ -549,22 +636,31 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
     record('no_score_as_reason', '不以分數代替理由', issues)
   }
 
-  // 8. 不得空泛帶過（逐 claim 檢查）
+  // 10. 不得空泛帶過（逐 claim 檢查）
   {
     const issues: string[] = []
-    const inspect = (heading: string, id: string, text: string): void => {
+    const inspect = (
+      sectionId: HarnessSectionId | 'DIRECT',
+      heading: string,
+      id: string,
+      text: string
+    ): void => {
       const hasVaguePhrase = VAGUE_PHRASES.some((phrase) => text.includes(phrase))
       const hasSubstance =
         mentionsAnyMove(text, availableMoves) || containsConcreteXiangqiTerm(text)
       if (hasVaguePhrase && !hasSubstance) {
         issues.push(`${id} 使用空泛詞而沒有任何具體著法或機制詞。`)
-        addSectionIssue(heading, `${id} 使用空泛詞帶過，必須改為具體著法與盤面因果。`)
+        addSectionIssue(
+          sectionId,
+          heading,
+          `${id} 使用空泛詞帶過，必須改為具體著法與盤面因果。`
+        )
       }
     }
-    inspect('DIRECT', '直接回答', answer.directAnswer)
+    inspect('DIRECT', '直接結論', '直接回答', answer.directAnswer)
     for (const section of answer.sections) {
       for (const claim of section.claims) {
-        inspect(section.heading, claim.id, claim.text)
+        inspect(section.id, section.heading, claim.id, claim.text)
       }
     }
     record('no_vague_wording', '不用空泛詞帶過', issues)
@@ -573,18 +669,17 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
   // 9. 因果鏈：核心區塊（錯失／對手利用／後果／比較）每個 claim 都要有完整因果鏈
   if (hasUserMove) {
     const issues: string[] = []
-    const coreSections = [
-      missedSection,
-      opponentSection,
-      consequenceSection,
-      comparisonSection
-    ].filter((section): section is ScorableSection => section !== undefined)
+    const coreSections = [...new Map(
+      [missedSection, opponentSection]
+        .filter((section): section is ScorableSection => section !== undefined)
+        .map((section) => [section.id, section])
+    ).values()]
     for (const section of coreSections) {
       for (const claim of section.claims) {
         const claimIssues = validateClaimCausalChain(claim, availableMoves)
         for (const issue of claimIssues) {
           issues.push(`${claim.id} ${issue}`)
-          addSectionIssue(section.heading, `${claim.id} ${issue}`)
+          addSectionIssue(section.id, section.heading, `${claim.id} ${issue}`)
         }
       }
     }
@@ -592,7 +687,11 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
   }
 
   const failedSections: SectionDiagnosis[] = [...sectionIssues.entries()].map(
-    ([heading, issues]) => ({ heading, issues })
+    ([sectionId, diagnosis]) => ({
+      sectionId,
+      heading: diagnosis.heading,
+      issues: diagnosis.issues
+    })
   )
   const failedCriteria = criteria.filter((criterion) => !criterion.pass)
   const summary =
@@ -624,6 +723,9 @@ export function screenExplanationText(
   }
   if (scoreUsedAsReason(text)) {
     issues.push('以分數高低代替棋理原因。')
+  }
+  if (/(?:。；|；。|。。|，。)/u.test(text)) {
+    issues.push('出現連續或互相衝突的中文標點，影響閱讀流暢度。')
   }
   const honest = acknowledgesInsufficiency(text)
   if (!honest) {

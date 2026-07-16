@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   AI_COMPATIBLE_PRESETS,
   ALL_PROVIDER_IDS,
@@ -6,7 +7,11 @@ import {
   type AIProviderId
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
-import type { SecretStatus } from '@shared/types/ipc'
+import type {
+  SecretCredentialMetadata,
+  SecretCredentialRef,
+  SecretStatus
+} from '@shared/types/ipc'
 import type { SettingsUpdater } from './types'
 
 interface Props {
@@ -16,8 +21,47 @@ interface Props {
   onApiKeyChange: (value: string) => void
   secretStatus: SecretStatus
   encryptionAvailable: boolean | null
-  onSaveKey: () => void
-  onDeleteKey: () => void
+  onSaveKey: (credential: SecretCredentialRef) => void
+  onActivateCredential: (credential: SecretCredentialRef) => void
+  onUseLocalCredential: (credential: SecretCredentialRef) => void
+  onDeleteKey: (credential?: SecretCredentialRef) => void
+}
+
+function credentialValue(credential: SecretCredentialRef): string {
+  return JSON.stringify([
+    credential.provider,
+    credential.model,
+    credential.baseUrl ?? ''
+  ])
+}
+
+function sameCredential(
+  left: SecretCredentialRef,
+  right: SecretCredentialRef
+): boolean {
+  return credentialValue(left) === credentialValue(right)
+}
+
+function credentialLabel(credential: SecretCredentialRef): string {
+  const catalog = PROVIDER_DEFAULT_MODELS[credential.provider].find(
+    (model) => model.id === credential.model
+  )
+  const model = catalog?.label ?? credential.model
+  const endpoint =
+    credential.provider === 'openai-compatible' && credential.baseUrl
+      ? ` · ${credential.baseUrl}`
+      : ''
+  return `${PROVIDER_LABEL[credential.provider]} · ${model}${endpoint}`
+}
+
+function settingsCredential(settings: AppSettings): SecretCredentialRef {
+  return {
+    provider: settings.aiProvider,
+    model: settings.aiModel,
+    ...(settings.aiProvider === 'openai-compatible'
+      ? { baseUrl: settings.aiBaseUrl }
+      : {})
+  }
 }
 
 export function AiSettingsSection({
@@ -28,41 +72,87 @@ export function AiSettingsSection({
   secretStatus,
   encryptionAvailable,
   onSaveKey,
+  onActivateCredential,
+  onUseLocalCredential,
   onDeleteKey
 }: Props): JSX.Element {
+  const [addProvider, setAddProvider] = useState<AIProviderId>(settings.aiProvider)
+  const [addModel, setAddModel] = useState(settings.aiModel)
+  const [addBaseUrl, setAddBaseUrl] = useState(settings.aiBaseUrl)
+
+  const currentCredential = settingsCredential(settings)
   const localCompatibleWithoutKey =
-    settings.aiProvider === 'openai-compatible' &&
+    currentCredential.provider === 'openai-compatible' &&
     /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(
-      settings.aiBaseUrl
+      currentCredential.baseUrl ?? ''
     )
+  const configuredCredentials = secretStatus.credentials.filter(
+    (credential) => credential.configured
+  )
+  // This dropdown is deliberately credential-only. A loopback model that does
+  // not need a key remains selectable from the separate setup controls below,
+  // but must not masquerade as a saved API credential here.
+  const selectableCredentials: SecretCredentialRef[] = configuredCredentials
+  const activeValue = selectableCredentials.some((credential) =>
+    sameCredential(credential, currentCredential)
+  )
+    ? credentialValue(currentCredential)
+    : ''
+  const currentMetadata = secretStatus.credentials.find((credential) =>
+    sameCredential(credential, currentCredential)
+  )
   const compatiblePreset =
     AI_COMPATIBLE_PRESETS.find(
-      (preset) => preset.baseUrl && preset.baseUrl === settings.aiBaseUrl
+      (preset) => preset.baseUrl && preset.baseUrl === addBaseUrl
     )?.id ?? 'custom'
-  const changeProvider = (provider: AIProviderId): void => {
+  const draftCredential: SecretCredentialRef = {
+    provider: addProvider,
+    model: addModel,
+    ...(addProvider === 'openai-compatible' ? { baseUrl: addBaseUrl } : {})
+  }
+  const draftIsLoopback =
+    addProvider === 'openai-compatible' &&
+    /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(
+      addBaseUrl
+    )
+
+  const changeAddProvider = (provider: AIProviderId): void => {
     const defaultModel =
       PROVIDER_DEFAULT_MODELS[provider].find((model) => model.isDefault) ??
       PROVIDER_DEFAULT_MODELS[provider][0]
-    update({
-      aiProvider: provider,
-      aiModel: defaultModel.id,
-      aiBaseUrl:
-        provider === 'openai-compatible'
-          ? AI_COMPATIBLE_PRESETS.find((preset) => preset.id === 'ollama')
-              ?.baseUrl ?? ''
-          : ''
-    })
+    setAddProvider(provider)
+    setAddModel(defaultModel.id)
+    setAddBaseUrl(
+      provider === 'openai-compatible'
+        ? AI_COMPATIBLE_PRESETS.find((preset) => preset.id === 'ollama')
+            ?.baseUrl ?? ''
+        : ''
+    )
   }
 
   const changeCompatiblePreset = (id: string): void => {
     const preset = AI_COMPATIBLE_PRESETS.find((item) => item.id === id)
     if (!preset) return
-    update({ aiBaseUrl: preset.baseUrl, aiModel: preset.suggestedModel })
+    setAddBaseUrl(preset.baseUrl)
+    setAddModel(preset.suggestedModel)
+  }
+
+  const changeActiveCredential = (value: string): void => {
+    const credential = selectableCredentials.find(
+      (candidate) => credentialValue(candidate) === value
+    )
+    if (!credential) return
+    onActivateCredential(credential)
   }
 
   const deleteApiKey = (): void => {
-    if (!window.confirm('確定要刪除本機保存的 AI API Key 嗎？刪除後需要重新輸入才能使用對應服務。')) return
+    if (!window.confirm('確定要刪除目前模型綁定的 AI API Key 嗎？其他模型的金鑰會保留。')) return
     onDeleteKey()
+  }
+
+  const deleteSpecificApiKey = (credential: SecretCredentialMetadata): void => {
+    if (!window.confirm(`確定刪除 ${credentialLabel(credential)} 的 API Key 嗎？`)) return
+    onDeleteKey(credential)
   }
 
   return (
@@ -71,24 +161,24 @@ export function AiSettingsSection({
         <div className="section-heading">
           <div>
             <span className="eyebrow">SECURE ACCESS</span>
-            <h3>AI API Key</h3>
+            <h3>已設定的 AI 模型</h3>
           </div>
           <span
             className={`badge ${
-              secretStatus.configured || localCompatibleWithoutKey
+              currentMetadata?.configured || localCompatibleWithoutKey
                 ? 'on'
-                : secretStatus.needsReentry
+                : currentMetadata?.needsReentry
                   ? 'warn'
                   : 'off'
             }`}
           >
-            {localCompatibleWithoutKey && !secretStatus.configured
+            {localCompatibleWithoutKey && !currentMetadata?.configured
               ? '本機免金鑰'
-              : secretStatus.configured
-              ? '已設定'
-              : secretStatus.needsReentry
-                ? '需重新輸入'
-                : '未設定'}
+              : currentMetadata?.configured
+                ? '已設定'
+                : currentMetadata?.needsReentry
+                  ? '需重新輸入'
+                  : '未設定'}
           </span>
         </div>
 
@@ -99,69 +189,95 @@ export function AiSettingsSection({
         )}
 
         <p className="muted">
-          同一欄位支援 Claude、Gemini、OpenAI 與 OpenAI 相容服務。先選服務後貼上金鑰；
-          金鑰只透過作業系統 safeStorage 加密保存在本機。AI 用量由所選服務商另外計費，
-          本軟體不包含 API 額度。
+          使用中的選單只列出已儲存且可解密的精確模型。新增其他模型時，必須另外儲存對應金鑰；
+          程式不會把某個模型的金鑰自動套用到同供應商的其他模型。
         </p>
 
-        <div className="key-row">
-          <div className="key-head">
-            <b>
-              {secretStatus.provider
-                ? `目前使用 ${PROVIDER_LABEL[secretStatus.provider]}`
-                : '尚未設定 AI Provider'}
-            </b>
-          </div>
-
-          {secretStatus.needsReentry && (
-            <div className="error-text">
-              先前保存的金鑰已無法解密。金鑰沒有被顯示或外洩，但需要重新貼上一次。
-            </div>
-          )}
-
-          {localCompatibleWithoutKey && !secretStatus.configured && (
-            <div className="engine-status ok">
-              本機 loopback 端點可直接使用；若你的本機服務有啟用 Token，再於同一欄位輸入。
-            </div>
-          )}
-
-          <div className="settings-key-input">
-            <input
-              className="text-input"
-              type="password"
-              placeholder={
-                settings.aiProvider === 'openai-compatible'
-                  ? '貼上服務金鑰；本機 Ollama / LM Studio 可留空'
-                  : '貼上目前服務的 API Key'
-              }
-              value={apiKey}
-              onChange={(event) => onApiKeyChange(event.target.value)}
-            />
-            <button className="btn" onClick={onSaveKey} disabled={!apiKey.trim()}>
-              儲存金鑰
-            </button>
-            {(secretStatus.configured || secretStatus.needsReentry) && (
-              <button className="btn danger" onClick={deleteApiKey}>刪除</button>
+        <div className="field">
+          <label className="field-label" htmlFor="active-ai-credential">
+            使用中的 API 模型
+          </label>
+          <select
+            id="active-ai-credential"
+            aria-label="使用中的 API 模型"
+            className="select"
+            value={activeValue}
+            disabled={selectableCredentials.length === 0}
+            onChange={(event) => changeActiveCredential(event.target.value)}
+          >
+            {selectableCredentials.length === 0 && (
+              <option value="">
+                {localCompatibleWithoutKey
+                  ? '目前使用本機免金鑰模型；尚無 API 模型'
+                  : '請先在下方新增模型金鑰'}
+              </option>
             )}
-          </div>
+            {selectableCredentials.length > 0 && !activeValue && (
+              <option value="">
+                {localCompatibleWithoutKey
+                  ? '目前使用本機免金鑰模型'
+                  : '請選擇已設定的模型'}
+              </option>
+            )}
+            {selectableCredentials.map((credential) => (
+              <option
+                key={credentialValue(credential)}
+                value={credentialValue(credential)}
+              >
+                {credentialLabel(credential)}
+              </option>
+            ))}
+          </select>
         </div>
+
+        {currentMetadata?.needsReentry && (
+          <div className="error-text">
+            目前模型先前保存的金鑰已無法解密，需要在下方為同一模型重新貼上一次。
+          </div>
+        )}
+
+        {(currentMetadata?.configured || currentMetadata?.needsReentry) && (
+          <button className="btn danger" onClick={deleteApiKey}>
+            刪除目前模型金鑰
+          </button>
+        )}
+
+        {secretStatus.credentials.length > 0 && (
+          <div className="key-row">
+            <div className="key-head"><b>本機保存的模型</b></div>
+            {secretStatus.credentials.map((credential) => (
+              <div className="row gap" key={credentialValue(credential)}>
+                <span>
+                  {credentialLabel(credential)}
+                  {credential.needsReentry ? '（需重新輸入）' : ''}
+                </span>
+                <button
+                  className="btn danger"
+                  onClick={() => deleteSpecificApiKey(credential)}
+                >
+                  刪除
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="card">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">COACH PROFILE</span>
-            <h3>模型與解說</h3>
+            <span className="eyebrow">ADD CREDENTIAL</span>
+            <h3>新增或更新模型金鑰</h3>
           </div>
         </div>
 
         <div className="field">
-          <label className="field-label">使用中的 Provider</label>
+          <label className="field-label">Provider</label>
           <select
             className="select"
-            value={settings.aiProvider}
+            value={addProvider}
             onChange={(event) =>
-              changeProvider(event.target.value as AIProviderId)
+              changeAddProvider(event.target.value as AIProviderId)
             }
           >
             {ALL_PROVIDER_IDS.map((provider) => (
@@ -172,7 +288,7 @@ export function AiSettingsSection({
           </select>
         </div>
 
-        {settings.aiProvider === 'openai-compatible' ? (
+        {addProvider === 'openai-compatible' ? (
           <>
             <div className="field">
               <label className="field-label">相容服務</label>
@@ -192,34 +308,30 @@ export function AiSettingsSection({
               <label className="field-label">Base URL</label>
               <input
                 className="text-input"
-                value={settings.aiBaseUrl}
+                value={addBaseUrl}
                 placeholder="https://服務網址/v1 或 http://127.0.0.1:連接埠/v1"
-                onChange={(event) => update({ aiBaseUrl: event.target.value })}
+                onChange={(event) => setAddBaseUrl(event.target.value)}
               />
-              <small className="muted">
-                遠端只允許 HTTPS；HTTP 僅允許 localhost，避免把資料送到不安全端點。
-                使用自訂遠端端點時，API Key、棋局證據與提示內容會傳送至該服務，請只填入你信任的網址。
-              </small>
             </div>
             <div className="field">
               <label className="field-label">模型 ID</label>
               <input
                 className="text-input"
-                value={settings.aiModel}
-                placeholder="例如 deepseek-v4-flash、grok-4.5 或本機模型名稱"
-                onChange={(event) => update({ aiModel: event.target.value })}
+                value={addModel}
+                onChange={(event) => setAddModel(event.target.value)}
               />
             </div>
           </>
         ) : (
           <div className="field">
-            <label className="field-label">模型</label>
+            <label className="field-label">要綁定的模型</label>
             <select
+              aria-label="要新增金鑰的模型"
               className="select"
-              value={settings.aiModel}
-              onChange={(event) => update({ aiModel: event.target.value })}
+              value={addModel}
+              onChange={(event) => setAddModel(event.target.value)}
             >
-              {PROVIDER_DEFAULT_MODELS[settings.aiProvider].map((model) => (
+              {PROVIDER_DEFAULT_MODELS[addProvider].map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.label}{model.isDefault ? '（預設）' : ''}
                 </option>
@@ -227,6 +339,35 @@ export function AiSettingsSection({
             </select>
           </div>
         )}
+
+        <div className="settings-key-input">
+          <input
+            className="text-input"
+            type="password"
+            placeholder={
+              addProvider === 'openai-compatible'
+                ? '貼上服務金鑰；本機 Ollama / LM Studio 可留空'
+                : `貼上 ${credentialLabel(draftCredential)} 的 API Key`
+            }
+            value={apiKey}
+            onChange={(event) => onApiKeyChange(event.target.value)}
+          />
+          <button
+            className="btn"
+            onClick={() => onSaveKey(draftCredential)}
+            disabled={!apiKey.trim()}
+          >
+            儲存並使用
+          </button>
+          {draftIsLoopback && !apiKey.trim() && (
+            <button
+              className="btn"
+              onClick={() => onUseLocalCredential(draftCredential)}
+            >
+              使用本機免金鑰模型
+            </button>
+          )}
+        </div>
 
         <div className="field">
           <label className="field-label">你的棋力（影響解說深淺）</label>

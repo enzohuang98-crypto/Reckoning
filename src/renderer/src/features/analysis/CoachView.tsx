@@ -1,35 +1,25 @@
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { AIConversation } from '@shared/types/AppData'
-import type { AppSettings } from '@shared/types/Settings'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import type {
-  HarnessEvidence,
   HarnessProgressPayload,
   HarnessTrace
 } from '@shared/types/Harness'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
+import type { ActualMoveSelection } from './types'
 import { ExplanationView } from '../explanations/ExplanationView'
 import { HarnessProgressCard } from './HarnessProgressCard'
 
-interface TokenEstimate {
-  input: number
-  output: number
-  modelCalls: number
-}
-
 interface Props {
-  settings: AppSettings
   result: EngineAnalysisResultPayload | null
   explanation: AIExplanationResponse | null
   conversation: AIConversation | null
   submittedGuess: SubmittedGuess | null
+  actualMove: ActualMoveSelection | null
   aiBusy: boolean
   streamingText: string
   harnessProgress: HarnessProgressPayload | null
-  harnessEvidence: HarnessEvidence[]
-  harnessWarnings: string[]
   traceId: string | null
-  tokenEstimate: TokenEstimate | null
   aiBlockedReason: string | null
   error: string | null
   notice: string | null
@@ -44,18 +34,15 @@ interface Props {
 }
 
 export function CoachView({
-  settings,
   result,
   explanation,
   conversation,
   submittedGuess,
+  actualMove,
   aiBusy,
   streamingText,
   harnessProgress,
-  harnessEvidence,
-  harnessWarnings,
   traceId,
-  tokenEstimate,
   aiBlockedReason,
   error,
   notice,
@@ -71,18 +58,14 @@ export function CoachView({
   const engineAnalysis = result?.engineAnalysis
   const latestMessage = conversation?.messages.at(-1)
   const historyMessages = conversation?.messages.slice(0, -1) ?? []
-  const modelBadge = conversation
-    ? latestMessage?.model ?? '歷史回答'
-    : explanation?.model ?? `目前選用：${settings.aiModel}`
 
   return (
     <div className="analysis-view-content coach-view">
       <div className="view-heading">
         <div>
-          <span className="eyebrow">GROUNDED AI COACH</span>
-          <h3>有證據的 AI 教練解說</h3>
+          <span className="eyebrow">AI 象棋教練</span>
+          <h3>實戰步與 AI 首選比較</h3>
         </div>
-        <span className="badge plain">{modelBadge}</span>
       </div>
 
       {error && <div className="error-text" role="alert">{error}</div>}
@@ -91,34 +74,55 @@ export function CoachView({
       {aiBusy && harnessProgress && (
         <HarnessProgressCard
           progress={harnessProgress}
-          answerMode={settings.harnessAnswerMode}
           onContinue={onContinue}
           onCancel={onCancel}
         />
       )}
 
-      {tokenEstimate && !conversation && !aiBusy && (
-        <div className="coach-cost-note">
-          AI 研究預算：目前棋局資料約 {tokenEstimate.input} tokens；整輪模型輸出總預算{' '}
-          {tokenEstimate.output} tokens，最多 {tokenEstimate.modelCalls} 次模型呼叫。實際輸入會再加入驗證規則與引擎證據。
-        </div>
-      )}
+      {actualMove &&
+        result?.verificationWarning &&
+        !explanation &&
+        !conversation && (
+          <div className="notice-text small" role="status">
+            {result.verificationWarning}
+          </div>
+        )}
 
       {!result && (
         <div className="panel-empty-state">
           <span className="empty-state-mark">AI</span>
-          <h3>先完成引擎分析</h3>
-          <p>{aiBlockedReason ?? '引擎結果完成後，才能建立有證據的 AI 解說。'}</p>
+          <h3>
+            {error
+              ? '分析未完成'
+              : actualMove && aiBlockedReason
+                ? '目前無法啟動分析'
+                : actualMove
+                  ? `正在分析第 ${actualMove.plyIndex + 1} 手`
+                  : '先完成引擎分析'}
+          </h3>
+          <p>
+            {error ?? (actualMove && aiBlockedReason
+              ? aiBlockedReason
+              : actualMove
+              ? `正在比較實戰著法 ${actualMove.displayMove} 與 AI 首選；完成後按一次「AI 解說」即可取得完整說明。`
+              : aiBlockedReason ?? '引擎結果完成後，才能建立有證據的 AI 解說。')}
+          </p>
         </div>
       )}
 
       {result && !aiBusy && !streamingText && !conversation && !explanation && (
         <div className="coach-ready-card">
           <div>
-            <b>引擎證據已準備完成</b>
-            <span>AI 會檢查目的、錯失機會、對手利用與具體盤面後果。</span>
+            <b>{actualMove ? '引擎比較完成' : '引擎證據已準備完成'}</b>
+            {actualMove && (
+              <span>
+                實戰 {engineAnalysis?.displayUserMove ?? actualMove.displayMove} → AI 首選{' '}
+                {engineAnalysis?.displayBestMove ?? '尚無可辨識著法'}
+              </span>
+            )}
+            <span>AI 會直接說明錯因、對手利用、後果與可帶走的原則。</span>
           </div>
-          <button className="btn" onClick={onGenerate}>產生完整解說</button>
+          <button className="btn" onClick={onGenerate}>產生完整 AI 解說</button>
         </div>
       )}
 
@@ -126,7 +130,7 @@ export function CoachView({
         <section className="ai-explanation streaming">
           <div className="section-heading">
             <h4>AI 解說生成中</h4>
-            <span className="badge on">證據驗證完成</span>
+            <span className="muted small">正在整理重點</span>
           </div>
           <ExplanationView text={streamingText} />
         </section>
@@ -136,12 +140,6 @@ export function CoachView({
         <section className="ai-explanation">
           <div className="section-heading">
             <h4>AI 解說</h4>
-            {explanation?.usage && (
-              <span className="usage">
-                輸入 {explanation.usage.inputTokens} / 輸出{' '}
-                {explanation.usage.outputTokens} tokens
-              </span>
-            )}
           </div>
 
           {latestMessage.role === 'assistant' ? (
@@ -198,27 +196,6 @@ export function CoachView({
         <section className="ai-explanation">
           <ExplanationView text={explanation.text} />
         </section>
-      )}
-
-      {harnessWarnings.length > 0 && (
-        <div className="engine-status warn">{harnessWarnings.join('；')}</div>
-      )}
-
-      {harnessEvidence.length > 0 && (
-        <details className="harness-evidence">
-          <summary>檢視 AI 解說證據（{harnessEvidence.length} 筆）</summary>
-          {harnessEvidence.map((item) => (
-            <div className="evidence-card" key={item.id}>
-              <b>[{item.id}] {item.engineName} · {item.purpose}</b>
-              <div className="muted small">
-                深度 {item.depth ?? '—'} · 原始分數 {item.score?.raw ?? '無'}
-              </div>
-              <div>
-                主線：{item.displayPrincipalVariation.slice(0, 8).join('、') || '無'}
-              </div>
-            </div>
-          ))}
-        </details>
       )}
 
       {traceId && (
