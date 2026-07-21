@@ -1,8 +1,10 @@
 import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
 
-export const AUTO_INITIAL_ANALYSIS_MAX_MS = 1_500
-export const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 700
+export const AUTO_INITIAL_ANALYSIS_MAX_MS = 1_100
+export const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 400
 export const LIVE_REFINEMENT_ANALYSIS_MIN_MS = 15_000
+export const ACTUAL_MOVE_ENGINE_DEADLINE_MS = 3_000
+export const ONE_CLICK_EXPLANATION_DEADLINE_MS = 90_000
 
 export interface LiveAnalysisScheduleState {
   livePaused: boolean
@@ -35,6 +37,22 @@ export function automaticRootMovetimeMs(
 
 export function automaticUserMoveMovetimeMs(configuredMs: number): number {
   return Math.min(configuredMs, AUTO_USER_MOVE_ANALYSIS_MAX_MS)
+}
+
+export function remainingOneClickDeadlineMs(
+  selectedAt: number,
+  now = Date.now()
+): number {
+  const elapsed = Math.max(0, now - selectedAt)
+  return Math.max(1, ONE_CLICK_EXPLANATION_DEADLINE_MS - elapsed)
+}
+
+export function remainingActualMoveEngineDeadlineMs(
+  selectedAt: number,
+  now = Date.now()
+): number {
+  const elapsed = Math.max(0, now - selectedAt)
+  return Math.max(1, ACTUAL_MOVE_ENGINE_DEADLINE_MS - elapsed)
 }
 
 export function canScheduleLiveAnalysis({

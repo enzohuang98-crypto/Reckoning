@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState
 } from 'react'
@@ -19,10 +18,7 @@ import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type {
   EngineRegistrySnapshot
 } from '@shared/types/EngineRegistry'
-import type {
-  HarnessEvidence,
-  HarnessProgressPayload
-} from '@shared/types/Harness'
+import type { HarnessProgressPayload } from '@shared/types/Harness'
 import type {
   AIConversation,
   ConversationMessage,
@@ -37,12 +33,12 @@ import {
   retryOnce
 } from './engineHealth'
 import {
-  EngineConsole,
   thoughtSignature,
   type EngineThoughtEntry
 } from './EngineConsole'
-import { EngineResultSummary } from './EngineResultSummary'
+import { LiveAnalysisTable } from './LiveAnalysisTable'
 import type {
+  ActualMoveSelection,
   AnalysisPanelHandle,
   AnalysisPanelStatus,
   AnalysisView
@@ -52,7 +48,10 @@ import {
   automaticUserMoveMovetimeMs,
   canScheduleLiveAnalysis,
   isSameAnalysisTarget,
-  liveAnalysisRetryDelayMs
+  liveAnalysisRetryDelayMs,
+  ONE_CLICK_EXPLANATION_DEADLINE_MS,
+  remainingActualMoveEngineDeadlineMs,
+  remainingOneClickDeadlineMs
 } from './liveAnalysis'
 
 export type { AnalysisPanelHandle, AnalysisPanelStatus } from './types'
@@ -66,6 +65,7 @@ interface Props {
   board: BoardState
   settings: AppSettings
   submittedGuess: SubmittedGuess | null
+  actualMove: ActualMoveSelection | null
   conversation: AIConversation | null
   onConversationChange: (conversation: AIConversation | null) => void
   onResult: (payload: EngineAnalysisResultPayload | null) => void
@@ -101,12 +101,6 @@ function hasBothKings(board: BoardState): boolean {
   return red && black
 }
 
-function estimateTokens(text: string): number {
-  const ascii = text.replace(/[^\x00-\x7F]/g, '').length
-  const nonAscii = text.length - ascii
-  return Math.max(1, Math.ceil(ascii / 4 + nonAscii / 1.6))
-}
-
 function newMessage(
   role: ConversationMessage['role'],
   text: string,
@@ -131,6 +125,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     board,
     settings,
     submittedGuess,
+    actualMove,
     conversation,
     onConversationChange,
     onResult,
@@ -172,12 +167,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   )
   const [harnessProgress, setHarnessProgress] =
     useState<HarnessProgressPayload | null>(null)
-  const [harnessEvidence, setHarnessEvidence] = useState<HarnessEvidence[]>([])
-  const [harnessWarnings, setHarnessWarnings] = useState<string[]>([])
   const [traceId, setTraceId] = useState<string | null>(null)
   const activeRequestId = useRef<string | null>(null)
   const activeAnalysisKey = useRef<string | null>(null)
+  const engineDeadlineTimer = useRef<number | null>(null)
+  const explicitAnalysisTarget = useRef<string | null>(null)
   const activeAiRequestId = useRef<string | null>(null)
+  const aiDeadlineTimer = useRef<number | null>(null)
   const pendingAiRequest = useRef<PendingAiRequest | null>(null)
   const autoRunAttemptTarget = useRef<string | null>(null)
   const settingsRef = useRef(settings)
@@ -188,6 +184,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const lastThoughtAtRef = useRef<number | null>(null)
   const [liveNow, setLiveNow] = useState(() => Date.now())
   const [liveRetryCount, setLiveRetryCount] = useState(0)
+  const analysisMove = actualMove?.move ?? submittedGuess?.move ?? ''
 
   useEffect(() => {
     settingsRef.current = settings
@@ -243,13 +240,39 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     void refreshEngineState()
   }, [refreshEngineState, visible])
 
-  useEffect(() => {
-    if (activeRequestId.current) window.api.engine.cancelAnalysis(activeRequestId.current)
+  useEffect(() => () => {
+    if (activeRequestId.current) {
+      window.api.engine.cancelAnalysis(activeRequestId.current)
+    }
+    if (engineDeadlineTimer.current !== null) {
+      window.clearTimeout(engineDeadlineTimer.current)
+      engineDeadlineTimer.current = null
+    }
     if (activeAiRequestId.current) {
       window.api.ai.cancelExplanation(activeAiRequestId.current)
     }
+    if (aiDeadlineTimer.current !== null) {
+      window.clearTimeout(aiDeadlineTimer.current)
+      aiDeadlineTimer.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeRequestId.current) window.api.engine.cancelAnalysis(activeRequestId.current)
+    if (engineDeadlineTimer.current !== null) {
+      window.clearTimeout(engineDeadlineTimer.current)
+      engineDeadlineTimer.current = null
+    }
+    if (activeAiRequestId.current) {
+      window.api.ai.cancelExplanation(activeAiRequestId.current)
+    }
+    if (aiDeadlineTimer.current !== null) {
+      window.clearTimeout(aiDeadlineTimer.current)
+      aiDeadlineTimer.current = null
+    }
     activeRequestId.current = null
     activeAnalysisKey.current = null
+    explicitAnalysisTarget.current = null
     activeAiRequestId.current = null
     pendingAiRequest.current = null
     autoRunAttemptTarget.current = null
@@ -272,8 +295,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setFollowUp('')
     setCollectionReason('')
     setHarnessProgress(null)
-    setHarnessEvidence([])
-    setHarnessWarnings([])
     setTraceId(null)
     setError(null)
     setEngineDiagnostics([])
@@ -282,7 +303,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setAiNotice(null)
     onResult(null)
     onExplanation(null)
-  }, [board.fen, submittedGuess?.move])
+  }, [board.fen, analysisMove, actualMove?.selectionId])
 
   useEffect(() => {
     const offProgress = window.api.engine.onAnalysisProgress((payload) => {
@@ -306,7 +327,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         selDepth: payload.selDepth,
         nodes: payload.nodes,
         nps: payload.nps,
-        scoreRaw: payload.score?.raw ?? null,
+        scoreRaw: payload.score?.displayText ?? null,
         displayMove: payload.displayMove,
         displayPrincipalVariation: payload.displayPrincipalVariation,
         engineRole: payload.engineRole,
@@ -322,6 +343,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     })
     const offResult = window.api.engine.onAnalysisResult((payload) => {
       if (payload.requestId !== activeRequestId.current) return
+      if (engineDeadlineTimer.current !== null) {
+        window.clearTimeout(engineDeadlineTimer.current)
+        engineDeadlineTimer.current = null
+      }
       activeRequestId.current = null
       activeAnalysisKey.current = null
       analysisStartedAtRef.current = null
@@ -337,6 +362,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     })
     const offError = window.api.engine.onAnalysisError((payload) => {
       if (payload.requestId !== activeRequestId.current) return
+      if (engineDeadlineTimer.current !== null) {
+        window.clearTimeout(engineDeadlineTimer.current)
+        engineDeadlineTimer.current = null
+      }
       activeRequestId.current = null
       activeAnalysisKey.current = null
       analysisStartedAtRef.current = null
@@ -362,6 +391,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     })
     const offAiDone = window.api.ai.onExplanationDone((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
+      if (aiDeadlineTimer.current !== null) {
+        window.clearTimeout(aiDeadlineTimer.current)
+        aiDeadlineTimer.current = null
+      }
       const pending = pendingAiRequest.current
       activeAiRequestId.current = null
       pendingAiRequest.current = null
@@ -369,8 +402,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setAiCancelling(false)
       setHarnessProgress(null)
       setStreamingText('')
-      setHarnessEvidence(payload.evidence ?? [])
-      setHarnessWarnings(payload.warnings ?? [])
       setTraceId(payload.traceId ?? null)
       const response: AIExplanationResponse = {
         text: payload.finalText,
@@ -409,6 +440,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     })
     const offAiError = window.api.ai.onExplanationError((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
+      if (aiDeadlineTimer.current !== null) {
+        window.clearTimeout(aiDeadlineTimer.current)
+        aiDeadlineTimer.current = null
+      }
       activeAiRequestId.current = null
       pendingAiRequest.current = null
       setAiBusy(false)
@@ -445,14 +480,16 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       return
     }
     if (!automatic) setLivePaused(false)
-    const move = submittedGuess?.move ?? ''
+    const move = analysisMove
     const refinement =
       automatic &&
       isSameAnalysisTarget(resultRef.current?.engineAnalysis ?? null, board.fen, move)
     if (move) {
       const check = validateMoveInput(board, move)
       if (!check.ok) {
-        setError(`你的猜測著法不合法：${check.message}`)
+        setError(
+          `${actualMove ? '實戰著法' : '你的猜測著法'}不合法：${check.message}`
+        )
         return
       }
     }
@@ -463,12 +500,15 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     const userMoveEvalMovetimeMs = automatic
       ? automaticUserMoveMovetimeMs(settings.userMoveEvalMovetimeMs)
       : settings.userMoveEvalMovetimeMs
+    const useVerificationEngine = Boolean(
+      settings.crossEngineEnabled && verificationEngineId
+    )
     const analysisKey = [
       automatic ? (refinement ? 'auto-refine' : 'auto-initial') : 'manual',
       board.fen,
       move,
       primaryEngineId ?? '',
-      settings.crossEngineEnabled && verificationEngineId ? verificationEngineId : '',
+      useVerificationEngine ? verificationEngineId : '',
       rootAnalysisMovetimeMs,
       userMoveEvalMovetimeMs,
       settings.multiPv
@@ -483,6 +523,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
     if (activeRequestId.current) {
       window.api.engine.cancelAnalysis(activeRequestId.current)
+    }
+    if (engineDeadlineTimer.current !== null) {
+      window.clearTimeout(engineDeadlineTimer.current)
+      engineDeadlineTimer.current = null
     }
     setError(null)
     setEngineDiagnostics([])
@@ -520,10 +564,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     window.api.engine.startAnalysis({
       requestId,
       engineId: primaryEngineId ?? undefined,
-      verificationEngineId:
-        settings.crossEngineEnabled && verificationEngineId
-          ? verificationEngineId
-          : undefined,
+      verificationEngineId: useVerificationEngine
+        ? verificationEngineId ?? undefined
+        : undefined,
       positionFen: board.fen,
       userMove: move || undefined,
       analysisConfig: {
@@ -532,6 +575,23 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         multiPv: settings.multiPv
       }
     })
+    if (actualMove && automatic && !refinement) {
+      engineDeadlineTimer.current = window.setTimeout(() => {
+        if (activeRequestId.current !== requestId) return
+        window.api.engine.cancelAnalysis(requestId)
+        activeRequestId.current = null
+        activeAnalysisKey.current = null
+        analysisStartedAtRef.current = null
+        lastThoughtAtRef.current = null
+        engineDeadlineTimer.current = null
+        setBusy(false)
+        setRefining(false)
+        setProgress(null)
+        setCancelling(false)
+        setLivePaused(true)
+        setError('引擎比較在點擊後 3 秒內未完成，請重試或檢查本機引擎。')
+      }, remainingActualMoveEngineDeadlineMs(actualMove.selectedAt))
+    }
   }, [
     board,
     onExplanation,
@@ -540,12 +600,41 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     settings.crossEngineEnabled,
     settings.rootAnalysisMovetimeMs,
     settings.userMoveEvalMovetimeMs,
-    submittedGuess?.move,
+    analysisMove,
     primaryEngineId,
-    verificationEngineId
+    verificationEngineId,
+    actualMove
   ])
 
   useEffect(() => {
+    if (
+      !actualMove ||
+      actualMove.positionFen !== board.fen ||
+      !visible ||
+      !status?.available ||
+      !hasBothKings(board) ||
+      livePaused ||
+      busy ||
+      activeRequestId.current
+    ) {
+      return
+    }
+    const target = `${actualMove.selectionId}|${actualMove.positionFen}|${actualMove.move}`
+    if (explicitAnalysisTarget.current === target) return
+    explicitAnalysisTarget.current = target
+    startAnalysis(true)
+  }, [actualMove, board, busy, livePaused, startAnalysis, status?.available, visible])
+
+  useEffect(() => {
+    // 一鍵實戰步採用第一個穩定快照直接解說；不要在背景再啟動 15 秒精煉，
+    // 否則會和模型請求搶資源，也違反點擊後的快速路徑契約。
+    if (
+      actualMove &&
+      isSameAnalysisTarget(result?.engineAnalysis ?? null, board.fen, analysisMove)
+    ) {
+      return
+    }
+    if (actualMove && liveRetryCount > 0) return
     if (
       !canScheduleLiveAnalysis({
         livePaused,
@@ -569,7 +658,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     result?.analysisId,
     startAnalysis,
     status?.available,
-    submittedGuess?.move,
+    analysisMove,
+    actualMove,
     visible
   ])
 
@@ -577,6 +667,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     if (!activeRequestId.current) return
     setLivePaused(true)
     setCancelling(true)
+    if (engineDeadlineTimer.current !== null) {
+      window.clearTimeout(engineDeadlineTimer.current)
+      engineDeadlineTimer.current = null
+    }
     window.api.engine.cancelAnalysis(activeRequestId.current)
   }
 
@@ -584,6 +678,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setLivePaused(true)
     if (activeRequestId.current) {
       setCancelling(true)
+      if (engineDeadlineTimer.current !== null) {
+        window.clearTimeout(engineDeadlineTimer.current)
+        engineDeadlineTimer.current = null
+      }
       window.api.engine.cancelAnalysis(activeRequestId.current)
     }
     if (activeAiRequestId.current) {
@@ -604,6 +702,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     const analysisId = resultSnapshot.analysisId
     const positionFen = resultSnapshot.engineAnalysis.positionFen
     const requestId = crypto.randomUUID()
+    const aiRequestedAt = Date.now()
     activeAiRequestId.current = requestId
     pendingAiRequest.current = {
       question: cleanedQuestion,
@@ -623,8 +722,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setAiNotice(null)
     setStreamingText('')
     setHarnessProgress(null)
-    setHarnessEvidence([])
-    setHarnessWarnings([])
     setTraceId(null)
     if (regenerate || cleanedQuestion === null) {
       setExplanation(null)
@@ -648,7 +745,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       language: settings.language,
       conversationHistory: currentConversation?.messages,
       followUpQuestion: cleanedQuestion ?? undefined,
-      attachedMove: submittedGuess?.move,
+      attachedMove: analysisMove || undefined,
+      userMoveReason: submittedGuess?.reason,
       answerMode: settings.harnessAnswerMode,
       budget: {
         engineTimeMs: settings.harnessEngineTimeMs,
@@ -669,12 +767,32 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
           : undefined,
       reuseEvidence: settings.harnessReuseEvidence
     })
+    if (actualMove) {
+      if (aiDeadlineTimer.current !== null) {
+        window.clearTimeout(aiDeadlineTimer.current)
+      }
+      aiDeadlineTimer.current = window.setTimeout(() => {
+        if (activeAiRequestId.current !== requestId) return
+        activeAiRequestId.current = null
+        pendingAiRequest.current = null
+        aiDeadlineTimer.current = null
+        window.api.ai.cancelExplanation(requestId)
+        setAiBusy(false)
+        setAiCancelling(false)
+        setHarnessProgress(null)
+        setStreamingText('')
+        setAiError(
+          `AI 解說在點擊後 ${ONE_CLICK_EXPLANATION_DEADLINE_MS / 1000} 秒內未完成，本次已停止。請重試。`
+        )
+      }, remainingOneClickDeadlineMs(aiRequestedAt))
+    }
   }
 
   useEffect(() => {
-    const move = submittedGuess?.move ?? ''
+    const move = analysisMove
     const target = `${board.fen}|${move}`
     if (
+      !actualMove &&
       settings.harnessAutoRun &&
       result &&
       isSameAnalysisTarget(result.engineAnalysis, board.fen, move) &&
@@ -689,7 +807,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       autoRunAttemptTarget.current = target
       generateExplanation(null)
     }
-  }, [board.fen, result?.analysisId, settings.harnessAutoRun, submittedGuess?.move])
+  }, [
+    actualMove,
+    analysisMove,
+    board.fen,
+    result?.analysisId,
+    settings.harnessAutoRun
+  ])
 
   // 不傳 deps：generateExplanation/startAnalysis 等閉包捕捉了 settings/引擎選擇等會變動的值，
   // 每次 render 都重建這個 handle 才能避免呼叫到過期的閉包。
@@ -754,36 +878,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setError(null)
   }
 
-  const tokenEstimate = useMemo(() => {
-    if (!coachResult) return null
-    const engineText = JSON.stringify({
-      fen: coachResult.engineAnalysis.positionFen,
-      bestMove: coachResult.engineAnalysis.bestMove,
-      candidates: coachResult.engineAnalysis.candidateMoves,
-      comparison: coachResult.moveComparison,
-      conversation: conversation?.messages ?? []
-    })
-    return {
-      input: estimateTokens(engineText),
-      output:
-        settings.harnessAnswerMode === 'research'
-          ? settings.harnessResearchMaxOutputTokens
-          : settings.harnessFocusedMaxOutputTokens,
-      modelCalls:
-        settings.harnessAnswerMode === 'research'
-          ? settings.harnessResearchMaxModelCalls
-          : settings.harnessFocusedMaxModelCalls
-    }
-  }, [
-    coachResult,
-    conversation,
-    settings.harnessAnswerMode,
-    settings.harnessFocusedMaxModelCalls,
-    settings.harnessFocusedMaxOutputTokens,
-    settings.harnessResearchMaxModelCalls,
-    settings.harnessResearchMaxOutputTokens
-  ])
-
   const cancelExplain = (): void => {
     if (!activeAiRequestId.current) return
     setAiCancelling(true)
@@ -798,7 +892,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     )
   }
 
-  const ea = result?.engineAnalysis ?? null
   const canAnalyze = Boolean(status?.available && hasBothKings(board) && !busy && !aiBusy)
   const analysisBlockedReason = !hasBothKings(board)
     ? '棋盤需要同時有紅帥與黑將才能分析。'
@@ -880,71 +973,17 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
   const liveDock = (
     <div className="analysis-panel live-analysis-panel">
-      <div className="live-dock-heading">
-        <div>
-          <span className="eyebrow">CONTINUOUS ENGINE</span>
-          <h2>即時分析</h2>
-        </div>
-        {status && (
-          <div className={`engine-status ${status.available ? 'ok' : 'warn'}`}>
-            {status.available
-              ? `${status.engineName} 已連線`
-              : status.message ?? `${status.engineName} 未就緒`}
-          </div>
-        )}
-      </div>
-      {error && (
-        <div className="error-text live-dock-message" role="alert">
-          {error}
-        </div>
-      )}
-      {notice && (
-        <div className="notice-text live-dock-message" role="status">
-          {notice}
-        </div>
-      )}
-      <div className="analysis-view-content live-analysis-grid">
-        <div className="live-console-column">
-          <EngineConsole
-            status={status}
-            progress={progress}
-            busy={busy}
-            completedDepth={ea?.depth ?? null}
-            thoughts={engineThoughts}
-            liveElapsedMs={liveElapsedMs}
-            sinceLastThoughtMs={sinceLastThoughtMs}
-          />
-
-          <div className="analysis-helper-strip">
-            <span>
-              {busy
-                ? refining
-                  ? '即時分析持續加深中；AI 教練會固定使用發問當下的分析快照。'
-                  : '棋盤已變更，正在快速建立第一份可用結果。'
-                : livePaused
-                  ? '即時分析已暫停；按頂部「重新分析」即可恢復。'
-                  : liveRetryCount > 0
-                    ? `引擎暫時失敗，將自動進行第 ${liveRetryCount + 1} 次嘗試。`
-                    : '即時分析已開啟：每輪完成後會自動繼續加深，直到按下「停止」。'}
-            </span>
-            {analysisBlockedReason && !busy && (
-              <span className="muted small">{analysisBlockedReason}</span>
-            )}
-          </div>
-        </div>
-
-        <div className="live-result-column">
-          {result ? (
-            <EngineResultSummary result={result} compact />
-          ) : (
-            <div className="panel-empty-state">
-              <span className="empty-state-mark">棋</span>
-              <h3>等待引擎結果</h3>
-              <p>棋盤變動後會自動開始快速分析，也可以使用頂部按鈕執行完整分析。</p>
-            </div>
-          )}
-        </div>
-      </div>
+      <LiveAnalysisTable
+        status={status}
+        progress={progress}
+        busy={busy}
+        thoughts={engineThoughts}
+        result={result}
+        error={error}
+        notice={notice}
+        liveElapsedMs={liveElapsedMs}
+        sinceLastThoughtMs={sinceLastThoughtMs}
+      />
     </div>
   )
 
@@ -979,20 +1018,23 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
             aria-labelledby="analysis-tab-coach"
           >
             <CoachView
-              settings={settings}
               result={coachResult}
               explanation={explanation}
               conversation={conversation}
               submittedGuess={submittedGuess}
+              actualMove={actualMove}
               aiBusy={aiBusy}
               streamingText={streamingText}
               harnessProgress={harnessProgress}
-              harnessEvidence={harnessEvidence}
-              harnessWarnings={harnessWarnings}
               traceId={traceId}
-              tokenEstimate={tokenEstimate}
-              aiBlockedReason={aiBlockedReason}
-              error={aiError}
+              aiBlockedReason={
+                actualMove
+                  ? !status?.available
+                    ? analysisBlockedReason
+                    : null
+                  : aiBlockedReason
+              }
+              error={aiError ?? (actualMove ? error : null)}
               notice={aiNotice}
               followUp={followUp}
               onFollowUpChange={setFollowUp}

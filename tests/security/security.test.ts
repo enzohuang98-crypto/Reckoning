@@ -135,9 +135,22 @@ const aiPayload = validateGenerateExplanationPayload({
   userLevel: 'intermediate',
   explanationStyle: 'long_analytical',
   language: 'zh-TW',
+  userMoveReason: '想先活通車路',
   conversationHistory: []
 })
 check('合法 AI payload 通過', aiPayload.provider === 'anthropic')
+check('棋手原始想法會被正規化保留', aiPayload.userMoveReason === '想先活通車路')
+check(
+  '過長的棋手原始想法被拒絕',
+  rejects(
+    () =>
+      validateGenerateExplanationPayload({
+        ...aiPayload,
+        userMoveReason: '想'.repeat(4001)
+      }),
+    SecurityValidationError
+  )
+)
 check(
   '未知 Provider 被拒絕',
   rejects(

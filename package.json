@@ -14,7 +14,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "tsx --tsconfig tsconfig.node.json tests/unit/shared/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/knowledge.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/dualEngine.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/license.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security/security.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/integration/ai/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/quality.test.ts && tsx --tsconfig tsconfig.node.json tests/architecture/rendererArchitecture.test.ts && tsx --tsconfig tsconfig.web.json tests/architecture/boardAccessibility.test.ts && tsx --tsconfig tsconfig.node.json tests/e2e/engine.e2e.ts",
+    "test": "tsx --tsconfig tsconfig.node.json tests/unit/shared/rules.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/playOkWxf.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/playOkSources.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/playOkAcceptanceArtifacts.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/playOkSoakArtifacts.test.ts && electron tests/support/run-secret-store-test.cjs && tsx --tsconfig tsconfig.web.json tests/unit/renderer/credentialBinding.test.tsx && tsx --tsconfig tsconfig.web.json tests/unit/renderer/liveAnalysisTable.test.tsx && tsx --tsconfig tsconfig.node.json tests/unit/main/appData.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/providers.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/knowledge.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/dualEngine.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/license.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/logger.test.ts && tsx --tsconfig tsconfig.node.json tests/security/security.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/sessionStore.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/engineRegistry.test.ts && tsx --tsconfig tsconfig.node.json tests/integration/ai/harness.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/shared/quality.test.ts && tsx --tsconfig tsconfig.node.json tests/architecture/rendererArchitecture.test.ts && tsx --tsconfig tsconfig.web.json tests/integration/renderer/actualMoveFlow.test.tsx && tsx --tsconfig tsconfig.web.json tests/integration/renderer/playOkImportFlow.test.tsx && tsx --tsconfig tsconfig.web.json tests/architecture/boardAccessibility.test.ts && tsx --tsconfig tsconfig.node.json tests/e2e/engine.e2e.ts",
     "security:check": "tsx --tsconfig tsconfig.node.json tests/security/security.test.ts",
     "security:audit": "npm audit --audit-level=moderate",
     "pack": "npm run build && electron-builder --dir",
@@ -22,7 +22,9 @@
     "dist:update": "npm run build && electron-builder --config electron-builder.publish.cjs --publish never",
     "dist:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/build-github-update.ps1",
     "verify:update": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/verify-update-artifacts.ps1",
-    "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/publish-github-update.ps1"
+    "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/publish-github-update.ps1",
+    "acceptance:ai": "electron tools/acceptance/run-ai-acceptance.cjs",
+    "test:acceptance:ai": "electron tools/acceptance/run-ai-acceptance.cjs --self-test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
@@ -36,12 +38,14 @@
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/react-test-renderer": "^18.3.1",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^42.5.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-test-renderer": "^18.3.1",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3",
     "vite": "^7.3.5"

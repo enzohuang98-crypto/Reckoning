@@ -1,0 +1,3563 @@
+{
+  "schemaVersion": 1,
+  "suite": "fixed",
+  "generatedAt": "2026-07-16T05:24:48.417Z",
+  "sourceFingerprint": "b8d68b6b0b785fc374d9fbe89cea56d4545f1a0010e2dd38223671a89fea1db4",
+  "runKey": "6ee38103e7e02b2eeaa9d00477748faf9767c19b5a9db5cefa5a3c333242dcaf",
+  "provider": "gemini",
+  "primaryModel": "gemini-3.5-flash",
+  "referenceModel": null,
+  "credentialBinding": "exact_provider_model",
+  "aiTimeoutMs": 30000,
+  "harnessEngineMode": "configured_primary_only",
+  "initialRequestContract": "exactly_one_user_click_per_case",
+  "qualityAxes": {
+    "initialModelCandidatePass": "raw_first_model_candidate_before_local_completion",
+    "firstClickQualityPass": "model_response_or_grounded_completion_without_engine_fallback",
+    "finalDisplayedQualityPass": "visible_five_section_output_independent_of_completion_source",
+    "rubricScore0to10": "model_backed",
+    "displayedRubricScore0to10": "displayed_output"
+  },
+  "analysisConfig": {
+    "rootAnalysisMovetimeMs": 1100,
+    "userMoveEvalMovetimeMs": 400,
+    "multiPv": 3
+  },
+  "engines": {
+    "primary": {
+      "id": "099fb446-8a80-4970-be27-2e7e2d577ef6",
+      "name": "Pikafish 2026-01-31",
+      "binarySha256": "33d588911be6dc65a48b7cdda7dfb1573b58b6c4c6a8a4661af07512d039ebf3"
+    },
+    "acceptanceCrossCheck": {
+      "id": "acceptance-cross-check-37ca7ff6fa8c",
+      "name": "Pikafish 2026-01-31",
+      "binarySha256": "37ca7ff6fa8cf4c3d2e1a40799e6b820a62e374a84290af99b4625b23582e557",
+      "purpose": "acceptance_cross_check_same_package_cpu_build"
+    }
+  },
+  "expectedCases": 6,
+  "status": "complete",
+  "completedAt": "2026-07-16T05:25:53.172Z",
+  "cases": [
+    {
+      "caseId": "xq272174077#88",
+      "gameId": "xq272174077",
+      "ply": 88,
+      "evidenceFingerprint": "b688aa83f594a8d89efeb5707a89994ca192a39ca24604b52737d611cc403b01",
+      "evidence": {
+        "positionFen": "3akab2/9/4b4/5P3/6r2/9/1N6R/9/4A4/2B1KAB2 b - - 0 44",
+        "actualMove": {
+          "uci": "d9e8",
+          "wxf": "a4+5",
+          "chinese": "士4進5"
+        },
+        "analysisConfig": {
+          "rootAnalysisMovetimeMs": 1100,
+          "userMoveEvalMovetimeMs": 400,
+          "multiPv": 3
+        },
+        "parallelEngineDurationMs": 1573,
+        "analysisFingerprint": "75f7a36460e99a2dfbc8b66f4345590badc7a7c3a3513ee2d97599df1741cf4d",
+        "primary": {
+          "status": "ok",
+          "engineId": "099fb446-8a80-4970-be27-2e7e2d577ef6",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "g5f5",
+          "displayBestMove": "車7平6",
+          "actualMove": "d9e8",
+          "displayActualMove": "士4進5",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": -16.03,
+            "displayText": "-16.03",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": -16.66,
+            "displayText": "-16.66",
+            "source": "candidate_move"
+          },
+          "depth": 18,
+          "analysisTimeMs": 1570,
+          "bestLine": {
+            "uci": [
+              "g5f5",
+              "f6g6",
+              "d9e8",
+              "i3e3",
+              "f5b5",
+              "g6f6",
+              "b5b6",
+              "f6e6",
+              "e7g5",
+              "b3d4",
+              "g9i7",
+              "d4f5",
+              "e8d7",
+              "c0a2",
+              "d7e8",
+              "e3e5",
+              "b6b0",
+              "e1d0",
+              "e9d9"
+            ],
+            "chinese": [
+              "車7平6",
+              "兵四平三",
+              "士4進5",
+              "車一平五",
+              "車6平2",
+              "兵三平四",
+              "車2退1",
+              "兵四平五",
+              "象5進7",
+              "馬八進六",
+              "後象進9",
+              "馬六進四",
+              "士5進4",
+              "相七進九",
+              "士4退5",
+              "車五進二",
+              "車2進6",
+              "仕五退六",
+              "將5平4"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "d9e8",
+              "i3e3",
+              "g5d5",
+              "b3d2",
+              "e7c5",
+              "f6e6",
+              "c5a7",
+              "d2c4",
+              "d5d7",
+              "c4b6",
+              "d7b7",
+              "b6d5",
+              "e8f7",
+              "e6d6",
+              "f9e8",
+              "d5f6"
+            ],
+            "chinese": [
+              "士4進5",
+              "車一平五",
+              "車7平4",
+              "馬八退六",
+              "象5進3",
+              "兵四平五",
+              "象3退1",
+              "馬六進七",
+              "車4退2",
+              "馬七進八",
+              "車4平2",
+              "馬八退六",
+              "士5進6",
+              "兵五平六",
+              "後士進5",
+              "馬六進四"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        },
+        "acceptanceCrossCheck": {
+          "status": "ok",
+          "engineId": "acceptance-cross-check-37ca7ff6fa8c",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "g5f5",
+          "displayBestMove": "車7平6",
+          "actualMove": "d9e8",
+          "displayActualMove": "士4進5",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": -15.1,
+            "displayText": "-15.10",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": -16.49,
+            "displayText": "-16.49",
+            "source": "candidate_move"
+          },
+          "depth": 17,
+          "analysisTimeMs": 1556,
+          "bestLine": {
+            "uci": [
+              "g5f5",
+              "f6g6",
+              "d9e8",
+              "i3e3",
+              "f5b5",
+              "g6f6",
+              "b5b6",
+              "f6e6",
+              "e9d9",
+              "b3d4",
+              "e7g5",
+              "d4f5",
+              "g9i7",
+              "g0i2",
+              "b6b7",
+              "e6f6",
+              "b7d7",
+              "e3e6"
+            ],
+            "chinese": [
+              "車7平6",
+              "兵四平三",
+              "士4進5",
+              "車一平五",
+              "車6平2",
+              "兵三平四",
+              "車2退1",
+              "兵四平五",
+              "將5平4",
+              "馬八進六",
+              "象5進7",
+              "馬六進四",
+              "後象進9",
+              "相三進一",
+              "車2退1",
+              "兵五平四",
+              "車2平4",
+              "車五進三"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "d9e8",
+              "i3e3",
+              "g5d5",
+              "b3d2",
+              "e7c5",
+              "c0a2",
+              "g9e7",
+              "f6e6",
+              "e7c9",
+              "d2c4"
+            ],
+            "chinese": [
+              "士4進5",
+              "車一平五",
+              "車7平4",
+              "馬八退六",
+              "象5進3",
+              "相七進九",
+              "象7進5",
+              "兵四平五",
+              "象5退3",
+              "馬六進七"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        }
+      },
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "engineDurationMs": 1573,
+      "aiDurationMs": 19207,
+      "diagnosticRetryDurationMs": 0,
+      "serviceErrorClassification": null,
+      "finalText": "## 實戰著法解析\n\n### 直接結論\n\n實戰步「士4進5」因消極補防而失先，未能如 AI 首選「車7平6」般主動控制肋道，導致紅方得以利用「車一平五」強佔中路，使黑方陷入被動。\n\n### 實戰步問題\n實戰步「士4進5」與 AI 首選「車7平6」相比，缺乏對肋道與中路的積極爭奪，屬於消極防守，直接導致黑方喪失控盤權與子力活動度。\n\n### AI 首選\nAI 首選「車7平6」旨在主動控制肋道，在防守的同時保持反擊彈性，限制紅方「兵四平三」等攻勢，維持子力活動度與控盤權。\n\n### 對手利用與後果\n紅方隨後將通過「車一平五」與「馬八退六」等強硬著法，迅速建立中路優勢，並通過兵馬協調對黑方防線施加持續壓力。為了把上述差別落在真實走子次序上，實戰變化從士4進5、車一平五、車7平4、馬八退六、象5進3、兵四平五、象3退1、馬六進七展開；AI 首選變化則從車7平6、兵四平三、士4進5、車一平五、車6平2、兵三平四、車2退1、兵四平五展開。第一項可確認的後果是黑方失去肋道控制權，紅方得以迅速搶佔中路先手。對手接著紅方隨即走出「車一平五」控制中路，並迫使黑方「車7平4」避讓，隨後以「馬八退六」調整馬位，展開多子協同進攻，因此黑方中路門戶大開，防線被迫收縮，子力活動度嚴重受阻，完全失去控盤主動權。第二項後果是紅方兵馬協調推進，黑方防線面臨多重威脅。對手後續紅方利用「兵四平五」與「馬六進七」連續推進，威脅黑方象位與中路，最後黑方被迫以「象5進3」與「象3退1」疲於奔命，防守陣形被嚴重撕裂，子力協調性盡失。因此比較士4進5與車7平6時，不能停在結果標籤，而要逐步核對首選原本要完成的目的、替代著法放棄的走子次序、對手最強回應，以及兩條主線終點可直接看見的棋子活動與線路差別。實戰思考時可依序檢查立即威脅、受影響棋子或通道、對手是否取得強迫手段，再確認後果是否真的出現在以上主線；沒有出現的戰術不補猜。\n\n### 實戰原則\n在防守或均勢局面下，應優先考慮具備反擊彈性與控制線路的活性著法，避免過早進行無威脅的消極補防，以免喪失先手與控盤權。",
+      "finalTextFingerprint": "b924e1b44d4e63eeb95584875064e119c0bbdad5bed57a12aa54ad48efbe7c0b",
+      "trace": {
+        "status": "completed",
+        "modelCalls": 1,
+        "engineRounds": 0,
+        "validationErrors": [
+          "一鍵完整解說正文只有 245 個漢字，至少需要 400 個漢字；目標約 500–900 個中文字，請補足棋理因果與具體主線。"
+        ]
+      },
+      "structuralChecks": {
+        "requiredHeadingsPresentOnce": true,
+        "requiredHeadingsInOrder": true,
+        "mentionsActualMove": true,
+        "mentionsBestMove": true,
+        "atLeastTwoEvidenceMoves": true,
+        "noSelfQuestionAnswer": true,
+        "noFallback": true,
+        "productionQualityScreenPassed": true,
+        "productionQualityIssues": [],
+        "modelCallsWithinInitialLimit": true,
+        "zeroEngineRounds": true,
+        "noClarification": true,
+        "chineseLengthWithinTarget": true,
+        "passed": true
+      },
+      "forbiddenInfoChecks": {
+        "noFen": true,
+        "noUci": true,
+        "noEvidenceIds": true,
+        "noRawScores": true,
+        "noInternalDiagnostics": true,
+        "noUnsupportedChineseMoves": true,
+        "passed": true
+      },
+      "chineseCharCount": 681,
+      "fallbackUsed": false,
+      "userClickRequestCount": 1,
+      "rubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "rubricScore0to10": 10,
+      "majorErrorFlags": [],
+      "displayedRubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "displayedRubricScore0to10": 10,
+      "displayedMajorErrorFlags": [],
+      "initialModelCandidatePass": false,
+      "modelBackedQualityPass": true,
+      "finalDisplayedQualityPass": true,
+      "firstClickQualityPass": true,
+      "attempts": [
+        {
+          "requestId": "ai-acceptance-718f15d8-a440-4c9f-bea3-769180bd36ee",
+          "attempt": 1,
+          "modelRole": "primary",
+          "purpose": "user_click",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 19207,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 0,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 15,
+              "remainingDeadlineMsAtStart": 29985,
+              "durationMs": 19182,
+              "outcome": "success",
+              "errorCode": null,
+              "responseFingerprint": "ba55a1ed0d1901b757408e78332dd2d2c6fb655e1b782cd6152f2bb50689d38d",
+              "responseCharCount": 3801,
+              "responseChineseCharCount": 920,
+              "usage": {
+                "inputTokens": 4007,
+                "outputTokens": 1752
+              },
+              "validationCodes": [
+                "min_han"
+              ]
+            }
+          ],
+          "successfulInternalCalls": 1,
+          "firstCandidateObserved": true,
+          "initialModelCandidatePass": false,
+          "initialModelIssueCodes": [
+            "min_han"
+          ],
+          "completionMode": "grounded_completion",
+          "modelBackedQualityPass": true,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n實戰步「士4進5」因消極補防而失先，未能如 AI 首選「車7平6」般主動控制肋道，導致紅方得以利用「車一平五」強佔中路，使黑方陷入被動。\n\n### 實戰步問題\n實戰步「士4進5」與 AI 首選「車7平6」相比，缺乏對肋道與中路的積極爭奪，屬於消極防守，直接導致黑方喪失控盤權與子力活動度。\n\n### AI 首選\nAI 首選「車7平6」旨在主動控制肋道，在防守的同時保持反擊彈性，限制紅方「兵四平三」等攻勢，維持子力活動度與控盤權。\n\n### 對手利用與後果\n紅方隨後將通過「車一平五」與「馬八退六」等強硬著法，迅速建立中路優勢，並通過兵馬協調對黑方防線施加持續壓力。為了把上述差別落在真實走子次序上，實戰變化從士4進5、車一平五、車7平4、馬八退六、象5進3、兵四平五、象3退1、馬六進七展開；AI 首選變化則從車7平6、兵四平三、士4進5、車一平五、車6平2、兵三平四、車2退1、兵四平五展開。第一項可確認的後果是黑方失去肋道控制權，紅方得以迅速搶佔中路先手。對手接著紅方隨即走出「車一平五」控制中路，並迫使黑方「車7平4」避讓，隨後以「馬八退六」調整馬位，展開多子協同進攻，因此黑方中路門戶大開，防線被迫收縮，子力活動度嚴重受阻，完全失去控盤主動權。第二項後果是紅方兵馬協調推進，黑方防線面臨多重威脅。對手後續紅方利用「兵四平五」與「馬六進七」連續推進，威脅黑方象位與中路，最後黑方被迫以「象5進3」與「象3退1」疲於奔命，防守陣形被嚴重撕裂，子力協調性盡失。因此比較士4進5與車7平6時，不能停在結果標籤，而要逐步核對首選原本要完成的目的、替代著法放棄的走子次序、對手最強回應，以及兩條主線終點可直接看見的棋子活動與線路差別。實戰思考時可依序檢查立即威脅、受影響棋子或通道、對手是否取得強迫手段，再確認後果是否真的出現在以上主線；沒有出現的戰術不補猜。\n\n### 實戰原則\n在防守或均勢局面下，應優先考慮具備反擊彈性與控制線路的活性著法，避免過早進行無威脅的消極補防，以免喪失先手與控盤權。",
+          "finalTextFingerprint": "b924e1b44d4e63eeb95584875064e119c0bbdad5bed57a12aa54ad48efbe7c0b",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 1,
+            "engineRounds": 0,
+            "validationErrors": [
+              "一鍵完整解說正文只有 245 個漢字，至少需要 400 個漢字；目標約 500–900 個中文字，請補足棋理因果與具體主線。"
+            ]
+          },
+          "chineseCharCount": 681,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": true,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": true
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "rubricScore0to10": 10,
+          "majorErrorFlags": [],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "displayedRubricScore0to10": 10,
+          "displayedMajorErrorFlags": [],
+          "firstClickQualityPass": true,
+          "passed": true
+        }
+      ],
+      "responsibility": "passed",
+      "diagnosisLimitations": [],
+      "passed": true
+    },
+    {
+      "caseId": "xq272174077#94",
+      "gameId": "xq272174077",
+      "ply": 94,
+      "evidenceFingerprint": "15963aa97ead487dcbc4fb8e3aadd3b0b6226cc94fc51923b9d33cce5e1bcdec",
+      "evidence": {
+        "positionFen": "2b1kab2/4a4/9/4P4/5r3/9/1N1R5/4B4/4A4/2B1KA3 b - - 2 47",
+        "actualMove": {
+          "uci": "f5e5",
+          "wxf": "r6.5",
+          "chinese": "車6平5"
+        },
+        "analysisConfig": {
+          "rootAnalysisMovetimeMs": 1100,
+          "userMoveEvalMovetimeMs": 400,
+          "multiPv": 3
+        },
+        "parallelEngineDurationMs": 2549,
+        "analysisFingerprint": "29ce63577649aeaea5097ce2330ffa06f275d7365a78f723246d57d138d5b498",
+        "primary": {
+          "status": "ok",
+          "engineId": "099fb446-8a80-4970-be27-2e7e2d577ef6",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "g9e7",
+          "displayBestMove": "象7進5",
+          "actualMove": "f5e5",
+          "displayActualMove": "車6平5",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": -16.32,
+            "displayText": "-16.32",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": -17.81,
+            "displayText": "-17.81",
+            "source": "separate_engine_call"
+          },
+          "depth": 18,
+          "analysisTimeMs": 2549,
+          "bestLine": {
+            "uci": [
+              "g9e7",
+              "d3d6",
+              "f5b5",
+              "b3d2",
+              "b5b7",
+              "d2e4",
+              "c9a7",
+              "d6d5",
+              "e7c9",
+              "e6d6",
+              "b7e7",
+              "e4f6",
+              "e7f7",
+              "d5f5",
+              "f7g7",
+              "d6c6",
+              "g7f7",
+              "c0a2",
+              "e8d7",
+              "f5e5",
+              "f9e8",
+              "f6d5",
+              "f7f6",
+              "c6c7",
+              "e9f9"
+            ],
+            "chinese": [
+              "象7進5",
+              "車六進三",
+              "車6平2",
+              "馬八退六",
+              "車2退2",
+              "馬六進五",
+              "象3進1",
+              "車六退一",
+              "象5退3",
+              "兵五平六",
+              "車2平5",
+              "馬五進四",
+              "車5平6",
+              "車六平四",
+              "車6平7",
+              "兵六平七",
+              "車7平6",
+              "相七進九",
+              "士5進4",
+              "車四平五",
+              "士6進5",
+              "馬四退六",
+              "車6進1",
+              "兵七進一",
+              "將5平6"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "f5e5",
+              "d3d6"
+            ],
+            "chinese": [
+              "車6平5",
+              "車六進三"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        },
+        "acceptanceCrossCheck": {
+          "status": "ok",
+          "engineId": "acceptance-cross-check-37ca7ff6fa8c",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "c9a7",
+          "displayBestMove": "象3進1",
+          "actualMove": "f5e5",
+          "displayActualMove": "車6平5",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": -16.68,
+            "displayText": "-16.68",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": -16.2,
+            "displayText": "-16.20",
+            "source": "candidate_move"
+          },
+          "depth": 17,
+          "analysisTimeMs": 1712,
+          "bestLine": {
+            "uci": [
+              "c9a7",
+              "b3d2",
+              "f5c5",
+              "c0a2",
+              "c5c6",
+              "e6d6",
+              "c6b6",
+              "d3d5",
+              "b6b0",
+              "e2c0",
+              "b0b7",
+              "d2e4",
+              "b7e7",
+              "e4f6",
+              "e7f7",
+              "d5f5",
+              "g9i7",
+              "d6c6",
+              "e8d9"
+            ],
+            "chinese": [
+              "象3進1",
+              "馬八退六",
+              "車6平3",
+              "相七進九",
+              "車3退1",
+              "兵五平六",
+              "車3平2",
+              "車六進二",
+              "車2進6",
+              "相五退七",
+              "車2退7",
+              "馬六進五",
+              "車2平5",
+              "馬五進四",
+              "車5平6",
+              "車六平四",
+              "象7進9",
+              "兵六平七",
+              "士5退4"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "f5e5",
+              "d3d6",
+              "g9e7",
+              "e2g4",
+              "e5b5",
+              "b3d2",
+              "b5b7",
+              "d2c4",
+              "b7d7",
+              "d6a6",
+              "d7c7",
+              "c4d6"
+            ],
+            "chinese": [
+              "車6平5",
+              "車六進三",
+              "象7進5",
+              "相五進三",
+              "車5平2",
+              "馬八退六",
+              "車2退2",
+              "馬六進七",
+              "車2平4",
+              "車六平九",
+              "車4平3",
+              "馬七進六"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        }
+      },
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "engineDurationMs": 2549,
+      "aiDurationMs": 956,
+      "diagnosticRetryDurationMs": 1714,
+      "serviceErrorClassification": {
+        "code": "rate_limited",
+        "message": "Primary model delivery was rate limited before a candidate returned."
+      },
+      "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明車6平5錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認車6平5錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象7進5，但目前證據只能確認主線為：象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一。你的著法主線：車6平5、車六進三。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象7進5開始，後續為象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一；實戰步車6平5的可查證變化為車6平5、車六進三。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象7進5與車6平5各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+      "finalTextFingerprint": "ceb800e7b70702576d20df240e77e1b385d321718d487b3cc2453ba4854db4da",
+      "trace": {
+        "status": "completed",
+        "modelCalls": 2,
+        "engineRounds": 0,
+        "validationErrors": [
+          "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+          "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+          "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+        ]
+      },
+      "structuralChecks": {
+        "requiredHeadingsPresentOnce": true,
+        "requiredHeadingsInOrder": true,
+        "mentionsActualMove": true,
+        "mentionsBestMove": true,
+        "atLeastTwoEvidenceMoves": true,
+        "noSelfQuestionAnswer": true,
+        "noFallback": false,
+        "productionQualityScreenPassed": true,
+        "productionQualityIssues": [],
+        "modelCallsWithinInitialLimit": true,
+        "zeroEngineRounds": true,
+        "noClarification": true,
+        "chineseLengthWithinTarget": true,
+        "passed": false
+      },
+      "forbiddenInfoChecks": {
+        "noFen": true,
+        "noUci": true,
+        "noEvidenceIds": true,
+        "noRawScores": true,
+        "noInternalDiagnostics": true,
+        "noUnsupportedChineseMoves": true,
+        "passed": true
+      },
+      "chineseCharCount": 622,
+      "fallbackUsed": true,
+      "userClickRequestCount": 1,
+      "rubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "rubricScore0to10": 10,
+      "majorErrorFlags": [],
+      "displayedRubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "displayedRubricScore0to10": 10,
+      "displayedMajorErrorFlags": [],
+      "initialModelCandidatePass": null,
+      "modelBackedQualityPass": false,
+      "finalDisplayedQualityPass": true,
+      "firstClickQualityPass": false,
+      "attempts": [
+        {
+          "requestId": "ai-acceptance-16c5b0d8-2c37-4c25-b10d-1e13208f9479",
+          "attempt": 1,
+          "modelRole": "primary",
+          "purpose": "user_click",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 956,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 4,
+              "remainingDeadlineMsAtStart": 29996,
+              "durationMs": 264,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 868,
+              "remainingDeadlineMsAtStart": 29132,
+              "durationMs": 85,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明車6平5錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認車6平5錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象7進5，但目前證據只能確認主線為：象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一。你的著法主線：車6平5、車六進三。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象7進5開始，後續為象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一；實戰步車6平5的可查證變化為車6平5、車六進三。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象7進5與車6平5各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "ceb800e7b70702576d20df240e77e1b385d321718d487b3cc2453ba4854db4da",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 622,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "rubricScore0to10": 10,
+          "majorErrorFlags": [],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "displayedRubricScore0to10": 10,
+          "displayedMajorErrorFlags": [],
+          "firstClickQualityPass": false,
+          "passed": false
+        },
+        {
+          "requestId": "ai-acceptance-c1b4e4c3-f6f6-41e9-af50-362d71ae0f03",
+          "attempt": 2,
+          "modelRole": "primary",
+          "purpose": "diagnostic_replay",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 944,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 3,
+              "remainingDeadlineMsAtStart": 29997,
+              "durationMs": 71,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 676,
+              "remainingDeadlineMsAtStart": 29324,
+              "durationMs": 266,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明車6平5錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認車6平5錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象7進5，但目前證據只能確認主線為：象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一。你的著法主線：車6平5、車六進三。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象7進5開始，後續為象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一；實戰步車6平5的可查證變化為車6平5、車六進三。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象7進5與車6平5各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "ceb800e7b70702576d20df240e77e1b385d321718d487b3cc2453ba4854db4da",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 622,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "rubricScore0to10": 9,
+          "majorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "displayedRubricScore0to10": 9,
+          "displayedMajorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "firstClickQualityPass": false,
+          "passed": false
+        },
+        {
+          "requestId": "ai-acceptance-81f5f818-f5aa-4ca9-b1c8-db21592c8ebc",
+          "attempt": 3,
+          "modelRole": "primary",
+          "purpose": "diagnostic_replay",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 770,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 3,
+              "remainingDeadlineMsAtStart": 29997,
+              "durationMs": 72,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 688,
+              "remainingDeadlineMsAtStart": 29312,
+              "durationMs": 79,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明車6平5錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認車6平5錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象7進5，但目前證據只能確認主線為：象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一。你的著法主線：車6平5、車六進三。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象7進5開始，後續為象7進5、車六進三、車6平2、馬八退六、車2退2、馬六進五、象3進1、車六退一；實戰步車6平5的可查證變化為車6平5、車六進三。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象7進5與車6平5各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "ceb800e7b70702576d20df240e77e1b385d321718d487b3cc2453ba4854db4da",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 622,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "rubricScore0to10": 9,
+          "majorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "displayedRubricScore0to10": 9,
+          "displayedMajorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "firstClickQualityPass": false,
+          "passed": false
+        }
+      ],
+      "responsibility": "service",
+      "diagnosisLimitations": [],
+      "passed": false
+    },
+    {
+      "caseId": "xq267431809#58",
+      "gameId": "xq267431809",
+      "ply": 58,
+      "evidenceFingerprint": "f586f070942e3af0636473fedc5bfb563b41576023533e3ab8a015913bd149df",
+      "evidence": {
+        "positionFen": "2b1k2r1/9/4ba1C1/p3pN2p/6p2/9/P5PRP/9/9/1r1AKAB2 b - - 6 29",
+        "actualMove": {
+          "uci": "b0b5",
+          "wxf": "r2-5",
+          "chinese": "車2退5"
+        },
+        "analysisConfig": {
+          "rootAnalysisMovetimeMs": 1100,
+          "userMoveEvalMovetimeMs": 400,
+          "multiPv": 3
+        },
+        "parallelEngineDurationMs": 1580,
+        "analysisFingerprint": "86e658b2da36179f7c5d8e12e858daf96c2a7a9b6b936f3db79e1bb769a70b0e",
+        "primary": {
+          "status": "ok",
+          "engineId": "099fb446-8a80-4970-be27-2e7e2d577ef6",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "e9d9",
+          "displayBestMove": "將5平4",
+          "actualMove": "b0b5",
+          "displayActualMove": "車2退5",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": 17.06,
+            "displayText": "+17.06",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": 13.93,
+            "displayText": "+13.93",
+            "source": "candidate_move"
+          },
+          "depth": 17,
+          "analysisTimeMs": 1580,
+          "bestLine": {
+            "uci": [
+              "e9d9",
+              "f0e1",
+              "b0b3",
+              "i3i4",
+              "b3b4",
+              "g0e2",
+              "b4f4",
+              "h3h6",
+              "f4i4",
+              "e1f0",
+              "i4i3",
+              "f0e1",
+              "i3g3",
+              "h6i6",
+              "g3b3"
+            ],
+            "chinese": [
+              "將5平4",
+              "仕四進五",
+              "車2退3",
+              "兵一進一",
+              "車2退1",
+              "相三進五",
+              "車2平6",
+              "車二進三",
+              "車6平9",
+              "仕五退四",
+              "車9進1",
+              "仕四進五",
+              "車9平7",
+              "車二平一",
+              "車7平2"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "b0b5",
+              "h3h6",
+              "i6i5",
+              "h6i6",
+              "b5f5",
+              "a3a4",
+              "f5f3",
+              "a4a5",
+              "a6a5",
+              "i3i4",
+              "i5i4",
+              "h7h6",
+              "e9d9",
+              "h6e6"
+            ],
+            "chinese": [
+              "車2退5",
+              "車二進三",
+              "卒9進1",
+              "車二平一",
+              "車2平6",
+              "兵九進一",
+              "車6進2",
+              "兵九進一",
+              "卒1進1",
+              "兵一進一",
+              "卒9進1",
+              "炮二退一",
+              "將5平4",
+              "炮二平五"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        },
+        "acceptanceCrossCheck": {
+          "status": "ok",
+          "engineId": "acceptance-cross-check-37ca7ff6fa8c",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "e9d9",
+          "displayBestMove": "將5平4",
+          "actualMove": "b0b5",
+          "displayActualMove": "車2退5",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": 17.06,
+            "displayText": "+17.06",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": 13.27,
+            "displayText": "+13.27",
+            "source": "candidate_move"
+          },
+          "depth": 16,
+          "analysisTimeMs": 1559,
+          "bestLine": {
+            "uci": [
+              "e9d9",
+              "f0e1",
+              "b0b3",
+              "i3i4",
+              "b3b4",
+              "g0e2",
+              "b4f4",
+              "h3h6",
+              "f4i4",
+              "e1f0",
+              "i4i3",
+              "f0e1",
+              "i3g3",
+              "h6i6",
+              "g3b3"
+            ],
+            "chinese": [
+              "將5平4",
+              "仕四進五",
+              "車2退3",
+              "兵一進一",
+              "車2退1",
+              "相三進五",
+              "車2平6",
+              "車二進三",
+              "車6平9",
+              "仕五退四",
+              "車9進1",
+              "仕四進五",
+              "車9平7",
+              "車二平一",
+              "車7平2"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "b0b5",
+              "h7h6",
+              "b5e5",
+              "f0e1",
+              "e7c5",
+              "h6h7",
+              "e5e3",
+              "g0i2",
+              "i6i5",
+              "h3h6",
+              "c5e7",
+              "g3g4",
+              "e3i3",
+              "g4g5",
+              "i3i2"
+            ],
+            "chinese": [
+              "車2退5",
+              "炮二退一",
+              "車2平5",
+              "仕四進五",
+              "象5進3",
+              "炮二進一",
+              "車5進2",
+              "相三進一",
+              "卒9進1",
+              "車二進三",
+              "前象退5",
+              "兵三進一",
+              "車5平9",
+              "兵三進一",
+              "車9進1"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        }
+      },
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "engineDurationMs": 1580,
+      "aiDurationMs": 21600,
+      "diagnosticRetryDurationMs": 0,
+      "serviceErrorClassification": null,
+      "finalText": "## 實戰著法解析\n\n### 直接結論\n\n黑方實戰選擇車2退5退車過深，未能如AI首選將5平4般及時調整將位，導致紅方得以走出車二進三切入要道，使黑方防線陷入被動。\n\n### 實戰步問題\n實戰步車2退5與AI首選將5平4相比，防守效率有顯著差異。車2退5將防守子力退回底線附近，不僅未能解決老將暴露在中路的隱患，反而主動讓出了二路縱隊的控制權，使紅方車二進三的攻勢變得極具威脅，黑方防線隨即被動。\n\n### AI 首選\nAI首選將5平4是極具遠見的防守著法。此手棋及時將老將移至安全肋道，避開紅方中路的潛在威脅。在紅方仕四進五後，黑方可從容走出車2退3，在較高的橫線上維持防守彈性，既能兼顧中路，又能靈活轉移，確保子力協調與王區安全。\n\n### 對手利用與後果\n實戰中紅方迅速利用黑方車2退5的失誤，走出車二進三強佔要道。後續主線為：卒9進1、車二平一、車2平6、兵九進一、車6進2、兵九進一。紅方通過車二平一成功轉移戰線，並配合邊兵推進，使黑方車2平6的防守顯得極為臃腫與被動，完全喪失了控盤主動權。為了把上述差別落在真實走子次序上，實戰變化從車2退5、車二進三、卒9進1、車二平一、車2平6、兵九進一、車6進2、兵九進一展開；AI 首選變化則從將5平4、仕四進五、車2退3、兵一進一、車2退1、相三進五、車2平6、車二進三展開。第一項可確認的後果是黑方退車過深喪失防守彈性，紅方得以迅速進車搶佔高位要道。對手接著紅方隨即走出車二進三，將車開至黑方咽喉要地，隨後配合車二平一轉移戰線，擴大先手優勢，因此黑方車2退5後，紅方車二進三、卒9進1、車二平一，黑方被迫以車2平6被動防守，防線全面受制。第二項後果是黑方將位未能及時調整，導致後續防守體系缺乏深度，容易被紅方兵卒與大子協調進攻。對手後續紅方利用黑方將位仍在中央的弱點，在車二平一後，以兵九進一與兵一進一等著法持續施壓，最後黑方被迫在後續防守中走出將5平4，但此時紅方已完成兵力集結，黑方子力活動度大為受限。因此比較車2退5與將5平4時，不能停在結果標籤，而要逐步核對首選原本要完成的目的、替代著法放棄的走子次序、對手最強回應，以及兩條主線終點可直接看見的棋子活動與線路差別。實戰思考時可依序檢查立即威脅、受影響棋子或通道、對手是否取得強迫手段，再確認後果是否真的出現在以上主線；沒有出現的戰術不補猜。\n\n### 實戰原則\n在防守時，應優先考慮調整王區安全（如將5平4）以消除根本隱患，而非盲目深退子力（如車2退5）導致防線失去彈性與反擊空間。",
+      "finalTextFingerprint": "02faf43bbe8f50820b99a561e2f4ea183449cc585703164e87edc9d847b17597",
+      "trace": {
+        "status": "completed",
+        "modelCalls": 1,
+        "engineRounds": 0,
+        "validationErrors": [
+          "一鍵完整解說正文只有 378 個漢字，至少需要 400 個漢字；目標約 500–900 個中文字，請補足棋理因果與具體主線。"
+        ]
+      },
+      "structuralChecks": {
+        "requiredHeadingsPresentOnce": true,
+        "requiredHeadingsInOrder": true,
+        "mentionsActualMove": true,
+        "mentionsBestMove": true,
+        "atLeastTwoEvidenceMoves": true,
+        "noSelfQuestionAnswer": true,
+        "noFallback": true,
+        "productionQualityScreenPassed": true,
+        "productionQualityIssues": [],
+        "modelCallsWithinInitialLimit": true,
+        "zeroEngineRounds": true,
+        "noClarification": true,
+        "chineseLengthWithinTarget": true,
+        "passed": true
+      },
+      "forbiddenInfoChecks": {
+        "noFen": true,
+        "noUci": true,
+        "noEvidenceIds": true,
+        "noRawScores": true,
+        "noInternalDiagnostics": true,
+        "noUnsupportedChineseMoves": true,
+        "passed": true
+      },
+      "chineseCharCount": 854,
+      "fallbackUsed": false,
+      "userClickRequestCount": 1,
+      "rubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "rubricScore0to10": 10,
+      "majorErrorFlags": [],
+      "displayedRubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "displayedRubricScore0to10": 10,
+      "displayedMajorErrorFlags": [],
+      "initialModelCandidatePass": false,
+      "modelBackedQualityPass": true,
+      "finalDisplayedQualityPass": true,
+      "firstClickQualityPass": true,
+      "attempts": [
+        {
+          "requestId": "ai-acceptance-1589589e-6347-4aa9-bfe8-d9ff42f3b85c",
+          "attempt": 1,
+          "modelRole": "primary",
+          "purpose": "user_click",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 21600,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 0,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 4,
+              "remainingDeadlineMsAtStart": 29996,
+              "durationMs": 21590,
+              "outcome": "success",
+              "errorCode": null,
+              "responseFingerprint": "8b0c98cd075e654e4a22f915521f46ec5842b9907f08f871714d5099e8651942",
+              "responseCharCount": 3490,
+              "responseChineseCharCount": 985,
+              "usage": {
+                "inputTokens": 3927,
+                "outputTokens": 1709
+              },
+              "validationCodes": [
+                "min_han"
+              ]
+            }
+          ],
+          "successfulInternalCalls": 1,
+          "firstCandidateObserved": true,
+          "initialModelCandidatePass": false,
+          "initialModelIssueCodes": [
+            "min_han"
+          ],
+          "completionMode": "grounded_completion",
+          "modelBackedQualityPass": true,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n黑方實戰選擇車2退5退車過深，未能如AI首選將5平4般及時調整將位，導致紅方得以走出車二進三切入要道，使黑方防線陷入被動。\n\n### 實戰步問題\n實戰步車2退5與AI首選將5平4相比，防守效率有顯著差異。車2退5將防守子力退回底線附近，不僅未能解決老將暴露在中路的隱患，反而主動讓出了二路縱隊的控制權，使紅方車二進三的攻勢變得極具威脅，黑方防線隨即被動。\n\n### AI 首選\nAI首選將5平4是極具遠見的防守著法。此手棋及時將老將移至安全肋道，避開紅方中路的潛在威脅。在紅方仕四進五後，黑方可從容走出車2退3，在較高的橫線上維持防守彈性，既能兼顧中路，又能靈活轉移，確保子力協調與王區安全。\n\n### 對手利用與後果\n實戰中紅方迅速利用黑方車2退5的失誤，走出車二進三強佔要道。後續主線為：卒9進1、車二平一、車2平6、兵九進一、車6進2、兵九進一。紅方通過車二平一成功轉移戰線，並配合邊兵推進，使黑方車2平6的防守顯得極為臃腫與被動，完全喪失了控盤主動權。為了把上述差別落在真實走子次序上，實戰變化從車2退5、車二進三、卒9進1、車二平一、車2平6、兵九進一、車6進2、兵九進一展開；AI 首選變化則從將5平4、仕四進五、車2退3、兵一進一、車2退1、相三進五、車2平6、車二進三展開。第一項可確認的後果是黑方退車過深喪失防守彈性，紅方得以迅速進車搶佔高位要道。對手接著紅方隨即走出車二進三，將車開至黑方咽喉要地，隨後配合車二平一轉移戰線，擴大先手優勢，因此黑方車2退5後，紅方車二進三、卒9進1、車二平一，黑方被迫以車2平6被動防守，防線全面受制。第二項後果是黑方將位未能及時調整，導致後續防守體系缺乏深度，容易被紅方兵卒與大子協調進攻。對手後續紅方利用黑方將位仍在中央的弱點，在車二平一後，以兵九進一與兵一進一等著法持續施壓，最後黑方被迫在後續防守中走出將5平4，但此時紅方已完成兵力集結，黑方子力活動度大為受限。因此比較車2退5與將5平4時，不能停在結果標籤，而要逐步核對首選原本要完成的目的、替代著法放棄的走子次序、對手最強回應，以及兩條主線終點可直接看見的棋子活動與線路差別。實戰思考時可依序檢查立即威脅、受影響棋子或通道、對手是否取得強迫手段，再確認後果是否真的出現在以上主線；沒有出現的戰術不補猜。\n\n### 實戰原則\n在防守時，應優先考慮調整王區安全（如將5平4）以消除根本隱患，而非盲目深退子力（如車2退5）導致防線失去彈性與反擊空間。",
+          "finalTextFingerprint": "02faf43bbe8f50820b99a561e2f4ea183449cc585703164e87edc9d847b17597",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 1,
+            "engineRounds": 0,
+            "validationErrors": [
+              "一鍵完整解說正文只有 378 個漢字，至少需要 400 個漢字；目標約 500–900 個中文字，請補足棋理因果與具體主線。"
+            ]
+          },
+          "chineseCharCount": 854,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": true,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": true
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "rubricScore0to10": 10,
+          "majorErrorFlags": [],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "displayedRubricScore0to10": 10,
+          "displayedMajorErrorFlags": [],
+          "firstClickQualityPass": true,
+          "passed": true
+        }
+      ],
+      "responsibility": "passed",
+      "diagnosisLimitations": [],
+      "passed": true
+    },
+    {
+      "caseId": "xq267431809#74",
+      "gameId": "xq267431809",
+      "ply": 74,
+      "evidenceFingerprint": "f2cc00a5720a7a5c2be8378afa1caa63e052fbb4e92591c1d3e456e0f638e204",
+      "evidence": {
+        "positionFen": "2b1k2r1/4a4/4b4/p3p2Cp/9/6N2/P5r1P/4B2R1/4A4/3AK4 b - - 1 37",
+        "actualMove": {
+          "uci": "g3i3",
+          "wxf": "r7.9",
+          "chinese": "車7平9"
+        },
+        "analysisConfig": {
+          "rootAnalysisMovetimeMs": 1100,
+          "userMoveEvalMovetimeMs": 400,
+          "multiPv": 3
+        },
+        "parallelEngineDurationMs": 2434,
+        "analysisFingerprint": "1c0c4869275bf73048a06654c2c4b8a350756bdd95296315f02b8ce3859db7c8",
+        "primary": {
+          "status": "ok",
+          "engineId": "099fb446-8a80-4970-be27-2e7e2d577ef6",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "e7g5",
+          "displayBestMove": "象5進7",
+          "actualMove": "g3i3",
+          "displayActualMove": "車7平9",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": 18.01,
+            "displayText": "+18.01",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": -38.5,
+            "displayText": "-38.50",
+            "source": "separate_engine_call"
+          },
+          "depth": 16,
+          "analysisTimeMs": 2408,
+          "bestLine": {
+            "uci": [
+              "e7g5",
+              "a3a4",
+              "c9e7",
+              "i3i4",
+              "g3a3",
+              "i4i5",
+              "i6i5",
+              "g4i5",
+              "a3a4",
+              "h6h8",
+              "a6a5",
+              "h2h3",
+              "e7c9",
+              "i5g4",
+              "a4f4",
+              "h8h5",
+              "c9e7"
+            ],
+            "chinese": [
+              "象5進7",
+              "兵九進一",
+              "象3進5",
+              "兵一進一",
+              "車7平1",
+              "兵一進一",
+              "卒9進1",
+              "馬三進一",
+              "車1退1",
+              "炮二進二",
+              "卒1進1",
+              "車二進一",
+              "象5退3",
+              "馬一退三",
+              "車1平6",
+              "炮二退三",
+              "象3進5"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "g3i3",
+              "g4i3",
+              "e7g5",
+              "i3g4",
+              "c9a7",
+              "g4e3",
+              "a7c5",
+              "e3f5",
+              "a6a5",
+              "f5g7",
+              "h9g9",
+              "g7e6",
+              "g5e7",
+              "e6f4",
+              "g9f9",
+              "f4d5",
+              "f9f5",
+              "d5c7"
+            ],
+            "chinese": [
+              "車7平9",
+              "馬三退一",
+              "象5進7",
+              "馬一進三",
+              "象3進1",
+              "馬三退五",
+              "象1進3",
+              "馬五進四",
+              "卒1進1",
+              "馬四進三",
+              "車8平7",
+              "馬三退五",
+              "象7退5",
+              "馬五退四",
+              "車7平6",
+              "馬四進六",
+              "車6進4",
+              "馬六進七"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        },
+        "acceptanceCrossCheck": {
+          "status": "ok",
+          "engineId": "acceptance-cross-check-37ca7ff6fa8c",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "e7g5",
+          "displayBestMove": "象5進7",
+          "actualMove": "g3i3",
+          "displayActualMove": "車7平9",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": 18.01,
+            "displayText": "+18.01",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": -37.79,
+            "displayText": "-37.79",
+            "source": "separate_engine_call"
+          },
+          "depth": 16,
+          "analysisTimeMs": 2424,
+          "bestLine": {
+            "uci": [
+              "e7g5",
+              "a3a4",
+              "c9e7",
+              "i3i4",
+              "g3a3",
+              "i4i5",
+              "i6i5",
+              "g4i5",
+              "a3a4",
+              "h6h8",
+              "a6a5",
+              "h2h3",
+              "e7c9",
+              "i5g4",
+              "a4f4",
+              "h8h5",
+              "c9e7"
+            ],
+            "chinese": [
+              "象5進7",
+              "兵九進一",
+              "象3進5",
+              "兵一進一",
+              "車7平1",
+              "兵一進一",
+              "卒9進1",
+              "馬三進一",
+              "車1退1",
+              "炮二進二",
+              "卒1進1",
+              "車二進一",
+              "象5退3",
+              "馬一退三",
+              "車1平6",
+              "炮二退三",
+              "象3進5"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "g3i3",
+              "g4i3",
+              "e7g5",
+              "i3g4",
+              "c9a7",
+              "g4e3",
+              "a7c5",
+              "e3f5",
+              "a6a5",
+              "f5g7",
+              "h9g9",
+              "g7e6",
+              "g9g6",
+              "e6f4"
+            ],
+            "chinese": [
+              "車7平9",
+              "馬三退一",
+              "象5進7",
+              "馬一進三",
+              "象3進1",
+              "馬三退五",
+              "象1進3",
+              "馬五進四",
+              "卒1進1",
+              "馬四進三",
+              "車8平7",
+              "馬三退五",
+              "車7進3",
+              "馬五退四"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        }
+      },
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "engineDurationMs": 2434,
+      "aiDurationMs": 784,
+      "diagnosticRetryDurationMs": 1546,
+      "serviceErrorClassification": {
+        "code": "rate_limited",
+        "message": "Primary model delivery was rate limited before a candidate returned."
+      },
+      "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明車7平9錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認車7平9錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象5進7，但目前證據只能確認主線為：象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一。你的著法主線：車7平9、馬三退一、象5進7、馬一進三、象3進1、馬三退五、象1進3、馬五進四。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象5進7開始，後續為象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一；實戰步車7平9的可查證變化為車7平9、馬三退一、象5進7、馬一進三、象3進1、馬三退五、象1進3、馬五進四。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象5進7與車7平9各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+      "finalTextFingerprint": "6ab3720594f882048ef25e247dc6b13f96087b285163a172591484116ca1f102",
+      "trace": {
+        "status": "completed",
+        "modelCalls": 2,
+        "engineRounds": 0,
+        "validationErrors": [
+          "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+          "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+          "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+        ]
+      },
+      "structuralChecks": {
+        "requiredHeadingsPresentOnce": true,
+        "requiredHeadingsInOrder": true,
+        "mentionsActualMove": true,
+        "mentionsBestMove": true,
+        "atLeastTwoEvidenceMoves": true,
+        "noSelfQuestionAnswer": true,
+        "noFallback": false,
+        "productionQualityScreenPassed": true,
+        "productionQualityIssues": [],
+        "modelCallsWithinInitialLimit": true,
+        "zeroEngineRounds": true,
+        "noClarification": true,
+        "chineseLengthWithinTarget": true,
+        "passed": false
+      },
+      "forbiddenInfoChecks": {
+        "noFen": true,
+        "noUci": true,
+        "noEvidenceIds": true,
+        "noRawScores": true,
+        "noInternalDiagnostics": true,
+        "noUnsupportedChineseMoves": true,
+        "passed": true
+      },
+      "chineseCharCount": 658,
+      "fallbackUsed": true,
+      "userClickRequestCount": 1,
+      "rubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "rubricScore0to10": 10,
+      "majorErrorFlags": [],
+      "displayedRubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "displayedRubricScore0to10": 10,
+      "displayedMajorErrorFlags": [],
+      "initialModelCandidatePass": null,
+      "modelBackedQualityPass": false,
+      "finalDisplayedQualityPass": true,
+      "firstClickQualityPass": false,
+      "attempts": [
+        {
+          "requestId": "ai-acceptance-da490838-fe3b-419a-9f83-f93928a3eb57",
+          "attempt": 1,
+          "modelRole": "primary",
+          "purpose": "user_click",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 784,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 4,
+              "remainingDeadlineMsAtStart": 29996,
+              "durationMs": 78,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 684,
+              "remainingDeadlineMsAtStart": 29316,
+              "durationMs": 96,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明車7平9錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認車7平9錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象5進7，但目前證據只能確認主線為：象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一。你的著法主線：車7平9、馬三退一、象5進7、馬一進三、象3進1、馬三退五、象1進3、馬五進四。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象5進7開始，後續為象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一；實戰步車7平9的可查證變化為車7平9、馬三退一、象5進7、馬一進三、象3進1、馬三退五、象1進3、馬五進四。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象5進7與車7平9各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "6ab3720594f882048ef25e247dc6b13f96087b285163a172591484116ca1f102",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "rubricScore0to10": 10,
+          "majorErrorFlags": [],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "displayedRubricScore0to10": 10,
+          "displayedMajorErrorFlags": [],
+          "firstClickQualityPass": false,
+          "passed": false
+        },
+        {
+          "requestId": "ai-acceptance-3b3d49e1-9ed5-4881-9a67-2e7a10eaed48",
+          "attempt": 2,
+          "modelRole": "primary",
+          "purpose": "diagnostic_replay",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 768,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 3,
+              "remainingDeadlineMsAtStart": 29997,
+              "durationMs": 73,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 680,
+              "remainingDeadlineMsAtStart": 29320,
+              "durationMs": 83,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明車7平9錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認車7平9錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象5進7，但目前證據只能確認主線為：象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一。你的著法主線：車7平9、馬三退一、象5進7、馬一進三、象3進1、馬三退五、象1進3、馬五進四。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象5進7開始，後續為象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一；實戰步車7平9的可查證變化為車7平9、馬三退一、象5進7、馬一進三、象3進1、馬三退五、象1進3、馬五進四。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象5進7與車7平9各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "6ab3720594f882048ef25e247dc6b13f96087b285163a172591484116ca1f102",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "rubricScore0to10": 9,
+          "majorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "displayedRubricScore0to10": 9,
+          "displayedMajorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "firstClickQualityPass": false,
+          "passed": false
+        },
+        {
+          "requestId": "ai-acceptance-ea0649f3-c185-4899-9288-babccbe85766",
+          "attempt": 3,
+          "modelRole": "primary",
+          "purpose": "diagnostic_replay",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 778,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 3,
+              "remainingDeadlineMsAtStart": 29997,
+              "durationMs": 80,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 690,
+              "remainingDeadlineMsAtStart": 29310,
+              "durationMs": 83,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明車7平9錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認車7平9錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象5進7，但目前證據只能確認主線為：象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一。你的著法主線：車7平9、馬三退一、象5進7、馬一進三、象3進1、馬三退五、象1進3、馬五進四。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象5進7開始，後續為象5進7、兵九進一、象3進5、兵一進一、車7平1、兵一進一、卒9進1、馬三進一；實戰步車7平9的可查證變化為車7平9、馬三退一、象5進7、馬一進三、象3進1、馬三退五、象1進3、馬五進四。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象5進7與車7平9各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "6ab3720594f882048ef25e247dc6b13f96087b285163a172591484116ca1f102",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "rubricScore0to10": 9,
+          "majorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "displayedRubricScore0to10": 9,
+          "displayedMajorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "firstClickQualityPass": false,
+          "passed": false
+        }
+      ],
+      "responsibility": "service",
+      "diagnosisLimitations": [],
+      "passed": false
+    },
+    {
+      "caseId": "xq276129901#46",
+      "gameId": "xq276129901",
+      "ply": 46,
+      "evidenceFingerprint": "b27dd05323d3539bd1f6f431cc115ecb653c048a962bc75a3f779e1c60c1b72c",
+      "evidence": {
+        "positionFen": "2bak1b2/4a4/2n3n2/p1N5p/2p1pr3/c7P/2P1R2N1/4BC3/4A4/4KAB2 b - - 1 23",
+        "actualMove": {
+          "uci": "a4a3",
+          "wxf": "c1+1",
+          "chinese": "炮1進1"
+        },
+        "analysisConfig": {
+          "rootAnalysisMovetimeMs": 1100,
+          "userMoveEvalMovetimeMs": 400,
+          "multiPv": 3
+        },
+        "parallelEngineDurationMs": 2457,
+        "analysisFingerprint": "2891f7ff7bf25de3c105f0ded7b3756ccb011c31d6b903a9229bb0e4c2f79bcd",
+        "primary": {
+          "status": "ok",
+          "engineId": "099fb446-8a80-4970-be27-2e7e2d577ef6",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "g9e7",
+          "displayBestMove": "象7進5",
+          "actualMove": "a4a3",
+          "displayActualMove": "炮1進1",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": 0.73,
+            "displayText": "+0.73",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": 0.01,
+            "displayText": "+0.01",
+            "source": "separate_engine_call"
+          },
+          "depth": 15,
+          "analysisTimeMs": 2456,
+          "bestLine": {
+            "uci": [
+              "g9e7",
+              "f2g2",
+              "c5c4",
+              "h3f2",
+              "c4d4",
+              "c6e5",
+              "c7d5",
+              "f2g4",
+              "a4g4",
+              "e2g4",
+              "g7h5",
+              "g2i2"
+            ],
+            "chinese": [
+              "象7進5",
+              "炮四平三",
+              "卒3進1",
+              "馬二退四",
+              "卒3平4",
+              "馬七退五",
+              "馬3進4",
+              "馬四進三",
+              "炮1平7",
+              "相五進三",
+              "馬7進8",
+              "炮三平一"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "a4a3",
+              "c3c4",
+              "a3h3",
+              "e3h3",
+              "e5e4",
+              "h3h4",
+              "e4e3",
+              "h4g4",
+              "c7e6",
+              "f2g2",
+              "g7h5",
+              "g4g9",
+              "f5f9",
+              "g9f9",
+              "e8f9",
+              "c4c5",
+              "e6c5",
+              "g2i2",
+              "h5g3",
+              "i2i6",
+              "g3i4",
+              "i6i7",
+              "i4g5",
+              "c6e5",
+              "e9e8",
+              "i7g7"
+            ],
+            "chinese": [
+              "炮1進1",
+              "兵七進一",
+              "炮1平8",
+              "車五平二",
+              "卒5進1",
+              "車二進一",
+              "卒5進1",
+              "車二平三",
+              "馬3進5",
+              "炮四平三",
+              "馬7進8",
+              "車三進五",
+              "車6退4",
+              "車三平四",
+              "士5退6",
+              "兵七進一",
+              "馬5進3",
+              "炮三平一",
+              "馬8進7",
+              "炮一進四",
+              "馬7退9",
+              "炮一進一",
+              "馬9退7",
+              "馬七退五",
+              "將5進1",
+              "炮一平三"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        },
+        "acceptanceCrossCheck": {
+          "status": "ok",
+          "engineId": "acceptance-cross-check-37ca7ff6fa8c",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "g9e7",
+          "displayBestMove": "象7進5",
+          "actualMove": "a4a3",
+          "displayActualMove": "炮1進1",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": 0.66,
+            "displayText": "+0.66",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": 0.01,
+            "displayText": "+0.01",
+            "source": "separate_engine_call"
+          },
+          "depth": 15,
+          "analysisTimeMs": 2446,
+          "bestLine": {
+            "uci": [
+              "g9e7",
+              "h3g1",
+              "a4a1",
+              "g1i2",
+              "f5f6",
+              "c6e5",
+              "f6b6",
+              "e3g3",
+              "g7e6",
+              "i2h4"
+            ],
+            "chinese": [
+              "象7進5",
+              "馬二退三",
+              "炮1進3",
+              "馬三進一",
+              "車6退1",
+              "馬七退五",
+              "車6平2",
+              "車五平三",
+              "馬7進5",
+              "馬一進二"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "a4a3",
+              "c3c4",
+              "a3h3",
+              "e3h3",
+              "e5e4",
+              "h3h4",
+              "e4e3",
+              "h4g4",
+              "c7e6",
+              "f2g2",
+              "g7h5",
+              "g4g9",
+              "f5f9",
+              "g9f9",
+              "e9f9",
+              "g2i2",
+              "c5c4",
+              "e2c4",
+              "h5g3",
+              "i2i6",
+              "g3i4",
+              "c6e5",
+              "e6g5",
+              "i6f6"
+            ],
+            "chinese": [
+              "炮1進1",
+              "兵七進一",
+              "炮1平8",
+              "車五平二",
+              "卒5進1",
+              "車二進一",
+              "卒5進1",
+              "車二平三",
+              "馬3進5",
+              "炮四平三",
+              "馬7進8",
+              "車三進五",
+              "車6退4",
+              "車三平四",
+              "將5平6",
+              "炮三平一",
+              "卒3進1",
+              "相五進七",
+              "馬8進7",
+              "炮一進四",
+              "馬7退9",
+              "馬七退五",
+              "馬5進7",
+              "炮一平四"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        }
+      },
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "engineDurationMs": 2457,
+      "aiDurationMs": 772,
+      "diagnosticRetryDurationMs": 1898,
+      "serviceErrorClassification": {
+        "code": "rate_limited",
+        "message": "Primary model delivery was rate limited before a candidate returned."
+      },
+      "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明炮1進1錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認炮1進1錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象7進5，但目前證據只能確認主線為：象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三。你的著法主線：炮1進1、兵七進一、炮1平8、車五平二、卒5進1、車二進一、卒5進1、車二平三。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象7進5開始，後續為象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三；實戰步炮1進1的可查證變化為炮1進1、兵七進一、炮1平8、車五平二、卒5進1、車二進一、卒5進1、車二平三。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象7進5與炮1進1各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+      "finalTextFingerprint": "f3afcbd92ade87fb6f96fe836ac4450ea43e3aa9fc16ab085b256e4f109f0d2b",
+      "trace": {
+        "status": "completed",
+        "modelCalls": 2,
+        "engineRounds": 0,
+        "validationErrors": [
+          "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+          "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+          "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+        ]
+      },
+      "structuralChecks": {
+        "requiredHeadingsPresentOnce": true,
+        "requiredHeadingsInOrder": true,
+        "mentionsActualMove": true,
+        "mentionsBestMove": true,
+        "atLeastTwoEvidenceMoves": true,
+        "noSelfQuestionAnswer": true,
+        "noFallback": false,
+        "productionQualityScreenPassed": true,
+        "productionQualityIssues": [],
+        "modelCallsWithinInitialLimit": true,
+        "zeroEngineRounds": true,
+        "noClarification": true,
+        "chineseLengthWithinTarget": true,
+        "passed": false
+      },
+      "forbiddenInfoChecks": {
+        "noFen": true,
+        "noUci": true,
+        "noEvidenceIds": true,
+        "noRawScores": true,
+        "noInternalDiagnostics": true,
+        "noUnsupportedChineseMoves": true,
+        "passed": true
+      },
+      "chineseCharCount": 658,
+      "fallbackUsed": true,
+      "userClickRequestCount": 1,
+      "rubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "rubricScore0to10": 10,
+      "majorErrorFlags": [],
+      "displayedRubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "displayedRubricScore0to10": 10,
+      "displayedMajorErrorFlags": [],
+      "initialModelCandidatePass": null,
+      "modelBackedQualityPass": false,
+      "finalDisplayedQualityPass": true,
+      "firstClickQualityPass": false,
+      "attempts": [
+        {
+          "requestId": "ai-acceptance-e6634969-1644-496c-af0e-097dc53e2cbe",
+          "attempt": 1,
+          "modelRole": "primary",
+          "purpose": "user_click",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 772,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 4,
+              "remainingDeadlineMsAtStart": 29996,
+              "durationMs": 66,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 675,
+              "remainingDeadlineMsAtStart": 29325,
+              "durationMs": 93,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明炮1進1錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認炮1進1錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象7進5，但目前證據只能確認主線為：象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三。你的著法主線：炮1進1、兵七進一、炮1平8、車五平二、卒5進1、車二進一、卒5進1、車二平三。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象7進5開始，後續為象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三；實戰步炮1進1的可查證變化為炮1進1、兵七進一、炮1平8、車五平二、卒5進1、車二進一、卒5進1、車二平三。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象7進5與炮1進1各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "f3afcbd92ade87fb6f96fe836ac4450ea43e3aa9fc16ab085b256e4f109f0d2b",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "rubricScore0to10": 10,
+          "majorErrorFlags": [],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "displayedRubricScore0to10": 10,
+          "displayedMajorErrorFlags": [],
+          "firstClickQualityPass": false,
+          "passed": false
+        },
+        {
+          "requestId": "ai-acceptance-edd4880c-2673-4e59-a535-550c39686e29",
+          "attempt": 2,
+          "modelRole": "primary",
+          "purpose": "diagnostic_replay",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 748,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 3,
+              "remainingDeadlineMsAtStart": 29997,
+              "durationMs": 58,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 667,
+              "remainingDeadlineMsAtStart": 29333,
+              "durationMs": 77,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明炮1進1錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認炮1進1錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象7進5，但目前證據只能確認主線為：象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三。你的著法主線：炮1進1、兵七進一、炮1平8、車五平二、卒5進1、車二進一、卒5進1、車二平三。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象7進5開始，後續為象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三；實戰步炮1進1的可查證變化為炮1進1、兵七進一、炮1平8、車五平二、卒5進1、車二進一、卒5進1、車二平三。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象7進5與炮1進1各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "f3afcbd92ade87fb6f96fe836ac4450ea43e3aa9fc16ab085b256e4f109f0d2b",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "rubricScore0to10": 9,
+          "majorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "displayedRubricScore0to10": 9,
+          "displayedMajorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "firstClickQualityPass": false,
+          "passed": false
+        },
+        {
+          "requestId": "ai-acceptance-3e1f035c-c195-48e6-bf04-0e1b31a9c1ca",
+          "attempt": 3,
+          "modelRole": "primary",
+          "purpose": "diagnostic_replay",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 1150,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 3,
+              "remainingDeadlineMsAtStart": 29997,
+              "durationMs": 449,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 1058,
+              "remainingDeadlineMsAtStart": 28942,
+              "durationMs": 87,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明炮1進1錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認炮1進1錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選象7進5，但目前證據只能確認主線為：象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三。你的著法主線：炮1進1、兵七進一、炮1平8、車五平二、卒5進1、車二進一、卒5進1、車二平三。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從象7進5開始，後續為象7進5、炮四平三、卒3進1、馬二退四、卒3平4、馬七退五、馬3進4、馬四進三；實戰步炮1進1的可查證變化為炮1進1、兵七進一、炮1平8、車五平二、卒5進1、車二進一、卒5進1、車二平三。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較象7進5與炮1進1各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "f3afcbd92ade87fb6f96fe836ac4450ea43e3aa9fc16ab085b256e4f109f0d2b",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "rubricScore0to10": 9,
+          "majorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "displayedRubricScore0to10": 9,
+          "displayedMajorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "firstClickQualityPass": false,
+          "passed": false
+        }
+      ],
+      "responsibility": "service",
+      "diagnosisLimitations": [],
+      "passed": false
+    },
+    {
+      "caseId": "xq276129901#160",
+      "gameId": "xq276129901",
+      "ply": 160,
+      "evidenceFingerprint": "057bcdfae24277ce9161ea8615fa5f19ab6f483aeab952eaaf5342e7ac26c95e",
+      "evidence": {
+        "positionFen": "3k2b2/4a4/3ab4/9/3Nn4/9/2p1p1p2/9/4AC3/2BK1AB2 b - - 9 80",
+        "actualMove": {
+          "uci": "c3c2",
+          "wxf": "p3+1",
+          "chinese": "卒3進1"
+        },
+        "analysisConfig": {
+          "rootAnalysisMovetimeMs": 1100,
+          "userMoveEvalMovetimeMs": 400,
+          "multiPv": 3
+        },
+        "parallelEngineDurationMs": 2498,
+        "analysisFingerprint": "91559aadc37cbadd5a1cf829fb99e209eeb2d0d1596d8d161a5fe4df47894efa",
+        "primary": {
+          "status": "ok",
+          "engineId": "099fb446-8a80-4970-be27-2e7e2d577ef6",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "c3d3",
+          "displayBestMove": "卒3平4",
+          "actualMove": "c3c2",
+          "displayActualMove": "卒3進1",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": 0,
+            "displayText": "+0.00",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": -0.64,
+            "displayText": "-0.64",
+            "source": "separate_engine_call"
+          },
+          "depth": 19,
+          "analysisTimeMs": 2497,
+          "bestLine": {
+            "uci": [
+              "c3d3",
+              "d5b6",
+              "d9e9",
+              "b6c8",
+              "e9f9",
+              "f1f6",
+              "e3f3",
+              "f6i6",
+              "e5c6",
+              "c8b6",
+              "c6b4",
+              "d0e0",
+              "d3c3",
+              "b6c8",
+              "b4d3",
+              "i6i9",
+              "g9i7",
+              "c8e7"
+            ],
+            "chinese": [
+              "卒3平4",
+              "馬六進八",
+              "將4平5",
+              "馬八進七",
+              "將5平6",
+              "炮四進五",
+              "卒5平6",
+              "炮四平一",
+              "馬5退3",
+              "馬七退八",
+              "馬3進2",
+              "帥六平五",
+              "卒4平3",
+              "馬八進七",
+              "馬2進4",
+              "炮一進三",
+              "象7進9",
+              "馬七退五"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "c3c2",
+              "d5e3",
+              "c2c1",
+              "c0e2",
+              "c1c0",
+              "e2c0",
+              "g3f3",
+              "e3c2",
+              "d9e9",
+              "c0e2",
+              "e5c6",
+              "e1d2",
+              "f3g3",
+              "f1i1",
+              "e7g5",
+              "i1c1",
+              "c6e5",
+              "c2d4",
+              "e5f7",
+              "c1a1",
+              "f7d6",
+              "d2e1",
+              "e9f9",
+              "a1a3"
+            ],
+            "chinese": [
+              "卒3進1",
+              "馬六退五",
+              "卒3進1",
+              "相七進五",
+              "卒3進1",
+              "相五退七",
+              "卒7平6",
+              "馬五退七",
+              "將4平5",
+              "相七進五",
+              "馬5退3",
+              "仕五進六",
+              "卒6平7",
+              "炮四平一",
+              "象5進7",
+              "炮一平七",
+              "馬3進5",
+              "馬七進六",
+              "馬5退6",
+              "炮七平九",
+              "馬6進4",
+              "仕六退五",
+              "將5平6",
+              "炮九進二"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        },
+        "acceptanceCrossCheck": {
+          "status": "ok",
+          "engineId": "acceptance-cross-check-37ca7ff6fa8c",
+          "engineName": "Pikafish 2026-01-31",
+          "bestMove": "c3d3",
+          "displayBestMove": "卒3平4",
+          "actualMove": "c3c2",
+          "displayActualMove": "卒3進1",
+          "bestScore": {
+            "type": "cp",
+            "comparableValue": 0,
+            "displayText": "+0.00",
+            "source": "root_analysis"
+          },
+          "actualScore": {
+            "type": "cp",
+            "comparableValue": -0.62,
+            "displayText": "-0.62",
+            "source": "separate_engine_call"
+          },
+          "depth": 18,
+          "analysisTimeMs": 2471,
+          "bestLine": {
+            "uci": [
+              "c3d3",
+              "d5b6",
+              "d9e9",
+              "b6c8",
+              "e9f9",
+              "f1f6",
+              "e3f3",
+              "f6i6",
+              "e5c6",
+              "c8b6",
+              "c6b4",
+              "d0e0",
+              "d3c3",
+              "b6c8",
+              "b4d3",
+              "i6i9",
+              "g9i7",
+              "c8e7"
+            ],
+            "chinese": [
+              "卒3平4",
+              "馬六進八",
+              "將4平5",
+              "馬八進七",
+              "將5平6",
+              "炮四進五",
+              "卒5平6",
+              "炮四平一",
+              "馬5退3",
+              "馬七退八",
+              "馬3進2",
+              "帥六平五",
+              "卒4平3",
+              "馬八進七",
+              "馬2進4",
+              "炮一進三",
+              "象7進9",
+              "馬七退五"
+            ]
+          },
+          "actualLine": {
+            "uci": [
+              "c3c2",
+              "d5e3",
+              "c2c1",
+              "c0e2",
+              "c1c0",
+              "e2c0",
+              "g3f3",
+              "e3c2",
+              "d9e9",
+              "c0e2",
+              "e5c6",
+              "e1d2",
+              "f3g3",
+              "f1a1",
+              "g3f3",
+              "a1e1",
+              "f3g3"
+            ],
+            "chinese": [
+              "卒3進1",
+              "馬六退五",
+              "卒3進1",
+              "相七進五",
+              "卒3進1",
+              "相五退七",
+              "卒7平6",
+              "馬五退七",
+              "將4平5",
+              "相七進五",
+              "馬5退3",
+              "仕五進六",
+              "卒6平7",
+              "炮四平九",
+              "卒7平6",
+              "炮九平五",
+              "卒6平7"
+            ]
+          },
+          "incomplete": false,
+          "warnings": []
+        }
+      },
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "engineDurationMs": 2498,
+      "aiDurationMs": 760,
+      "diagnosticRetryDurationMs": 1640,
+      "serviceErrorClassification": {
+        "code": "rate_limited",
+        "message": "Primary model delivery was rate limited before a candidate returned."
+      },
+      "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明卒3進1錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認卒3進1錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選卒3平4，但目前證據只能確認主線為：卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一。你的著法主線：卒3進1、馬六退五、卒3進1、相七進五、卒3進1、相五退七、卒7平6、馬五退七。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從卒3平4開始，後續為卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一；實戰步卒3進1的可查證變化為卒3進1、馬六退五、卒3進1、相七進五、卒3進1、相五退七、卒7平6、馬五退七。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較卒3平4與卒3進1各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+      "finalTextFingerprint": "12149e81a7705d3e696212dcf2a76c6d0ed09bcaa13436ebc14644bcdc337993",
+      "trace": {
+        "status": "completed",
+        "modelCalls": 2,
+        "engineRounds": 0,
+        "validationErrors": [
+          "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+          "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+          "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+        ]
+      },
+      "structuralChecks": {
+        "requiredHeadingsPresentOnce": true,
+        "requiredHeadingsInOrder": true,
+        "mentionsActualMove": true,
+        "mentionsBestMove": true,
+        "atLeastTwoEvidenceMoves": true,
+        "noSelfQuestionAnswer": true,
+        "noFallback": false,
+        "productionQualityScreenPassed": true,
+        "productionQualityIssues": [],
+        "modelCallsWithinInitialLimit": true,
+        "zeroEngineRounds": true,
+        "noClarification": true,
+        "chineseLengthWithinTarget": true,
+        "passed": false
+      },
+      "forbiddenInfoChecks": {
+        "noFen": true,
+        "noUci": true,
+        "noEvidenceIds": true,
+        "noRawScores": true,
+        "noInternalDiagnostics": true,
+        "noUnsupportedChineseMoves": true,
+        "passed": true
+      },
+      "chineseCharCount": 658,
+      "fallbackUsed": true,
+      "userClickRequestCount": 1,
+      "rubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "rubricScore0to10": 10,
+      "majorErrorFlags": [],
+      "displayedRubricCriteria": {
+        "directActualMoveReason": true,
+        "actualAndBestChineseMoves": true,
+        "completeCausalChain": true,
+        "atLeastTwoRealPvMoves": true,
+        "noFabricationTurnOrFenError": true,
+        "noSelfQaOrInternalInfo": true,
+        "exactlyOneUserClickRequest": true
+      },
+      "displayedRubricScore0to10": 10,
+      "displayedMajorErrorFlags": [],
+      "initialModelCandidatePass": null,
+      "modelBackedQualityPass": false,
+      "finalDisplayedQualityPass": true,
+      "firstClickQualityPass": false,
+      "attempts": [
+        {
+          "requestId": "ai-acceptance-71a1320a-df63-4b88-b010-8a61873a6afd",
+          "attempt": 1,
+          "modelRole": "primary",
+          "purpose": "user_click",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 760,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 6,
+              "remainingDeadlineMsAtStart": 29994,
+              "durationMs": 78,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 686,
+              "remainingDeadlineMsAtStart": 29314,
+              "durationMs": 69,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明卒3進1錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認卒3進1錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選卒3平4，但目前證據只能確認主線為：卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一。你的著法主線：卒3進1、馬六退五、卒3進1、相七進五、卒3進1、相五退七、卒7平6、馬五退七。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從卒3平4開始，後續為卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一；實戰步卒3進1的可查證變化為卒3進1、馬六退五、卒3進1、相七進五、卒3進1、相五退七、卒7平6、馬五退七。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較卒3平4與卒3進1各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "12149e81a7705d3e696212dcf2a76c6d0ed09bcaa13436ebc14644bcdc337993",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "rubricScore0to10": 10,
+          "majorErrorFlags": [],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": true
+          },
+          "displayedRubricScore0to10": 10,
+          "displayedMajorErrorFlags": [],
+          "firstClickQualityPass": false,
+          "passed": false
+        },
+        {
+          "requestId": "ai-acceptance-1eeca0a1-f825-4ad7-ba21-bd5748c10bd5",
+          "attempt": 2,
+          "modelRole": "primary",
+          "purpose": "diagnostic_replay",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 851,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 4,
+              "remainingDeadlineMsAtStart": 29996,
+              "durationMs": 163,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 779,
+              "remainingDeadlineMsAtStart": 29221,
+              "durationMs": 68,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明卒3進1錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認卒3進1錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選卒3平4，但目前證據只能確認主線為：卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一。你的著法主線：卒3進1、馬六退五、卒3進1、相七進五、卒3進1、相五退七、卒7平6、馬五退七。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從卒3平4開始，後續為卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一；實戰步卒3進1的可查證變化為卒3進1、馬六退五、卒3進1、相七進五、卒3進1、相五退七、卒7平6、馬五退七。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較卒3平4與卒3進1各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "12149e81a7705d3e696212dcf2a76c6d0ed09bcaa13436ebc14644bcdc337993",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "rubricScore0to10": 9,
+          "majorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "displayedRubricScore0to10": 9,
+          "displayedMajorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "firstClickQualityPass": false,
+          "passed": false
+        },
+        {
+          "requestId": "ai-acceptance-ae418443-cf29-42e3-9c3b-404a650c6bad",
+          "attempt": 3,
+          "modelRole": "primary",
+          "purpose": "diagnostic_replay",
+          "provider": "gemini",
+          "model": "gemini-3.5-flash",
+          "aiDurationMs": 789,
+          "deliveryStatus": "completed",
+          "timeoutStage": null,
+          "serviceErrorClassification": null,
+          "transientServiceErrorCount": 2,
+          "internalCalls": [
+            {
+              "callIndex": 1,
+              "purpose": "initial_combined",
+              "startedOffsetMs": 3,
+              "remainingDeadlineMsAtStart": 29997,
+              "durationMs": 82,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            },
+            {
+              "callIndex": 2,
+              "purpose": "provider_retry",
+              "startedOffsetMs": 692,
+              "remainingDeadlineMsAtStart": 29308,
+              "durationMs": 91,
+              "outcome": "provider_error",
+              "errorCode": "rate_limited",
+              "responseFingerprint": null,
+              "responseCharCount": 0,
+              "responseChineseCharCount": 0,
+              "usage": null,
+              "validationCodes": []
+            }
+          ],
+          "successfulInternalCalls": 0,
+          "firstCandidateObserved": false,
+          "initialModelCandidatePass": null,
+          "initialModelIssueCodes": [
+            "provider_delivery",
+            "safe_fallback"
+          ],
+          "completionMode": "engine_evidence_fallback",
+          "modelBackedQualityPass": false,
+          "finalDisplayedQualityPass": true,
+          "finalText": "## 實戰著法解析\n\n### 直接結論\n\n目前引擎證據不足，主線還不能證明卒3進1錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。\n\n### 實戰步問題\n目前引擎證據不足，無法確認卒3進1錯失的具體機會。\n目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。\n\n### AI 首選\n引擎首選卒3平4，但目前證據只能確認主線為：卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一，尚不能安全推定更具體的戰略目的。\n\n### 對手利用與後果\n目前引擎證據不足，無法確認對手可利用的具體方式。\n最佳著法主線：卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一。你的著法主線：卒3進1、馬六退五、卒3進1、相七進五、卒3進1、相五退七、卒7平6、馬五退七。目前尚未找到足夠證據說明具體盤面後果。為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從卒3平4開始，後續為卒3平4、馬六進八、將4平5、馬八進七、將5平6、炮四進五、卒5平6、炮四平一；實戰步卒3進1的可查證變化為卒3進1、馬六退五、卒3進1、相七進五、卒3進1、相五退七、卒7平6、馬五退七。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較卒3平4與卒3進1各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。\n\n### 實戰原則\n先問最佳著法正在爭取什麼，再檢查自己的著法是否放棄先手、限制己方棋子、削弱王區或讓對手順利完成部署；最後沿著對手最強回應看到具體後果。",
+          "finalTextFingerprint": "12149e81a7705d3e696212dcf2a76c6d0ed09bcaa13436ebc14644bcdc337993",
+          "trace": {
+            "status": "completed",
+            "modelCalls": 2,
+            "engineRounds": 0,
+            "validationErrors": [
+              "AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "審查資料未通過：AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。",
+              "一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。"
+            ]
+          },
+          "chineseCharCount": 658,
+          "structuralChecks": {
+            "requiredHeadingsPresentOnce": true,
+            "requiredHeadingsInOrder": true,
+            "mentionsActualMove": true,
+            "mentionsBestMove": true,
+            "atLeastTwoEvidenceMoves": true,
+            "noSelfQuestionAnswer": true,
+            "noFallback": false,
+            "productionQualityScreenPassed": true,
+            "productionQualityIssues": [],
+            "modelCallsWithinInitialLimit": true,
+            "zeroEngineRounds": true,
+            "noClarification": true,
+            "chineseLengthWithinTarget": true,
+            "passed": false
+          },
+          "forbiddenInfoChecks": {
+            "noFen": true,
+            "noUci": true,
+            "noEvidenceIds": true,
+            "noRawScores": true,
+            "noInternalDiagnostics": true,
+            "noUnsupportedChineseMoves": true,
+            "passed": true
+          },
+          "rubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "rubricScore0to10": 9,
+          "majorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "displayedRubricCriteria": {
+            "directActualMoveReason": true,
+            "actualAndBestChineseMoves": true,
+            "completeCausalChain": true,
+            "atLeastTwoRealPvMoves": true,
+            "noFabricationTurnOrFenError": true,
+            "noSelfQaOrInternalInfo": true,
+            "exactlyOneUserClickRequest": false
+          },
+          "displayedRubricScore0to10": 9,
+          "displayedMajorErrorFlags": [
+            "not_initial_user_click"
+          ],
+          "firstClickQualityPass": false,
+          "passed": false
+        }
+      ],
+      "responsibility": "service",
+      "diagnosisLimitations": [],
+      "passed": false
+    }
+  ],
+  "aggregate": {
+    "completedCases": 6,
+    "initialModelCandidatePasses": 0,
+    "firstClickQualityPasses": 2,
+    "finalDisplayedQualityPasses": 6,
+    "exactOneUserClickCases": 6,
+    "engineDuration": {
+      "count": 6,
+      "medianMs": 2434,
+      "p95Ms": 2549,
+      "maxMs": 2549
+    },
+    "aiDuration": {
+      "count": 6,
+      "medianMs": 784,
+      "p95Ms": 21600,
+      "maxMs": 21600
+    },
+    "firstClickRubric": {
+      "medianScore0to10": 10,
+      "minimumScore0to10": 10,
+      "below8Cases": 0,
+      "majorErrorCases": 0
+    },
+    "failures": [
+      {
+        "caseId": "xq272174077#94",
+        "responsibility": "service",
+        "serviceCode": "rate_limited",
+        "failedChecks": [
+          "quality.model_backed_failed",
+          "structural.noFallback",
+          "fallbackUsed",
+          "service.rate_limited"
+        ]
+      },
+      {
+        "caseId": "xq267431809#74",
+        "responsibility": "service",
+        "serviceCode": "rate_limited",
+        "failedChecks": [
+          "quality.model_backed_failed",
+          "structural.noFallback",
+          "fallbackUsed",
+          "service.rate_limited"
+        ]
+      },
+      {
+        "caseId": "xq276129901#46",
+        "responsibility": "service",
+        "serviceCode": "rate_limited",
+        "failedChecks": [
+          "quality.model_backed_failed",
+          "structural.noFallback",
+          "fallbackUsed",
+          "service.rate_limited"
+        ]
+      },
+      {
+        "caseId": "xq276129901#160",
+        "responsibility": "service",
+        "serviceCode": "rate_limited",
+        "failedChecks": [
+          "quality.model_backed_failed",
+          "structural.noFallback",
+          "fallbackUsed",
+          "service.rate_limited"
+        ]
+      }
+    ]
+  }
+}

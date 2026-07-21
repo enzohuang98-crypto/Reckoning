@@ -79,6 +79,7 @@ export const IPC = {
   // 安全儲存 (SecretStore)
   SECRET_SET: 'secret:set',
   SECRET_STATUS: 'secret:status',
+  SECRET_ACTIVATE: 'secret:activate',
   SECRET_DELETE: 'secret:delete',
   SECRET_IS_AVAILABLE: 'secret:isAvailable',
   // 買斷授權 (License Key，SDS Q5)
@@ -188,12 +189,34 @@ export interface EngineTestResult {
   }
 }
 
-export interface SecretStatus {
+/** 一把 API 憑證的精確綁定；不包含 API key。 */
+export interface SecretCredentialRef {
+  provider: AIProviderId
+  model: string
+  /** 只有 OpenAI-compatible 憑證需要；必須是 main 正規化後的 URL。 */
+  baseUrl?: string
+}
+
+/** renderer 可見的安全狀態；不包含明文或密文。 */
+export interface SecretCredentialMetadata extends SecretCredentialRef {
   configured: boolean
-  provider: AIProviderId | null
-  /** 檔案裡有金鑰但無法解密（OS 加密金鑰已變動），需要使用者重新輸入 */
+  /** 密文存在但 safeStorage 無法解密。 */
   needsReentry: boolean
 }
+
+export interface SecretStatus {
+  /** 目前使用中的精確憑證是否存在且可解密。 */
+  configured: boolean
+  needsReentry: boolean
+  activeCredential: SecretCredentialRef | null
+  credentials: SecretCredentialMetadata[]
+}
+
+export interface SetSecretCredentialInput extends SecretCredentialRef {
+  apiKey: string
+}
+
+export type SecretMutationResult = { ok: true; status: SecretStatus }
 
 /* ---------- AI 解釋 streaming（§2.17.3） ---------- */
 
@@ -217,6 +240,8 @@ export interface GenerateExplanationStartPayload {
   /** 多輪追問內容；未提供時產生初次長篇解說 */
   followUpQuestion?: string
   attachedMove?: string
+  /** 棋手走這一步時的原始想法；只供教練回應，不是引擎證據 */
+  userMoveReason?: string
   answerMode?: HarnessAnswerMode
   budget?: HarnessBudget
   engineId?: string
@@ -352,13 +377,10 @@ export interface RendererApi {
     importBackup(): Promise<DataImportResult>
   }
   secret: {
-    set(
-      apiKey: string,
-      preferredProvider?: AIProviderId,
-      baseUrl?: string
-    ): Promise<{ ok: boolean; provider: AIProviderId }>
+    set(input: SetSecretCredentialInput): Promise<SecretMutationResult>
     status(): Promise<SecretStatus>
-    delete(): Promise<{ ok: boolean }>
+    activate(credential: SecretCredentialRef): Promise<SecretMutationResult>
+    delete(credential: SecretCredentialRef): Promise<SecretMutationResult>
     isAvailable(): Promise<boolean>
   }
   license: {

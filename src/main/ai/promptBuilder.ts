@@ -130,19 +130,20 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
   }
 
   lines.push('【寫作要求】')
-  lines.push('請撰寫一篇結構完整的長篇分析，包含：')
-  lines.push('1. 局面總評：依引擎主線說明雙方目前的部署、威脅與限制。')
-  lines.push('2. 最佳著法解析：引擎為何推薦此著，主要變例中雙方的應對脈絡。')
-  lines.push('3. 候選著法比較：比較各著法的目的、對手回應與具體盤面後果，不以分數差異代替原因。')
+  lines.push('以穩定 section id 輸出具名內容區塊；標題是顯示文字，不得作為驗證依據。')
   if (ea.userMove) {
-    lines.push('4. 問：最佳著法想做什麼？答：先解釋具體戰略目的。')
-    lines.push('5. 問：我的著法錯失什麼？答：說明為什麼不好，以及對手如何利用。')
-    lines.push('6. 問：後續主線與具體後果是什麼？答：逐手解釋到失去先手、棋子受限、王區變弱、陣形變差、讓對手完成部署或明確戰術後果出現。')
-    lines.push('7. 問：兩種著法完整比較後差在哪裡？答：禁止用分數高低代替原因。')
-    lines.push('8. 問：下次遇到類似局面要先問自己什麼？答：給出 2 至 4 個可操作的思考問題。')
+    lines.push('全文以約 500–900 個中文字為目標，依序包含：')
+    lines.push('1. direct_conclusion／直接結論：第一句直接說實戰步為什麼較差。')
+    lines.push('2. actual_move_problem／實戰步問題：同時點名實戰步與 AI 首選，說明原因、盤面機制與受影響棋子或線路。')
+    lines.push('3. best_move_plan／AI 首選：解釋首選著法的具體目的。')
+    lines.push('4. opponent_exploitation／對手利用與後果：引用至少兩步真實主線，說明對手最強利用與盤面結果。')
+    lines.push('5. practical_principle／實戰原則：給出一條可帶走、可操作的思考原則。')
+    lines.push('不得使用模擬提問、自問自答、FEN、UCI、證據編號、trace、token 或模型輪次等內部資訊。')
   } else {
-    lines.push('4. 問：最佳著法之後怎麼走？答：依主要變例逐手說明至少 4 個半回合；資料較短時明確說明。')
-    lines.push('5. 問：下次遇到類似局面要先問自己什麼？答：給出 2 至 4 個可操作的思考問題。')
+    lines.push('1. direct_conclusion／直接結論：直接說明目前局面的判讀重點。')
+    lines.push('2. best_move_plan／AI 首選：解釋最佳著法的具體目的。')
+    lines.push('3. opponent_exploitation／對手利用與後果：依主要變例逐手說明；資料較短時明確說明。')
+    lines.push('4. practical_principle／實戰原則：給出一條可操作的思考原則。')
   }
   return lines.join('\n')
 }

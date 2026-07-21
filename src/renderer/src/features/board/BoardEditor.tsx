@@ -18,6 +18,7 @@ import type { SavedPosition } from '@shared/types/AppData'
 interface Props {
   board: BoardState
   onChange: (board: BoardState) => void
+  highlightedMove?: string | null
   toolsOpen: boolean
   guessSelectionActive: boolean
   onGuessMoveSelected: (move: string) => void
@@ -36,6 +37,7 @@ type Tool =
 export function BoardEditor({
   board,
   onChange,
+  highlightedMove,
   toolsOpen,
   guessSelectionActive,
   onGuessMoveSelected,
@@ -257,7 +259,12 @@ export function BoardEditor({
         )}
       </div>
       <div className="board-wrap">
-        <XiangqiBoard grid={board.grid} selected={selected} onCellClick={handleCellClick} />
+        <XiangqiBoard
+          grid={board.grid}
+          selected={selected}
+          highlightedMove={highlightedMove}
+          onCellClick={handleCellClick}
+        />
       </div>
       {!toolsOpen && moveError && (
         <div className="error-text small board-move-error">{moveError}</div>

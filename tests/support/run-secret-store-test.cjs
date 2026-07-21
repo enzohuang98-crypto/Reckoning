@@ -1,0 +1,11 @@
+const path = require('node:path')
+const { app } = require('electron')
+
+const repoRoot = path.resolve(__dirname, '..', '..')
+process.chdir(repoRoot)
+process.env.TSX_TSCONFIG_PATH = path.join(repoRoot, 'tsconfig.node.json')
+app.disableHardwareAcceleration()
+app.setName('xiangqi-secret-store-test')
+app.setPath('userData', path.join(app.getPath('temp'), 'xiangqi-secret-store-test'))
+require('tsx/cjs')
+require('../unit/main/secretStore.electron.test.ts')

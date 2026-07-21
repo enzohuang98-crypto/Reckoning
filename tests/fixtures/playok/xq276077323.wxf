@@ -1,0 +1,14 @@
+FORMAT  WXF
+RED     ngocsonhp ; 1259 ;;
+BLACK   hatrong ; 1068 ;;
+RESULT  1-0
+DATE    2026-07-15 03:55:07
+EVENT   PlayOK Game ; 3m+0s
+START{
+ 1. C2.5 c8+1   2. H2+3 c2.8   3. R1+1 h2+3
+ 4. R1.6 a6+5   5. H8+7 e7+5   6. R9.8 h8+9
+ 7. P5+1 r9.6   8. H3+5 p1+1   9. P5+1 p1+1
+10. P9+1 r1+5  11. P5.6 r1.6  12. A6+5 c++5
+13. R6+2 c+-2  14. P6+1 r++1  15. P6.7 h3+1
+16. C8+7 c-.6  17. R8+6 c6+7  18. C5+4 c6.3
+19. R6+6 }END

@@ -321,6 +321,16 @@ export function validateGenerateExplanationPayload(
   if (attachedMove && !MOVE_PATTERN.test(attachedMove)) {
     throw new SecurityValidationError('附加著法格式無效。')
   }
+  const normalizedUserMoveReason =
+    value.userMoveReason === undefined || value.userMoveReason === null
+      ? ''
+      : boundedString(
+          value.userMoveReason,
+          '棋手原始想法',
+          MAX_CONVERSATION_TEXT_LENGTH,
+          true
+        )
+  const userMoveReason = normalizedUserMoveReason || undefined
   const answerMode =
     value.answerMode === 'focused' || value.answerMode === 'research'
       ? value.answerMode
@@ -370,6 +380,7 @@ export function validateGenerateExplanationPayload(
     conversationHistory,
     followUpQuestion,
     attachedMove,
+    userMoveReason,
     answerMode,
     budget,
     engineId: optionalEngineId(value.engineId, '主引擎識別碼'),

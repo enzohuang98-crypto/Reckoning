@@ -21,19 +21,7 @@ function classifyHeading(heading: string): SectionKind {
 }
 
 function renderInline(text: string): ReactNode {
-  const parts = text.split(/\[(E\d+)\]/g)
-  if (parts.length === 1) return text
-  return parts.map((part, index) => {
-    if (index % 2 === 1) {
-      return (
-        <span className="evidence-badge" key={index}>
-          {part}
-        </span>
-      )
-    }
-    if (!part) return null
-    return <span key={index}>{part}</span>
-  })
+  return text.replace(/\s*\[E\d+\]/g, '')
 }
 
 function renderBody(lines: string[]): ReactNode[] {

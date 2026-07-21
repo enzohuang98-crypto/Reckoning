@@ -6,7 +6,6 @@ import type {
   SavedPosition
 } from '@shared/types/AppData'
 import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
-import { PROVIDER_DEFAULT_MODELS } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type { UserGuess } from '@shared/types/UserGuess'
 import { AppShell, type AppTab } from './app/AppShell'
@@ -33,6 +32,7 @@ type LicenseState = 'checking' | 'locked' | 'ok'
 
 export function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<AppTab>('analyze')
+  const [analysisCommandMount, setAnalysisCommandMount] = useState<HTMLDivElement | null>(null)
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings())
   const [activeConversation, setActiveConversation] = useState<AIConversation | null>(null)
   const [setupState, setSetupState] = useState<SetupState>(() =>
@@ -67,14 +67,34 @@ export function App(): JSX.Element {
     let cancelled = false
     void withTimeout(window.api.secret.status(), 10_000, 'API Key 狀態查詢逾時')
       .then((status) => {
-        if (cancelled || !status.provider || status.provider === settings.aiProvider) return
-        const defaultModel =
-          PROVIDER_DEFAULT_MODELS[status.provider].find((model) => model.isDefault) ??
-          PROVIDER_DEFAULT_MODELS[status.provider][0]
+        const active = status.activeCredential
+        const currentIsLoopback =
+          settings.aiProvider === 'openai-compatible' &&
+          /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(
+            settings.aiBaseUrl
+          )
+        if (
+          cancelled ||
+          currentIsLoopback ||
+          !status.configured ||
+          !active ||
+          (
+            active.provider === settings.aiProvider &&
+            active.model === settings.aiModel &&
+            (active.baseUrl ?? '') ===
+              (settings.aiProvider === 'openai-compatible'
+                ? settings.aiBaseUrl
+                : '')
+          )
+        ) return
         const next = {
           ...settings,
-          aiProvider: status.provider,
-          aiModel: defaultModel.id
+          aiProvider: active.provider,
+          aiModel: active.model,
+          aiBaseUrl:
+            active.provider === 'openai-compatible'
+              ? active.baseUrl ?? ''
+              : ''
         }
         const saved = saveSettings(next)
         if (!saved.ok) {
@@ -262,9 +282,11 @@ export function App(): JSX.Element {
       dataRecoveryBusy={dataRecoveryBusy}
       onRetryLoad={retryLoadData}
       onRetrySave={() => saveCurrentData(appData)}
+      onAnalysisCommandMountChange={setAnalysisCommandMount}
     >
       <AnalysisWorkspace
         hidden={activeTab !== 'analyze'}
+        headerCommandMount={analysisCommandMount}
         board={board}
         settings={settings}
         canUndo={canUndo}

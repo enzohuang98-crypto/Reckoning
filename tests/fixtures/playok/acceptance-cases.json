@@ -1,0 +1,1606 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-16T02:57:28.500Z",
+  "seed": "playok-one-click-v1",
+  "sourceManifest": "tests/fixtures/playok/sources.manifest.json",
+  "sourceManifestSha256": "596730f88e727007fe89f1f2ded7391aa592faa2bb2ae8bc44b42b54175a96a9",
+  "analysisConfig": {
+    "rootAnalysisMovetimeMs": 1100,
+    "userMoveEvalMovetimeMs": 400,
+    "multiPv": 3
+  },
+  "criteria": {
+    "excludedOpeningPlies": 16,
+    "minimumEvaluationLoss": 0.5,
+    "minimumPrincipalVariationPlies": 4,
+    "minimumDepth": 10,
+    "positionsPerGame": 2,
+    "selectionOrder": "SHA-256(seed:gameId:ply), ascending"
+  },
+  "cases": [
+    {
+      "gameId": "xq272174077",
+      "ply": 88,
+      "preMoveFen": "3akab2/9/4b4/5P3/6r2/9/1N6R/9/4A4/2B1KAB2 b - - 0 44",
+      "actualMove": {
+        "uci": "d9e8",
+        "wxf": "a4+5",
+        "chinese": "士4進5"
+      },
+      "primary": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "g5f5",
+          "chinese": "車7平6"
+        },
+        "bestLine": {
+          "uci": [
+            "g5f5",
+            "f6g6",
+            "d9e8",
+            "i3e3",
+            "f5b5",
+            "g6f6",
+            "b5b6",
+            "f6e6",
+            "e7g5",
+            "b3d4",
+            "g9i7",
+            "d4f5",
+            "e8d7",
+            "c0a2",
+            "d7e8",
+            "e3e5",
+            "b6b0",
+            "e1d0",
+            "e9d9"
+          ],
+          "chinese": [
+            "車7平6",
+            "兵四平三",
+            "士4進5",
+            "車一平五",
+            "車6平2",
+            "兵三平四",
+            "車2退1",
+            "兵四平五",
+            "象5進7",
+            "馬八進六",
+            "後象進9",
+            "馬六進四",
+            "士5進4",
+            "相七進九",
+            "士4退5",
+            "車五進二",
+            "車2進6",
+            "仕五退六",
+            "將5平4"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "d9e8",
+            "i3e3",
+            "g5d5",
+            "b3d2",
+            "e7c5",
+            "f6e6",
+            "c5a7",
+            "g0i2",
+            "d5c5",
+            "e6d6",
+            "e9d9",
+            "e3a3",
+            "a7c9",
+            "d2e4",
+            "c5e5"
+          ],
+          "chinese": [
+            "士4進5",
+            "車一平五",
+            "車7平4",
+            "馬八退六",
+            "象5進3",
+            "兵四平五",
+            "象3退1",
+            "相三進一",
+            "車4平3",
+            "兵五平六",
+            "將5平4",
+            "車五平九",
+            "象1退3",
+            "馬六進五",
+            "車3平5"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": -1603,
+          "comparableValue": -16.03,
+          "displayText": "-16.03",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": -1683,
+          "comparableValue": -16.83,
+          "displayText": "-16.83",
+          "source": "candidate_move"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 0.7999999999999972,
+        "mateTransition": false,
+        "depth": 19,
+        "analysisTimeMs": 1526,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "verification": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "g5f5",
+          "chinese": "車7平6"
+        },
+        "bestLine": {
+          "uci": [
+            "g5f5",
+            "f6g6",
+            "d9e8",
+            "i3e3",
+            "f5b5",
+            "g6f6",
+            "b5b6",
+            "f6e6",
+            "e9d9",
+            "b3d4",
+            "e7g5",
+            "d4f5",
+            "g9i7",
+            "g0i2",
+            "b6b7",
+            "e6f6",
+            "b7d7",
+            "e3e6"
+          ],
+          "chinese": [
+            "車7平6",
+            "兵四平三",
+            "士4進5",
+            "車一平五",
+            "車6平2",
+            "兵三平四",
+            "車2退1",
+            "兵四平五",
+            "將5平4",
+            "馬八進六",
+            "象5進7",
+            "馬六進四",
+            "後象進9",
+            "相三進一",
+            "車2退1",
+            "兵五平四",
+            "車2平4",
+            "車五進三"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "d9e8",
+            "i3e3",
+            "g5d5",
+            "b3d2",
+            "e7c5",
+            "f6e6",
+            "c5a7",
+            "d2c4",
+            "d5d7",
+            "c4b6",
+            "d7b7",
+            "b6d5",
+            "e8f7",
+            "e6d6",
+            "f9e8",
+            "d5f6"
+          ],
+          "chinese": [
+            "士4進5",
+            "車一平五",
+            "車7平4",
+            "馬八退六",
+            "象5進3",
+            "兵四平五",
+            "象3退1",
+            "馬六進七",
+            "車4退2",
+            "馬七進八",
+            "車4平2",
+            "馬八退六",
+            "士5進6",
+            "兵五平六",
+            "後士進5",
+            "馬六進四"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": -1510,
+          "comparableValue": -15.1,
+          "displayText": "-15.10",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": -1666,
+          "comparableValue": -16.66,
+          "displayText": "-16.66",
+          "source": "candidate_move"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 1.5600000000000005,
+        "mateTransition": false,
+        "depth": 18,
+        "analysisTimeMs": 1536,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "parallelAnalysisTimeMs": 1547,
+      "divergence": {
+        "bestMove": false,
+        "scoreType": false,
+        "evaluationLoss": 0.7600000000000033,
+        "hasError": false
+      },
+      "errors": [],
+      "candidate": {
+        "eligible": true,
+        "reasons": [],
+        "selectionHash": "0afaa507f1b8f36d26b9fb47b7390140c6e18571be0fe83f4ddfb08859d15063",
+        "selected": true
+      }
+    },
+    {
+      "gameId": "xq272174077",
+      "ply": 94,
+      "preMoveFen": "2b1kab2/4a4/9/4P4/5r3/9/1N1R5/4B4/4A4/2B1KA3 b - - 2 47",
+      "actualMove": {
+        "uci": "f5e5",
+        "wxf": "r6.5",
+        "chinese": "車6平5"
+      },
+      "primary": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "g9e7",
+          "chinese": "象7進5"
+        },
+        "bestLine": {
+          "uci": [
+            "g9e7",
+            "d3d6",
+            "f5b5",
+            "b3d2",
+            "b5b7",
+            "d2e4",
+            "c9a7",
+            "d6d5",
+            "e7c9",
+            "e6d6",
+            "b7e7",
+            "e4f6",
+            "e7f7",
+            "d5f5",
+            "f7g7",
+            "d6c6",
+            "g7f7",
+            "c0a2",
+            "e8d7",
+            "f5e5",
+            "f9e8",
+            "f6d5",
+            "f7f6",
+            "c6c7",
+            "e9f9"
+          ],
+          "chinese": [
+            "象7進5",
+            "車六進三",
+            "車6平2",
+            "馬八退六",
+            "車2退2",
+            "馬六進五",
+            "象3進1",
+            "車六退一",
+            "象5退3",
+            "兵五平六",
+            "車2平5",
+            "馬五進四",
+            "車5平6",
+            "車六平四",
+            "車6平7",
+            "兵六平七",
+            "車7平6",
+            "相七進九",
+            "士5進4",
+            "車四平五",
+            "士6進5",
+            "馬四退六",
+            "車6進1",
+            "兵七進一",
+            "將5平6"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "f5e5",
+            "d3d6",
+            "g9e7",
+            "b3d2",
+            "e8f7",
+            "e2g4",
+            "e5c5",
+            "c0a2",
+            "c5c7",
+            "e6f6",
+            "f7e8",
+            "d2e4",
+            "c7d7",
+            "d6b6",
+            "c9a7",
+            "f6g6",
+            "e7c9",
+            "e4f6",
+            "d7d1"
+          ],
+          "chinese": [
+            "車6平5",
+            "車六進三",
+            "象7進5",
+            "馬八退六",
+            "士5進6",
+            "相五進三",
+            "車5平3",
+            "相七進九",
+            "車3退2",
+            "兵五平四",
+            "前士退5",
+            "馬六進五",
+            "車3平4",
+            "車六平八",
+            "象3進1",
+            "兵四平三",
+            "象5退3",
+            "馬五進四",
+            "車4進6"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": -1632,
+          "comparableValue": -16.32,
+          "displayText": "-16.32",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": -1691,
+          "comparableValue": -16.91,
+          "displayText": "-16.91",
+          "source": "separate_engine_call"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 0.5899999999999999,
+        "mateTransition": false,
+        "depth": 18,
+        "analysisTimeMs": 2359,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "verification": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "c9a7",
+          "chinese": "象3進1"
+        },
+        "bestLine": {
+          "uci": [
+            "c9a7",
+            "b3d2",
+            "f5c5",
+            "c0a2",
+            "c5c6",
+            "e6d6",
+            "c6b6",
+            "d3d5",
+            "b6b0",
+            "e2c0",
+            "b0b7",
+            "d2e4",
+            "b7e7",
+            "e4f6",
+            "e7f7",
+            "d5f5",
+            "g9i7",
+            "d6c6",
+            "e8d9"
+          ],
+          "chinese": [
+            "象3進1",
+            "馬八退六",
+            "車6平3",
+            "相七進九",
+            "車3退1",
+            "兵五平六",
+            "車3平2",
+            "車六進二",
+            "車2進6",
+            "相五退七",
+            "車2退7",
+            "馬六進五",
+            "車2平5",
+            "馬五進四",
+            "車5平6",
+            "車六平四",
+            "象7進9",
+            "兵六平七",
+            "士5退4"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "f5e5",
+            "d3d6",
+            "g9e7",
+            "e2g4",
+            "e5b5",
+            "b3d2",
+            "b5b7",
+            "d2c4",
+            "b7d7",
+            "d6a6",
+            "d7c7",
+            "c4d6"
+          ],
+          "chinese": [
+            "車6平5",
+            "車六進三",
+            "象7進5",
+            "相五進三",
+            "車5平2",
+            "馬八退六",
+            "車2退2",
+            "馬六進七",
+            "車2平4",
+            "車六平九",
+            "車4平3",
+            "馬七進六"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": -1668,
+          "comparableValue": -16.68,
+          "displayText": "-16.68",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": -1620,
+          "comparableValue": -16.2,
+          "displayText": "-16.20",
+          "source": "candidate_move"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": -0.4800000000000004,
+        "mateTransition": false,
+        "depth": 17,
+        "analysisTimeMs": 1544,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "parallelAnalysisTimeMs": 2359,
+      "divergence": {
+        "bestMove": true,
+        "scoreType": false,
+        "evaluationLoss": 1.0700000000000003,
+        "hasError": false
+      },
+      "errors": [],
+      "candidate": {
+        "eligible": true,
+        "reasons": [],
+        "selectionHash": "0429620f6eedd8e28c267a2b49138006168cd0a94ca654cb3bbe323f69af3b84",
+        "selected": true
+      }
+    },
+    {
+      "gameId": "xq267431809",
+      "ply": 58,
+      "preMoveFen": "2b1k2r1/9/4ba1C1/p3pN2p/6p2/9/P5PRP/9/9/1r1AKAB2 b - - 6 29",
+      "actualMove": {
+        "uci": "b0b5",
+        "wxf": "r2-5",
+        "chinese": "車2退5"
+      },
+      "primary": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "e9d9",
+          "chinese": "將5平4"
+        },
+        "bestLine": {
+          "uci": [
+            "e9d9",
+            "f0e1",
+            "b0b3",
+            "i3i4",
+            "b3f3",
+            "h3h6",
+            "f3g3",
+            "g0i2",
+            "g3i3",
+            "h6i6",
+            "i3i2",
+            "i4i5",
+            "i2i4",
+            "e1f0",
+            "i4f4",
+            "i5h5",
+            "g5g4",
+            "h5g5",
+            "g4g3",
+            "h7h5",
+            "g3g2",
+            "g5g6"
+          ],
+          "chinese": [
+            "將5平4",
+            "仕四進五",
+            "車2退3",
+            "兵一進一",
+            "車2平6",
+            "車二進三",
+            "車6平7",
+            "相三進一",
+            "車7平9",
+            "車二平一",
+            "車9進1",
+            "兵一進一",
+            "車9退2",
+            "仕五退四",
+            "車9平6",
+            "兵一平二",
+            "卒7進1",
+            "兵二平三",
+            "卒7進1",
+            "炮二退二",
+            "卒7進1",
+            "兵三進一"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "b0b5",
+            "h3h6",
+            "i6i5",
+            "h6i6",
+            "b5f5",
+            "a3a4",
+            "f5f3",
+            "a4a5",
+            "a6a5",
+            "i3i4",
+            "i5i4",
+            "h7h6",
+            "e9d9",
+            "h6e6"
+          ],
+          "chinese": [
+            "車2退5",
+            "車二進三",
+            "卒9進1",
+            "車二平一",
+            "車2平6",
+            "兵九進一",
+            "車6進2",
+            "兵九進一",
+            "卒1進1",
+            "兵一進一",
+            "卒9進1",
+            "炮二退一",
+            "將5平4",
+            "炮二平五"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": 1645,
+          "comparableValue": 16.45,
+          "displayText": "+16.45",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": 1393,
+          "comparableValue": 13.93,
+          "displayText": "+13.93",
+          "source": "candidate_move"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 2.5199999999999996,
+        "mateTransition": false,
+        "depth": 17,
+        "analysisTimeMs": 1522,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "verification": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "e9d9",
+          "chinese": "將5平4"
+        },
+        "bestLine": {
+          "uci": [
+            "e9d9",
+            "f0e1",
+            "b0b3",
+            "i3i4",
+            "b3b4",
+            "g0e2",
+            "b4f4",
+            "h3h6",
+            "f4i4",
+            "e1f0",
+            "i4i3",
+            "f0e1",
+            "i3g3",
+            "h6i6",
+            "g3b3"
+          ],
+          "chinese": [
+            "將5平4",
+            "仕四進五",
+            "車2退3",
+            "兵一進一",
+            "車2退1",
+            "相三進五",
+            "車2平6",
+            "車二進三",
+            "車6平9",
+            "仕五退四",
+            "車9進1",
+            "仕四進五",
+            "車9平7",
+            "車二平一",
+            "車7平2"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "b0b5",
+            "h3h6",
+            "i6i5",
+            "h6i6",
+            "b5f5",
+            "a3a4",
+            "f5f3",
+            "a4a5",
+            "a6a5",
+            "i3i4",
+            "i5i4",
+            "h7h6",
+            "e9d9",
+            "h6e6"
+          ],
+          "chinese": [
+            "車2退5",
+            "車二進三",
+            "卒9進1",
+            "車二平一",
+            "車2平6",
+            "兵九進一",
+            "車6進2",
+            "兵九進一",
+            "卒1進1",
+            "兵一進一",
+            "卒9進1",
+            "炮二退一",
+            "將5平4",
+            "炮二平五"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": 1706,
+          "comparableValue": 17.06,
+          "displayText": "+17.06",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": 1393,
+          "comparableValue": 13.93,
+          "displayText": "+13.93",
+          "source": "candidate_move"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 3.129999999999999,
+        "mateTransition": false,
+        "depth": 17,
+        "analysisTimeMs": 1504,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "parallelAnalysisTimeMs": 1523,
+      "divergence": {
+        "bestMove": false,
+        "scoreType": false,
+        "evaluationLoss": 0.6099999999999994,
+        "hasError": false
+      },
+      "errors": [],
+      "candidate": {
+        "eligible": true,
+        "reasons": [],
+        "selectionHash": "3d6a31f8d615a1c27df0f7d50214aeb5f41301d41dbffa422cd55569ca40eb59",
+        "selected": true
+      }
+    },
+    {
+      "gameId": "xq267431809",
+      "ply": 74,
+      "preMoveFen": "2b1k2r1/4a4/4b4/p3p2Cp/9/6N2/P5r1P/4B2R1/4A4/3AK4 b - - 1 37",
+      "actualMove": {
+        "uci": "g3i3",
+        "wxf": "r7.9",
+        "chinese": "車7平9"
+      },
+      "primary": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "e7g5",
+          "chinese": "象5進7"
+        },
+        "bestLine": {
+          "uci": [
+            "e7g5",
+            "a3a4",
+            "c9e7",
+            "i3i4",
+            "g3a3",
+            "i4i5",
+            "i6i5",
+            "g4i5",
+            "a3a4",
+            "h6h8",
+            "a4a3",
+            "e2g0",
+            "a6a5",
+            "i5g4"
+          ],
+          "chinese": [
+            "象5進7",
+            "兵九進一",
+            "象3進5",
+            "兵一進一",
+            "車7平1",
+            "兵一進一",
+            "卒9進1",
+            "馬三進一",
+            "車1退1",
+            "炮二進二",
+            "車1進1",
+            "相五退三",
+            "卒1進1",
+            "馬一退三"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "g3i3",
+            "g4i3",
+            "e7g5",
+            "i3g4",
+            "c9a7",
+            "g4e3",
+            "a7c5",
+            "e3f5",
+            "a6a5",
+            "f5g7",
+            "h9g9",
+            "g7e6",
+            "g5e7",
+            "e6f4",
+            "g9f9",
+            "f4d5",
+            "f9f5",
+            "d5c7"
+          ],
+          "chinese": [
+            "車7平9",
+            "馬三退一",
+            "象5進7",
+            "馬一進三",
+            "象3進1",
+            "馬三退五",
+            "象1進3",
+            "馬五進四",
+            "卒1進1",
+            "馬四進三",
+            "車8平7",
+            "馬三退五",
+            "象7退5",
+            "馬五退四",
+            "車7平6",
+            "馬四進六",
+            "車6進4",
+            "馬六進七"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": 1844,
+          "comparableValue": 18.44,
+          "displayText": "+18.44",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": -3850,
+          "comparableValue": -38.5,
+          "displayText": "-38.50",
+          "source": "separate_engine_call"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 56.94,
+        "mateTransition": false,
+        "depth": 17,
+        "analysisTimeMs": 2378,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "verification": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "e7g5",
+          "chinese": "象5進7"
+        },
+        "bestLine": {
+          "uci": [
+            "e7g5",
+            "a3a4",
+            "c9e7",
+            "i3i4",
+            "g3a3",
+            "i4i5",
+            "i6i5",
+            "g4i5",
+            "a3a4",
+            "h6h8",
+            "a6a5",
+            "h2h3",
+            "e7c9",
+            "i5g4",
+            "a4f4",
+            "h8h5",
+            "c9e7"
+          ],
+          "chinese": [
+            "象5進7",
+            "兵九進一",
+            "象3進5",
+            "兵一進一",
+            "車7平1",
+            "兵一進一",
+            "卒9進1",
+            "馬三進一",
+            "車1退1",
+            "炮二進二",
+            "卒1進1",
+            "車二進一",
+            "象5退3",
+            "馬一退三",
+            "車1平6",
+            "炮二退三",
+            "象3進5"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "g3i3",
+            "g4i3",
+            "e7g5",
+            "i3g4",
+            "c9a7",
+            "g4e3",
+            "a7c5",
+            "e3f5",
+            "a6a5",
+            "f5g7",
+            "h9g9",
+            "g7e6",
+            "g9g6",
+            "e6f4"
+          ],
+          "chinese": [
+            "車7平9",
+            "馬三退一",
+            "象5進7",
+            "馬一進三",
+            "象3進1",
+            "馬三退五",
+            "象1進3",
+            "馬五進四",
+            "卒1進1",
+            "馬四進三",
+            "車8平7",
+            "馬三退五",
+            "車7進3",
+            "馬五退四"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": 1801,
+          "comparableValue": 18.01,
+          "displayText": "+18.01",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": -3779,
+          "comparableValue": -37.79,
+          "displayText": "-37.79",
+          "source": "separate_engine_call"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 55.8,
+        "mateTransition": false,
+        "depth": 16,
+        "analysisTimeMs": 2343,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "parallelAnalysisTimeMs": 2378,
+      "divergence": {
+        "bestMove": false,
+        "scoreType": false,
+        "evaluationLoss": 1.1400000000000006,
+        "hasError": false
+      },
+      "errors": [],
+      "candidate": {
+        "eligible": true,
+        "reasons": [],
+        "selectionHash": "4edef1ed686a430f6363dc5b555de3662047e8f22b84c5095efaacf49a50a135",
+        "selected": true
+      }
+    },
+    {
+      "gameId": "xq276129901",
+      "ply": 46,
+      "preMoveFen": "2bak1b2/4a4/2n3n2/p1N5p/2p1pr3/c7P/2P1R2N1/4BC3/4A4/4KAB2 b - - 1 23",
+      "actualMove": {
+        "uci": "a4a3",
+        "wxf": "c1+1",
+        "chinese": "炮1進1"
+      },
+      "primary": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "g9e7",
+          "chinese": "象7進5"
+        },
+        "bestLine": {
+          "uci": [
+            "g9e7",
+            "f2g2",
+            "c5c4",
+            "h3f2",
+            "c4d4",
+            "c6e5",
+            "c7d5",
+            "f2g4",
+            "a4g4",
+            "e2g4",
+            "g7h5",
+            "g2i2"
+          ],
+          "chinese": [
+            "象7進5",
+            "炮四平三",
+            "卒3進1",
+            "馬二退四",
+            "卒3平4",
+            "馬七退五",
+            "馬3進4",
+            "馬四進三",
+            "炮1平7",
+            "相五進三",
+            "馬7進8",
+            "炮三平一"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "a4a3",
+            "c3c4",
+            "a3h3",
+            "e3h3",
+            "e5e4",
+            "h3h4",
+            "e4e3",
+            "h4g4",
+            "c7e6",
+            "f2g2",
+            "g7h5",
+            "g4g9",
+            "f5f9",
+            "g9f9",
+            "e8f9",
+            "c4c5",
+            "e6c5",
+            "g2i2",
+            "h5g3",
+            "i2i6",
+            "g3i4",
+            "i6i7",
+            "i4g5",
+            "c6e5",
+            "e9e8",
+            "i7g7"
+          ],
+          "chinese": [
+            "炮1進1",
+            "兵七進一",
+            "炮1平8",
+            "車五平二",
+            "卒5進1",
+            "車二進一",
+            "卒5進1",
+            "車二平三",
+            "馬3進5",
+            "炮四平三",
+            "馬7進8",
+            "車三進五",
+            "車6退4",
+            "車三平四",
+            "士5退6",
+            "兵七進一",
+            "馬5進3",
+            "炮三平一",
+            "馬8進7",
+            "炮一進四",
+            "馬7退9",
+            "炮一進一",
+            "馬9退7",
+            "馬七退五",
+            "將5進1",
+            "炮一平三"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": 73,
+          "comparableValue": 0.73,
+          "displayText": "+0.73",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": 1,
+          "comparableValue": 0.01,
+          "displayText": "+0.01",
+          "source": "separate_engine_call"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 0.72,
+        "mateTransition": false,
+        "depth": 15,
+        "analysisTimeMs": 2388,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "verification": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "g9e7",
+          "chinese": "象7進5"
+        },
+        "bestLine": {
+          "uci": [
+            "g9e7",
+            "h3g1",
+            "a4a1",
+            "g1i2",
+            "f5f6",
+            "c6e5",
+            "f6b6",
+            "e3g3",
+            "g7e6",
+            "i2h4"
+          ],
+          "chinese": [
+            "象7進5",
+            "馬二退三",
+            "炮1進3",
+            "馬三進一",
+            "車6退1",
+            "馬七退五",
+            "車6平2",
+            "車五平三",
+            "馬7進5",
+            "馬一進二"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "a4a3",
+            "c3c4",
+            "a3h3",
+            "e3h3",
+            "e5e4",
+            "h3h4",
+            "e4e3",
+            "h4g4",
+            "c7e6",
+            "f2g2",
+            "g7h5",
+            "g4g9",
+            "f5f9",
+            "g9f9",
+            "e9f9",
+            "g2i2",
+            "c5c4",
+            "e2c4",
+            "h5g3",
+            "i2i6",
+            "g3i4",
+            "c6e5",
+            "e6g5",
+            "i6f6"
+          ],
+          "chinese": [
+            "炮1進1",
+            "兵七進一",
+            "炮1平8",
+            "車五平二",
+            "卒5進1",
+            "車二進一",
+            "卒5進1",
+            "車二平三",
+            "馬3進5",
+            "炮四平三",
+            "馬7進8",
+            "車三進五",
+            "車6退4",
+            "車三平四",
+            "將5平6",
+            "炮三平一",
+            "卒3進1",
+            "相五進七",
+            "馬8進7",
+            "炮一進四",
+            "馬7退9",
+            "馬七退五",
+            "馬5進7",
+            "炮一平四"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": 66,
+          "comparableValue": 0.66,
+          "displayText": "+0.66",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": 1,
+          "comparableValue": 0.01,
+          "displayText": "+0.01",
+          "source": "separate_engine_call"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 0.65,
+        "mateTransition": false,
+        "depth": 15,
+        "analysisTimeMs": 2348,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "parallelAnalysisTimeMs": 2388,
+      "divergence": {
+        "bestMove": false,
+        "scoreType": false,
+        "evaluationLoss": 0.06999999999999995,
+        "hasError": false
+      },
+      "errors": [],
+      "candidate": {
+        "eligible": true,
+        "reasons": [],
+        "selectionHash": "3dbd7b8f3425a7cdaa9406fec26702c2f94b0dc5b32da3587177096068d6bb94",
+        "selected": true
+      }
+    },
+    {
+      "gameId": "xq276129901",
+      "ply": 160,
+      "preMoveFen": "3k2b2/4a4/3ab4/9/3Nn4/9/2p1p1p2/9/4AC3/2BK1AB2 b - - 9 80",
+      "actualMove": {
+        "uci": "c3c2",
+        "wxf": "p3+1",
+        "chinese": "卒3進1"
+      },
+      "primary": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "c3d3",
+          "chinese": "卒3平4"
+        },
+        "bestLine": {
+          "uci": [
+            "c3d3",
+            "d5b6",
+            "d9e9",
+            "b6c8",
+            "e9f9",
+            "f1f6",
+            "e3f3",
+            "f6i6",
+            "e5c6",
+            "c8b6",
+            "c6b4",
+            "d0e0",
+            "d3c3",
+            "b6c8",
+            "b4d3",
+            "i6i9",
+            "g9i7",
+            "c8e7"
+          ],
+          "chinese": [
+            "卒3平4",
+            "馬六進八",
+            "將4平5",
+            "馬八進七",
+            "將5平6",
+            "炮四進五",
+            "卒5平6",
+            "炮四平一",
+            "馬5退3",
+            "馬七退八",
+            "馬3進2",
+            "帥六平五",
+            "卒4平3",
+            "馬八進七",
+            "馬2進4",
+            "炮一進三",
+            "象7進9",
+            "馬七退五"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "c3c2",
+            "d5e3",
+            "c2c1",
+            "c0e2",
+            "c1c0",
+            "e2c0",
+            "g3f3",
+            "e3c2",
+            "d9e9",
+            "c0e2",
+            "e5c6",
+            "e1d2",
+            "f3g3",
+            "f1i1",
+            "e7g5",
+            "i1c1",
+            "c6e5",
+            "c2d4",
+            "e5f7",
+            "c1a1",
+            "f7d6",
+            "d2e1",
+            "e9f9",
+            "a1a3"
+          ],
+          "chinese": [
+            "卒3進1",
+            "馬六退五",
+            "卒3進1",
+            "相七進五",
+            "卒3進1",
+            "相五退七",
+            "卒7平6",
+            "馬五退七",
+            "將4平5",
+            "相七進五",
+            "馬5退3",
+            "仕五進六",
+            "卒6平7",
+            "炮四平一",
+            "象5進7",
+            "炮一平七",
+            "馬3進5",
+            "馬七進六",
+            "馬5退6",
+            "炮七平九",
+            "馬6進4",
+            "仕六退五",
+            "將5平6",
+            "炮九進二"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": 0,
+          "comparableValue": 0,
+          "displayText": "+0.00",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": -64,
+          "comparableValue": -0.64,
+          "displayText": "-0.64",
+          "source": "separate_engine_call"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 0.64,
+        "mateTransition": false,
+        "depth": 18,
+        "analysisTimeMs": 2452,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "verification": {
+        "status": "ok",
+        "engineName": "Pikafish 2026-01-31",
+        "bestMove": {
+          "uci": "c3d3",
+          "chinese": "卒3平4"
+        },
+        "bestLine": {
+          "uci": [
+            "c3d3",
+            "d5b6",
+            "d9e9",
+            "b6c8",
+            "e9f9",
+            "f1f6",
+            "e3f3",
+            "f6i6",
+            "e5c6",
+            "c8b6",
+            "c6b4",
+            "d0e0",
+            "d3c3",
+            "b6c8",
+            "b4d3",
+            "i6i9",
+            "g9i7",
+            "c8e7"
+          ],
+          "chinese": [
+            "卒3平4",
+            "馬六進八",
+            "將4平5",
+            "馬八進七",
+            "將5平6",
+            "炮四進五",
+            "卒5平6",
+            "炮四平一",
+            "馬5退3",
+            "馬七退八",
+            "馬3進2",
+            "帥六平五",
+            "卒4平3",
+            "馬八進七",
+            "馬2進4",
+            "炮一進三",
+            "象7進9",
+            "馬七退五"
+          ]
+        },
+        "actualLine": {
+          "uci": [
+            "c3c2",
+            "d5e3",
+            "c2c1",
+            "c0e2",
+            "c1c0",
+            "e2c0",
+            "g3f3",
+            "e3c2",
+            "d9e9",
+            "c0e2",
+            "e5c6",
+            "e1d2",
+            "f3g3",
+            "f1a1",
+            "g3f3",
+            "a1e1",
+            "f3g3"
+          ],
+          "chinese": [
+            "卒3進1",
+            "馬六退五",
+            "卒3進1",
+            "相七進五",
+            "卒3進1",
+            "相五退七",
+            "卒7平6",
+            "馬五退七",
+            "將4平5",
+            "相七進五",
+            "馬5退3",
+            "仕五進六",
+            "卒6平7",
+            "炮四平九",
+            "卒7平6",
+            "炮九平五",
+            "卒6平7"
+          ]
+        },
+        "bestScore": {
+          "type": "cp",
+          "cp": 0,
+          "comparableValue": 0,
+          "displayText": "+0.00",
+          "source": "root_analysis"
+        },
+        "actualScore": {
+          "type": "cp",
+          "cp": -62,
+          "comparableValue": -0.62,
+          "displayText": "-0.62",
+          "source": "separate_engine_call"
+        },
+        "scoreTypes": {
+          "best": "cp",
+          "actual": "cp"
+        },
+        "evaluationLoss": 0.62,
+        "mateTransition": false,
+        "depth": 18,
+        "analysisTimeMs": 2401,
+        "incomplete": false,
+        "warnings": [],
+        "error": null
+      },
+      "parallelAnalysisTimeMs": 2452,
+      "divergence": {
+        "bestMove": false,
+        "scoreType": false,
+        "evaluationLoss": 0.020000000000000018,
+        "hasError": false
+      },
+      "errors": [],
+      "candidate": {
+        "eligible": true,
+        "reasons": [],
+        "selectionHash": "265fff80eb1f2e17db0089c0016c550eada0090946cf2b65ac39d86be9be6b89",
+        "selected": true
+      }
+    }
+  ],
+  "timing": {
+    "allPositions": {
+      "primary": {
+        "count": 389,
+        "minMs": 1496,
+        "medianMs": 1568,
+        "p95Ms": 2429,
+        "maxMs": 2607,
+        "within3000Ms": 389,
+        "within3000Rate": 1
+      },
+      "verification": {
+        "count": 389,
+        "minMs": 1493,
+        "medianMs": 1553,
+        "p95Ms": 2407,
+        "maxMs": 2582,
+        "within3000Ms": 389,
+        "within3000Rate": 1
+      },
+      "parallelComparison": {
+        "count": 389,
+        "minMs": 1501,
+        "medianMs": 1573,
+        "p95Ms": 2432,
+        "maxMs": 2607,
+        "within3000Ms": 389,
+        "within3000Rate": 1
+      }
+    },
+    "selectedCases": {
+      "primary": {
+        "count": 6,
+        "minMs": 1522,
+        "medianMs": 2359,
+        "p95Ms": 2452,
+        "maxMs": 2452,
+        "within3000Ms": 6,
+        "within3000Rate": 1
+      },
+      "verification": {
+        "count": 6,
+        "minMs": 1504,
+        "medianMs": 1544,
+        "p95Ms": 2401,
+        "maxMs": 2401,
+        "within3000Ms": 6,
+        "within3000Rate": 1
+      },
+      "parallelComparison": {
+        "count": 6,
+        "minMs": 1523,
+        "medianMs": 2359,
+        "p95Ms": 2452,
+        "maxMs": 2452,
+        "within3000Ms": 6,
+        "within3000Rate": 1
+      }
+    }
+  }
+}

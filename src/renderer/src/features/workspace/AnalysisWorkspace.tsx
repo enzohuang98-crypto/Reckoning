@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type {
   AIConversation,
@@ -17,17 +18,22 @@ import {
 import { AnalysisToolbar } from './AnalysisToolbar'
 import { BoardEditor } from '../board/BoardEditor'
 import { FenInput } from '../board/FenInput'
-import { GameImportPanel } from '../board/GameImportPanel'
+import {
+  GameImportPanel,
+  type ImportedMoveSelection
+} from '../board/GameImportPanel'
 import { GuessModePanel } from '../guessing/GuessModePanel'
 import { AnalysisInspectorTabs } from '../analysis/AnalysisInspectorTabs'
 import {
   EMPTY_ANALYSIS_STATUS,
+  type ActualMoveSelection,
   type AnalysisPanelStatus,
   type AnalysisView
 } from '../analysis/types'
 
 interface Props {
   hidden: boolean
+  headerCommandMount: HTMLElement | null
   board: BoardState
   settings: AppSettings
   canUndo: boolean
@@ -49,6 +55,7 @@ interface Props {
 
 export function AnalysisWorkspace({
   hidden,
+  headerCommandMount,
   board,
   settings,
   canUndo,
@@ -71,12 +78,13 @@ export function AnalysisWorkspace({
   const [draftMove, setDraftMove] = useState('')
   const [draftReason, setDraftReason] = useState('')
   const [submittedGuess, setSubmittedGuess] = useState<SubmittedGuess | null>(null)
+  const [actualMove, setActualMove] = useState<ActualMoveSelection | null>(null)
   const [guessSelectionActive, setGuessSelectionActive] = useState(false)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [boardToolsOpen, setBoardToolsOpen] = useState(false)
-  const [boardCompact, setBoardCompact] = useState(true)
+  const [boardExpanded, setBoardExpanded] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [liveDockElement, setLiveDockElement] = useState<HTMLElement | null>(null)
   const [detailsDockElement, setDetailsDockElement] = useState<HTMLElement | null>(null)
@@ -94,6 +102,34 @@ export function AnalysisWorkspace({
     setSubmittedGuess(null)
     setGuessSelectionActive(false)
   }, [board.fen])
+
+  const changeBoard = (next: BoardState): void => {
+    setActualMove(null)
+    onBoardChange(next)
+  }
+
+  const selectImportedMove = (selection: ImportedMoveSelection): void => {
+    setResult(null)
+    setExplanation(null)
+    onConversationChange(null)
+    setActualMove({
+      selectionId: crypto.randomUUID(),
+      positionFen: selection.position.fen,
+      move: selection.move,
+      displayMove: selection.displayMove,
+      plyIndex: selection.plyIndex,
+      selectedAt: Date.now()
+    })
+    setSubmittedGuess(null)
+    setGuessSelectionActive(false)
+    setActiveView('coach')
+    onBoardChange(selection.position)
+  }
+
+  const changeView = (next: AnalysisView): void => {
+    if (next === 'guess') setActualMove(null)
+    setActiveView(next)
+  }
 
   const requestExplanation = (): void => {
     setActiveView('coach')
@@ -130,6 +166,46 @@ export function AnalysisWorkspace({
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [detailsOpen])
 
+  const headerCommands =
+    !hidden && headerCommandMount
+      ? createPortal(
+          <AnalysisToolbar
+            importOpen={importOpen}
+            onToggleImport={() => setImportOpen((current) => !current)}
+            boardToolsOpen={boardToolsOpen}
+            onToggleBoardTools={() => setBoardToolsOpen((current) => !current)}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={() => {
+              setActualMove(null)
+              onUndo()
+            }}
+            onRedo={() => {
+              setActualMove(null)
+              onRedo()
+            }}
+            onRestoreOriginal={() => {
+              setActualMove(null)
+              onRestoreOriginal()
+            }}
+            boardCompact={!boardExpanded}
+            onToggleBoardSize={() => setBoardExpanded((current) => !current)}
+            detailsOpen={detailsOpen}
+            onToggleDetails={() => {
+              if (detailsOpen) closeDetails()
+              else setDetailsOpen(true)
+            }}
+            activeView={activeView}
+            onViewChange={changeView}
+            status={analysisStatus}
+            onStartAnalysis={() => analysisPanelRef.current?.startAnalysis()}
+            onStopAnalysis={() => analysisPanelRef.current?.stopAll()}
+            onRequestExplanation={requestExplanation}
+          />,
+          headerCommandMount
+        )
+      : null
+
   return (
     <section
       className="analyze-page"
@@ -137,30 +213,7 @@ export function AnalysisWorkspace({
       aria-hidden={hidden}
       aria-label="象棋分析工作區"
     >
-      <AnalysisToolbar
-        importOpen={importOpen}
-        onToggleImport={() => setImportOpen((current) => !current)}
-        boardToolsOpen={boardToolsOpen}
-        onToggleBoardTools={() => setBoardToolsOpen((current) => !current)}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        onUndo={onUndo}
-        onRedo={onRedo}
-        onRestoreOriginal={onRestoreOriginal}
-        boardCompact={boardCompact}
-        onToggleBoardSize={() => setBoardCompact((current) => !current)}
-        detailsOpen={detailsOpen}
-        onToggleDetails={() => {
-          if (detailsOpen) closeDetails()
-          else setDetailsOpen(true)
-        }}
-        activeView={activeView}
-        onViewChange={setActiveView}
-        status={analysisStatus}
-        onStartAnalysis={() => analysisPanelRef.current?.startAnalysis()}
-        onStopAnalysis={() => analysisPanelRef.current?.stopAll()}
-        onRequestExplanation={requestExplanation}
-      />
+      {headerCommands}
 
       <section
         id="analysis-data-drawer"
@@ -169,10 +222,7 @@ export function AnalysisWorkspace({
         aria-labelledby="analysis-data-drawer-title"
       >
         <div className="analysis-data-drawer-heading">
-          <div>
-            <span className="eyebrow">POSITION DATA</span>
-            <h2 id="analysis-data-drawer-title">當前局面資料</h2>
-          </div>
+          <h2 id="analysis-data-drawer-title">分析資料</h2>
           <button
             ref={detailsCloseButtonRef}
             type="button"
@@ -187,13 +237,14 @@ export function AnalysisWorkspace({
 
       <div
         ref={analysisLayoutRef}
-        className={`analyze-layout${boardCompact ? ' board-compact' : ''}`}
+        className={'analyze-layout' + (boardExpanded ? ' board-expanded' : '')}
         aria-hidden={detailsOpen}
       >
         <div className="left-col">
           <BoardEditor
             board={board}
-            onChange={onBoardChange}
+            onChange={changeBoard}
+            highlightedMove={actualMove?.move}
             toolsOpen={boardToolsOpen}
             guessSelectionActive={guessSelectionActive}
             onGuessMoveSelected={(move) => {
@@ -204,14 +255,21 @@ export function AnalysisWorkspace({
             onGuessSelectionCancel={() => setGuessSelectionActive(false)}
             savedPositions={savedPositions}
             onSavePosition={onSavePosition}
-            onLoadSavedPosition={onLoadSavedPosition}
+            onLoadSavedPosition={(position) => {
+              setActualMove(null)
+              onLoadSavedPosition(position)
+            }}
             onDeleteSavedPosition={onDeleteSavedPosition}
           />
 
           {importOpen && (
             <div className="utility-drawer-body" aria-label="匯入棋局工具">
-              <FenInput initialFen={board.fen} onValidBoard={onBoardChange} />
-              <GameImportPanel board={board} onBoardChange={onBoardChange} />
+              <FenInput initialFen={board.fen} onValidBoard={changeBoard} />
+              <GameImportPanel
+                board={board}
+                onBoardChange={changeBoard}
+                onMoveSelect={selectImportedMove}
+              />
             </div>
           )}
         </div>
@@ -220,7 +278,7 @@ export function AnalysisWorkspace({
           <div className="inspector-shell">
             <AnalysisInspectorTabs
               activeView={activeView}
-              onChange={setActiveView}
+              onChange={changeView}
               aiBusy={analysisStatus.aiBusy}
               hasExplanation={analysisStatus.hasExplanation}
             />
@@ -233,10 +291,11 @@ export function AnalysisWorkspace({
                   activeView="coach"
                   liveDockElement={liveDockElement}
                   detailsDockElement={detailsDockElement}
-                  onActiveViewChange={setActiveView}
+                  onActiveViewChange={changeView}
                   board={board}
                   settings={settings}
                   submittedGuess={submittedGuess}
+                  actualMove={actualMove}
                   conversation={conversation}
                   onConversationChange={onConversationChange}
                   onResult={setResult}
@@ -267,7 +326,10 @@ export function AnalysisWorkspace({
                     setExplanation(null)
                   }}
                   selectionActive={guessSelectionActive}
-                  onBeginMoveSelection={() => setGuessSelectionActive(true)}
+                  onBeginMoveSelection={() => {
+                    setActualMove(null)
+                    setGuessSelectionActive(true)
+                  }}
                   onCancelMoveSelection={() => setGuessSelectionActive(false)}
                   result={result}
                   explanation={explanation}
@@ -284,7 +346,7 @@ export function AnalysisWorkspace({
       <section
         className="live-analysis-dock"
         ref={setLiveDockElement}
-        aria-label="持續即時分析"
+        aria-label="局面分析"
       />
     </section>
   )

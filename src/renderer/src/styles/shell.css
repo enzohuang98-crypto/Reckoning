@@ -6,11 +6,13 @@
 
 .app-header {
   z-index: 30;
-  display: grid;
+  display: flex;
+  height: 68px;
   min-height: 68px;
-  grid-template-columns: 220px 1fr 150px;
   align-items: center;
-  padding: 0 22px;
+  gap: 12px;
+  padding: 0 18px;
+  overflow: visible;
   border-bottom: 1px solid rgba(189, 207, 196, 0.86);
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 8px 24px rgba(44, 72, 58, 0.055);
@@ -19,6 +21,7 @@
 
 .app-brand {
   display: inline-flex;
+  height: 40px;
   min-width: 0;
   align-items: center;
   gap: 11px;
@@ -28,12 +31,6 @@
   background: transparent;
   cursor: pointer;
   text-align: left;
-}
-
-.app-brand > span:last-child {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
 }
 
 .brand-seal {
@@ -64,22 +61,13 @@
 .app-title {
   color: #20372b;
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: 19px;
   letter-spacing: 0.14em;
-}
-
-.app-subtitle {
-  margin-top: 2px;
-  color: #7c8a82;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
 }
 
 .app-nav {
   display: inline-flex;
-  width: fit-content;
-  justify-self: center;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   padding: 4px;
@@ -90,8 +78,8 @@
 
 .nav-btn {
   display: inline-flex;
-  min-height: 36px;
-  min-width: 88px;
+  min-height: 40px;
+  min-width: 72px;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -101,7 +89,7 @@
   color: #6d7d73;
   background: transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
@@ -117,27 +105,12 @@
   box-shadow: var(--shadow-xs), 0 4px 12px rgba(44, 72, 58, 0.07);
 }
 
-.header-local-status {
-  display: inline-flex;
-  min-height: 32px;
-  justify-self: end;
-  align-items: center;
-  gap: 8px;
-  padding: 0 11px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  color: #4f685b;
-  background: #f8faf8;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #36a16f;
-  box-shadow: 0 0 0 4px rgba(54, 161, 111, 0.13);
+.analysis-command-mount {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  justify-content: flex-end;
 }
 
 .app-main {

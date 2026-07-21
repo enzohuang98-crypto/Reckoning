@@ -43,6 +43,12 @@ assert.match(staticBoard, /role="img"/)
 assert.doesNotMatch(staticBoard, /role="gridcell"/)
 assert.doesNotMatch(staticBoard, /tabindex=/)
 
+const highlightedBoard = renderToStaticMarkup(
+  createElement(XiangqiBoard, { grid: emptyGrid, highlightedMove: 'a9a8' })
+)
+assert.match(highlightedBoard, /actual-move-highlight/)
+assert.match(highlightedBoard, /marker-end="url\(#actual-move-arrow\)"/)
+
 const source = readFileSync(
   resolve('src/renderer/src/features/board/XiangqiBoard.tsx'),
   'utf8'
@@ -57,5 +63,6 @@ assert.match(source, /tabIndex=\{isActive \? 0 : -1\}/)
 assert.match(source, /event\.key === 'Enter' \|\| event\.key === ' '/)
 assert.match(source, /onCellClick\?\.\(row, col\)/)
 assert.match(source, /aria-hidden="true"/)
+assert.match(source, /highlightedMove \? parseUciMove\(highlightedMove\) : null/)
 
 console.log('  ✓ 棋盤具備 10×9 grid 語義、座標名稱、roving tabindex 與完整鍵盤操作')

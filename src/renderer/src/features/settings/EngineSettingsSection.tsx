@@ -124,23 +124,25 @@ export function EngineSettingsSection({
                 ))}
               </select>
             </div>
-            <div className="field">
-              <label className="field-label">預設複核引擎</label>
-              <select
-                className="select"
-                value={registry.verificationEngineId ?? ''}
-                onChange={(event) =>
-                  onSelect(registry.activeEngineId ?? '', event.target.value || null)
-                }
-              >
-                <option value="">不使用複核引擎</option>
-                {registry.installations
-                  .filter((engine) => engine.id !== registry.activeEngineId)
-                  .map((engine) => (
-                    <option value={engine.id} key={engine.id}>{engine.displayName}</option>
-                  ))}
-              </select>
-            </div>
+            {registry.installations.length > 1 && (
+              <div className="field">
+                <label className="field-label">預設複核引擎（選用）</label>
+                <select
+                  className="select"
+                  value={registry.verificationEngineId ?? ''}
+                  onChange={(event) =>
+                    onSelect(registry.activeEngineId ?? '', event.target.value || null)
+                  }
+                >
+                  <option value="">不使用複核引擎</option>
+                  {registry.installations
+                    .filter((engine) => engine.id !== registry.activeEngineId)
+                    .map((engine) => (
+                      <option value={engine.id} key={engine.id}>{engine.displayName}</option>
+                    ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
       </section>

@@ -3,6 +3,39 @@ import type { AIProviderId, TokenUsage } from './AIProviderTypes'
 import type { ExplanationLanguage } from './AIExplanationTypes'
 
 export type HarnessAnswerMode = 'focused' | 'research'
+
+/**
+ * Stable machine-readable section identifiers. Display headings may be
+ * translated or reworded without changing validation or repair routing.
+ */
+export const HARNESS_SECTION_IDS = {
+  directConclusion: 'direct_conclusion',
+  actualMoveProblem: 'actual_move_problem',
+  bestMovePlan: 'best_move_plan',
+  opponentExploitation: 'opponent_exploitation',
+  practicalPrinciple: 'practical_principle',
+  dualEngineAdjudication: 'dual_engine_adjudication',
+  followUp: 'follow_up'
+} as const
+
+export type HarnessSectionId =
+  (typeof HARNESS_SECTION_IDS)[keyof typeof HARNESS_SECTION_IDS]
+
+/**
+ * 棋手明確選取實戰步後，完整一鍵解說唯一允許的五個玩家可見區塊。
+ * 順序本身也是產品契約，驗證與 render 不得自行增加第六區。
+ */
+export const INITIAL_MOVE_EXPLANATION_SECTION_IDS = [
+  HARNESS_SECTION_IDS.directConclusion,
+  HARNESS_SECTION_IDS.actualMoveProblem,
+  HARNESS_SECTION_IDS.bestMovePlan,
+  HARNESS_SECTION_IDS.opponentExploitation,
+  HARNESS_SECTION_IDS.practicalPrinciple
+] as const satisfies readonly HarnessSectionId[]
+
+/** 約 500–900 個中文字為寫作目標；400 個漢字是防止短答混過驗證的安全下限。 */
+export const INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS = 400
+
 export type HarnessPhase =
   | 'understanding'
   | 'planning'
@@ -79,12 +112,20 @@ export interface HarnessClaim {
   causal?: CausalChain
 }
 
+export interface HarnessSection {
+  /** Stable validation/repair key; never derive behavior from heading text. */
+  id: HarnessSectionId
+  /** User-facing localized label. */
+  heading: string
+  claims: HarnessClaim[]
+}
+
 export interface HarnessAnswer {
   mode: HarnessAnswerMode
   title: string
   directAnswer: string
   directAnswerEvidenceIds: string[]
-  sections: Array<{ heading: string; claims: HarnessClaim[] }>
+  sections: HarnessSection[]
   /** 一般棋理補充：未經引擎驗證的教練常識，必須與引擎結論分開顯示，不得引用證據編號。 */
   generalNotes?: string[]
   evidence: HarnessEvidence[]

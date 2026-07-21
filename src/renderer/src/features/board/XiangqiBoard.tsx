@@ -9,6 +9,7 @@ import { useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { BoardGrid } from '@shared/types/BoardState'
 import { BOARD_COLS, BOARD_ROWS } from '@shared/types/BoardState'
+import { parseUciMove } from '@shared/logic/board/moves'
 import { pieceGlyph } from './pieces'
 
 const CELL = 56
@@ -23,6 +24,8 @@ interface Props {
   grid: BoardGrid
   /** 被選取的格子（編輯/著法用），以 [row,col] 表示 */
   selected?: [number, number] | null
+  /** 走前局面要檢視的實戰著法；只標示，不套用到棋盤。 */
+  highlightedMove?: string | null
   onCellClick?: (row: number, col: number) => void
 }
 
@@ -57,10 +60,16 @@ export function boardCellAriaLabel(grid: BoardGrid, row: number, col: number): s
   return `${coordinate}，${piece.color === 'red' ? '紅方' : '黑方'}${pieceGlyph(piece)}`
 }
 
-export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Element {
+export function XiangqiBoard({
+  grid,
+  selected,
+  highlightedMove,
+  onCellClick
+}: Props): JSX.Element {
   const interactive = Boolean(onCellClick)
   const [activeCell, setActiveCell] = useState<[number, number]>(() => selected ?? [0, 0])
   const cellRefs = useRef<Array<SVGRectElement | null>>([])
+  const highlightedCoords = highlightedMove ? parseUciMove(highlightedMove) : null
 
   const focusCell = (row: number, col: number): void => {
     setActiveCell([row, col])
@@ -259,6 +268,17 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
         <filter id="piece-shadow" x="-30%" y="-30%" width="160%" height="170%">
           <feDropShadow dx="0" dy="3" stdDeviation="2.5" floodColor="#5b3a1f" floodOpacity="0.28" />
         </filter>
+        <marker
+          id="actual-move-arrow"
+          viewBox="0 0 10 10"
+          refX="8"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--jade)" />
+        </marker>
       </defs>
       <g aria-hidden="true">
         <rect x="1" y="1" width={WIDTH - 2} height={HEIGHT - 2} rx="14" fill="url(#board-surface)" />
@@ -299,6 +319,38 @@ export function XiangqiBoard({ grid, selected, onCellClick }: Props): JSX.Elemen
         >
           漢界
         </text>
+        {highlightedCoords && (
+          <g className="actual-move-highlight" pointerEvents="none">
+            <line
+              x1={px(highlightedCoords.fromCol)}
+              y1={py(highlightedCoords.fromRow)}
+              x2={px(highlightedCoords.toCol)}
+              y2={py(highlightedCoords.toRow)}
+              stroke="var(--jade)"
+              strokeWidth={5}
+              strokeLinecap="round"
+              opacity={0.78}
+              markerEnd="url(#actual-move-arrow)"
+            />
+            <circle
+              cx={px(highlightedCoords.fromCol)}
+              cy={py(highlightedCoords.fromRow)}
+              r={PIECE_R + 5}
+              fill="none"
+              stroke="var(--jade)"
+              strokeWidth={3}
+            />
+            <circle
+              cx={px(highlightedCoords.toCol)}
+              cy={py(highlightedCoords.toRow)}
+              r={PIECE_R + 5}
+              fill="none"
+              stroke="var(--jade)"
+              strokeWidth={3}
+              strokeDasharray="6 4"
+            />
+          </g>
+        )}
         {pieces}
       </g>
       {cellRows}

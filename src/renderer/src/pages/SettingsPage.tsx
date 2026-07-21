@@ -6,10 +6,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import {
-  PROVIDER_DEFAULT_MODELS,
-  PROVIDER_LABEL
-} from '@shared/types/AIProviderTypes'
+import { PROVIDER_LABEL } from '@shared/types/AIProviderTypes'
 import type { AppDataSnapshot } from '@shared/types/AppData'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import {
@@ -18,7 +15,11 @@ import {
 } from '@shared/types/EngineRegistry'
 import type { LicenseStatus } from '@shared/types/License'
 import type { AppSettings } from '@shared/types/Settings'
-import type { EngineTestResult, SecretStatus } from '@shared/types/ipc'
+import type {
+  EngineTestResult,
+  SecretCredentialRef,
+  SecretStatus
+} from '@shared/types/ipc'
 import { LICENSE_GATE_DISABLED } from '../app/productFlags'
 import { AiSettingsSection } from '../features/settings/AiSettingsSection'
 import { EngineSettingsSection } from '../features/settings/EngineSettingsSection'
@@ -36,8 +37,9 @@ interface Props {
 
 const EMPTY_SECRET_STATUS: SecretStatus = {
   configured: false,
-  provider: null,
-  needsReentry: false
+  needsReentry: false,
+  activeCredential: null,
+  credentials: []
 }
 
 const EMPTY_ENGINE_REGISTRY: EngineRegistrySnapshot = {
@@ -118,30 +120,33 @@ export function SettingsPage({
     else setOperationError(null)
   }
 
-  const saveKey = async (): Promise<void> => {
+  const useCredential = (credential: SecretCredentialRef): void => {
+    update({
+      aiProvider: credential.provider,
+      aiModel: credential.model,
+      aiBaseUrl:
+        credential.provider === 'openai-compatible'
+          ? credential.baseUrl ?? ''
+          : ''
+    })
+  }
+
+  const saveKey = async (
+    credential: SecretCredentialRef
+  ): Promise<void> => {
     const key = apiKey.trim()
     if (!key) return
     try {
-      const result = await window.api.secret.set(
-        key,
-        settings.aiProvider,
-        settings.aiProvider === 'openai-compatible'
-          ? settings.aiBaseUrl
-          : undefined
-      )
-      const defaultModel =
-        result.provider === 'openai-compatible'
-          ? null
-          : PROVIDER_DEFAULT_MODELS[result.provider].find(
-              (model) => model.isDefault
-            ) ?? PROVIDER_DEFAULT_MODELS[result.provider][0]
-      update({
-        aiProvider: result.provider,
-        aiModel: defaultModel?.id ?? settings.aiModel
+      const result = await window.api.secret.set({
+        ...credential,
+        apiKey: key
       })
+      useCredential(result.status.activeCredential ?? credential)
       setApiKey('')
-      setSecretStatus({ configured: true, provider: result.provider, needsReentry: false })
-      setSavedMessage(`${PROVIDER_LABEL[result.provider]} 金鑰已安全儲存並設為使用中。`)
+      setSecretStatus(result.status)
+      setSavedMessage(
+        `${PROVIDER_LABEL[credential.provider]} · ${credential.model} 金鑰已安全儲存並設為使用中。`
+      )
       setOperationError(null)
     } catch {
       setOperationError(
@@ -150,11 +155,44 @@ export function SettingsPage({
     }
   }
 
-  const deleteKey = async (): Promise<void> => {
+  const activateCredential = async (
+    credential: SecretCredentialRef
+  ): Promise<void> => {
     try {
-      await window.api.secret.delete()
-      setSecretStatus(EMPTY_SECRET_STATUS)
-      setSavedMessage('API Key 已從本機安全儲存中刪除。')
+      const result = await window.api.secret.activate(credential)
+      setSecretStatus(result.status)
+      useCredential(credential)
+      setOperationError(null)
+    } catch {
+      setOperationError('所選模型的 API Key 不存在或已無法解密。')
+    }
+  }
+
+  const deleteKey = async (
+    credential: SecretCredentialRef = {
+      provider: settings.aiProvider,
+      model: settings.aiModel,
+      ...(settings.aiProvider === 'openai-compatible'
+        ? { baseUrl: settings.aiBaseUrl }
+        : {})
+    }
+  ): Promise<void> => {
+    try {
+      const result = await window.api.secret.delete(credential)
+      setSecretStatus(result.status)
+      const deletedCurrent =
+        credential.provider === settings.aiProvider &&
+        credential.model === settings.aiModel &&
+        (credential.baseUrl ?? '') ===
+          (settings.aiProvider === 'openai-compatible'
+            ? settings.aiBaseUrl
+            : '')
+      if (deletedCurrent && result.status.activeCredential) {
+        useCredential(result.status.activeCredential)
+      }
+      setSavedMessage(
+        `${PROVIDER_LABEL[credential.provider]} · ${credential.model} 金鑰已從本機刪除；其他模型不受影響。`
+      )
       setOperationError(null)
     } catch {
       setOperationError('API Key 刪除失敗，請稍後重試。')
@@ -332,8 +370,12 @@ export function SettingsPage({
               onApiKeyChange={setApiKey}
               secretStatus={secretStatus}
               encryptionAvailable={encryptionAvailable}
-              onSaveKey={() => void saveKey()}
-              onDeleteKey={() => void deleteKey()}
+              onSaveKey={(credential) => void saveKey(credential)}
+              onActivateCredential={(credential) =>
+                void activateCredential(credential)
+              }
+              onUseLocalCredential={useCredential}
+              onDeleteKey={(credential) => void deleteKey(credential)}
             />
           )}
 
@@ -366,6 +408,7 @@ export function SettingsPage({
             <HarnessSettingsSection
               settings={settings}
               update={update}
+              canUseCrossEngine={engineRegistry.installations.length > 1}
               traceCount={traceCount}
               onExportTraces={() => void exportHarnessTraces()}
               onClearTraces={() => void clearHarnessTraces()}

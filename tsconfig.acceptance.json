@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [
+    "tools/acceptance/**/*.ts",
+    "src/main/**/*.ts",
+    "src/shared/**/*.ts"
+  ]
+}

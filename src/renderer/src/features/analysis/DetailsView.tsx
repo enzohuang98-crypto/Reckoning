@@ -68,7 +68,7 @@ export function DetailsView({
                 ))}
               </select>
             </div>
-            {settings.crossEngineEnabled && (
+            {settings.crossEngineEnabled && registry.installations.length > 1 && (
               <div className="field">
                 <label className="field-label">複核引擎</label>
                 <select
