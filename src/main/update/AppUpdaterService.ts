@@ -34,14 +34,14 @@ export class AppUpdaterService {
       automaticChecksEnabled: this.configured,
       message: supported
         ? this.configured
-          ? '程式會在啟動後自動檢查更新。'
+          ? '程式會在啟動後自動檢查並下載更新，關閉程式後自動安裝。'
           : '尚未設定正式更新來源，請使用最新版安裝程式更新。'
         : '開發模式不執行自動更新。'
     }
 
     if (!this.configured) return
 
-    this.updater.autoDownload = false
+    this.updater.autoDownload = true
     this.updater.autoInstallOnAppQuit = true
     this.updater.on('checking-for-update', () => {
       this.setStatus({
@@ -54,7 +54,7 @@ export class AppUpdaterService {
         phase: 'available',
         availableVersion: info.version,
         downloadPercent: undefined,
-        message: `發現新版本 ${info.version}，可立即下載。`
+        message: `發現新版本 ${info.version}，正在準備自動下載。`
       })
     })
     this.updater.on('update-not-available', () => {

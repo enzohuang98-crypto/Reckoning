@@ -38,6 +38,10 @@ npm.cmd run build
 npm.cmd run pack
 ```
 
+## GitHub 與桌機同步
+
+GitHub Release 是桌機版本的唯一正式來源。開發者不得直接修改已安裝目錄；所有變更先經分支、Pull Request 與版本標籤，再由 GitHub Actions 建置 Release。已安裝 App 會在啟動後檢查並自動下載新版本，於使用者正常關閉 App 後安裝。未啟動 App、離線或無法連線 GitHub 時，更新會延後到下次可連線啟動。
+
 ## API Key 與隱私
 
 API Key 由 Electron `safeStorage` 加密後保存在使用者的本機 App Data，不寫入專案檔案，也不應提交到 GitHub。請勿在 issue、紀錄或螢幕截圖中貼出真實 Key。
