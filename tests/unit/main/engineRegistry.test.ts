@@ -59,6 +59,23 @@ check(
 )
 check('其他 UCI／UCCI 引擎仍可使用自訂 profile', getEngineProfile('unknown' as never).id === 'custom')
 
+const bundledStorage = new FakeStorage()
+const bundledPath = 'C:\\Program Files\\Xiangli\\resources\\engine\\pikafish.exe'
+const bundledRegistry = new EngineRegistryService(
+  bundledStorage as never,
+  bundledPath
+)
+check(
+  '乾淨安裝會自動登錄安裝包內建 Pikafish',
+  bundledRegistry.list().installations.length === 1 &&
+    bundledRegistry.getInstallation()?.executablePath === bundledPath &&
+    bundledRegistry.list().activeEngineId !== null
+)
+check(
+  '內建引擎登錄會保存供下次啟動使用',
+  new EngineRegistryService(bundledStorage as never).list().installations.length === 1
+)
+
 const profileStorage = new FakeStorage()
 const profileRegistry = new EngineRegistryService(profileStorage as never)
 for (const [index, profile] of ENGINE_PROFILES.entries()) {

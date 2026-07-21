@@ -113,13 +113,16 @@ export function App(): JSX.Element {
     if (setupState !== 'checking') return
     let cancelled = false
     void withTimeout(
-      Promise.all([window.api.engine.getPath(), window.api.secret.status()]),
+      Promise.all([window.api.engine.status(), window.api.secret.status()]),
       10_000,
       '初始設定檢查逾時'
     )
-      .then(([path, secretStatus]) => {
+      .then(([engineStatus, secretStatus]) => {
         if (cancelled) return
-        if (path || secretStatus.configured) {
+        if (
+          secretStatus.configured ||
+          (engineStatus.available && engineStatus.pathSource !== 'resource')
+        ) {
           const marked = markSetupCompleted()
           if (!marked.ok) setDataError(marked.message ?? '無法保存初始設定狀態。')
           setSetupState('done')

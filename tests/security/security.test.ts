@@ -390,10 +390,11 @@ check(
     updaterSource.includes('app.isPackaged')
 )
 check(
-  '更新來源只允許無帳密的標準 HTTPS',
-  updaterPublishConfig.includes("updateUrl.protocol !== 'https:'") &&
-    updaterPublishConfig.includes('updateUrl.username') &&
-    updaterPublishConfig.includes("updateUrl.port !== '443'")
+  '自動更新固定使用官方 GitHub Release 且不內嵌權杖',
+  updaterPublishConfig.includes("provider: 'github'") &&
+    updaterPublishConfig.includes("owner: 'enzohuang98-crypto'") &&
+    updaterPublishConfig.includes("repo: 'Reckoning'") &&
+    !updaterPublishConfig.toLowerCase().includes('token')
 )
 check(
   '更新封裝腳本不會吞掉 build 失敗',
@@ -414,10 +415,10 @@ check(
     updateVerifyScript.includes('SHA-512 does not match')
 )
 check(
-  '更新封裝與發布會驗證公開 URL 並拒絕超過 Git blob 上限',
-  updateBuildScript.includes('Packaged updater URL does not match') &&
-    updateVerifyScript.includes('$maximumGitBlobBytes = 100MB') &&
-    updatePublishScript.includes('$setupBytes -ge 100MB')
+  '更新封裝會驗證 GitHub repository 並拒絕超過 Release asset 上限',
+  updateBuildScript.includes('Packaged updater configuration does not match') &&
+    updateVerifyScript.includes('$maximumGitHubReleaseAssetBytes = 2GB') &&
+    updateVerifyScript.includes('too large for a GitHub Release asset')
 )
 check(
   '更新 metadata 驗證不依賴 runner 可能缺失的 PowerShell Security 模組',
@@ -425,9 +426,10 @@ check(
     updateVerifyScript.includes('Authenticode policy is verified separately')
 )
 check(
-  '更新發布保留歷史版本並檢查 Git push 失敗',
-  !updatePublishScript.includes("Get-ChildItem -LiteralPath $downloadDir -File -Filter 'xiangqi-analyzer-*-setup.exe*'") &&
-    updatePublishScript.includes('Unable to push update artifacts')
+  '更新發布只覆寫指定 Release 資產並檢查上傳失敗',
+  updatePublishScript.includes('gh release upload') &&
+    updatePublishScript.includes('--clobber') &&
+    updatePublishScript.includes('Unable to upload update artifacts')
 )
 check(
   'CI 會編譯假引擎並執行完整品質門檻',
