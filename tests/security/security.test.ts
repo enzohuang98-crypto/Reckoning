@@ -330,7 +330,7 @@ const browserSecuritySource = readFileSync(
 )
 const builderConfig = readFileSync(resolve('electron-builder.yml'), 'utf8')
 const installerInclude = readFileSync(
-  resolve('resources/packaging/installer.nsh'),
+  resolve('resources/packaging/custom-installer.nsh'),
   'utf8'
 )
 const updaterSource = readFileSync(
@@ -351,6 +351,10 @@ const updateVerifyScript = readFileSync(
 )
 const updatePublishScript = readFileSync(
   resolve('tools/release/publish-github-update.ps1'),
+  'utf8'
+)
+const installerSmokeScript = readFileSync(
+  resolve('tools/release/smoke-installer.ps1'),
   'utf8'
 )
 const ciWorkflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
@@ -437,13 +441,25 @@ check(
 )
 check(
   '互動式安裝頁以 App registry 與主程式檔判斷全新安裝或升級',
-  builderConfig.includes('include: resources/packaging/installer.nsh') &&
+  builderConfig.includes('include: resources/packaging/custom-installer.nsh') &&
     installerInclude.includes('StrCpy $hasPerMachineInstallation "0"') &&
     installerInclude.includes('StrCpy $hasPerUserInstallation "0"') &&
     installerInclude.includes('ReadRegStr $perMachineInstallationFolder HKLM') &&
     installerInclude.includes('ReadRegStr $perUserInstallationFolder HKCU') &&
     installerInclude.includes('${FileExists} "$perMachineInstallationFolder') &&
     installerInclude.includes('${FileExists} "$perUserInstallationFolder')
+)
+check(
+  '安裝流程明確寫入 App 登錄且 Release 會驗證完整安裝與解除安裝生命週期',
+  installerInclude.includes('!macro customInstall') &&
+    installerInclude.includes('writeReliableRegistration HKCU "/currentuser"') &&
+    installerInclude.includes('writeReliableRegistration HKLM "/allusers"') &&
+    installerInclude.includes('ReadRegStr $R7 ${ROOT}') &&
+    installerInclude.includes('RMDir /r "$LOCALAPPDATA\\xiangqi-analyzer-updater"') &&
+    installerSmokeScript.includes("$appGuid = 'c3970037-5aa0-51b0-95c7-b57bf9f33552'") &&
+    installerSmokeScript.includes('Installer smoke checks passed') &&
+    installerSmokeScript.includes('Silent uninstall cleanup passed') &&
+    releaseWorkflow.includes('npm run smoke:installer')
 )
 check(
   'CI 會編譯假引擎並執行完整品質門檻',

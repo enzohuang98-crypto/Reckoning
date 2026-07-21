@@ -1,6 +1,6 @@
 {
   "name": "xiangqi-analyzer",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "象棋 AI 分析講解軟體 — Pikafish 引擎 + LLM 結構化解釋 (MVP)",
   "main": "./out/main/index.js",
   "author": "xiangqi-analyzer",
@@ -22,6 +22,7 @@
     "dist:update": "npm run build && electron-builder --config electron-builder.publish.cjs --publish never",
     "dist:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/build-github-update.ps1",
     "verify:update": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/verify-update-artifacts.ps1",
+    "smoke:installer": "pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/smoke-installer.ps1",
     "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/publish-github-update.ps1",
     "acceptance:ai": "electron tools/acceptance/run-ai-acceptance.cjs",
     "test:acceptance:ai": "electron tools/acceptance/run-ai-acceptance.cjs --self-test"
