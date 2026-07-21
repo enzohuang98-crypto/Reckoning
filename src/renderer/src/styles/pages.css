@@ -364,7 +364,7 @@
 }
 
 .setup-wizard {
-  min-height: 100vh;
+  height: 100vh;
   padding: 40px 24px;
   overflow: auto;
   background:

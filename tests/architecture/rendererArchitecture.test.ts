@@ -672,6 +672,16 @@ async function main(): Promise<void> {
     }
   })
 
+  await check('首次設定精靈在視窗高度不足時仍可捲動到完成按鈕', () => {
+    const pageStyles = readFileSync(
+      resolve('src/renderer/src/styles/pages.css'),
+      'utf8'
+    )
+    const setupWizard = cssRuleBody(pageStyles, '.setup-wizard')
+    assert.match(setupWizard, /height:\s*100vh;/)
+    assert.match(setupWizard, /overflow:\s*auto;/)
+  })
+
   await check('每個原生按鈕都有作用事件與可辨識名稱', () => {
     assert.deepEqual(
       nativeButtonViolations(resolve('src/renderer/src')),
