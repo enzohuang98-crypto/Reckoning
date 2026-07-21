@@ -398,6 +398,12 @@ check(
     updaterSource.includes('app.isPackaged')
 )
 check(
+  '正式版自動下載 GitHub Release 並在正常結束後安裝',
+  updaterSource.includes('this.updater.autoDownload = true') &&
+    updaterSource.includes('this.updater.autoInstallOnAppQuit = true') &&
+    updaterSource.includes('this.updater.checkForUpdates()')
+)
+check(
   '自動更新固定使用官方 GitHub Release 且不內嵌權杖',
   updaterPublishConfig.includes("provider: 'github'") &&
     updaterPublishConfig.includes("owner: 'enzohuang98-crypto'") &&

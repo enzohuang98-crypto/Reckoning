@@ -8,6 +8,14 @@
 2. 功能變更或大型重構先建立 issue，說明使用情境、範圍與相容性風險。
 3. 不得提交 API Key、授權私鑰、個人資料、第三方未授權二進位檔或權重。
 
+## 唯一來源與交付流程
+
+- GitHub 倉庫是唯一正式來源；原始碼只在 Git checkout 中修改。
+- 不得直接修改 `%LOCALAPPDATA%\Programs\xiangqi-analyzer` 或手動複製建置產物覆蓋已安裝 App。
+- 所有可交付變更都必須經分支、commit、push 與 Pull Request。
+- 桌機版本只透過 GitHub Release 的 App 自動更新或 Release 安裝程式變更。
+- Release 必須由版本標籤觸發 GitHub Actions Release workflow 建置及發布。
+
 ## 本機驗證
 
 ```powershell
