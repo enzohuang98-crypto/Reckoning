@@ -329,6 +329,10 @@ const browserSecuritySource = readFileSync(
   'utf8'
 )
 const builderConfig = readFileSync(resolve('electron-builder.yml'), 'utf8')
+const installerInclude = readFileSync(
+  resolve('resources/packaging/installer.nsh'),
+  'utf8'
+)
 const updaterSource = readFileSync(
   resolve('src/main/update/AppUpdaterService.ts'),
   'utf8'
@@ -430,6 +434,16 @@ check(
   updatePublishScript.includes('gh release upload') &&
     updatePublishScript.includes('--clobber') &&
     updatePublishScript.includes('Unable to upload update artifacts')
+)
+check(
+  '互動式安裝頁以 App registry 與主程式檔判斷全新安裝或升級',
+  builderConfig.includes('include: resources/packaging/installer.nsh') &&
+    installerInclude.includes('StrCpy $hasPerMachineInstallation "0"') &&
+    installerInclude.includes('StrCpy $hasPerUserInstallation "0"') &&
+    installerInclude.includes('ReadRegStr $perMachineInstallationFolder HKLM') &&
+    installerInclude.includes('ReadRegStr $perUserInstallationFolder HKCU') &&
+    installerInclude.includes('${FileExists} "$perMachineInstallationFolder') &&
+    installerInclude.includes('${FileExists} "$perUserInstallationFolder')
 )
 check(
   'CI 會編譯假引擎並執行完整品質門檻',
