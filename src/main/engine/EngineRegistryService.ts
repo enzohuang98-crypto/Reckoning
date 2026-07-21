@@ -139,12 +139,29 @@ export class EngineRegistryService {
   private snapshot: EngineRegistrySnapshot
   private readonly adapters = new Map<string, PikafishAdapter>()
 
-  constructor(private readonly storage: StorageService) {
+  constructor(
+    private readonly storage: StorageService,
+    bundledEnginePath: string | null = null
+  ) {
     const stored = sanitizeRegistry(
       storage.read<unknown>(ENGINE_REGISTRY_FILE, EMPTY_ENGINE_REGISTRY)
     )
     this.snapshot =
       stored.installations.length > 0 ? stored : this.migrateLegacyConfiguration()
+    if (this.snapshot.installations.length === 0 && bundledEnginePath) {
+      try {
+        const executablePath = normalizeEnginePath(bundledEnginePath)
+        if (executablePath) {
+          this.add({
+            profileId: 'pikafish',
+            displayName: 'Pikafish（內建）',
+            executablePath
+          })
+        }
+      } catch {
+        // 安裝資源遺失或路徑不安全時維持空登錄，交由 UI 顯示設定提示。
+      }
+    }
   }
 
   private migrateLegacyConfiguration(): EngineRegistrySnapshot {

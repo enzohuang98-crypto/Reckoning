@@ -13,7 +13,7 @@ $setupName = "xiangqi-analyzer-$ExpectedVersion-setup.exe"
 $setup = Join-Path $releaseDir $setupName
 $blockmap = "$setup.blockmap"
 $latest = Join-Path $releaseDir 'latest.yml'
-$maximumGitBlobBytes = 100MB
+$maximumGitHubReleaseAssetBytes = 2GB
 
 foreach ($path in @($setup, $blockmap, $latest)) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -25,8 +25,8 @@ foreach ($path in @($setup, $blockmap, $latest)) {
 }
 
 $setupItem = Get-Item -LiteralPath $setup
-if ($setupItem.Length -ge $maximumGitBlobBytes) {
-  throw "Setup executable is too large for the Git-backed update site: $($setupItem.Length) bytes (limit: less than $maximumGitBlobBytes)."
+if ($setupItem.Length -ge $maximumGitHubReleaseAssetBytes) {
+  throw "Setup executable is too large for a GitHub Release asset: $($setupItem.Length) bytes (limit: less than $maximumGitHubReleaseAssetBytes)."
 }
 
 $productVersion = [string]$setupItem.VersionInfo.ProductVersion
@@ -69,5 +69,5 @@ if ($publishedHashes.Count -eq 0 -or $expectedSha512 -notin $publishedHashes) {
 
 Write-Host "Verified update artifacts for version $ExpectedVersion"
 Write-Host "Setup: $setupName"
-Write-Host "Setup size: $($setupItem.Length) bytes (below the 100 MiB Git blob limit)"
+Write-Host "Setup size: $($setupItem.Length) bytes (below the 2 GiB GitHub Release asset limit)"
 Write-Host 'Authenticode policy is verified separately by the Release workflow.'

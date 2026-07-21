@@ -137,7 +137,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
               <input
                 className="text-input"
                 type="text"
-                placeholder="例如 C:\\Tools\\pikafish\\pikafish.exe"
+                placeholder="留白使用安裝版內建 Pikafish，或選擇其他引擎 EXE"
                 value={enginePath}
                 onChange={(e) => {
                   setEnginePath(e.target.value)
@@ -149,6 +149,8 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
               </button>
             </div>
             <p className="muted small">
+              安裝版已內附 Pikafish；路徑留白即可直接按「測試引擎」。
+              若要改用其他引擎，再選擇本機 EXE。<br />
               支援：Pikafish（UCI）、象棋小蟲、象棋旋風、象棋名手、烏雲象棋（UCCI）。
               協定會自動偵測。
             </p>

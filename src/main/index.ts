@@ -6,6 +6,7 @@
  */
 
 import { app, BrowserWindow, shell } from 'electron'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { EngineRegistryService } from './engine/EngineRegistryService'
 import { SecretStore } from './storage/SecretStore'
@@ -126,7 +127,13 @@ function createWindow(rendererUrl: string): void {
 
 function registerIpc(): AppUpdaterService {
   const storage = new StorageService()
-  const engineRegistry = new EngineRegistryService(storage)
+  const packagedEnginePath = app.isPackaged
+    ? join(process.resourcesPath, 'engine', 'pikafish.exe')
+    : null
+  const engineRegistry = new EngineRegistryService(
+    storage,
+    packagedEnginePath && existsSync(packagedEnginePath) ? packagedEnginePath : null
+  )
   const secretStore = new SecretStore()
   // 短期分析快取（SDS §2.18）：in-memory + TTL，啟動 10 分鐘定時清理
   const sessionStore = new InMemoryAnalysisSessionStore()

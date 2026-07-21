@@ -311,7 +311,9 @@ export class PikafishAdapter {
   }
 
   pathSource(): EnginePathSource {
-    if (this.userPath && isSafeEngineFile(this.userPath)) return 'user'
+    if (this.userPath && isSafeEngineFile(this.userPath)) {
+      return this.userPath === resolveBundledEnginePath() ? 'resource' : 'user'
+    }
     const fromEnv = process.env.PIKAFISH_PATH
     if (fromEnv) {
       try {

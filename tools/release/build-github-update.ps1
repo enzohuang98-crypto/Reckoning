@@ -1,9 +1,9 @@
 $ErrorActionPreference = 'Stop'
 
-$updateUrl = 'https://raw.githubusercontent.com/enzohuang98-crypto/xiangqi-analyzer-site/main/downloads/'
-$env:XQA_UPDATE_URL = $updateUrl
+$githubOwner = 'enzohuang98-crypto'
+$githubRepo = 'Reckoning'
 
-Write-Host "Building auto-update package for $updateUrl"
+Write-Host "Building auto-update package for GitHub Releases: $githubOwner/$githubRepo"
 $buildStartedUtc = [DateTime]::UtcNow
 npm.cmd run dist:update
 if ($LASTEXITCODE -ne 0) {
@@ -32,8 +32,12 @@ if (-not (Test-Path -LiteralPath $appUpdate -PathType Leaf)) {
   throw "Missing packaged updater configuration: $appUpdate"
 }
 $appUpdateText = Get-Content -Raw -Encoding UTF8 -LiteralPath $appUpdate
-if ($appUpdateText -notmatch [regex]::Escape($updateUrl)) {
-  throw "Packaged updater URL does not match $updateUrl."
+if (
+  $appUpdateText -notmatch '(?m)^provider:\s*github\s*$' -or
+  $appUpdateText -notmatch "(?m)^owner:\s*$([regex]::Escape($githubOwner))\s*$" -or
+  $appUpdateText -notmatch "(?m)^repo:\s*$([regex]::Escape($githubRepo))\s*$"
+) {
+  throw "Packaged updater configuration does not match GitHub Releases repository $githubOwner/$githubRepo."
 }
 
 & (Join-Path $PSScriptRoot 'verify-update-artifacts.ps1') -ExpectedVersion $version
