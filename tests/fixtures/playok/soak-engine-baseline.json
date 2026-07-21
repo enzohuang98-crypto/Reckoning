@@ -5,7 +5,7 @@
   "seed": "playok-ten-game-soak-v1",
   "runKey": "7c32cb43938b39260554eee787719fdfec623fbe53b86e31b10a33d205d690fa",
   "sourceManifest": "tests/fixtures/playok/soak.manifest.json",
-  "sourceManifestSha256": "909d1d7e84e19fce40dc2e10b61788edf60dd2a9e60907d5fede7aa3ffbb4dde",
+  "sourceManifestSha256": "752e15676cde44efd73e26520d961eca3414abedfaa27d816ebab507bc2afef8",
   "analysisConfig": {
     "rootAnalysisMovetimeMs": 1100,
     "userMoveEvalMovetimeMs": 400,

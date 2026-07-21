@@ -113,6 +113,7 @@ interface SoakArtifact {
 
 const fixtureDir = new URL('../../fixtures/playok/', import.meta.url)
 const manifestRaw = readFileSync(new URL('soak.manifest.json', fixtureDir), 'utf8')
+const canonicalManifestRaw = manifestRaw.replace(/\r\n/g, '\n')
 const artifactRaw = readFileSync(
   new URL('soak-engine-baseline.json', fixtureDir),
   'utf8'
@@ -171,7 +172,7 @@ assert.equal(artifact.seed, 'playok-ten-game-soak-v1')
 assert.equal(artifact.sourceManifest, 'tests/fixtures/playok/soak.manifest.json')
 assert.equal(
   artifact.sourceManifestSha256,
-  createHash('sha256').update(manifestRaw).digest('hex')
+  createHash('sha256').update(canonicalManifestRaw).digest('hex')
 )
 assert.deepEqual(artifact.analysisConfig, {
   rootAnalysisMovetimeMs: 1100,

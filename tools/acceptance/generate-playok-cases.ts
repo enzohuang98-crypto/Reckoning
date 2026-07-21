@@ -622,7 +622,10 @@ async function main(): Promise<void> {
   assertEngineFile(options.primary, 'primary')
   assertEngineFile(options.verification, 'verification')
 
-  const manifestBytes = readFileSync(manifestPath)
+  const manifestBytes = Buffer.from(
+    readFileSync(manifestPath, 'utf8').replace(/\r\n/g, '\n'),
+    'utf8'
+  )
   const manifest = JSON.parse(manifestBytes.toString('utf8')) as SourceManifest
   const sources = selectedSources(manifest)
   const parsedSources = parseSources(sources)

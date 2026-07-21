@@ -628,7 +628,10 @@ function loadFixedSuite(fixtureDir: string): LoadedSuite {
 function loadSoakSuite(fixtureDir: string): LoadedSuite {
   const manifestPath = join(fixtureDir, 'soak.manifest.json')
   const baselinePath = join(fixtureDir, 'soak-engine-baseline.json')
-  const manifestBytes = readFileSync(manifestPath)
+  const manifestBytes = Buffer.from(
+    readFileSync(manifestPath, 'utf8').replace(/\r\n/g, '\n'),
+    'utf8'
+  )
   const baselineBytes = readFileSync(baselinePath)
   const manifest = JSON.parse(manifestBytes.toString('utf8')) as SoakManifest
   const baseline = JSON.parse(baselineBytes.toString('utf8')) as SoakEngineArtifact
