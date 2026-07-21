@@ -252,10 +252,10 @@ async function main(): Promise<void> {
   })
 
   await check('一鍵 AI 解說截止時間從明確 AI 點擊起算且不會變成零或負數', () => {
-    assert.equal(ONE_CLICK_EXPLANATION_DEADLINE_MS, 30_000)
-    assert.equal(remainingOneClickDeadlineMs(10_000, 10_000), 30_000)
-    assert.equal(remainingOneClickDeadlineMs(10_000, 34_500), 5_500)
-    assert.equal(remainingOneClickDeadlineMs(10_000, 50_000), 1)
+    assert.equal(ONE_CLICK_EXPLANATION_DEADLINE_MS, 90_000)
+    assert.equal(remainingOneClickDeadlineMs(10_000, 10_000), 90_000)
+    assert.equal(remainingOneClickDeadlineMs(10_000, 94_500), 5_500)
+    assert.equal(remainingOneClickDeadlineMs(10_000, 110_000), 1)
   })
 
   await check('首頁只在右上保留 AI 教練與猜著，局面分析固定在底部', () => {

@@ -86,8 +86,9 @@ for (const source of manifest.sources) {
 
   const fixtureUrl = new URL(source.fixture, fixtureDir)
   const fixture = readFileSync(fixtureUrl)
+  const fixtureWithLf = Buffer.from(fixture.toString('utf8').replace(/\r\n/g, '\n'))
   assert.equal(
-    createHash('sha256').update(fixture).digest('hex'),
+    createHash('sha256').update(fixtureWithLf).digest('hex'),
     source.sha256,
     `${basename(fixtureUrl.pathname)} SHA-256`
   )

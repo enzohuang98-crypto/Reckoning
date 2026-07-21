@@ -1,0 +1,7 @@
+tests/fixtures/playok/*.wxf text eol=lf
+tests/fixtures/playok/*.json text eol=lf
+
+*.ico binary
+*.png binary
+*.exe binary
+*.nnue binary

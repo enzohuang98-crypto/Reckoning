@@ -4,7 +4,7 @@ export const AUTO_INITIAL_ANALYSIS_MAX_MS = 1_100
 export const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 400
 export const LIVE_REFINEMENT_ANALYSIS_MIN_MS = 15_000
 export const ACTUAL_MOVE_ENGINE_DEADLINE_MS = 3_000
-export const ONE_CLICK_EXPLANATION_DEADLINE_MS = 30_000
+export const ONE_CLICK_EXPLANATION_DEADLINE_MS = 90_000
 
 export interface LiveAnalysisScheduleState {
   livePaused: boolean

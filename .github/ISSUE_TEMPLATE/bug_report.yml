@@ -1,0 +1,45 @@
+name: 錯誤回報
+description: 回報可重現的軟體問題
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: 請勿貼上 API Key、授權碼、私鑰或其他敏感資料。
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: App 版本或 commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 問題描述
+      description: 預期結果與實際結果
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      placeholder: |
+        1. 開啟...
+        2. 選擇...
+        3. 出現...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      description: Windows 版本、引擎版本與 AI Provider；請遮蔽所有秘密
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相關紀錄或截圖
+      description: 上傳前請移除 API Key、個人資料與完整本機路徑

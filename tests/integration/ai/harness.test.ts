@@ -877,6 +877,7 @@ async function main(): Promise<void> {
       userLevel: 'intermediate',
       explanationStyle: 'long_analytical',
       language: 'zh-TW',
+      userMoveReason: '先出馬可以讓子力調度更靈活',
       answerMode: 'research',
       conversationHistory: [
         {
@@ -930,6 +931,13 @@ async function main(): Promise<void> {
     provider.prompts[0]?.includes('若兩個引擎的對手首應不同') &&
       provider.prompts[0]?.includes('主線未出現的後續不得寫成已經發生') &&
       provider.prompts[0]?.includes('避免「完全、全面、嚴重、必然」等誇大語氣')
+  )
+  check(
+    '首次比較會把棋手原始想法當成待檢驗自述並使用精簡證據包',
+    provider.prompts[0]?.includes('先出馬可以讓子力調度更靈活') &&
+      provider.prompts[0]?.includes('不可信自述') &&
+      !provider.prompts[0]?.includes('"candidates"') &&
+      !provider.prompts[0]?.includes('"rawScore"')
   )
   check(
     '只有主引擎時，進度與 prompt 不會虛構複核引擎',
@@ -1156,10 +1164,12 @@ async function main(): Promise<void> {
     }
   )
   check(
-    '首輪服務卡住時在內部軟截止後用引擎證據完成，不等外層 30 秒取消',
+    '首輪服務卡住時在內部軟截止後保留引擎主線，不等外層 90 秒取消',
     hangingProvider.calls === 1 &&
       Date.now() - softTimeoutStartedAt < 500 &&
-      softTimeoutResult.warnings.some((warning) => warning.includes('引擎證據版'))
+      softTimeoutResult.warnings.some((warning) =>
+        warning.includes('沒有誤報為引擎證據不足')
+      )
   )
   check(
     '首輪軟截止屬安全收尾，trace 為 completed 且正文仍有完整五段',
@@ -1221,7 +1231,9 @@ async function main(): Promise<void> {
   check(
     '模型服務錯誤會安全收尾但不再誤記成無效 JSON',
     permanentErrorProvider.calls === 1 &&
-      permanentErrorResult.warnings.some((warning) => warning.includes('引擎證據版')) &&
+      permanentErrorResult.warnings.some((warning) =>
+        warning.includes('已保留兩條引擎主線')
+      ) &&
       permanentErrorTraces.at(-1)?.validationErrors.some((error) =>
         error.includes('AI 服務未完成')
       ) &&
@@ -1287,8 +1299,10 @@ async function main(): Promise<void> {
       !rateLimitedProgress.some((event) => event.phase === 'provider_retry')
   )
   check(
-    '429 限流會安全交付完整五段引擎證據版',
-    rateLimitedResult.warnings.some((warning) => warning.includes('引擎證據版')) &&
+    '429 限流會安全交付完整五段引擎主線說明',
+    rateLimitedResult.warnings.some((warning) =>
+      warning.includes('已保留兩條引擎主線')
+    ) &&
       rateLimitedFallbackHeadings.every((heading) =>
         rateLimitedResult.finalText.includes(heading)
       ) &&

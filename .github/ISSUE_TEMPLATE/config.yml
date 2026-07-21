@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私密安全性回報
+    url: https://github.com/enzohuang98-crypto/Reckoning/security/advisories/new
+    about: 請在此私密回報安全弱點，不要公開敏感細節。

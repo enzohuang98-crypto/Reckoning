@@ -1,0 +1,13 @@
+Pikafish engine package
+Version reported by the binary: Pikafish 2026-01-31
+Upstream source: https://github.com/official-pikafish/Pikafish
+Upstream releases: https://github.com/official-pikafish/Pikafish/releases
+
+The bundled Windows binaries and pikafish.nnue are preserved from the
+Pikafish 2026-01-31 distribution supplied for this free, non-commercial app.
+No source modifications were made by the xiangqi-analyzer project.
+
+Pikafish executable code is distributed under GNU GPL version 3. See
+Copying.txt. The NNUE file has separate terms; see the weight license in this
+directory. The Chinese author, introduction, change log, usage and compute
+contributor files from the package are retained here.

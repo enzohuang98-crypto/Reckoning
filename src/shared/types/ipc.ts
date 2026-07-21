@@ -240,6 +240,8 @@ export interface GenerateExplanationStartPayload {
   /** 多輪追問內容；未提供時產生初次長篇解說 */
   followUpQuestion?: string
   attachedMove?: string
+  /** 棋手走這一步時的原始想法；只供教練回應，不是引擎證據 */
+  userMoveReason?: string
   answerMode?: HarnessAnswerMode
   budget?: HarnessBudget
   engineId?: string

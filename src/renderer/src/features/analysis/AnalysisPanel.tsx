@@ -49,6 +49,7 @@ import {
   canScheduleLiveAnalysis,
   isSameAnalysisTarget,
   liveAnalysisRetryDelayMs,
+  ONE_CLICK_EXPLANATION_DEADLINE_MS,
   remainingActualMoveEngineDeadlineMs,
   remainingOneClickDeadlineMs
 } from './liveAnalysis'
@@ -745,6 +746,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       conversationHistory: currentConversation?.messages,
       followUpQuestion: cleanedQuestion ?? undefined,
       attachedMove: analysisMove || undefined,
+      userMoveReason: submittedGuess?.reason,
       answerMode: settings.harnessAnswerMode,
       budget: {
         engineTimeMs: settings.harnessEngineTimeMs,
@@ -779,7 +781,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         setAiCancelling(false)
         setHarnessProgress(null)
         setStreamingText('')
-        setAiError('AI 解說在點擊後 30 秒內未完成，本次已停止。請重試。')
+        setAiError(
+          `AI 解說在點擊後 ${ONE_CLICK_EXPLANATION_DEADLINE_MS / 1000} 秒內未完成，本次已停止。請重試。`
+        )
       }, remainingOneClickDeadlineMs(aiRequestedAt))
     }
   }
