@@ -101,6 +101,10 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: npm run dist:update:github
 
+      - name: Smoke-test installer lifecycle
+        shell: pwsh
+        run: npm run smoke:installer
+
       - name: Verify update artifacts and signature
         shell: pwsh
         env:
