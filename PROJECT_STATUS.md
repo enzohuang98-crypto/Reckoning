@@ -4,10 +4,9 @@
 
 ## 1. 目前狀態
 
-- 目前版本：**v0.3.6**（`package.json`；GitHub Release 發布流程進行中，見下方版本表）
+- 目前版本：**v0.3.6**（`package.json` 與最新 GitHub Release 一致）
 - GitHub：`https://github.com/enzohuang98-crypto/Reckoning`
-- 最新 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.5>（2026-07-21 發布，非 draft、非 prerelease）；
-  v0.3.6 的 tag 與 Release 會在本次 PR 合併後另行建立，建立後這一行會更新為 v0.3.6。
+- 最新 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.6>（2026-07-25 發布，非 draft、非 prerelease）
 - 安裝下載與自動更新的唯一權威來源為本倉庫的 GitHub Releases，流程見
   [`docs/operations/release.md`](docs/operations/release.md) 與
   [`docs/operations/update-channel.md`](docs/operations/update-channel.md)。
@@ -73,7 +72,8 @@ GitHub Advisory Database 對**未變動的 lockfile** 陸續發布新弱點，�
 - `npm run build` 已實跑確認（postcss／vite 有升級）。
 - 稽核腳本的**兩條失敗路徑都實測會擋下**，不是只驗證通過路徑。
 - 已驗證未引入相容性破壞：6 個 minimatch 副本全部 resolve 到相容的 brace-expansion，不相容數 0。
-- **尚未驗證**：`npm run dist` 實際產出 Windows 安裝檔（CI 只跑到 `npm run build`），以及 `release.yml` 新抽出的 `verify:signature` 步驟——後者只有真正執行 Release workflow 時才會跑到。下次發行前應優先確認這兩項。
+- ~~**尚未驗證**：`npm run dist` 實際產出 Windows 安裝檔（CI 只跑到 `npm run build`），以及 `release.yml` 新抽出的 `verify:signature` 步驟——後者只有真正執行 Release workflow 時才會跑到。~~
+  **已於 v0.3.6 發行時補驗證，見 §4.4。**
 
 ## 4. 2026-07-25（下午）：修正新增 API 金鑰卡住視窗（v0.3.6，PR #16）
 
@@ -120,6 +120,13 @@ GitHub Advisory Database 對**未變動的 lockfile** 陸續發布新弱點，�
   `testCredential` 成功／401／逾時測試（`providers.test.ts`，共 71 條斷言）；
   `secretStore.electron.test.ts` 以 `xvfb-run --no-sandbox` 在容器內用真正 Electron
   runtime 驗證 async 簽章與 safeStorage 加解密仍正確。
+- **v0.3.6 Release workflow 全程通過**（run
+  [30177545758](https://github.com/enzohuang98-crypto/Reckoning/actions/runs/30177545758)，
+  15 個步驟全綠）。這一併補上了 §3.4 當時列為「尚未驗證」的兩項：
+  `npm run dist` 已實際在乾淨 Windows runner 產出安裝檔並通過靜默安裝／解除安裝驗收，
+  `release.yml` 抽出的 `verify:signature` 步驟也已首次實跑通過（`allow_unsigned=true` 路徑）。
+- 產出資產：`xiangqi-analyzer-0.3.6-setup.exe`（169,642,942 bytes，
+  sha256 `48dc04d6…c19b8d`）、對應 `.blockmap` 與 `latest.yml`。
 
 ## 5. 發行門檻
 
