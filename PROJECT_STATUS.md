@@ -4,10 +4,10 @@
 
 ## 1. 目前狀態
 
-- 目前版本：**v0.3.5**（`package.json` 與最新 GitHub Release 一致）
+- 目前版本：**v0.3.6**（`package.json`；GitHub Release 發布流程進行中，見下方版本表）
 - GitHub：`https://github.com/enzohuang98-crypto/Reckoning`
-- `main` HEAD：`9f1d134`（`ci: dedupe fake-engine compile step and extract signing verification`）
-- 最新 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.5>（2026-07-21 發布，非 draft、非 prerelease）
+- 最新 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.5>（2026-07-21 發布，非 draft、非 prerelease）；
+  v0.3.6 的 tag 與 Release 會在本次 PR 合併後另行建立，建立後這一行會更新為 v0.3.6。
 - 安裝下載與自動更新的唯一權威來源為本倉庫的 GitHub Releases，流程見
   [`docs/operations/release.md`](docs/operations/release.md) 與
   [`docs/operations/update-channel.md`](docs/operations/update-channel.md)。
@@ -24,8 +24,9 @@
 | v0.3.3 | 2026-07-21 | 修正 NSIS 安裝模式頁在乾淨機器上仍誤判為「升級」 |
 | v0.3.4 | 2026-07-21 | 修正首次設定精靈內容超出視窗時無法捲動到「完成設定」 |
 | v0.3.5 | 2026-07-21 | 明確寫入並回讀 App 專屬安裝／解除安裝登錄；Release 會在乾淨 runner 實跑靜默安裝與解除安裝驗收 |
+| v0.3.6 | 2026-07-25 | 修正新增 API 金鑰時整個視窗卡住無回應（`SecretStore`／`SecureJsonFile` 改用 `node:fs/promises`）；新增金鑰健康檢查（測試金鑰）與逾時保護；分數顯示統一以 `displayText` 為主；App 內部品牌名稱統一 |
 
-## 3. 2026-07-25：相依弱點、CI 整理與文件同步
+## 3. 2026-07-25（上午）：相依弱點、CI 整理與文件同步
 
 本輪不含任何產品功能或棋力邏輯變更，全部集中在建置、稽核與文件。
 
@@ -74,7 +75,53 @@ GitHub Advisory Database 對**未變動的 lockfile** 陸續發布新弱點，�
 - 已驗證未引入相容性破壞：6 個 minimatch 副本全部 resolve 到相容的 brace-expansion，不相容數 0。
 - **尚未驗證**：`npm run dist` 實際產出 Windows 安裝檔（CI 只跑到 `npm run build`），以及 `release.yml` 新抽出的 `verify:signature` 步驟——後者只有真正執行 Release workflow 時才會跑到。下次發行前應優先確認這兩項。
 
-## 4. 發行門檻
+## 4. 2026-07-25（下午）：修正新增 API 金鑰卡住視窗（v0.3.6，PR #16）
+
+使用者實測回報：在設定頁新增 API 金鑰時，整個視窗會失去回應。三個背景研究 agent
+定位根因後修正，範圍刻意收斂在實際造成這個問題的路徑，不擴及其他子系統。
+
+### 4.1 根因與修法
+
+- 根因：`SecretStore` 透過共用工具 `SecureJsonFile` 讀寫 `secrets.enc.json`，其中
+  `writeJsonFileAtomic` 使用 `writeFileSync(..., { flush: true })`（強制 fsync）。
+  這串同步磁碟 I/O 執行在 Electron main process 的訊息迴圈上，會讓整個視窗（不只設定頁）
+  卡住沒有重繪、沒有輸入回應，Windows 上防毒軟體攔截時尤其明顯。
+- 修法：新增 `readJsonFileAsync`／`writeJsonFileAtomicAsync`（`node:fs/promises`），
+  `SecretStore` 全面改為 async，`aiExplanationHandlers.ts` 的 `secret:*` IPC handler 對應改
+  async/await。**刻意不動** `StorageService`（供 engine registry／license／app-data／
+  harness trace 使用）——這些路徑不是這次回報問題的成因，維持原樣以避免無關的大規模重構。
+- 設定頁新增 `secretBusy` 狀態與既有 `withTimeout`（10 秒）逾時保護，儲存／啟用／刪除金鑰
+  與初次狀態讀取皆套用，逾時會顯示明確錯誤而不是無限卡住。
+
+### 4.2 新增金鑰健康檢查
+
+- `AIProvider` 介面新增 `testCredential()`：Anthropic 用 SDK 的 `models.list()`，
+  OpenAI／Gemini／OpenAI-compatible 呼叫對應的 `/models` 端點，不消耗生成 token。
+  新增 `ai:test-credential` IPC 通道與設定頁「測試金鑰」按鈕；草稿金鑰（尚未儲存）測試時
+  只在該次請求使用，不落地。
+- `detectApiKeyProvider` 修正：即使已指定 `preferredProvider`，仍依已知金鑰前綴
+  （`sk-ant-`／`AIza`／`sk-`）做格式檢查，擋下貼錯欄位的金鑰（例如把 Anthropic 金鑰
+  貼進 OpenAI 欄位），而不是等到真正呼叫 API 才發現。
+
+### 4.3 分數顯示與品牌名稱
+
+- `EngineResultSummary`／`GuessModePanel` 主要顯示改為 `score.displayText`
+  （例如 `+1.20`），不再把 `.raw` UCI 字串標成「原始分數」跟它並列造成兩個數字互相矛盾；
+  `scoreRaw`（實際裝著 `displayText`）改名為 `scoreDisplay`，純改名無邏輯變動。
+- App 內部三處品牌名稱（AppShell「象理」／StartupScreen「XIANGQI STUDY DESK」／
+  SetupWizard「XIANGLI」）統一為「象棋 AI 分析講解」，與安裝檔、官網一致；
+  未調整任何版面比例或 CSS 尺寸。
+
+### 4.4 驗證狀態
+
+- PR #16 的 Windows CI（`ci.yml`）已通過（typecheck、完整 `npm test` 含引擎 E2E 與
+  secret-store electron 測試、dependency audit、production build）。
+- 本機 Linux 額外驗證：新增 Anthropic provider 請求形狀測試與四個 provider 的
+  `testCredential` 成功／401／逾時測試（`providers.test.ts`，共 71 條斷言）；
+  `secretStore.electron.test.ts` 以 `xvfb-run --no-sandbox` 在容器內用真正 Electron
+  runtime 驗證 async 簽章與 safeStorage 加解密仍正確。
+
+## 5. 發行門檻
 
 每個可交付版本至少必須完成（詳見 [`docs/operations/release.md`](docs/operations/release.md)）：
 
@@ -90,7 +137,7 @@ npm.cmd run dist
 
 完整 `npm test` 需要 Windows：引擎 E2E 與 secret-store 測試需要先以 `csc.exe` 編譯 `tests/support/FakeEngine.cs`，並需要真正的 Electron runtime。部分測試（`security.test.ts`、`engineRegistry.test.ts`）的斷言使用 `C:\...` 路徑，在非 Windows 環境會失敗，屬預期行為。
 
-## 5. 唯一外部發行阻塞：受信任 Windows 簽章
+## 6. 唯一外部發行阻塞：受信任 Windows 簽章
 
 GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secrets，也沒有受信任 CA 核發的程式碼簽章憑證。沒有它就無法讓 Windows 對公開下載的安裝檔建立可信發行者身分。
 
@@ -100,7 +147,7 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - 不可用自簽憑證宣稱已完成正式簽章，也不可保證 SmartScreen 不警告。
 - 正式公開販售前，必須取得受信任 CA 的 PFX、設定 GitHub secrets，保持 `allow_unsigned=false` 重新封裝，並重新驗證簽章、安裝與自動更新。
 
-## 6. 其他已知產品限制
+## 7. 其他已知產品限制
 
 - 安裝版自 v0.3.2 起內附 Pikafish 執行檔與 NNUE 權重（`resources/engine/`，GPL v3 + 權重授權條款，不受根目錄 MIT License 涵蓋）；乾淨安裝會自動登錄為「Pikafish（內建）」。使用者仍可刪除或改用自備的其他 UCI／UCCI 引擎。
 - 棋譜匯入目前支援 FEN、UCI 著法序列與 PlayOK WXF；**尚未支援 PGN 或中文著法（炮二平五）格式**。
@@ -109,7 +156,7 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - 官方與相容服務的 model id 需在發行前依各服務商目前模型頁重新核對。
 - 建置工具鏈（electron-builder 及其相依）帶有上游尚無安全修法的已知弱點，見 §3.2 第 3 層與 `security-l2.md` 的剩餘風險說明。
 
-## 7. 過往驗證紀錄（v0.3.1 時期，2026-07-16）
+## 8. 過往驗證紀錄（v0.3.1 時期，2026-07-16）
 
 以下為當時保留的實測數據，供回歸比對參考；細節與後續版本差異以 `docs/releases/` 為準。
 
@@ -120,7 +167,7 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - **單一產品引擎**：產品 registry 只有一個 Pikafish 安裝項目，`verificationEngineId=null`，UI 只顯示「主引擎」；只有真的加入第二顆產品引擎才會出現複核相關 UI 與文案。驗收工具自身的 cross-check 是隔離的測試資產，不是使用者安裝的第二顆引擎。
 - **AI 模型選單**：只列出能解密且具有精確憑證的 `provider + model + baseURL` 組合；金鑰不可跨模型或跨端點共用。
 
-## 8. 發布與維護原則
+## 9. 發布與維護原則
 
 - 不可用分數高低代替象棋因果解釋，術語也不能冒充本局證據。
 - 不可平均主引擎與複核引擎分數；分歧時必須保留兩邊證據。
