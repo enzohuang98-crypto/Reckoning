@@ -11,7 +11,7 @@ export interface EngineThoughtEntry {
   selDepth?: number | null
   nodes?: number | null
   nps?: number | null
-  scoreRaw: string | null
+  scoreDisplay: string | null
   displayMove?: string
   displayPrincipalVariation: string[]
   engineRole?: 'primary' | 'verification'
@@ -34,7 +34,7 @@ export function thoughtSignature(entry: EngineThoughtEntry): string {
     entry.phase,
     entry.depth ?? 'none',
     entry.selDepth ?? 'none',
-    entry.scoreRaw ?? 'none',
+    entry.scoreDisplay ?? 'none',
     entry.displayMove ?? 'none',
     entry.engineRole ?? 'primary',
     entry.engineName ?? 'unknown',
@@ -71,7 +71,7 @@ function EngineThoughtRow({
         </b>
         {item.engineName && <span>{item.engineName}</span>}
         <span>深度 {item.depth ?? '—'}</span>
-        <span>分數 {item.scoreRaw ?? '等待分數'}</span>
+        <span>分數 {item.scoreDisplay ?? '等待分數'}</span>
         <span>耗時 {formatElapsedMs(item.elapsedMs)}</span>
         <span>NPS {formatLargeNumber(item.nps) ?? '—'}</span>
         {item.nodes !== undefined && item.nodes !== null && (

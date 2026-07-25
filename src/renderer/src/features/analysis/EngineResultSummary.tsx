@@ -28,7 +28,7 @@ export function EngineResultSummary({ result, compact = false }: Props): JSX.Ele
           <h3>{analysis.displayBestMove ?? '無法辨識最佳著法'}</h3>
         </div>
         <div className="result-metrics">
-          <span>原始分數 <b>{analysis.scoreAfterBestMove?.raw ?? '無'}</b></span>
+          <span>分數 <b>{analysis.scoreAfterBestMove?.displayText ?? '無'}</b></span>
           <span>深度 <b>{analysis.depth ?? '—'}</b></span>
           {analysis.analysisTimeMs !== undefined && (
             <span>耗時 <b>{(analysis.analysisTimeMs / 1000).toFixed(1)}s</b></span>
@@ -80,7 +80,7 @@ export function EngineResultSummary({ result, compact = false }: Props): JSX.Ele
                 <b>{line.displayMove}</b>
                 <span>
                   {line.engineViews
-                    .map((view) => `${view.engineName} ${view.score?.raw ?? '無分數'}`)
+                    .map((view) => `${view.engineName} ${view.score?.displayText ?? '無分數'}`)
                     .join(' · ')}
                 </span>
               </div>
@@ -124,7 +124,7 @@ export function EngineResultSummary({ result, compact = false }: Props): JSX.Ele
                     <span key={view.engineId}>
                       {view.engineName}：
                       {view.rank ? `第 ${view.rank} 候選` : '未列入候選'} ·{' '}
-                      {view.score?.raw ?? '無正式分數'}
+                      {view.score?.displayText ?? '無分數'}
                     </span>
                   ))}
                 </div>
@@ -145,7 +145,7 @@ export function EngineResultSummary({ result, compact = false }: Props): JSX.Ele
             <span className="candidate-rank">{index + 1}</span>
             <div>
               <b>{candidate.displayMove ?? '無法辨識著法'}</b>
-              <span className="candidate-score">原始分數 {candidate.score?.raw ?? '無'}</span>
+              <span className="candidate-score">分數 {candidate.score?.displayText ?? '無'}</span>
               <div className="pv">
                 {(candidate.displayPrincipalVariation ?? []).slice(0, 8).join('、') ||
                   '引擎沒有回傳後續主線'}

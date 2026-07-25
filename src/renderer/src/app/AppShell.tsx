@@ -49,7 +49,7 @@ export function AppShell({
           onClick={() => onTabChange('analyze')}
         >
           <span className="brand-seal" aria-hidden="true">象</span>
-          <b className="app-title">象理</b>
+          <b className="app-title">象棋 AI 分析講解</b>
         </button>
 
         <nav className="app-nav" aria-label="主要功能">

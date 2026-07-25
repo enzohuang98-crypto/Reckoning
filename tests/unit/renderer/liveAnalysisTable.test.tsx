@@ -25,7 +25,7 @@ const thought: EngineThoughtEntry = {
   depth: 18,
   nodes: 1_234_567,
   nps: 987_654,
-  scoreRaw: '+0.42',
+  scoreDisplay: '+0.42',
   displayMove: '炮二平五',
   displayPrincipalVariation: ['炮二平五', '馬8進7', '馬二進三'],
   engineRole: 'primary',
@@ -56,7 +56,7 @@ const result = {
   analysisId: 'analysis-table-test',
   engineAnalysis: {
     displayBestMove: '炮二平五',
-    scoreAfterBestMove: { raw: '+0.42' },
+    scoreAfterBestMove: { raw: 'score cp 42', displayText: '+0.42' },
     depth: 18,
     analysisTimeMs: 1_250,
     warnings: [],
@@ -65,13 +65,13 @@ const result = {
       {
         move: 'b2e2',
         displayMove: '炮二平五',
-        score: { raw: '+0.42' },
+        score: { raw: 'score cp 42', displayText: '+0.42' },
         displayPrincipalVariation: ['炮二平五', '馬8進7', '馬二進三']
       },
       {
         move: 'h2e2',
         displayMove: '炮八平五',
-        score: { raw: '+0.20' },
+        score: { raw: 'score cp 20', displayText: '+0.20' },
         displayPrincipalVariation: ['炮八平五', '馬2進3']
       }
     ]
@@ -90,7 +90,9 @@ const candidateList = compactResult.root.find(
 )
 assert.equal(candidateList.findAllByType('li').length, 2)
 const resultText = renderedText(compactResult)
-assert.match(resultText, /原始分數/)
+assert.match(resultText, /分數 \+0\.42/)
+assert.match(resultText, /分數 \+0\.20/)
+assert.doesNotMatch(resultText, /原始分數/, '主要分數不得再標成「原始分數」')
 assert.match(resultText, /深度/)
 assert.match(resultText, /耗時/)
 assert.match(resultText, /炮二平五/)

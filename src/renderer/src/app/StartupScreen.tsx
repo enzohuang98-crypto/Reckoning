@@ -23,8 +23,8 @@ export function StartupScreen({ phase }: Props): JSX.Element {
       <div className="startup-card">
         <span className="brand-seal large" aria-hidden="true">象</span>
         <div>
-          <span className="eyebrow">XIANGQI STUDY DESK</span>
-          <h1>象理正在啟動</h1>
+          <span className="eyebrow">XIANGQI AI ANALYZER</span>
+          <h1>象棋 AI 分析講解正在啟動</h1>
           <p>{phaseText[phase]}</p>
         </div>
         <div className="startup-progress" aria-hidden="true"><span /></div>

@@ -327,7 +327,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         selDepth: payload.selDepth,
         nodes: payload.nodes,
         nps: payload.nps,
-        scoreRaw: payload.score?.displayText ?? null,
+        scoreDisplay: payload.score?.displayText ?? null,
         displayMove: payload.displayMove,
         displayPrincipalVariation: payload.displayPrincipalVariation,
         engineRole: payload.engineRole,

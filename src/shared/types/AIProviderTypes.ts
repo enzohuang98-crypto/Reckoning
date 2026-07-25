@@ -60,6 +60,12 @@ export type AIExplanationStreamChunk =
       usage?: TokenUsage
     }
 
+/** 輕量金鑰健康檢查結果；不消耗生成 token。 */
+export interface AITestCredentialResult {
+  ok: boolean
+  message: string
+}
+
 /**
  * AI Provider 介面（§2.17.4）。
  * generateExplanationStream 必須接收 AbortSignal 以支援取消；
@@ -80,6 +86,17 @@ export interface AIProvider {
     request: AIExplanationRequest,
     signal: AbortSignal
   ): AsyncIterable<AIExplanationStreamChunk>
+  /**
+   * 輕量金鑰健康檢查：呼叫一個不消耗生成 token 的端點（例如列出可用模型）
+   * 驗證金鑰是否真的能通過驗證，不代表金鑰對應的模型一定可用。
+   * baseUrl 只有 openai-compatible 會用到；timeoutMs 預設為
+   * CREDENTIAL_TEST_TIMEOUT_MS，測試時可傳更短的值避免真的等待逾時。
+   */
+  testCredential(
+    apiKey: string,
+    baseUrl?: string,
+    timeoutMs?: number
+  ): Promise<AITestCredentialResult>
 }
 
 /** 各 Provider 預設模型清單（依 SDS §2.19.2 模型表） */

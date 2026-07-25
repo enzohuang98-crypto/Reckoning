@@ -18,16 +18,21 @@ import type { AppSettings } from '@shared/types/Settings'
 import type {
   EngineTestResult,
   SecretCredentialRef,
-  SecretStatus
+  SecretStatus,
+  TestCredentialResult
 } from '@shared/types/ipc'
 import { LICENSE_GATE_DISABLED } from '../app/productFlags'
-import { AiSettingsSection } from '../features/settings/AiSettingsSection'
+import { AiSettingsSection, credentialValue } from '../features/settings/AiSettingsSection'
 import { EngineSettingsSection } from '../features/settings/EngineSettingsSection'
 import { HarnessSettingsSection } from '../features/settings/HarnessSettingsSection'
 import { SettingsNavigation } from '../features/settings/SettingsNavigation'
 import { SystemSettingsSection } from '../features/settings/SystemSettingsSection'
 import type { SettingsCategory } from '../features/settings/types'
 import { saveSettings } from '../storage/localSettings'
+import { withTimeout } from '../utils/withTimeout'
+
+const SECRET_OPERATION_TIMEOUT_MS = 10_000
+const SECRET_TIMEOUT_MESSAGE = '操作逾時，請確認磁碟權限或重試。'
 
 interface Props {
   settings: AppSettings
@@ -59,6 +64,9 @@ export function SettingsPage({
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
+  const [secretBusy, setSecretBusy] = useState(false)
+  const [testingCredentialKey, setTestingCredentialKey] = useState<string | null>(null)
+  const [testResults, setTestResults] = useState<Record<string, TestCredentialResult>>({})
   const [engineTest, setEngineTest] = useState<EngineTestResult | null>(null)
   const [engineMessage, setEngineMessage] = useState<string | null>(null)
   const [engineRegistry, setEngineRegistry] =
@@ -83,12 +91,18 @@ export function SettingsPage({
 
   useEffect(() => {
     const unsubscribeUpdate = window.api.update.onChanged(setUpdateStatus)
-    window.api.secret
-      .isAvailable()
+    withTimeout(
+      window.api.secret.isAvailable(),
+      SECRET_OPERATION_TIMEOUT_MS,
+      SECRET_TIMEOUT_MESSAGE
+    )
       .then(setEncryptionAvailable)
       .catch(() => setEncryptionAvailable(false))
-    window.api.secret
-      .status()
+    withTimeout(
+      window.api.secret.status(),
+      SECRET_OPERATION_TIMEOUT_MS,
+      SECRET_TIMEOUT_MESSAGE
+    )
       .then(setSecretStatus)
       .catch(() => setOperationError('無法查詢 API Key 狀態。'))
     void refreshEngine()
@@ -136,11 +150,13 @@ export function SettingsPage({
   ): Promise<void> => {
     const key = apiKey.trim()
     if (!key) return
+    setSecretBusy(true)
     try {
-      const result = await window.api.secret.set({
-        ...credential,
-        apiKey: key
-      })
+      const result = await withTimeout(
+        window.api.secret.set({ ...credential, apiKey: key }),
+        SECRET_OPERATION_TIMEOUT_MS,
+        SECRET_TIMEOUT_MESSAGE
+      )
       useCredential(result.status.activeCredential ?? credential)
       setApiKey('')
       setSecretStatus(result.status)
@@ -148,23 +164,38 @@ export function SettingsPage({
         `${PROVIDER_LABEL[credential.provider]} · ${credential.model} 金鑰已安全儲存並設為使用中。`
       )
       setOperationError(null)
-    } catch {
+    } catch (error) {
       setOperationError(
-        '無法安全儲存 API Key。請確認已選正確服務，且金鑰不含換行或控制字元。'
+        error instanceof Error && error.message === SECRET_TIMEOUT_MESSAGE
+          ? error.message
+          : '無法安全儲存 API Key。請確認已選正確服務，且金鑰不含換行或控制字元。'
       )
+    } finally {
+      setSecretBusy(false)
     }
   }
 
   const activateCredential = async (
     credential: SecretCredentialRef
   ): Promise<void> => {
+    setSecretBusy(true)
     try {
-      const result = await window.api.secret.activate(credential)
+      const result = await withTimeout(
+        window.api.secret.activate(credential),
+        SECRET_OPERATION_TIMEOUT_MS,
+        SECRET_TIMEOUT_MESSAGE
+      )
       setSecretStatus(result.status)
       useCredential(credential)
       setOperationError(null)
-    } catch {
-      setOperationError('所選模型的 API Key 不存在或已無法解密。')
+    } catch (error) {
+      setOperationError(
+        error instanceof Error && error.message === SECRET_TIMEOUT_MESSAGE
+          ? error.message
+          : '所選模型的 API Key 不存在或已無法解密。'
+      )
+    } finally {
+      setSecretBusy(false)
     }
   }
 
@@ -177,8 +208,13 @@ export function SettingsPage({
         : {})
     }
   ): Promise<void> => {
+    setSecretBusy(true)
     try {
-      const result = await window.api.secret.delete(credential)
+      const result = await withTimeout(
+        window.api.secret.delete(credential),
+        SECRET_OPERATION_TIMEOUT_MS,
+        SECRET_TIMEOUT_MESSAGE
+      )
       setSecretStatus(result.status)
       const deletedCurrent =
         credential.provider === settings.aiProvider &&
@@ -194,8 +230,45 @@ export function SettingsPage({
         `${PROVIDER_LABEL[credential.provider]} · ${credential.model} 金鑰已從本機刪除；其他模型不受影響。`
       )
       setOperationError(null)
-    } catch {
-      setOperationError('API Key 刪除失敗，請稍後重試。')
+    } catch (error) {
+      setOperationError(
+        error instanceof Error && error.message === SECRET_TIMEOUT_MESSAGE
+          ? error.message
+          : 'API Key 刪除失敗，請稍後重試。'
+      )
+    } finally {
+      setSecretBusy(false)
+    }
+  }
+
+  const testKey = async (
+    credential: SecretCredentialRef,
+    draftApiKey?: string
+  ): Promise<void> => {
+    const key = credentialValue(credential)
+    setTestingCredentialKey(key)
+    try {
+      const result = await withTimeout(
+        window.api.ai.testCredential({
+          provider: credential.provider,
+          model: credential.model,
+          baseUrl: credential.baseUrl,
+          apiKey: draftApiKey?.trim() || undefined
+        }),
+        SECRET_OPERATION_TIMEOUT_MS,
+        '測試逾時，請檢查網路連線後重試。'
+      )
+      setTestResults((previous) => ({ ...previous, [key]: result }))
+    } catch (error) {
+      setTestResults((previous) => ({
+        ...previous,
+        [key]: {
+          ok: false,
+          message: error instanceof Error ? error.message : '測試逾時，請稍後重試。'
+        }
+      }))
+    } finally {
+      setTestingCredentialKey(null)
     }
   }
 
@@ -370,12 +443,18 @@ export function SettingsPage({
               onApiKeyChange={setApiKey}
               secretStatus={secretStatus}
               encryptionAvailable={encryptionAvailable}
+              secretBusy={secretBusy}
+              testingCredentialKey={testingCredentialKey}
+              testResults={testResults}
               onSaveKey={(credential) => void saveKey(credential)}
               onActivateCredential={(credential) =>
                 void activateCredential(credential)
               }
               onUseLocalCredential={useCredential}
               onDeleteKey={(credential) => void deleteKey(credential)}
+              onTestKey={(credential, draftApiKey) =>
+                void testKey(credential, draftApiKey)
+              }
             />
           )}
 

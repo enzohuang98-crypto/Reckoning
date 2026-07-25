@@ -17,7 +17,7 @@ import type {
   EngineScore
 } from './EngineAnalysis'
 import type { MoveComparisonResult } from './MoveComparisonResult'
-import type { AIProviderId, TokenUsage } from './AIProviderTypes'
+import type { AITestCredentialResult, AIProviderId, TokenUsage } from './AIProviderTypes'
 import type { ExplanationLanguage, ExplanationStyle } from './AIExplanationTypes'
 import type { UserLevel } from './Settings'
 import type { LicenseStatus } from './License'
@@ -71,6 +71,7 @@ export const IPC = {
   AI_HARNESS_TRACE_CLEAR: 'ai:harness:trace:clear',
   AI_HARNESS_TRACE_EXPORT: 'ai:harness:trace:export',
   AI_HARNESS_TRACE_FEEDBACK: 'ai:harness:trace:feedback',
+  AI_TEST_CREDENTIAL: 'ai:test-credential',
   // 永久資料與備份
   DATA_LOAD: 'data:load',
   DATA_SAVE: 'data:save',
@@ -282,6 +283,20 @@ export interface GenerateExplanationErrorPayload {
   message: string
 }
 
+/**
+ * 金鑰健康檢查（testCredential）輸入；apiKey 為選填的「草稿」金鑰
+ * ——尚未儲存、只在這次請求中使用、main 不會落地。
+ * 省略 apiKey 時改用 SecretStore 內已儲存的精確憑證。
+ */
+export interface TestCredentialInput {
+  provider: AIProviderId
+  model: string
+  baseUrl?: string
+  apiKey?: string
+}
+
+export type TestCredentialResult = AITestCredentialResult
+
 /* ---------- 永久資料與備份 ---------- */
 
 export type DataLoadResult =
@@ -369,6 +384,8 @@ export interface RendererApi {
     cancelExplanation(requestId: string): void
     /** Harness 停滯等待時，允許繼續加深研究 */
     continueExplanation(requestId: string): void
+    /** 輕量金鑰健康檢查；不消耗生成 token，不落地任何草稿金鑰 */
+    testCredential(input: TestCredentialInput): Promise<TestCredentialResult>
   }
   data: {
     load(): Promise<DataLoadResult>

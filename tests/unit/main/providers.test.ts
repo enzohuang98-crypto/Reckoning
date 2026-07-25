@@ -12,6 +12,7 @@
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { AnthropicProvider } from '../../../src/main/ai/providers/AnthropicProvider'
 import { OpenAIProvider } from '../../../src/main/ai/providers/OpenAIProvider'
 import { OpenAICompatibleProvider } from '../../../src/main/ai/providers/OpenAICompatibleProvider'
 import {
@@ -82,11 +83,25 @@ function startMockServer(
   })
 }
 
+/** 啟動一個永不回應的 server，用來模擬 testCredential 逾時情境 */
+function startHangingServer(): Promise<{ server: Server; port: number }> {
+  const server = createServer(() => {
+    /* 故意不回應，讓呼叫端的 AbortSignal.timeout 觸發 */
+  })
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      const port = typeof address === 'object' && address ? address.port : 0
+      resolve({ server, port })
+    })
+  })
+}
+
 const PROMPT = '【引擎分析數據】引擎最佳著法：h2e2　評估 +0.42（測試 prompt）'
 
 /** §2.17.9 契約：prompt 已由 main process 組裝，request 只帶字串 */
 function explanationRequest(
-  provider: 'openai' | 'gemini' | 'openai-compatible',
+  provider: 'anthropic' | 'openai' | 'gemini' | 'openai-compatible',
   model: string,
   apiKey: string,
   baseUrl?: string
@@ -180,6 +195,63 @@ async function main(): Promise<void> {
       err = e
     }
     check('未知模型丟 UnsupportedModelError', err instanceof UnsupportedModelError)
+  }
+
+  section('AnthropicProvider：請求形狀與成功路徑')
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      {
+        id: 'msg_test',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: '紅方優勢，建議炮二平五。' }],
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 120, output_tokens: 40 }
+      }
+    ])
+    const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const res = await provider.generateExplanation(
+      explanationRequest('anthropic', 'claude-sonnet-4-6', 'sk-ant-test-123')
+    )
+    server.close()
+
+    check('呼叫 /v1/messages', requests[0].url === '/v1/messages', requests[0].url)
+    check('x-api-key 認證 header', requests[0].headers['x-api-key'] === 'sk-ant-test-123')
+    const body = requests[0].body as {
+      model?: string
+      max_tokens?: number
+      messages?: Array<{ role?: string; content?: string }>
+    }
+    check('body.model 正確', body.model === 'claude-sonnet-4-6')
+    check(
+      '單一 user 訊息帶完整 prompt（§2.17.9）',
+      body.messages?.length === 1 &&
+        body.messages[0].role === 'user' &&
+        body.messages[0].content === PROMPT
+    )
+    check('回應文字解析', res.text === '紅方優勢，建議炮二平五。')
+    check('token 用量解析', res.usage?.inputTokens === 120 && res.usage.outputTokens === 40)
+    check('groundedOnEngineData 旗標', res.groundedOnEngineData === true)
+  }
+  {
+    const { server, port } = await startMockServer(() => [
+      401,
+      { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }
+    ])
+    const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    let message = ''
+    try {
+      await provider.generateExplanation(
+        explanationRequest('anthropic', 'claude-sonnet-4-6', 'sk-ant-bad')
+      )
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err)
+    }
+    server.close()
+    check('錯誤含狀態碼', message.includes('401'), message)
   }
 
   section('OpenAI-compatible Provider：遠端與本機服務')
@@ -510,6 +582,198 @@ async function main(): Promise<void> {
     }
     empty.server.close()
     check('空 candidates 拋出明確錯誤', message.includes('沒有文字內容'), message)
+  }
+
+  section('AnthropicProvider：testCredential')
+  {
+    const { server, port } = await startMockServer(() => [
+      200,
+      {
+        data: [
+          {
+            id: 'claude-sonnet-4-6',
+            type: 'model',
+            display_name: 'Claude Sonnet 4.6',
+            created_at: new Date().toISOString()
+          }
+        ],
+        has_more: false,
+        first_id: 'claude-sonnet-4-6',
+        last_id: 'claude-sonnet-4-6'
+      }
+    ])
+    const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('sk-ant-valid')
+    server.close()
+    check('成功時 ok=true', result.ok === true, result)
+  }
+  {
+    const { server, port } = await startMockServer(() => [
+      401,
+      { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }
+    ])
+    const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('sk-ant-bad')
+    server.close()
+    check(
+      '401 時 ok=false 且訊息提及認證失敗',
+      result.ok === false && result.message.includes('認證失敗'),
+      result
+    )
+  }
+  {
+    const { server, port } = await startHangingServer()
+    const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('sk-ant-slow', undefined, 200)
+    server.close()
+    check(
+      '逾時時 ok=false 且訊息提及逾時',
+      result.ok === false && result.message.includes('逾時'),
+      result
+    )
+  }
+
+  section('OpenAIProvider：testCredential')
+  {
+    const { server, port } = await startMockServer(() => [
+      200,
+      { data: [{ id: 'gpt-5.4', object: 'model' }] }
+    ])
+    const provider = new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
+    const result = await provider.testCredential('sk-test-valid')
+    server.close()
+    check('成功時 ok=true', result.ok === true, result)
+  }
+  {
+    const { server, port } = await startMockServer(() => [
+      401,
+      { error: { message: 'Incorrect API key provided' } }
+    ])
+    const provider = new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
+    const result = await provider.testCredential('sk-bad')
+    server.close()
+    check(
+      '401 時 ok=false 且訊息提及認證失敗',
+      result.ok === false && result.message.includes('認證失敗'),
+      result
+    )
+  }
+  {
+    const { server, port } = await startHangingServer()
+    const provider = new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
+    const result = await provider.testCredential('sk-slow', undefined, 200)
+    server.close()
+    check(
+      '逾時時 ok=false 且訊息提及逾時',
+      result.ok === false && result.message.includes('逾時'),
+      result
+    )
+  }
+
+  section('GeminiProvider：testCredential')
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      { models: [{ name: 'models/gemini-3.5-flash' }] }
+    ])
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('AIza-valid')
+    server.close()
+    check('成功時 ok=true', result.ok === true, result)
+    check('x-goog-api-key header', requests[0].headers['x-goog-api-key'] === 'AIza-valid')
+    check('金鑰不在 URL query（§2.11）', !requests[0].url.includes('AIza-valid'))
+  }
+  {
+    const { server, port } = await startMockServer(() => [
+      401,
+      { error: { message: 'API key not valid' } }
+    ])
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('AIza-bad')
+    server.close()
+    check(
+      '401 時 ok=false 且訊息提及認證失敗',
+      result.ok === false && result.message.includes('認證失敗'),
+      result
+    )
+  }
+  {
+    const { server, port } = await startHangingServer()
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('AIza-slow', undefined, 200)
+    server.close()
+    check(
+      '逾時時 ok=false 且訊息提及逾時',
+      result.ok === false && result.message.includes('逾時'),
+      result
+    )
+  }
+
+  section('OpenAICompatibleProvider：testCredential')
+  {
+    const { server, port } = await startMockServer(() => [200, { data: [{ id: 'local-model' }] }])
+    const provider = new OpenAICompatibleProvider()
+    const result = await provider.testCredential(
+      'local-token',
+      `http://127.0.0.1:${port}/v1`
+    )
+    server.close()
+    check('成功時 ok=true', result.ok === true, result)
+  }
+  {
+    const { server, port } = await startMockServer(() => [404, { error: 'not found' }])
+    const provider = new OpenAICompatibleProvider()
+    const result = await provider.testCredential(
+      'some-token',
+      `http://127.0.0.1:${port}/v1`
+    )
+    server.close()
+    check(
+      '404（不支援端點）時明確告知而非假裝成功',
+      result.ok === false && result.message.includes('不支援金鑰測試'),
+      result
+    )
+  }
+  {
+    const { server, port } = await startMockServer(() => [
+      401,
+      { error: { message: 'invalid token' } }
+    ])
+    const provider = new OpenAICompatibleProvider()
+    const result = await provider.testCredential(
+      'bad-token',
+      `http://127.0.0.1:${port}/v1`
+    )
+    server.close()
+    check(
+      '401 時 ok=false 且訊息提及認證失敗',
+      result.ok === false && result.message.includes('認證失敗'),
+      result
+    )
+  }
+  {
+    const { server, port } = await startHangingServer()
+    const provider = new OpenAICompatibleProvider()
+    const result = await provider.testCredential(
+      'slow-token',
+      `http://127.0.0.1:${port}/v1`,
+      200
+    )
+    server.close()
+    check(
+      '逾時時 ok=false 且訊息提及逾時',
+      result.ok === false && result.message.includes('逾時'),
+      result
+    )
+  }
+  {
+    const provider = new OpenAICompatibleProvider()
+    const result = await provider.testCredential('any-token')
+    check(
+      '未設定端點時明確拒絕',
+      result.ok === false && result.message.includes('尚未設定'),
+      result
+    )
   }
 
   console.log(`\n結果：${passed} 通過，${failed} 失敗`)
