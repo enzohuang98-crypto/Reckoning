@@ -29,17 +29,32 @@
 
 ## 2026-06-24 hardening additions
 
-- Dependency baseline: `npm audit --audit-level=moderate` must report 0 vulnerabilities before release.
+- Dependency baseline: `npm run security:audit` (`tools/security/audit-dependencies.mjs`) 分兩層把關，見下方「相依套件弱點政策」。
 - Engine registry hardening: engine paths loaded from existing JSON files are re-normalized with the same rules as new user input; unsafe UNC paths, relative paths, control characters, invalid ids, and malformed capability values are dropped.
 - Packaged engine resolution: production builds no longer search `process.cwd()/resources/engine/pikafish.exe`; cwd fallback is allowed only in development.
 - Backup import hygiene: imported AppData recursively strips secret-like keys such as `apiKey`, `token`, `secret`, `password`, `authorization`, and `licenseKey`.
 - Resource exhaustion guardrails: concurrent engine analysis and AI explanation requests are capped, and in-memory analysis sessions are capped at 100 with oldest-session eviction.
+
+## 相依套件弱點政策
+
+`npm run security:audit` 由 `tools/security/audit-dependencies.mjs` 執行，不再對整棵相依樹一視同仁，而是依「是否會隨 App 散布」分層：
+
+| 層級 | 範圍 | 門檻 |
+| --- | --- | --- |
+| 1 | 執行期相依（`npm audit --omit=dev`），會被打包進使用者安裝的 App | 任何 moderate 以上弱點一律**擋下發行** |
+| 2 | 建置工具相依，且 `npm audit fix` 可在 semver 範圍內安全修復 | 一律**擋下**，要求先套用修復 |
+| 3 | 建置工具相依，且只剩破壞性修法（`fixAvailable` 為 `false` 或 `isSemVerMajor`） | **記錄追蹤**，不擋下 |
+
+第 3 層的存在原因：`electron-builder` 的相依鏈仍使用 `minimatch` 3.x／5.x／9.x，而它們所需的 `brace-expansion` 1.x／2.x 沒有任何 backport 修正版。唯一修好的 `brace-expansion@5.0.8` 把匯出從 `module.exports = expand` 改成 `{ expand }`，強制覆蓋會讓舊 `minimatch` 在含大括號的 glob pattern 上丟 `TypeError: expand is not a function`，直接破壞 `npm run dist` 打包；而 `npm audit fix --force` 的建議是把 `electron-builder` **降版**到 25.x，同樣不可接受。
+
+這個豁免不是永久免死金牌：第 2 層會在上游一釋出可安全套用的修正時立刻要求套用。放寬僅限於「只在開發者與 CI 機器上執行、不隨安裝檔散布」的建置工具，執行期相依維持零容忍。
 
 ## 信任與剩餘風險
 
 - 使用者自行選擇的象棋引擎是受信任的本機可執行檔。本程式會隔離 renderer，但不會沙箱第三方引擎程序；只應使用可信來源與已驗證雜湊的引擎。
 - AI 解說會把棋局與追問送到使用者選定的第三方 Provider。API Key 不會送到 renderer，但第三方服務仍受其隱私條款約束。
 - 本機系統管理員、已入侵的作業系統、鍵盤側錄器與記憶體擷取不在 L2 防護範圍。
+- 建置工具鏈（`electron-builder` 及其相依）目前帶有上游尚無安全修法的已知弱點，詳見「相依套件弱點政策」第 3 層。這些程式只在開發者與 CI 機器上處理本專案自有的設定與檔案，不隨安裝檔散布，也不接受外部攻擊者可控的輸入；但建置環境本身遭入侵仍屬供應鏈風險，不在 L2 涵蓋範圍。
 - 目前個人測試安裝檔未做發行者程式碼簽章。公開散布前必須使用可信憑證簽署安裝檔，並發布 SHA-256 雜湊；這屬於發行供應鏈控制。
 
 ## 驗收與發行檢查

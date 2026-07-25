@@ -87,8 +87,13 @@ src/
 ```
 
 支援目錄依責任分層：`tests/unit|integration|e2e|architecture|security|support`、
-`tools/license|release`、`docs/architecture|operations|specifications|releases`；
+`tools/license|release|security`、`docs/architecture|operations|specifications|releases`；
 封裝圖示位於 `resources/packaging`，`out/` 與 `release/` 才是建置產物。
+
+`npm run security:audit` 走 `tools/security/audit-dependencies.mjs`，對相依弱點分層把關：
+執行期相依（會隨 App 散布）零容忍；建置工具相依若 `npm audit fix` 能安全修復也一律擋下；
+只有「僅剩破壞性修法」的建置工具弱點才記錄追蹤。政策與現況理由見
+`docs/architecture/security-l2.md` 的「相依套件弱點政策」。
 
 ## 核心型別（src/shared/types）
 
