@@ -7,6 +7,7 @@ import type {
 } from '@shared/types/AppData'
 import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import type { AppSettings } from '@shared/types/Settings'
+import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import type { UserGuess } from '@shared/types/UserGuess'
 import { AppShell, type AppTab } from './app/AppShell'
 import { LICENSE_GATE_DISABLED } from './app/productFlags'
@@ -33,6 +34,7 @@ type LicenseState = 'checking' | 'locked' | 'ok'
 export function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<AppTab>('analyze')
   const [analysisCommandMount, setAnalysisCommandMount] = useState<HTMLDivElement | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings())
   const [activeConversation, setActiveConversation] = useState<AIConversation | null>(null)
   const [setupState, setSetupState] = useState<SetupState>(() =>
@@ -62,6 +64,17 @@ export function App(): JSX.Element {
     redo,
     restoreOriginal
   } = useBoardWorkspace()
+
+  // 更新狀態：main 會在啟動後與每隔數小時自動檢查，並以事件廣播結果。
+  // 這裡只負責收下狀態讓 header 能提示；實際下載／安裝仍在設定頁操作。
+  useEffect(() => {
+    const unsubscribe = window.api.update.onChanged(setUpdateStatus)
+    void window.api.update
+      .status()
+      .then(setUpdateStatus)
+      .catch(() => setUpdateStatus(null))
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -280,6 +293,7 @@ export function App(): JSX.Element {
     <AppShell
       activeTab={activeTab}
       onTabChange={setActiveTab}
+      updateStatus={updateStatus}
       dataError={dataError}
       dataRecoveryRequired={dataRecoveryRequired}
       dataRecoveryBusy={dataRecoveryBusy}

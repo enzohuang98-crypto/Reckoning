@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import { Icon, type IconName } from '../components/ui/Icon'
 
 export type AppTab = 'analyze' | 'settings' | 'mistakes' | 'misunderstood'
@@ -16,9 +17,32 @@ const navigation: NavigationItem[] = [
   { id: 'settings', label: '設定', icon: 'settings' }
 ]
 
+/**
+ * 只有「有新版可下載」與「已下載待安裝」需要主動提示；其餘狀態
+ * （檢查中、已是最新、錯誤）留在設定頁即可，不打擾使用者。
+ */
+function updatePrompt(
+  status: AppUpdateStatus | null
+): { label: string; title: string } | null {
+  if (status?.phase === 'available') {
+    return {
+      label: `有新版 ${status.availableVersion ?? ''}`.trim(),
+      title: `${status.message} 點此前往設定頁下載。`
+    }
+  }
+  if (status?.phase === 'downloaded') {
+    return {
+      label: '更新待安裝',
+      title: `${status.message} 點此前往設定頁安裝。`
+    }
+  }
+  return null
+}
+
 interface Props {
   activeTab: AppTab
   onTabChange: (tab: AppTab) => void
+  updateStatus: AppUpdateStatus | null
   dataError: string | null
   dataRecoveryRequired: boolean
   dataRecoveryBusy: boolean
@@ -31,6 +55,7 @@ interface Props {
 export function AppShell({
   activeTab,
   onTabChange,
+  updateStatus,
   dataError,
   dataRecoveryRequired,
   dataRecoveryBusy,
@@ -39,6 +64,7 @@ export function AppShell({
   onAnalysisCommandMountChange,
   children
 }: Props): JSX.Element {
+  const prompt = updatePrompt(updateStatus)
   return (
     <div className="app">
       <header className="app-header">
@@ -68,6 +94,18 @@ export function AppShell({
             </button>
           ))}
         </nav>
+
+        {prompt && activeTab !== 'settings' && (
+          <button
+            type="button"
+            className="app-update-chip"
+            title={prompt.title}
+            onClick={() => onTabChange('settings')}
+          >
+            <span className="app-update-dot" aria-hidden="true" />
+            {prompt.label}
+          </button>
+        )}
 
         {activeTab === 'analyze' && (
           <div

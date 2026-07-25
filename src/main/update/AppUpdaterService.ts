@@ -11,6 +11,14 @@ import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
 
+/** 啟動後第一次檢查的延遲；讓視窗先完成初始渲染。 */
+const FIRST_CHECK_DELAY_MS = 5_000
+/**
+ * 之後每隔多久重新檢查一次。先前只在啟動後檢查一次，長時間開著不關的
+ * App 永遠不會發現後來發布的版本。
+ */
+const RECHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+
 function getAutoUpdater(): AppUpdater {
   const { autoUpdater } = electronUpdater
   return autoUpdater
@@ -116,12 +124,23 @@ export class AppUpdaterService {
 
   startAutomaticCheck(): void {
     if (!this.configured) return
-    const timer = setTimeout(() => void this.check(), 5_000)
-    timer.unref()
+    const firstCheck = setTimeout(() => void this.check(), FIRST_CHECK_DELAY_MS)
+    firstCheck.unref()
+    const recheck = setInterval(() => void this.check(), RECHECK_INTERVAL_MS)
+    recheck.unref()
   }
 
   private async check(): Promise<void> {
-    if (!this.configured || this.status.phase === 'checking') return
+    if (!this.configured) return
+    // 已在檢查／下載中，或已下載待安裝時不得重跑：重跑會把 downloaded
+    // 狀態蓋回 available，使用者剛下載好的更新按鈕會憑空消失。
+    if (
+      this.status.phase === 'checking' ||
+      this.status.phase === 'downloading' ||
+      this.status.phase === 'downloaded'
+    ) {
+      return
+    }
     try {
       await this.updater.checkForUpdates()
     } catch (error) {
