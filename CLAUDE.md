@@ -21,6 +21,9 @@
   使用者仍可另外指定自備的 UCI/UCCI 引擎。
 - 自動更新：`electron-updater`（`AppUpdaterService`）從 GitHub Releases
   （`enzohuang98-crypto/Reckoning`）取得更新，只在已封裝的 Windows 版啟用；
+  啟動後 5 秒首次檢查，之後每 4 小時重新檢查一次。**只自動偵測與提示，
+  不自動下載**（`autoDownload = false`）；有新版時由 `AppShell` 在標題列顯示提示，
+  實際下載與安裝一律由使用者在設定頁按鈕決定。
   細節見 `docs/operations/update-channel.md` 與 `docs/operations/release.md`。
 
 ## 啟動指令
@@ -91,7 +94,8 @@ src/
       ModelRegistry.ts       #   官方 Provider 模型 id 查詢入口
       HarnessOrchestrator.ts #   AI 解釋品質迴圈（見下方專節）；main/ai 中最大的檔案
       promptBuilder.ts       #   由引擎資料組 prompt（內含護欄規則；禁用 EngineScore.raw）
-      http.ts                #   Provider 共用的串流讀取／大小上限／錯誤遮蔽 fetch 包裝
+      http.ts                #   Provider 共用的串流讀取／大小上限／錯誤遮蔽 fetch 包裝；
+                             #   另含 testCredential 的共用逾時與錯誤分類
       providers/
         AnthropicProvider.ts       # @anthropic-ai/sdk；真 SSE streaming
         OpenAIProvider.ts          # 內建 fetch；包裝成單一 text_delta + done
@@ -106,12 +110,12 @@ src/
       RendererPath.ts        #   打包後 renderer 靜態檔路徑解析
     storage/
       StorageService.ts      #   一般 JSON 檔讀寫（userData）
-      SecureJsonFile.ts      #   原子寫入＋大小限制的共用 JSON 檔工具
-      SecretStore.ts         #   safeStorage 加密金鑰，獨立檔 secrets.enc.json
+      SecureJsonFile.ts      #   原子寫入＋大小限制的共用 JSON 檔工具（同步版 + async 版）
+      SecretStore.ts         #   safeStorage 加密金鑰，獨立檔 secrets.enc.json；全非同步（見原則 §9）
       AnalysisSessionStore.ts#   短期分析快取（in-memory + TTL 2h + 定時清理）
       HarnessTraceStore.ts   #   Harness trace 本機限量保存，可匯出回歸案例
     update/
-      AppUpdaterService.ts   #   electron-updater 包裝；只在已封裝 Windows 版啟用
+      AppUpdaterService.ts   #   electron-updater 包裝；只在已封裝 Windows 版啟用；定期重檢查
     startup/
       StartupFailurePage.ts  #   啟動失敗時顯示的最小內嵌錯誤頁
     ipc/
@@ -168,8 +172,10 @@ src/
 - `AIExplanationRequest`（§2.17.9：provider/model/apiKey/prompt/metadata，只存在 main）
   / `AIExplanationResponse`（含 `groundedOnEngineData` 護欄旗標）
 - `MistakeBookEntry` / `UserGuess`
-- `AIProvider` 介面（單次 + `generateExplanationStream`）+ `AIProviderId`
-  （`anthropic` / `openai` / `gemini` / `openai-compatible`）
+- `AIProvider` 介面（單次 + `generateExplanationStream` + `testCredential`）+ `AIProviderId`
+  （`anthropic` / `openai` / `gemini` / `openai-compatible`）；
+  `testCredential(apiKey, baseUrl?, timeoutMs?)` 是輕量金鑰健康檢查，呼叫各服務的
+  「列出模型」端點，**不消耗生成 token**，回傳 `AITestCredentialResult`
 - `DualEngine.ts`：`DualEngineComparison`、候選線與逐手盤面事實（雙引擎分歧比較）
 - `Harness.ts`：`HarnessAnswer` / `HarnessSectionId` / `HarnessEvidence` / `HarnessClaim` /
   `CausalChain` 等 AI 解釋品質迴圈的內部契約
@@ -186,7 +192,11 @@ src/
    prompt（`promptBuilder.ts`）明確禁止模型發明不在引擎資料中的戰術，
    且只能用 score.displayText / comparableValue / mateIn，禁用 raw（§2.15.5）。
 2. **金鑰安全**：API 金鑰只走 `SecretStore`（safeStorage 加密，獨立檔），
-   **絕不**寫入 `localStorage` 一般設定；renderer 只能 set/has/delete，永遠讀不回明文。
+   **絕不**寫入 `localStorage` 一般設定；renderer 只能 set/has/delete/test，永遠讀不回明文。
+   `ai:test-credential` 可測試「尚未儲存的草稿金鑰」，該金鑰只在那一次請求中使用、不落地；
+   回傳只有 `{ ok, message }`，不得回送金鑰本身或服務回應原文。
+   `detectApiKeyProvider` 即使收到 `preferredProvider` 也必須做前綴格式檢查，
+   否則任何非空字串都會被存成「已設定」。
 3. **Pikafish 是本機 UCI 引擎**，不是雲端 API；文件與命名都依此。
 4. **錯誤分級用 SDS §2.13 半開區間 [a, b)**（單位＝兵/卒，scoreDifference =
    evalBest − evalUser，皆為原局面行棋方視角）：
@@ -206,7 +216,14 @@ src/
    query 或 fragment。加密金鑰綁定使用者儲存當下確認的 Base URL，換網址必須
    重新確認並儲存，避免 renderer 遭入侵時把既有金鑰轉送到其他端點。本機
    loopback 服務可以不填金鑰；遠端服務一律要求單一加密金鑰欄位。
-9. **內建引擎仍是本機二進位**：`resources/engine/` 隨附的 Pikafish 只是「預先放好
+9. **main process 絕不可做同步阻塞 I/O**：main 與瀏覽器視窗共用同一條訊息迴圈執行緒，
+   任何同步磁碟 I/O（尤其 `writeFileSync(..., { flush: true })` 這種強制 fsync）都會讓
+   **整個視窗**失去回應，不只是觸發它的那一頁。使用者互動路徑上的儲存一律走
+   `readJsonFileAsync` / `writeJsonFileAtomicAsync`（`SecretStore` 已全面改為 async）。
+   對應的 `ipcMain.handle` callback 必須是 async 並 `await`；renderer 端則以
+   `withTimeout` 包住，逾時要顯示錯誤而不是無限等待。
+   （`StorageService` 目前仍是同步版，只用於啟動期與非互動路徑；若要挪到互動路徑必須先改 async。）
+10. **內建引擎仍是本機二進位**：`resources/engine/` 隨附的 Pikafish 只是「預先放好
    的本機安裝」，不是雲端服務；`EngineRegistryService` 只在登錄為空時自動加入一次，
    使用者可以刪除、換成別的路徑或新增第二顆引擎，行為與使用者手動指定完全相同。
 
@@ -358,6 +375,20 @@ re-validate 的品質迴圈（`HarnessOrchestrator.runExplanationHarness`）：
   `regressionCases`（`HarnessTraceStore.listRegressionCases`，自包含 finalText +
   availableMoves）；貼入 `tests/fixtures/harness-regression-cases.json` 即成回歸案例，
   由 `screenExplanationText`（評分器的文字級子集）在 CI 擋下同類問題。
+
+- Stage 10：金鑰儲存不阻塞 UI、金鑰健康檢查、自動更新可見性（v0.3.6、v0.3.7）。
+  - **`SecretStore` 全面 async**：`SecureJsonFile` 新增 `readJsonFileAsync` /
+    `writeJsonFileAtomicAsync`（`node:fs/promises`）。原本的同步 fsync 寫入在 main
+    的訊息迴圈上執行，儲存金鑰時會凍結整個視窗（見設計原則 §9）。
+  - **`testCredential`**：`AIProvider` 介面新增；各 provider 呼叫自己的「列出模型」端點
+    （Anthropic 用 SDK `models.list()`，其餘走 `/models`），共用
+    `CREDENTIAL_TEST_TIMEOUT_MS` 與 `describeCredentialTestError`。
+    OpenAI-compatible 對 404 明確回報「此服務不支援金鑰測試」而不是假裝成功。
+  - **分數顯示**：UI 主要顯示一律用 `score.displayText`；`EngineScore.raw` 只留給
+    除錯與查核，不再與 displayText 並列展示（避免同一分數出現兩種字串）。
+  - **更新可見性**：`AppShell` 在 `available` / `downloaded` 時於標題列提示；
+    `AppUpdaterService` 由「啟動後檢查一次」改為每 4 小時重檢查，並防止重檢查
+    覆蓋已下載狀態。
 
 ## 尚未完成 / 後續
 

@@ -4,10 +4,9 @@
 
 ## 1. 目前狀態
 
-- 目前版本：**v0.3.6**（`package.json`；GitHub Release 發布流程進行中，見下方版本表）
+- 目前版本：**v0.3.7**（`package.json` 與最新 GitHub Release 一致）
 - GitHub：`https://github.com/enzohuang98-crypto/Reckoning`
-- 最新 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.5>（2026-07-21 發布，非 draft、非 prerelease）；
-  v0.3.6 的 tag 與 Release 會在本次 PR 合併後另行建立，建立後這一行會更新為 v0.3.6。
+- 最新 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.7>（2026-07-25 發布，非 draft、非 prerelease）
 - 安裝下載與自動更新的唯一權威來源為本倉庫的 GitHub Releases，流程見
   [`docs/operations/release.md`](docs/operations/release.md) 與
   [`docs/operations/update-channel.md`](docs/operations/update-channel.md)。
@@ -25,6 +24,7 @@
 | v0.3.4 | 2026-07-21 | 修正首次設定精靈內容超出視窗時無法捲動到「完成設定」 |
 | v0.3.5 | 2026-07-21 | 明確寫入並回讀 App 專屬安裝／解除安裝登錄；Release 會在乾淨 runner 實跑靜默安裝與解除安裝驗收 |
 | v0.3.6 | 2026-07-25 | 修正新增 API 金鑰時整個視窗卡住無回應（`SecretStore`／`SecureJsonFile` 改用 `node:fs/promises`）；新增金鑰健康檢查（測試金鑰）與逾時保護；分數顯示統一以 `displayText` 為主；App 內部品牌名稱統一 |
+| v0.3.7 | 2026-07-25 | 修正桌面 App 實質上不會自動更新：有新版時標題列會主動提示（先前只藏在設定頁內），並改為每 4 小時重新檢查（先前只在啟動後檢查一次） |
 
 ## 3. 2026-07-25（上午）：相依弱點、CI 整理與文件同步
 
@@ -73,7 +73,8 @@ GitHub Advisory Database 對**未變動的 lockfile** 陸續發布新弱點，�
 - `npm run build` 已實跑確認（postcss／vite 有升級）。
 - 稽核腳本的**兩條失敗路徑都實測會擋下**，不是只驗證通過路徑。
 - 已驗證未引入相容性破壞：6 個 minimatch 副本全部 resolve 到相容的 brace-expansion，不相容數 0。
-- **尚未驗證**：`npm run dist` 實際產出 Windows 安裝檔（CI 只跑到 `npm run build`），以及 `release.yml` 新抽出的 `verify:signature` 步驟——後者只有真正執行 Release workflow 時才會跑到。下次發行前應優先確認這兩項。
+- ~~**尚未驗證**：`npm run dist` 實際產出 Windows 安裝檔（CI 只跑到 `npm run build`），以及 `release.yml` 新抽出的 `verify:signature` 步驟——後者只有真正執行 Release workflow 時才會跑到。~~
+  **已於 v0.3.6 發行時補驗證，見 §4.4。**
 
 ## 4. 2026-07-25（下午）：修正新增 API 金鑰卡住視窗（v0.3.6，PR #16）
 
@@ -120,8 +121,44 @@ GitHub Advisory Database 對**未變動的 lockfile** 陸續發布新弱點，�
   `testCredential` 成功／401／逾時測試（`providers.test.ts`，共 71 條斷言）；
   `secretStore.electron.test.ts` 以 `xvfb-run --no-sandbox` 在容器內用真正 Electron
   runtime 驗證 async 簽章與 safeStorage 加解密仍正確。
+- **v0.3.6 Release workflow 全程通過**（run
+  [30177545758](https://github.com/enzohuang98-crypto/Reckoning/actions/runs/30177545758)，
+  15 個步驟全綠）。這一併補上了 §3.4 當時列為「尚未驗證」的兩項：
+  `npm run dist` 已實際在乾淨 Windows runner 產出安裝檔並通過靜默安裝／解除安裝驗收，
+  `release.yml` 抽出的 `verify:signature` 步驟也已首次實跑通過（`allow_unsigned=true` 路徑）。
+- 產出資產：`xiangqi-analyzer-0.3.6-setup.exe`（169,642,942 bytes，
+  sha256 `48dc04d6…c19b8d`）、對應 `.blockmap` 與 `latest.yml`。
 
-## 5. 發行門檻
+## 5. 2026-07-25（晚間）：修正自動更新實質不可見（v0.3.7）
+
+使用者回報「已經發布 v0.3.6，但桌面 App 沒有自動更新」。實測後確認更新來源與
+`electron-updater` 串接都是好的，問題出在兩個獨立缺陷：
+
+### 5.1 根因
+
+- **提示看不到**：`updateStatus` 在 renderer 只被 `SystemSettingsSection` 使用，
+  AppShell、主畫面、標題列都沒有任何指示。偵測到新版後只會靜靜改變設定頁裡的一段文字，
+  使用者不主動點進「設定 → 系統」就永遠不知道，體感等同沒有自動更新。
+- **只檢查一次**：`startAutomaticCheck()` 是單發 `setTimeout(5 秒)`，沒有 interval。
+  習慣讓 App 一直開著的使用者，在該次啟動之後發布的任何版本都不會被發現。
+
+### 5.2 修法
+
+- 標題列在 `phase` 為 `available` 或 `downloaded` 時顯示提示，點擊切到設定頁；
+  其餘狀態（含 `checking`／`not-available`／`error`）不打擾使用者，**沒有新版時完全不渲染**。
+- 首次檢查後改為每 4 小時再檢查一次（`RECHECK_INTERVAL_MS`）。
+- `check()` 加上防護：`checking`／`downloading`／`downloaded` 期間不重跑，
+  否則背景重新檢查會把已下載狀態蓋回 `available`，使用者剛下載好的安裝按鈕會消失。
+- 自動下載仍**刻意維持關閉**（`autoDownload = false`）：只自動偵測與提示，
+  下載與安裝一律由使用者按鈕決定。
+
+### 5.3 版面影響
+
+標題列提示為 `flex: 0 0 auto`，不與分析工具列掛載點（`.analysis-command-mount`，
+維持唯一的 `flex: 1`）搶伸縮空間，且只在有新版時存在，因此不影響已驗收的分析頁比例。
+新增 `tests/unit/renderer/updatePrompt.test.tsx`（15 條斷言）鎖定這兩點與各 phase 的顯示規則。
+
+## 6. 發行門檻
 
 每個可交付版本至少必須完成（詳見 [`docs/operations/release.md`](docs/operations/release.md)）：
 
@@ -137,7 +174,7 @@ npm.cmd run dist
 
 完整 `npm test` 需要 Windows：引擎 E2E 與 secret-store 測試需要先以 `csc.exe` 編譯 `tests/support/FakeEngine.cs`，並需要真正的 Electron runtime。部分測試（`security.test.ts`、`engineRegistry.test.ts`）的斷言使用 `C:\...` 路徑，在非 Windows 環境會失敗，屬預期行為。
 
-## 6. 唯一外部發行阻塞：受信任 Windows 簽章
+## 7. 唯一外部發行阻塞：受信任 Windows 簽章
 
 GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secrets，也沒有受信任 CA 核發的程式碼簽章憑證。沒有它就無法讓 Windows 對公開下載的安裝檔建立可信發行者身分。
 
@@ -147,7 +184,7 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - 不可用自簽憑證宣稱已完成正式簽章，也不可保證 SmartScreen 不警告。
 - 正式公開販售前，必須取得受信任 CA 的 PFX、設定 GitHub secrets，保持 `allow_unsigned=false` 重新封裝，並重新驗證簽章、安裝與自動更新。
 
-## 7. 其他已知產品限制
+## 8. 其他已知產品限制
 
 - 安裝版自 v0.3.2 起內附 Pikafish 執行檔與 NNUE 權重（`resources/engine/`，GPL v3 + 權重授權條款，不受根目錄 MIT License 涵蓋）；乾淨安裝會自動登錄為「Pikafish（內建）」。使用者仍可刪除或改用自備的其他 UCI／UCCI 引擎。
 - 棋譜匯入目前支援 FEN、UCI 著法序列與 PlayOK WXF；**尚未支援 PGN 或中文著法（炮二平五）格式**。
@@ -156,7 +193,7 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - 官方與相容服務的 model id 需在發行前依各服務商目前模型頁重新核對。
 - 建置工具鏈（electron-builder 及其相依）帶有上游尚無安全修法的已知弱點，見 §3.2 第 3 層與 `security-l2.md` 的剩餘風險說明。
 
-## 8. 過往驗證紀錄（v0.3.1 時期，2026-07-16）
+## 9. 過往驗證紀錄（v0.3.1 時期，2026-07-16）
 
 以下為當時保留的實測數據，供回歸比對參考；細節與後續版本差異以 `docs/releases/` 為準。
 
@@ -167,7 +204,7 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - **單一產品引擎**：產品 registry 只有一個 Pikafish 安裝項目，`verificationEngineId=null`，UI 只顯示「主引擎」；只有真的加入第二顆產品引擎才會出現複核相關 UI 與文案。驗收工具自身的 cross-check 是隔離的測試資產，不是使用者安裝的第二顆引擎。
 - **AI 模型選單**：只列出能解密且具有精確憑證的 `provider + model + baseURL` 組合；金鑰不可跨模型或跨端點共用。
 
-## 9. 發布與維護原則
+## 10. 發布與維護原則
 
 - 不可用分數高低代替象棋因果解釋，術語也不能冒充本局證據。
 - 不可平均主引擎與複核引擎分數；分歧時必須保留兩邊證據。

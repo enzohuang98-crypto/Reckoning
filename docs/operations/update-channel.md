@@ -21,6 +21,21 @@ GitHub Release 是安裝下載與自動更新的同一個權威來源，不再�
 
 `dist:update:github` 會把固定的 GitHub owner/repository 寫入安裝版。`publish:update:github` 只供既有 Release 的人工修復流程使用，會重新驗證本機產物後，以 `gh release upload --clobber` 更新該版本的三項資產。
 
+## 安裝版端的行為（`AppUpdaterService`）
+
+只有 `app.isPackaged` 且平台為 Windows 且找得到打包時產生的 `app-update.yml` 才會啟用；
+其餘情況狀態為 `unsupported` / `unconfigured`，不會嘗試連線。
+
+- **檢查時機**：啟動後 5 秒首次檢查，之後每 4 小時再檢查一次。
+  （v0.3.7 之前只在啟動後檢查一次，長時間不關的 App 永遠不會發現後來發布的版本。）
+- **不自動下載**：`autoDownload = false`。程式只負責偵測並提示，下載與安裝一律由使用者按下按鈕。
+  `autoInstallOnAppQuit = true`，所以已下載的更新會在使用者關閉 App 時套用。
+- **提示位置**：狀態為 `available`（有新版可下載）或 `downloaded`（已下載待安裝）時，
+  `AppShell` 會在標題列顯示提示，點擊切換到設定頁完成操作；其餘狀態只在「設定 → 系統」顯示。
+  v0.3.7 之前沒有這個提示，更新資訊只存在於設定頁內，使用者不主動查看就不會知道。
+- **重檢查防護**：`checking` / `downloading` / `downloaded` 期間不會重跑檢查，
+  避免把已下載狀態蓋回 `available`，使 UI 上的安裝按鈕消失。
+
 ## 必要限制
 
 - 每次發行都必須升版號；相同版本不會觸發更新。

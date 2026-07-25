@@ -105,6 +105,41 @@
   box-shadow: var(--shadow-xs), 0 4px 12px rgba(44, 72, 58, 0.07);
 }
 
+/*
+ * 只在有新版可下載／待安裝時才渲染，因此平常完全不佔空間。
+ * flex: 0 0 auto 確保它不與 .analysis-command-mount 的 flex: 1 搶伸縮，
+ * 工具列仍靠右對齊、既有比例不變。
+ */
+.app-update-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d8c69b;
+  border-radius: 999px;
+  color: #7c5521;
+  background: #fff6e5;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.app-update-chip:hover {
+  border-color: #c3ab77;
+  background: #fdf0d8;
+}
+
+.app-update-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #c2892f;
+}
+
 .analysis-command-mount {
   display: flex;
   min-width: 0;
