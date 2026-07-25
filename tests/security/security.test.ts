@@ -359,6 +359,14 @@ const installerSmokeScript = readFileSync(
 )
 const ciWorkflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
 const releaseWorkflow = readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+const compileFakeEngineAction = readFileSync(
+  resolve('.github/actions/compile-fake-engine/action.yml'),
+  'utf8'
+)
+const verifySignatureScript = readFileSync(
+  resolve('tools/release/verify-signature.ps1'),
+  'utf8'
+)
 const rendererHtml = readFileSync(resolve('src/renderer/index.html'), 'utf8')
 check(
   'Production renderer protocol avoids blocked file net.fetch',
@@ -465,7 +473,8 @@ check(
   'CI 會編譯假引擎並執行完整品質門檻',
   ciWorkflow.includes('actions/checkout@v7') &&
     ciWorkflow.includes('actions/setup-node@v7') &&
-    ciWorkflow.includes('tests\\support\\fake-engine.exe') &&
+    ciWorkflow.includes('uses: ./.github/actions/compile-fake-engine') &&
+    compileFakeEngineAction.includes('tests\\support\\fake-engine.exe') &&
     ciWorkflow.includes('npm run typecheck') &&
     ciWorkflow.includes('npm test') &&
     ciWorkflow.includes('npm run security:audit') &&
@@ -475,12 +484,14 @@ check(
   'Release workflow 預設拒絕缺少受信任憑證的未簽章發行',
   releaseWorkflow.includes('actions/checkout@v7') &&
     releaseWorkflow.includes('actions/setup-node@v7') &&
+    releaseWorkflow.includes('uses: ./.github/actions/compile-fake-engine') &&
     releaseWorkflow.includes('WINDOWS_CSC_LINK') &&
     releaseWorkflow.includes('allow_unsigned') &&
-    releaseWorkflow.includes('signtool.exe') &&
-    releaseWorkflow.includes('No signature found') &&
-    releaseWorkflow.includes('$verifyExitCode -ne 0') &&
-    releaseWorkflow.includes('$global:LASTEXITCODE = 0')
+    releaseWorkflow.includes('npm run verify:signature') &&
+    verifySignatureScript.includes('signtool.exe') &&
+    verifySignatureScript.includes('No signature found') &&
+    verifySignatureScript.includes('$verifyExitCode -ne 0') &&
+    verifySignatureScript.includes('$global:LASTEXITCODE = 0')
 )
 
 console.log(`結果：${passed} 通過，${failed} 失敗`)

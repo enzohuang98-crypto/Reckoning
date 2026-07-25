@@ -60,16 +60,7 @@ jobs:
         run: npm ci
 
       - name: Compile the test engine
-        shell: pwsh
-        run: |
-          $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
-            throw "Required C# compiler was not found: $compiler"
-          }
-          & $compiler /nologo /out:tests\support\fake-engine.exe tests\support\FakeEngine.cs
-          if ($LASTEXITCODE -ne 0) {
-            throw "Fake engine compilation failed with exit code $LASTEXITCODE."
-          }
+        uses: ./.github/actions/compile-fake-engine
 
       - name: Typecheck
         run: npm run typecheck
@@ -105,43 +96,15 @@ jobs:
         shell: pwsh
         run: npm run smoke:installer
 
-      - name: Verify update artifacts and signature
+      - name: Verify update artifacts
+        shell: pwsh
+        run: npm run verify:update
+
+      - name: Verify Windows Authenticode signature
         shell: pwsh
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-        run: |
-          npm run verify:update
-          $version = (Get-Content -Raw -Encoding UTF8 package.json | ConvertFrom-Json).version
-          $setup = "release/xiangqi-analyzer-$version-setup.exe"
-          $hasSigningCertificate = -not [string]::IsNullOrWhiteSpace($env:CSC_LINK)
-          $kitsRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
-          $signtool = Get-ChildItem -LiteralPath $kitsRoot -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1
-          if (-not $signtool) {
-            throw "Windows SDK signtool.exe was not found under $kitsRoot."
-          }
-          $verifyOutput = @(& $signtool.FullName verify /pa $setup 2>&1)
-          $verifyExitCode = $LASTEXITCODE
-          $verifyText = $verifyOutput -join "`n"
-          if ($hasSigningCertificate -and $verifyExitCode -ne 0) {
-            throw "Signed release verification failed: $verifyText"
-          }
-          if (-not $hasSigningCertificate) {
-            if ($verifyExitCode -eq 0) {
-              throw 'Release was signed even though no signing certificate was configured.'
-            }
-            if ($verifyText -notmatch 'No signature found') {
-              throw "Unexpected unsigned release verification failure: $verifyText"
-            }
-            Write-Host 'Authenticode status: NotSigned (explicitly allowed for this release).'
-          } else {
-            Write-Host 'Authenticode status: Valid.'
-          }
-          # An accepted unsigned verification intentionally returns signtool exit code 1.
-          # Reset it so pwsh does not report a failed step after the policy checks passed.
-          $global:LASTEXITCODE = 0
+        run: npm run verify:signature
 
       - name: Create GitHub Release
         shell: pwsh

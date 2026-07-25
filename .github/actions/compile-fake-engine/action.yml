@@ -1,0 +1,20 @@
+name: Compile fake engine
+description: >
+  Compiles tests/support/FakeEngine.cs into tests/support/fake-engine.exe using the
+  Windows-bundled .NET Framework C# compiler, so engine.e2e.ts and the secret-store
+  test have a UCI/UCCI stand-in to drive. Shared by ci.yml and release.yml.
+
+runs:
+  using: composite
+  steps:
+    - name: Compile the test engine
+      shell: pwsh
+      run: |
+        $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+        if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+          throw "Required C# compiler was not found: $compiler"
+        }
+        & $compiler /nologo /out:tests\support\fake-engine.exe tests\support\FakeEngine.cs
+        if ($LASTEXITCODE -ne 0) {
+          throw "Fake engine compilation failed with exit code $LASTEXITCODE."
+        }
