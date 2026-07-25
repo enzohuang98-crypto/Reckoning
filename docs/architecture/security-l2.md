@@ -42,8 +42,10 @@
 | 層級 | 範圍 | 門檻 |
 | --- | --- | --- |
 | 1 | 執行期相依（`npm audit --omit=dev`），會被打包進使用者安裝的 App | 任何 moderate 以上弱點一律**擋下發行** |
-| 2 | 建置工具相依，且 `npm audit fix` 可在 semver 範圍內安全修復 | 一律**擋下**，要求先套用修復 |
-| 3 | 建置工具相依，且只剩破壞性修法（`fixAvailable` 為 `false` 或 `isSemVerMajor`） | **記錄追蹤**，不擋下 |
+| 2 | 建置工具相依中**自身帶 advisory 的根因**，且 `npm audit fix` 可在 semver 範圍內安全修復 | 一律**擋下**，要求先套用修復 |
+| 3 | 建置工具相依中自身帶 advisory 的根因，但只剩破壞性修法（`fixAvailable` 為 `false` 或 `isSemVerMajor`） | **記錄追蹤**，不擋下 |
+
+第 2、3 層只針對「自身中招」的根因判斷。`npm audit` 的 `via` 若只含字串，代表該套件僅因相依於別人而被連坐（例如 `glob ← minimatch ← brace-expansion`、`temp ← rimraf ← glob`）；這類套件跟隨根因，不各自把關。這點是必要的：npm 對**同一個根因**在不同平台會回報不一致的 `fixAvailable`——Linux 說只能破壞性修復，Windows 卻對同一條 `brace-expansion` 鏈上的 `glob`／`rimraf`／`temp`／`electron-winstaller`／`electron-builder-squirrel-windows` 回報「可安全修復」。若讓連坐套件各自把關，CI 會卡在一個沒有任何 `npm audit fix` 能滿足的紅燈。
 
 第 3 層的存在原因：`electron-builder` 的相依鏈仍使用 `minimatch` 3.x／5.x／9.x，而它們所需的 `brace-expansion` 1.x／2.x 沒有任何 backport 修正版。唯一修好的 `brace-expansion@5.0.8` 把匯出從 `module.exports = expand` 改成 `{ expand }`，強制覆蓋會讓舊 `minimatch` 在含大括號的 glob pattern 上丟 `TypeError: expand is not a function`，直接破壞 `npm run dist` 打包；而 `npm audit fix --force` 的建議是把 `electron-builder` **降版**到 25.x，同樣不可接受。
 

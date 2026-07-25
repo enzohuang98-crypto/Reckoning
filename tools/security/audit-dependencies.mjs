@@ -62,18 +62,37 @@ function runAudit(extraArgs) {
   return report
 }
 
+/**
+ * npm audit 的 `via` 有兩種元素：
+ *   - 物件 = 這個套件自己中招的 advisory。
+ *   - 字串 = 這個套件只是「相依於有漏洞的某套件」而被連坐。
+ *
+ * 只有前者才是真正需要決策的根因。純連坐的套件必須跟隨根因，不可各自判斷——
+ * npm 對同一個根因在不同平台會給出不一致的 `fixAvailable`（Linux 回報需要
+ * 破壞性變更、Windows 回報可安全修復），若讓連坐套件各自把關，CI 會卡在一個
+ * 沒有任何 `npm audit fix` 能滿足的紅燈。
+ */
 function collect(report) {
   return Object.entries(report.vulnerabilities ?? {})
     .filter(([, item]) => meetsThreshold(item.severity))
-    .map(([name, item]) => ({
-      name,
-      severity: item.severity,
-      range: item.range,
-      fixAvailable: item.fixAvailable,
-      advisories: (item.via ?? [])
-        .filter((via) => typeof via === 'object')
-        .map((via) => ({ title: via.title, url: via.url }))
-    }))
+    .map(([name, item]) => {
+      const via = item.via ?? []
+      return {
+        name,
+        severity: item.severity,
+        range: item.range,
+        fixAvailable: item.fixAvailable,
+        advisories: via
+          .filter((entry) => typeof entry === 'object')
+          .map((entry) => ({ title: entry.title, url: entry.url })),
+        inheritedFrom: via.filter((entry) => typeof entry === 'string')
+      }
+    })
+}
+
+/** 這個套件自己中招（而非只是相依於別人）。 */
+function hasOwnAdvisory(vulnerability) {
+  return vulnerability.advisories.length > 0
 }
 
 /** fixAvailable === true 代表 `npm audit fix` 可在 semver 範圍內安全修好。 */
@@ -115,13 +134,16 @@ function main() {
   }
   console.log(`  ✓ 執行期相依：0 個 ${MINIMUM_SEVERITY} 以上弱點`)
 
-  // ---- 第 2 層：建置工具相依 ----
+  // ---- 第 2 層：建置工具相依，只針對「自己中招」的根因把關 ----
   const all = collect(runAudit([]))
   const runtimeNames = new Set(runtime.map((item) => item.name))
   const buildOnly = all.filter((item) => !runtimeNames.has(item.name))
 
-  const actionable = buildOnly.filter(hasSafeFix)
-  const accepted = buildOnly.filter((item) => !hasSafeFix(item))
+  const rootCauses = buildOnly.filter(hasOwnAdvisory)
+  const inherited = buildOnly.filter((item) => !hasOwnAdvisory(item))
+
+  const actionable = rootCauses.filter(hasSafeFix)
+  const accepted = rootCauses.filter((item) => !hasSafeFix(item))
 
   if (actionable.length > 0) {
     printList(
@@ -137,11 +159,24 @@ function main() {
       `⚠ 建置工具相依有 ${accepted.length} 個已知弱點，目前只剩破壞性修法，暫予記錄追蹤：`,
       accepted
     )
+    if (inherited.length > 0) {
+      console.log(
+        `\n另有 ${inherited.length} 個套件僅因相依於上述根因而被連坐，會隨根因一併解決：`
+      )
+      console.log(`  ${inherited.map((item) => item.name).join('、')}`)
+    }
     console.log(
       '\n這些套件只在開發者與 CI 機器上執行 electron-builder 時使用，不會被打包進使用者安裝的 App。'
     )
     console.log(
       '上游一旦釋出可安全套用的修正，第 2 層檢查會自動要求套用，不會無限期豁免。'
+    )
+  } else if (inherited.length > 0) {
+    // 連坐套件的根因不在建置工具層（例如已在執行期層處理），仍列出供追蹤。
+    console.log(
+      `  ⚠ 建置工具相依有 ${inherited.length} 個連坐套件，根因不在此層：${inherited
+        .map((item) => item.name)
+        .join('、')}`
     )
   } else {
     console.log('  ✓ 建置工具相依：0 個未處理弱點')
