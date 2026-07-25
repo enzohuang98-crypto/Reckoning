@@ -9,12 +9,17 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type {
   AIProvider,
-  AIExplanationStreamChunk
+  AIExplanationStreamChunk,
+  AITestCredentialResult
 } from '@shared/types/AIProviderTypes'
 import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
+import {
+  CREDENTIAL_TEST_TIMEOUT_MS,
+  describeCredentialTestError
+} from '../http'
 
 /** 長篇分析輸出上限 */
 const MAX_OUTPUT_TOKENS = 4096
@@ -96,5 +101,21 @@ export class AnthropicProvider implements AIProvider {
 
     const usage = { inputTokens, outputTokens }
     yield { type: 'done', usage }
+  }
+
+  async testCredential(
+    apiKey: string,
+    _baseUrl?: string,
+    timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
+  ): Promise<AITestCredentialResult> {
+    try {
+      await this.client(apiKey).models.list(
+        { limit: 1 },
+        { signal: AbortSignal.timeout(timeoutMs) }
+      )
+      return { ok: true, message: '金鑰驗證成功，可以正常呼叫 Anthropic API。' }
+    } catch (error) {
+      return describeCredentialTestError(error, 'Anthropic')
+    }
   }
 }

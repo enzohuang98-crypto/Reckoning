@@ -120,7 +120,7 @@ export function formatChineseVariation(
 export function formatChineseScore(score: EngineScore | null): string {
   if (score === null) return '暫無評估'
   if (score.type === 'mate') return score.displayText
-  if (score.value > 0) return `行棋方優勢 ${score.value.toFixed(2)} 子`
-  if (score.value < 0) return `行棋方落後 ${Math.abs(score.value).toFixed(2)} 子`
+  if (score.value > 0) return `行棋方優勢 ${score.value.toFixed(2)} 兵`
+  if (score.value < 0) return `行棋方落後 ${Math.abs(score.value).toFixed(2)} 兵`
   return '局勢均衡'
 }

@@ -10,7 +10,8 @@ import type { AppSettings } from '@shared/types/Settings'
 import type {
   SecretCredentialMetadata,
   SecretCredentialRef,
-  SecretStatus
+  SecretStatus,
+  TestCredentialResult
 } from '@shared/types/ipc'
 import type { SettingsUpdater } from './types'
 
@@ -21,13 +22,17 @@ interface Props {
   onApiKeyChange: (value: string) => void
   secretStatus: SecretStatus
   encryptionAvailable: boolean | null
+  secretBusy: boolean
+  testingCredentialKey: string | null
+  testResults: Record<string, TestCredentialResult>
   onSaveKey: (credential: SecretCredentialRef) => void
   onActivateCredential: (credential: SecretCredentialRef) => void
   onUseLocalCredential: (credential: SecretCredentialRef) => void
   onDeleteKey: (credential?: SecretCredentialRef) => void
+  onTestKey: (credential: SecretCredentialRef, draftApiKey?: string) => void
 }
 
-function credentialValue(credential: SecretCredentialRef): string {
+export function credentialValue(credential: SecretCredentialRef): string {
   return JSON.stringify([
     credential.provider,
     credential.model,
@@ -71,10 +76,14 @@ export function AiSettingsSection({
   onApiKeyChange,
   secretStatus,
   encryptionAvailable,
+  secretBusy,
+  testingCredentialKey,
+  testResults,
   onSaveKey,
   onActivateCredential,
   onUseLocalCredential,
-  onDeleteKey
+  onDeleteKey,
+  onTestKey
 }: Props): JSX.Element {
   const [addProvider, setAddProvider] = useState<AIProviderId>(settings.aiProvider)
   const [addModel, setAddModel] = useState(settings.aiModel)
@@ -115,6 +124,9 @@ export function AiSettingsSection({
     /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(
       addBaseUrl
     )
+  const draftKey = credentialValue(draftCredential)
+  const draftTesting = testingCredentialKey === draftKey
+  const draftTestResult = testResults[draftKey]
 
   const changeAddProvider = (provider: AIProviderId): void => {
     const defaultModel =
@@ -188,6 +200,8 @@ export function AiSettingsSection({
           </div>
         )}
 
+        {secretBusy && <p className="muted small">處理中…請稍候。</p>}
+
         <p className="muted">
           使用中的選單只列出已儲存且可解密的精確模型。新增其他模型時，必須另外儲存對應金鑰；
           程式不會把某個模型的金鑰自動套用到同供應商的其他模型。
@@ -202,7 +216,7 @@ export function AiSettingsSection({
             aria-label="使用中的 API 模型"
             className="select"
             value={activeValue}
-            disabled={selectableCredentials.length === 0}
+            disabled={selectableCredentials.length === 0 || secretBusy}
             onChange={(event) => changeActiveCredential(event.target.value)}
           >
             {selectableCredentials.length === 0 && (
@@ -237,7 +251,7 @@ export function AiSettingsSection({
         )}
 
         {(currentMetadata?.configured || currentMetadata?.needsReentry) && (
-          <button className="btn danger" onClick={deleteApiKey}>
+          <button className="btn danger" disabled={secretBusy} onClick={deleteApiKey}>
             刪除目前模型金鑰
           </button>
         )}
@@ -245,20 +259,40 @@ export function AiSettingsSection({
         {secretStatus.credentials.length > 0 && (
           <div className="key-row">
             <div className="key-head"><b>本機保存的模型</b></div>
-            {secretStatus.credentials.map((credential) => (
-              <div className="row gap" key={credentialValue(credential)}>
-                <span>
-                  {credentialLabel(credential)}
-                  {credential.needsReentry ? '（需重新輸入）' : ''}
-                </span>
-                <button
-                  className="btn danger"
-                  onClick={() => deleteSpecificApiKey(credential)}
-                >
-                  刪除
-                </button>
-              </div>
-            ))}
+            {secretStatus.credentials.map((credential) => {
+              const key = credentialValue(credential)
+              const testing = testingCredentialKey === key
+              const result = testResults[key]
+              return (
+                <div className="row gap" key={key}>
+                  <span>
+                    {credentialLabel(credential)}
+                    {credential.needsReentry ? '（需重新輸入）' : ''}
+                  </span>
+                  <button
+                    className="btn ghost small"
+                    disabled={secretBusy || testing}
+                    onClick={() => onTestKey(credential)}
+                  >
+                    {testing ? '測試中…' : '測試金鑰'}
+                  </button>
+                  <button
+                    className="btn danger"
+                    disabled={secretBusy}
+                    onClick={() => deleteSpecificApiKey(credential)}
+                  >
+                    刪除
+                  </button>
+                  {result && (
+                    <span
+                      className={result.ok ? 'success-text small' : 'error-text small'}
+                    >
+                      {result.ok ? '✓' : '✗'} {result.message}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </section>
@@ -355,19 +389,32 @@ export function AiSettingsSection({
           <button
             className="btn"
             onClick={() => onSaveKey(draftCredential)}
-            disabled={!apiKey.trim()}
+            disabled={!apiKey.trim() || secretBusy}
           >
             儲存並使用
+          </button>
+          <button
+            className="btn ghost"
+            onClick={() => onTestKey(draftCredential, apiKey)}
+            disabled={!apiKey.trim() || secretBusy || draftTesting}
+          >
+            {draftTesting ? '測試中…' : '測試金鑰'}
           </button>
           {draftIsLoopback && !apiKey.trim() && (
             <button
               className="btn"
+              disabled={secretBusy}
               onClick={() => onUseLocalCredential(draftCredential)}
             >
               使用本機免金鑰模型
             </button>
           )}
         </div>
+        {draftTestResult && (
+          <p className={draftTestResult.ok ? 'success-text small' : 'error-text small'}>
+            {draftTestResult.ok ? '✓' : '✗'} {draftTestResult.message}
+          </p>
+        )}
 
         <div className="field">
           <label className="field-label">你的棋力（影響解說深淺）</label>

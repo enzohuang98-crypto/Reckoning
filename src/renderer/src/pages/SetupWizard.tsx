@@ -116,7 +116,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
         <div className="setup-brand">
           <span className="brand-seal large" aria-hidden="true">象</span>
           <div>
-            <span className="eyebrow">WELCOME TO XIANGLI</span>
+            <span className="eyebrow">WELCOME TO XIANGQI AI ANALYZER</span>
             <h1>建立你的象棋分析工作台</h1>
             <p>連接本機引擎與 AI 教練，之後也能隨時在「設定」頁調整。</p>
           </div>

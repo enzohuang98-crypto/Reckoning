@@ -75,7 +75,8 @@ const api: RendererApi = {
     cancelExplanation: (requestId: string) =>
       ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_CANCEL, { requestId }),
     continueExplanation: (requestId: string) =>
-      ipcRenderer.send(IPC.AI_HARNESS_CONTINUE, { requestId })
+      ipcRenderer.send(IPC.AI_HARNESS_CONTINUE, { requestId }),
+    testCredential: (input) => ipcRenderer.invoke(IPC.AI_TEST_CREDENTIAL, input)
   },
   data: {
     load: () => ipcRenderer.invoke(IPC.DATA_LOAD),

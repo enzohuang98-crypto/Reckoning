@@ -1,12 +1,18 @@
 import type {
   AIExplanationStreamChunk,
-  AIProvider
+  AIProvider,
+  AITestCredentialResult
 } from '@shared/types/AIProviderTypes'
 import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { extractApiErrorMessage, readJsonResponseBounded } from '../http'
+import {
+  CREDENTIAL_TEST_TIMEOUT_MS,
+  describeCredentialTestError,
+  extractApiErrorMessage,
+  readJsonResponseBounded
+} from '../http'
 
 interface CompatibleChatResponse {
   choices?: Array<{
@@ -28,6 +34,11 @@ function chatEndpoint(baseUrl: string): string {
   return normalized.endsWith('/chat/completions')
     ? normalized
     : `${normalized}/chat/completions`
+}
+
+function modelsEndpoint(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, '')
+  return normalized.endsWith('/models') ? normalized : `${normalized}/models`
 }
 
 function redactExactSecret(value: string, secret: string): string {
@@ -103,5 +114,36 @@ export class OpenAICompatibleProvider implements AIProvider {
     if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
     yield { type: 'text_delta', deltaText: response.text }
     yield { type: 'done', usage: response.usage }
+  }
+
+  /**
+   * 相容端點的 /models 支援度不一；404 視為「此服務不支援金鑰測試」
+   * 而非認證失敗，避免誤導使用者以為金鑰貼錯。
+   */
+  async testCredential(
+    apiKey: string,
+    baseUrl?: string,
+    timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
+  ): Promise<AITestCredentialResult> {
+    if (!baseUrl) return { ok: false, message: 'OpenAI-compatible 端點尚未設定。' }
+    const headers: Record<string, string> = {}
+    if (apiKey) headers.authorization = `Bearer ${apiKey}`
+    try {
+      const res = await fetch(modelsEndpoint(baseUrl), {
+        method: 'GET',
+        signal: AbortSignal.timeout(timeoutMs),
+        headers
+      })
+      if (res.status === 404) {
+        return {
+          ok: false,
+          message: '此服務不支援金鑰測試，請直接儲存後用一次解說確認。'
+        }
+      }
+      if (!res.ok) return describeCredentialTestError({ status: res.status }, '此服務')
+      return { ok: true, message: '金鑰驗證成功，服務回應正常。' }
+    } catch (error) {
+      return describeCredentialTestError(error, '此服務')
+    }
   }
 }

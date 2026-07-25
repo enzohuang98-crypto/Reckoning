@@ -5,7 +5,56 @@
  * 統一在此萃取人類可讀的錯誤訊息。
  */
 
+import type { AITestCredentialResult } from '@shared/types/AIProviderTypes'
+
 export const MAX_AI_HTTP_RESPONSE_BYTES = 5 * 1024 * 1024
+
+/** 金鑰健康檢查（testCredential）逾時；獨立於一般生成請求的逾時設定。 */
+export const CREDENTIAL_TEST_TIMEOUT_MS = 10_000
+
+/**
+ * 金鑰健康檢查共用的錯誤轉換；只依 HTTP 狀態碼與錯誤型別分類，
+ * 不讀取回應內容，避免意外把服務錯誤細節（可能含帳號資訊）外洩。
+ */
+export function describeCredentialTestError(
+  error: unknown,
+  providerLabel: string
+): AITestCredentialResult {
+  const errorClassName =
+    error instanceof Error ? error.constructor.name : undefined
+  if (
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error &&
+      (error.name === 'AbortError' || error.name === 'TimeoutError')) ||
+    (errorClassName !== undefined &&
+      /Abort|Timeout/.test(errorClassName))
+  ) {
+    return { ok: false, message: '測試逾時，請檢查網路連線或稍後重試。' }
+  }
+  const status = (error as { status?: unknown } | null)?.status
+  if (status === 401 || status === 403) {
+    return {
+      ok: false,
+      message: `${providerLabel} 回報認證失敗，請確認金鑰是否正確、是否貼對服務。`
+    }
+  }
+  if (status === 429) {
+    return {
+      ok: false,
+      message: `${providerLabel} 回報限流 (429)；金鑰可能有效，請稍後再試一次。`
+    }
+  }
+  if (typeof status === 'number') {
+    return {
+      ok: false,
+      message: `${providerLabel} 回報錯誤 (${status})，請確認金鑰與服務狀態。`
+    }
+  }
+  if (error instanceof TypeError) {
+    return { ok: false, message: '網路連線失敗，請檢查網路後重試。' }
+  }
+  return { ok: false, message: `${providerLabel} 金鑰測試發生未知錯誤。` }
+}
 
 export async function readJsonResponseBounded<T>(
   res: Response,

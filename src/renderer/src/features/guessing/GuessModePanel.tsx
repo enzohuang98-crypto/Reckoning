@@ -217,12 +217,12 @@ export function GuessModePanel({
             等級：<b>{MISTAKE_LEVEL_LABELS[comparison.mistakeLevel]}</b>
           </div>
           <div className="muted small guess-engine-line">
-            最佳主線｜原始分數：{ea?.scoreAfterBestMove?.raw ?? '無'}｜
+            最佳主線｜分數：{ea?.scoreAfterBestMove?.displayText ?? '無'}｜
             {ea?.displayPrincipalVariation?.slice(0, 8).join('、') || '無主線'}
           </div>
           {(ea?.displayUserMovePrincipalVariation ?? []).length > 1 && (
             <div className="muted small guess-engine-line">
-              你的著法主線｜原始分數：{ea?.scoreAfterUserMove?.raw ?? '無'}｜
+              你的著法主線｜分數：{ea?.scoreAfterUserMove?.displayText ?? '無'}｜
               {ea?.displayUserMovePrincipalVariation?.slice(0, 8).join('、')}
             </div>
           )}

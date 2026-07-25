@@ -26,10 +26,14 @@ function render(
       onApiKeyChange={() => undefined}
       secretStatus={status}
       encryptionAvailable
+      secretBusy={false}
+      testingCredentialKey={null}
+      testResults={{}}
       onSaveKey={() => undefined}
       onActivateCredential={() => undefined}
       onUseLocalCredential={() => undefined}
       onDeleteKey={() => undefined}
+      onTestKey={() => undefined}
     />
   )
 }

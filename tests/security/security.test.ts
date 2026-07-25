@@ -184,6 +184,22 @@ check(
     'openai-compatible'
 )
 check(
+  '即使指定 preferredProvider，貼錯欄位的 Anthropic 金鑰也會被 openai 拒絕',
+  rejects(() => normalizeApiKey('sk-ant-real-anthropic-key', 'openai'), SecurityValidationError)
+)
+check(
+  '即使指定 preferredProvider，貼錯欄位的 Gemini 金鑰也會被 anthropic 拒絕',
+  rejects(() => normalizeApiKey('AIza-real-gemini-key', 'anthropic'), SecurityValidationError)
+)
+check(
+  '即使指定 preferredProvider，貼錯欄位的 OpenAI 金鑰也會被 gemini 拒絕',
+  rejects(() => normalizeApiKey('sk-real-openai-key', 'gemini'), SecurityValidationError)
+)
+check(
+  '指定 preferredProvider 且格式正確時仍可通過',
+  normalizeApiKey('sk-ant-real-anthropic-key', 'anthropic').provider === 'anthropic'
+)
+check(
   '遠端相容服務只接受標準 HTTPS',
   normalizeAiBaseUrl('https://api.deepseek.com/v1') ===
     'https://api.deepseek.com/v1'

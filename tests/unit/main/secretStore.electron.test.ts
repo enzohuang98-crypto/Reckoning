@@ -32,27 +32,27 @@ async function main(): Promise<void> {
     const filePath = join(directory, 'secrets.enc.json')
     const store = new SecretStore(filePath, encryption)
 
-    store.setCredential('gemini', 'gemini-3.5-flash', 'gemini-flash-key')
-    store.setCredential('gemini', 'gemini-3.1-pro-preview', 'gemini-pro-key')
-    store.setCredential('anthropic', 'claude-sonnet-4-6', 'claude-key')
+    await store.setCredential('gemini', 'gemini-3.5-flash', 'gemini-flash-key')
+    await store.setCredential('gemini', 'gemini-3.1-pro-preview', 'gemini-pro-key')
+    await store.setCredential('anthropic', 'claude-sonnet-4-6', 'claude-key')
 
     assert.equal(
-      store.getCredential('gemini', 'gemini-3.5-flash'),
+      await store.getCredential('gemini', 'gemini-3.5-flash'),
       'gemini-flash-key',
       'Gemini Flash 必須取得自己的 key'
     )
     assert.equal(
-      store.getCredential('gemini', 'gemini-3.1-pro-preview'),
+      await store.getCredential('gemini', 'gemini-3.1-pro-preview'),
       'gemini-pro-key',
       'Gemini Pro 必須取得自己的 key'
     )
     assert.equal(
-      store.getCredential('anthropic', 'claude-sonnet-4-6'),
+      await store.getCredential('anthropic', 'claude-sonnet-4-6'),
       'claude-key',
       'Claude 必須取得自己的 key'
     )
     assert.equal(
-      store.getCredential('gemini', 'gemini-3.1-flash-lite'),
+      await store.getCredential('gemini', 'gemini-3.1-flash-lite'),
       null,
       '同 provider 未配置的模型不得 fallback'
     )
@@ -128,14 +128,14 @@ async function main(): Promise<void> {
       'backend 不得 fallback 到同 provider 的其他 key'
     )
 
-    store.setCredential(
+    await store.setCredential(
       'openai-compatible',
       'local-model',
       'local-token',
       'http://127.0.0.1:1234/v1/'
     )
     assert.equal(
-      store.getCredential(
+      await store.getCredential(
         'openai-compatible',
         'local-model',
         'http://127.0.0.1:1234/v1'
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
       'Base URL 應正規化後精確命中'
     )
     assert.equal(
-      store.getCredential(
+      await store.getCredential(
         'openai-compatible',
         'local-model',
         'http://127.0.0.1:11434/v1'
@@ -154,10 +154,10 @@ async function main(): Promise<void> {
     )
 
     assert.equal(
-      store.setActiveCredential('gemini', 'gemini-3.5-flash'),
+      await store.setActiveCredential('gemini', 'gemini-3.5-flash'),
       true
     )
-    const status = store.getStatus()
+    const status = await store.getStatus()
     assert.deepEqual(status.activeCredential, {
       provider: 'gemini',
       model: 'gemini-3.5-flash'
@@ -178,10 +178,10 @@ async function main(): Promise<void> {
       )
     }
 
-    store.deleteCredential('gemini', 'gemini-3.5-flash')
-    assert.equal(store.getCredential('gemini', 'gemini-3.5-flash'), null)
+    await store.deleteCredential('gemini', 'gemini-3.5-flash')
+    assert.equal(await store.getCredential('gemini', 'gemini-3.5-flash'), null)
     assert.equal(
-      store.getCredential('gemini', 'gemini-3.1-pro-preview'),
+      await store.getCredential('gemini', 'gemini-3.1-pro-preview'),
       'gemini-pro-key',
       '刪除一個模型不得刪除同 provider 的其他模型'
     )
@@ -201,12 +201,12 @@ async function main(): Promise<void> {
     )
     const migrated = new SecretStore(legacyPath, encryption)
     assert.equal(
-      migrated.getCredential('gemini', 'gemini-3.5-flash'),
+      await migrated.getCredential('gemini', 'gemini-3.5-flash'),
       'legacy-gemini-key',
       'v3 Gemini provider-only key 必須遷移到 Gemini 3.5 Flash'
     )
     assert.equal(
-      migrated.getCredential('gemini', 'gemini-3.1-pro-preview'),
+      await migrated.getCredential('gemini', 'gemini-3.1-pro-preview'),
       null,
       '遷移不得擴張成整個 provider 共用'
     )
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
     )
     const migratedV1 = new SecretStore(legacyV1Path, encryption)
     assert.equal(
-      migratedV1.getCredential('gemini', 'gemini-3.5-flash'),
+      await migratedV1.getCredential('gemini', 'gemini-3.5-flash'),
       'legacy-gemini-key',
       '目前實際存在的 v1 provider-only schema 也必須遷移到 Gemini 3.5 Flash'
     )
@@ -260,7 +260,7 @@ async function main(): Promise<void> {
         ]
       })
     )
-    const brokenActiveStatus = new SecretStore(
+    const brokenActiveStatus = await new SecretStore(
       brokenActivePath,
       encryption
     ).getStatus()

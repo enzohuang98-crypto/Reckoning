@@ -7,13 +7,19 @@
 
 import type {
   AIProvider,
-  AIExplanationStreamChunk
+  AIExplanationStreamChunk,
+  AITestCredentialResult
 } from '@shared/types/AIProviderTypes'
 import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
-import { extractApiErrorMessage, readJsonResponseBounded } from '../http'
+import {
+  CREDENTIAL_TEST_TIMEOUT_MS,
+  describeCredentialTestError,
+  extractApiErrorMessage,
+  readJsonResponseBounded
+} from '../http'
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const MAX_OUTPUT_TOKENS = 4096
@@ -128,5 +134,25 @@ export class GeminiProvider implements AIProvider {
     if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
     yield { type: 'text_delta', deltaText: response.text }
     yield { type: 'done', usage: response.usage }
+  }
+
+  async testCredential(
+    apiKey: string,
+    _baseUrlOverride?: string,
+    timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
+  ): Promise<AITestCredentialResult> {
+    const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    try {
+      const res = await fetch(`${baseUrl}/models?pageSize=1`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(timeoutMs),
+        // 金鑰走 header，不放 URL query（避免進入日誌；§2.11）
+        headers: { 'x-goog-api-key': apiKey }
+      })
+      if (!res.ok) return describeCredentialTestError({ status: res.status }, 'Gemini')
+      return { ok: true, message: '金鑰驗證成功，可以正常呼叫 Gemini API。' }
+    } catch (error) {
+      return describeCredentialTestError(error, 'Gemini')
+    }
   }
 }

@@ -24,7 +24,8 @@ import {
   type GenerateExplanationErrorPayload,
   type GenerateExplanationStartPayload,
   type SecretCredentialRef,
-  type SecretMutationResult
+  type SecretMutationResult,
+  type TestCredentialResult
 } from '@shared/types/ipc'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
 import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
@@ -102,12 +103,12 @@ export async function buildAIExplanationRequest(
 ): Promise<AIExplanationRequest> {
   // 不存在則丟 UnsupportedModelError（§2.19.1）
   const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
-  const apiKey = deps.secretStore.getCredential(
+  const apiKey = (await deps.secretStore.getCredential(
     payload.provider,
     modelConfig.model,
     payload.baseUrl
-  ) ?? ''
-  const hasExactCredential = deps.secretStore.hasCredential(
+  )) ?? ''
+  const hasExactCredential = await deps.secretStore.hasCredential(
     payload.provider,
     modelConfig.model,
     payload.baseUrl
@@ -274,37 +275,37 @@ export function registerAiExplanationHandlers(
 
   ipcMain.handle(
     IPC.SECRET_SET,
-    (
+    async (
       event,
       rawInput: unknown
-    ): SecretMutationResult => {
+    ): Promise<SecretMutationResult> => {
       assertTrustedIpcSender(event)
       const credential = normalizeCredential(rawInput)
       const value = rawInput as Record<string, unknown>
       const { apiKey } = normalizeApiKey(value.apiKey, credential.provider)
-      secretStore.setCredential(
+      await secretStore.setCredential(
         credential.provider,
         credential.model,
         apiKey,
         credential.baseUrl
       )
-      return { ok: true, status: secretStore.getStatus() }
+      return { ok: true, status: await secretStore.getStatus() }
     }
   )
 
   ipcMain.handle(
     IPC.SECRET_ACTIVATE,
-    (event, rawInput: unknown): SecretMutationResult => {
+    async (event, rawInput: unknown): Promise<SecretMutationResult> => {
       assertTrustedIpcSender(event)
       const credential = normalizeCredential(rawInput)
-      if (!secretStore.setActiveCredential(
+      if (!(await secretStore.setActiveCredential(
         credential.provider,
         credential.model,
         credential.baseUrl
-      )) {
+      ))) {
         throw new SecurityValidationError('所選 API 憑證不存在或無法解密。')
       }
-      return { ok: true, status: secretStore.getStatus() }
+      return { ok: true, status: await secretStore.getStatus() }
     }
   )
 
@@ -367,22 +368,56 @@ export function registerAiExplanationHandlers(
     return { ok: true as const }
   })
 
-  ipcMain.handle(IPC.SECRET_STATUS, (event) => {
+  ipcMain.handle(IPC.SECRET_STATUS, async (event) => {
     assertTrustedIpcSender(event)
-    return secretStore.getStatus()
+    return await secretStore.getStatus()
   })
 
   ipcMain.handle(
     IPC.SECRET_DELETE,
-    (event, rawInput: unknown): SecretMutationResult => {
+    async (event, rawInput: unknown): Promise<SecretMutationResult> => {
       assertTrustedIpcSender(event)
       const credential = normalizeCredential(rawInput)
-      secretStore.deleteCredential(
+      await secretStore.deleteCredential(
         credential.provider,
         credential.model,
         credential.baseUrl
       )
-      return { ok: true, status: secretStore.getStatus() }
+      return { ok: true, status: await secretStore.getStatus() }
+    }
+  )
+
+  // ---- 金鑰健康檢查（不消耗生成 token，不落地草稿金鑰） ----
+  ipcMain.handle(
+    IPC.AI_TEST_CREDENTIAL,
+    async (event, rawInput: unknown): Promise<TestCredentialResult> => {
+      assertTrustedIpcSender(event)
+      const credential = normalizeCredential(rawInput)
+      const value = rawInput as Record<string, unknown>
+      let apiKey: string
+      if (typeof value.apiKey === 'string' && value.apiKey.trim()) {
+        apiKey = normalizeApiKey(value.apiKey, credential.provider).apiKey
+      } else {
+        const stored = await secretStore.getCredential(
+          credential.provider,
+          credential.model,
+          credential.baseUrl
+        )
+        if (stored) {
+          apiKey = stored
+        } else if (
+          credential.provider === 'openai-compatible' &&
+          isLoopbackAiBaseUrl(credential.baseUrl)
+        ) {
+          apiKey = ''
+        } else {
+          return { ok: false, message: '尚未設定金鑰，請先貼上金鑰再測試。' }
+        }
+      }
+      return getAIProvider(credential.provider).testCredential(
+        apiKey,
+        credential.baseUrl
+      )
     }
   )
 

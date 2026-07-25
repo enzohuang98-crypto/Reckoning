@@ -155,7 +155,7 @@ export function LiveAnalysisTable({
                       <b className="live-analysis-method">{analysisMethod(item)}</b>
                       {item.engineName && <span className="live-analysis-engine">{item.engineName}</span>}
                     </td>
-                    <td>{item.scoreRaw ?? '—'}</td>
+                    <td>{item.scoreDisplay ?? '—'}</td>
                     <td>
                       {item.depth ?? '—'}
                       {item.selDepth !== undefined && item.selDepth !== null

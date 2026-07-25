@@ -22,7 +22,7 @@ import {
   MAX_SECRET_FILE_BYTES,
   normalizeAiBaseUrl
 } from '../security/InputValidation'
-import { readJsonFile, writeJsonFileAtomic } from './SecureJsonFile'
+import { readJsonFileAsync, writeJsonFileAtomicAsync } from './SecureJsonFile'
 
 interface StoredCredential extends SecretCredentialRef {
   encryptedKey: string
@@ -104,17 +104,17 @@ export class SecretStore {
   }
 
   /** 新增或更新精確憑證；其他模型與 provider 的憑證不受影響。 */
-  setCredential(
+  async setCredential(
     provider: AIProviderId,
     model: string,
     apiKey: string,
     baseUrl?: string
-  ): SecretCredentialRef {
+  ): Promise<SecretCredentialRef> {
     if (!this.encryption.isEncryptionAvailable()) {
       throw new Error('此系統不支援安全加密儲存，拒絕以明文保存金鑰。')
     }
     const ref = normalizeCredentialRef(provider, model, baseUrl)
-    const data = this.read()
+    const data = await this.read()
     const encryptedKey = this.encryption.encryptString(apiKey).toString('base64')
     const next: StoredCredential = { ...ref, encryptedKey }
     const id = credentialId(ref)
@@ -124,54 +124,54 @@ export class SecretStore {
     if (existingIndex >= 0) data.credentials[existingIndex] = next
     else data.credentials.push(next)
     data.activeCredential = ref
-    this.write(data)
+    await this.write(data)
     return ref
   }
 
   /** 只允許把可解密的精確憑證設為使用中。 */
-  setActiveCredential(
+  async setActiveCredential(
     provider: AIProviderId,
     model: string,
     baseUrl?: string
-  ): boolean {
+  ): Promise<boolean> {
     const ref = normalizeCredentialRef(provider, model, baseUrl)
-    const data = this.read()
+    const data = await this.read()
     const stored = this.findStored(data, ref)
     if (!stored || this.decrypt(stored) === null) return false
     data.activeCredential = ref
-    this.write(data)
+    await this.write(data)
     return true
   }
 
   /** 是否存在精確密文；不代表目前仍能解密。 */
-  hasCredential(
+  async hasCredential(
     provider: AIProviderId,
     model: string,
     baseUrl?: string
-  ): boolean {
+  ): Promise<boolean> {
     const ref = normalizeCredentialRef(provider, model, baseUrl)
-    return Boolean(this.findStored(this.read(), ref))
+    return Boolean(this.findStored(await this.read(), ref))
   }
 
   /** 僅供 main process 使用；不存在或無法解密時回傳 null。 */
-  getCredential(
+  async getCredential(
     provider: AIProviderId,
     model: string,
     baseUrl?: string
-  ): string | null {
+  ): Promise<string | null> {
     const ref = normalizeCredentialRef(provider, model, baseUrl)
-    const stored = this.findStored(this.read(), ref)
+    const stored = this.findStored(await this.read(), ref)
     return stored ? this.decrypt(stored) : null
   }
 
   /** 刪除一把精確憑證；同 provider 的其他模型仍會保留。 */
-  deleteCredential(
+  async deleteCredential(
     provider: AIProviderId,
     model: string,
     baseUrl?: string
-  ): void {
+  ): Promise<void> {
     const ref = normalizeCredentialRef(provider, model, baseUrl)
-    const data = this.read()
+    const data = await this.read()
     const id = credentialId(ref)
     data.credentials = data.credentials.filter(
       (credential) => credentialId(credential) !== id
@@ -179,12 +179,12 @@ export class SecretStore {
     if (sameCredential(data.activeCredential, ref)) {
       data.activeCredential = this.firstDecryptable(data)?.ref ?? null
     }
-    this.write(data)
+    await this.write(data)
   }
 
   /** 回傳安全 metadata；不包含明文或密文。 */
-  getStatus(): SecretStatus {
-    const data = this.read()
+  async getStatus(): Promise<SecretStatus> {
+    const data = await this.read()
     const credentials: SecretCredentialMetadata[] = data.credentials.map(
       (stored) => {
         const configured = this.decrypt(stored) !== null
@@ -257,15 +257,18 @@ export class SecretStore {
     return null
   }
 
-  private read(): SecretsFileV4 {
+  private async read(): Promise<SecretsFileV4> {
     if (!existsSync(this.filePath)) {
       return { credentials: [], activeCredential: null, version: 4 }
     }
     try {
-      const parsed = readJsonFile<unknown>(this.filePath, MAX_SECRET_FILE_BYTES)
+      const parsed = await readJsonFileAsync<unknown>(
+        this.filePath,
+        MAX_SECRET_FILE_BYTES
+      )
       if (this.isV4File(parsed)) return this.normalizeV4(parsed)
       const migrated = this.migrateV3(parsed)
-      this.write(migrated)
+      await this.write(migrated)
       return migrated
     } catch {
       return { credentials: [], activeCredential: null, version: 4 }
@@ -375,7 +378,7 @@ export class SecretStore {
     }
   }
 
-  private write(data: SecretsFileV4): void {
-    writeJsonFileAtomic(this.filePath, data, MAX_SECRET_FILE_BYTES)
+  private async write(data: SecretsFileV4): Promise<void> {
+    await writeJsonFileAtomicAsync(this.filePath, data, MAX_SECRET_FILE_BYTES)
   }
 }
