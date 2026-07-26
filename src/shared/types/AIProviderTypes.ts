@@ -33,6 +33,19 @@ export const PROVIDER_LABEL: Record<AIProviderId, string> = {
   'openai-compatible': 'OpenAI 相容／本機模型'
 }
 
+/** UI-only sentinel；刻意不符合真正的 API model id 格式。 */
+export const CUSTOM_MODEL_OPTION_ID = '__custom_model_id__'
+
+const AI_MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/
+
+export function isValidAIModelId(model: string): boolean {
+  return AI_MODEL_ID_PATTERN.test(model)
+}
+
+export function isOpenAIProModel(model: string): boolean {
+  return /^(?:gpt-5(?:\.\d+)?-pro|o\d+-pro)(?:-|$)/.test(model)
+}
+
 /** Token 用量 */
 export interface TokenUsage {
   inputTokens: number
@@ -60,7 +73,7 @@ export type AIExplanationStreamChunk =
       usage?: TokenUsage
     }
 
-/** 輕量金鑰健康檢查結果；不消耗生成 token。 */
+/** 指定模型的低用量推論測試結果。 */
 export interface AITestCredentialResult {
   ok: boolean
   message: string
@@ -87,13 +100,14 @@ export interface AIProvider {
     signal: AbortSignal
   ): AsyncIterable<AIExplanationStreamChunk>
   /**
-   * 輕量金鑰健康檢查：呼叫一個不消耗生成 token 的端點（例如列出可用模型）
-   * 驗證金鑰是否真的能通過驗證，不代表金鑰對應的模型一定可用。
+   * 指定模型低用量推論：必須走與正式解說相同的生成 endpoint 與回應解析，
+   * 才能同時驗證金鑰、模型權限與實際推論能力。
    * baseUrl 只有 openai-compatible 會用到；timeoutMs 預設為
    * CREDENTIAL_TEST_TIMEOUT_MS，測試時可傳更短的值避免真的等待逾時。
    */
   testCredential(
     apiKey: string,
+    model: string,
     baseUrl?: string,
     timeoutMs?: number
   ): Promise<AITestCredentialResult>
@@ -102,23 +116,48 @@ export interface AIProvider {
 /** 各 Provider 預設模型清單（依 SDS §2.19.2 模型表） */
 export const PROVIDER_DEFAULT_MODELS: Record<AIProviderId, AIModelInfo[]> = {
   anthropic: [
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', isDefault: true },
-    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', isDefault: true },
     { id: 'claude-fable-5', label: 'Claude Fable 5' },
+    { id: 'claude-opus-5', label: 'Claude Opus 5' },
     { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
     { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
+    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
     { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
   ],
   openai: [
-    { id: 'gpt-5.4', label: 'GPT-5.4', isDefault: true },
+    { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', isDefault: true },
+    { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+    { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
     { id: 'gpt-5.5', label: 'GPT-5.5' },
+    { id: 'gpt-5.5-pro', label: 'GPT-5.5 Pro' },
+    { id: 'gpt-5.4', label: 'GPT-5.4' },
+    { id: 'gpt-5.4-pro', label: 'GPT-5.4 Pro' },
     { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
-    { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' }
+    { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
+    { id: 'gpt-5.2', label: 'GPT-5.2' },
+    { id: 'gpt-5.2-pro', label: 'GPT-5.2 Pro' },
+    { id: 'gpt-5.1', label: 'GPT-5.1' },
+    { id: 'gpt-5', label: 'GPT-5' },
+    { id: 'gpt-5-mini', label: 'GPT-5 Mini' },
+    { id: 'gpt-5-nano', label: 'GPT-5 Nano' },
+    { id: 'gpt-5-pro', label: 'GPT-5 Pro' },
+    { id: 'o3-pro', label: 'o3 Pro' },
+    { id: 'o3', label: 'o3' },
+    { id: 'gpt-4.1', label: 'GPT-4.1' },
+    { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini' }
   ],
   gemini: [
     { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', isDefault: true },
+    { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
+    { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite' },
     { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro（Preview）' },
-    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite' }
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite' },
+    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash（Preview）' },
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' }
   ],
   'openai-compatible': [
     { id: 'custom-model', label: '自行輸入模型 ID', isDefault: true }

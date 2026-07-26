@@ -27,6 +27,10 @@ import {
   PROVIDER_DEFAULT_MODELS,
   type AIExplanationStreamChunk
 } from '../../../src/shared/types/AIProviderTypes'
+import {
+  KeyedOperationGate,
+  OperationBusyError
+} from '../../../src/main/security/KeyedOperationGate'
 
 let passed = 0
 let failed = 0
@@ -124,7 +128,14 @@ function explanationRequest(
 interface OpenAIRequestBody {
   model?: string
   max_tokens?: number
+  max_completion_tokens?: number
+  max_output_tokens?: number
   temperature?: number
+  reasoning_effort?: string
+  reasoning?: { effort?: string }
+  input?: string
+  store?: boolean
+  response_format?: { type?: string }
   messages?: Array<{ role?: string; content?: string }>
 }
 
@@ -147,20 +158,60 @@ async function collect(
 }
 
 async function main(): Promise<void> {
+  section('昂貴操作 admission control')
+  {
+    const gate = new KeyedOperationGate(2)
+    let releaseFirst!: () => void
+    let releaseSecond!: () => void
+    let firstCalls = 0
+    const first = gate.run('first', async () => {
+      firstCalls += 1
+      await new Promise<void>((resolve) => {
+        releaseFirst = resolve
+      })
+      return 'first-result'
+    })
+    const duplicate = gate.run('first', async () => 'must-not-run')
+    const second = gate.run('second', async () => {
+      await new Promise<void>((resolve) => {
+        releaseSecond = resolve
+      })
+      return 'second-result'
+    })
+    let busy = false
+    try {
+      await gate.run('third', async () => 'third-result')
+    } catch (error) {
+      busy = error instanceof OperationBusyError
+    }
+    check('相同工作共用一個 in-flight promise', first === duplicate && firstCalls === 1)
+    check('超過全域上限時立即回報 busy', busy && gate.activeCount() === 2)
+    releaseFirst()
+    releaseSecond()
+    check(
+      '完成後正確釋放 admission capacity',
+      (await first) === 'first-result' &&
+        (await duplicate) === 'first-result' &&
+        (await second) === 'second-result' &&
+        gate.activeCount() === 0
+    )
+  }
+
   section('ModelRegistry')
   {
     const sonnet = modelRegistry.getModel('anthropic', 'claude-sonnet-4-6')
     check('getModel 回傳模型目錄資料', sonnet.displayName === 'Claude Sonnet 4.6')
     check('Anthropic 新模型可選用',
       modelRegistry.hasModel('anthropic', 'claude-fable-5') &&
-      modelRegistry.hasModel('anthropic', 'claude-sonnet-5'))
+      modelRegistry.hasModel('anthropic', 'claude-sonnet-5') &&
+      modelRegistry.hasModel('anthropic', 'claude-opus-4-6'))
     check('hasModel true', modelRegistry.hasModel('openai', 'gpt-5.4'))
     check('hasModel false（跨 provider 不混用）', !modelRegistry.hasModel('openai', 'claude-sonnet-4-6'))
-    check('預設模型：anthropic → claude-sonnet-4-6', modelRegistry.getDefaultModel('anthropic').model === 'claude-sonnet-4-6')
-    check('預設模型：openai → gpt-5.4', modelRegistry.getDefaultModel('openai').model === 'gpt-5.4')
+    check('預設模型：anthropic → claude-sonnet-5', modelRegistry.getDefaultModel('anthropic').model === 'claude-sonnet-5')
+    check('預設模型：openai → gpt-5.6-sol', modelRegistry.getDefaultModel('openai').model === 'gpt-5.6-sol')
     check('預設模型：gemini → gemini-3.5-flash', modelRegistry.getDefaultModel('gemini').model === 'gemini-3.5-flash')
-    check('listModels(provider) 過濾', modelRegistry.listModels('gemini').length === 3)
-    check('模型目錄共 13 個模型', modelRegistry.listModels().length === 13)
+    check('listModels(provider) 過濾', modelRegistry.listModels('gemini').length === 9)
+    check('模型目錄共 38 個模型', modelRegistry.listModels().length === 38)
     const officialProviders = ['anthropic', 'openai', 'gemini'] as const
     const uiModels = officialProviders.flatMap((provider) =>
       PROVIDER_DEFAULT_MODELS[provider].map((model) => `${provider}/${model.id}`)
@@ -383,6 +434,9 @@ async function main(): Promise<void> {
     check('Bearer 認證 header', requests[0].headers.authorization === 'Bearer sk-test-123')
     const body = requests[0].body as OpenAIRequestBody
     check('body.model 正確', body.model === 'gpt-5.4')
+    check('GPT-5 不傳 temperature', body.temperature === undefined)
+    check('GPT-5 使用 reasoning none', body.reasoning_effort === 'none')
+    check('使用 max_completion_tokens', body.max_completion_tokens === 4096)
     check(
       '單一 user 訊息帶完整 prompt（§2.17.9）',
       body.messages?.length === 1 && body.messages[0].role === 'user' && body.messages[0].content === PROMPT,
@@ -391,6 +445,63 @@ async function main(): Promise<void> {
     check('回應文字已修剪', res.text === '紅方優勢，建議炮二平五。')
     check('token 用量解析', res.usage?.inputTokens === 100 && res.usage.outputTokens === 50)
     check('groundedOnEngineData 旗標', res.groundedOnEngineData === true)
+  }
+
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      {
+        output: [
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: 'GPT-5.6 模型解說' }]
+          }
+        ],
+        usage: { input_tokens: 10, output_tokens: 6 }
+      }
+    ])
+    const provider = new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
+    const response = await provider.generateExplanation(
+      explanationRequest('openai', 'gpt-5.6-sol', 'sk-56-test')
+    )
+    server.close()
+    const body = requests[0].body as OpenAIRequestBody
+    check('GPT-5.6 系列走 Responses API', requests[0].url === '/v1/responses')
+    check('GPT-5.6 Responses 使用 reasoning none', body.reasoning?.effort === 'none')
+    check('GPT-5.6 Responses 解析 output_text', response.text === 'GPT-5.6 模型解說')
+  }
+
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      {
+        output: [
+          { type: 'reasoning', content: [{ type: 'summary_text', text: 'hidden' }] },
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: 'Pro 模型解說' }]
+          }
+        ],
+        usage: { input_tokens: 12, output_tokens: 7 }
+      }
+    ])
+    const provider = new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
+    const response = await provider.generateExplanation(
+      explanationRequest('openai', 'gpt-5.5-pro', 'sk-pro-test')
+    )
+    server.close()
+    const body = requests[0].body as OpenAIRequestBody
+    check('Pro 模型走 Responses API', requests[0].url === '/v1/responses')
+    check(
+      'Responses API 使用 input 與 max_output_tokens',
+      body.input === PROMPT && body.max_output_tokens === 4096
+    )
+    check('Responses 不儲存測試輸入', body.store === false)
+    check('Responses 只解析 output_text', response.text === 'Pro 模型解說')
+    check(
+      'Responses token 用量正規化',
+      response.usage?.inputTokens === 12 && response.usage.outputTokens === 7
+    )
   }
 
   section('OpenAIProvider：streaming 包裝（§2.17.4、§2.17.1）')
@@ -509,8 +620,9 @@ async function main(): Promise<void> {
       body.contents?.[0]?.role === 'user' && body.contents[0].parts?.[0]?.text === PROMPT
     )
     check(
-      'generationConfig 帶 maxOutputTokens 與 temperature',
-      body.generationConfig?.maxOutputTokens === 4096 && body.generationConfig.temperature === 0.3,
+      'Gemini 3.x 保留模型預設 temperature',
+      body.generationConfig?.maxOutputTokens === 4096 &&
+        body.generationConfig.temperature === undefined,
       body.generationConfig
     )
     check(
@@ -586,26 +698,23 @@ async function main(): Promise<void> {
 
   section('AnthropicProvider：testCredential')
   {
-    const { server, port } = await startMockServer(() => [
+    const { server, port, requests } = await startMockServer(() => [
       200,
       {
-        data: [
-          {
-            id: 'claude-sonnet-4-6',
-            type: 'model',
-            display_name: 'Claude Sonnet 4.6',
-            created_at: new Date().toISOString()
-          }
-        ],
-        has_more: false,
-        first_id: 'claude-sonnet-4-6',
-        last_id: 'claude-sonnet-4-6'
+        id: 'msg_test',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-5',
+        content: [{ type: 'text', text: 'OK' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 5, output_tokens: 1 }
       }
     ])
     const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const result = await provider.testCredential('sk-ant-valid')
+    const result = await provider.testCredential('sk-ant-valid', 'claude-sonnet-5')
     server.close()
     check('成功時 ok=true', result.ok === true, result)
+    check('實際呼叫 Messages API', requests[0].url === '/v1/messages', requests[0])
   }
   {
     const { server, port } = await startMockServer(() => [
@@ -613,7 +722,7 @@ async function main(): Promise<void> {
       { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }
     ])
     const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const result = await provider.testCredential('sk-ant-bad')
+    const result = await provider.testCredential('sk-ant-bad', 'claude-sonnet-5')
     server.close()
     check(
       '401 時 ok=false 且訊息提及認證失敗',
@@ -624,7 +733,12 @@ async function main(): Promise<void> {
   {
     const { server, port } = await startHangingServer()
     const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const result = await provider.testCredential('sk-ant-slow', undefined, 200)
+    const result = await provider.testCredential(
+      'sk-ant-slow',
+      'claude-sonnet-5',
+      undefined,
+      200
+    )
     server.close()
     check(
       '逾時時 ok=false 且訊息提及逾時',
@@ -632,17 +746,50 @@ async function main(): Promise<void> {
       result
     )
   }
+  {
+    const oversizedText = 'x'.repeat(5 * 1024 * 1024 + 1)
+    const { server, port } = await startMockServer(() => [
+      200,
+      {
+        id: 'msg_oversized',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-5',
+        content: [{ type: 'text', text: oversizedText }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 5, output_tokens: 1 }
+      }
+    ])
+    const provider = new AnthropicProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    let bounded = false
+    try {
+      await provider.generateExplanation(
+        explanationRequest('anthropic', 'claude-sonnet-5', 'sk-ant-test')
+      )
+    } catch (error) {
+      bounded =
+        error instanceof Error &&
+        error.message.includes('超過允許大小')
+    }
+    server.close()
+    check('Anthropic 在 SDK 解析前拒絕超過 5 MiB 的回應', bounded)
+  }
 
   section('OpenAIProvider：testCredential')
   {
-    const { server, port } = await startMockServer(() => [
+    const { server, port, requests } = await startMockServer(() => [
       200,
-      { data: [{ id: 'gpt-5.4', object: 'model' }] }
+      { choices: [{ message: { content: 'OK' } }], usage: {} }
     ])
     const provider = new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
-    const result = await provider.testCredential('sk-test-valid')
+    const result = await provider.testCredential('sk-test-valid', 'gpt-5.4')
     server.close()
     check('成功時 ok=true', result.ok === true, result)
+    check(
+      '實際呼叫 Chat Completions API',
+      requests[0].url === '/v1/chat/completions',
+      requests[0]
+    )
   }
   {
     const { server, port } = await startMockServer(() => [
@@ -650,7 +797,7 @@ async function main(): Promise<void> {
       { error: { message: 'Incorrect API key provided' } }
     ])
     const provider = new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
-    const result = await provider.testCredential('sk-bad')
+    const result = await provider.testCredential('sk-bad', 'gpt-5.4')
     server.close()
     check(
       '401 時 ok=false 且訊息提及認證失敗',
@@ -661,7 +808,12 @@ async function main(): Promise<void> {
   {
     const { server, port } = await startHangingServer()
     const provider = new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
-    const result = await provider.testCredential('sk-slow', undefined, 200)
+    const result = await provider.testCredential(
+      'sk-slow',
+      'gpt-5.4',
+      undefined,
+      200
+    )
     server.close()
     check(
       '逾時時 ok=false 且訊息提及逾時',
@@ -674,14 +826,22 @@ async function main(): Promise<void> {
   {
     const { server, port, requests } = await startMockServer(() => [
       200,
-      { models: [{ name: 'models/gemini-3.5-flash' }] }
+      {
+        candidates: [{ content: { parts: [{ text: 'OK' }] } }],
+        usageMetadata: {}
+      }
     ])
     const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const result = await provider.testCredential('AIza-valid')
+    const result = await provider.testCredential('AIza-valid', 'gemini-3.5-flash')
     server.close()
     check('成功時 ok=true', result.ok === true, result)
     check('x-goog-api-key header', requests[0].headers['x-goog-api-key'] === 'AIza-valid')
     check('金鑰不在 URL query（§2.11）', !requests[0].url.includes('AIza-valid'))
+    check(
+      '實際呼叫 generateContent API',
+      requests[0].url.includes(':generateContent'),
+      requests[0]
+    )
   }
   {
     const { server, port } = await startMockServer(() => [
@@ -689,7 +849,7 @@ async function main(): Promise<void> {
       { error: { message: 'API key not valid' } }
     ])
     const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const result = await provider.testCredential('AIza-bad')
+    const result = await provider.testCredential('AIza-bad', 'gemini-3.5-flash')
     server.close()
     check(
       '401 時 ok=false 且訊息提及認證失敗',
@@ -700,7 +860,12 @@ async function main(): Promise<void> {
   {
     const { server, port } = await startHangingServer()
     const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const result = await provider.testCredential('AIza-slow', undefined, 200)
+    const result = await provider.testCredential(
+      'AIza-slow',
+      'gemini-3.5-flash',
+      undefined,
+      200
+    )
     server.close()
     check(
       '逾時時 ok=false 且訊息提及逾時',
@@ -711,26 +876,36 @@ async function main(): Promise<void> {
 
   section('OpenAICompatibleProvider：testCredential')
   {
-    const { server, port } = await startMockServer(() => [200, { data: [{ id: 'local-model' }] }])
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      { choices: [{ message: { content: 'OK' } }] }
+    ])
     const provider = new OpenAICompatibleProvider()
     const result = await provider.testCredential(
       'local-token',
+      'local-model',
       `http://127.0.0.1:${port}/v1`
     )
     server.close()
     check('成功時 ok=true', result.ok === true, result)
+    check(
+      '實際呼叫相容 Chat Completions API',
+      requests[0].url === '/v1/chat/completions',
+      requests[0]
+    )
   }
   {
     const { server, port } = await startMockServer(() => [404, { error: 'not found' }])
     const provider = new OpenAICompatibleProvider()
     const result = await provider.testCredential(
       'some-token',
+      'local-model',
       `http://127.0.0.1:${port}/v1`
     )
     server.close()
     check(
-      '404（不支援端點）時明確告知而非假裝成功',
-      result.ok === false && result.message.includes('不支援金鑰測試'),
+      '404 生成失敗時不得假裝模型可用',
+      result.ok === false && result.message.includes('(404)'),
       result
     )
   }
@@ -742,6 +917,7 @@ async function main(): Promise<void> {
     const provider = new OpenAICompatibleProvider()
     const result = await provider.testCredential(
       'bad-token',
+      'local-model',
       `http://127.0.0.1:${port}/v1`
     )
     server.close()
@@ -756,6 +932,7 @@ async function main(): Promise<void> {
     const provider = new OpenAICompatibleProvider()
     const result = await provider.testCredential(
       'slow-token',
+      'local-model',
       `http://127.0.0.1:${port}/v1`,
       200
     )
@@ -768,11 +945,54 @@ async function main(): Promise<void> {
   }
   {
     const provider = new OpenAICompatibleProvider()
-    const result = await provider.testCredential('any-token')
+    const result = await provider.testCredential('any-token', 'local-model')
     check(
       '未設定端點時明確拒絕',
       result.ok === false && result.message.includes('尚未設定'),
       result
+    )
+  }
+  {
+    let redirectedRequests = 0
+    const destination = createServer((_req, res) => {
+      redirectedRequests += 1
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }))
+    })
+    await new Promise<void>((resolve) =>
+      destination.listen(0, '127.0.0.1', () => resolve())
+    )
+    const destinationAddress = destination.address()
+    const destinationPort =
+      typeof destinationAddress === 'object' && destinationAddress
+        ? destinationAddress.port
+        : 0
+    const redirector = createServer((_req, res) => {
+      res.writeHead(307, {
+        location: `http://127.0.0.1:${destinationPort}/redirected`
+      })
+      res.end()
+    })
+    await new Promise<void>((resolve) =>
+      redirector.listen(0, '127.0.0.1', () => resolve())
+    )
+    const redirectAddress = redirector.address()
+    const redirectPort =
+      typeof redirectAddress === 'object' && redirectAddress
+        ? redirectAddress.port
+        : 0
+    const provider = new OpenAICompatibleProvider()
+    const result = await provider.testCredential(
+      'local-token',
+      'local-model',
+      `http://127.0.0.1:${redirectPort}/v1`
+    )
+    redirector.close()
+    destination.close()
+    check(
+      '相容端點重新導向會 fail closed，不送出第二跳請求',
+      result.ok === false && redirectedRequests === 0,
+      { result, redirectedRequests }
     )
   }
 

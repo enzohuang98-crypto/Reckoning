@@ -729,7 +729,11 @@ async function main(): Promise<void> {
     assert.match(misunderstood, /const deleteEntry[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onChange\(/)
     assert.match(boardEditor, /const clearBoard[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?reserialize\(/)
     assert.match(boardEditor, /const deleteSavedPosition[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeleteSavedPosition\(/)
-    assert.match(aiSettings, /const deleteApiKey[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeleteKey\(\)/)
+    assert.match(
+      aiSettings,
+      /const requestDelete[\s\S]*?deleteConfirmation !== id[\s\S]*?setDeleteConfirmation\(id\)[\s\S]*?return[\s\S]*?onDeleteKey\(credential\)/
+    )
+    assert.doesNotMatch(aiSettings, /window\.confirm/)
     assert.match(engineSettings, /const removeEngine[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onRemove\(id\)/)
     assert.match(systemSettings, /const deactivateLicense[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeactivateLicense\(\)/)
   })

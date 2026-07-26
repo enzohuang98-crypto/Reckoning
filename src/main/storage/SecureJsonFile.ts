@@ -1,18 +1,23 @@
 import {
   chmodSync,
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
+  openSync,
+  readSync,
   renameSync,
   rmSync,
   writeFileSync
 } from 'node:fs'
+import type { Stats } from 'node:fs'
 import {
   chmod,
   lstat,
   mkdir,
-  readFile,
+  open,
   rename,
   rm,
   writeFile
@@ -27,7 +32,12 @@ export class SecureFileError extends Error {
   }
 }
 
-function assertRegularFile(filePath: string, maxBytes: number): void {
+const MAX_READ_CHUNK_BYTES = 64 * 1024
+const READ_ONLY_NO_FOLLOW =
+  constants.O_RDONLY |
+  (typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0)
+
+function assertPathCandidate(filePath: string, maxBytes: number): Stats {
   const info = lstatSync(filePath)
   if (info.isSymbolicLink() || !info.isFile()) {
     throw new SecureFileError('Refusing to read a non-regular file.')
@@ -35,15 +45,56 @@ function assertRegularFile(filePath: string, maxBytes: number): void {
   if (info.size > maxBytes) {
     throw new SecureFileError('JSON file exceeds the allowed size.')
   }
+  return info
+}
+
+function assertOpenedFile(
+  checked: Stats,
+  opened: Stats,
+  maxBytes: number
+): void {
+  if (!opened.isFile()) {
+    throw new SecureFileError('Refusing to read a non-regular file.')
+  }
+  if (opened.size > maxBytes) {
+    throw new SecureFileError('JSON file exceeds the allowed size.')
+  }
+  if (
+    checked.dev !== 0 &&
+    checked.ino !== 0 &&
+    (checked.dev !== opened.dev || checked.ino !== opened.ino)
+  ) {
+    throw new SecureFileError('JSON file changed while it was being opened.')
+  }
+}
+
+function readBoundedSync(fd: number, maxBytes: number): Buffer {
+  const chunks: Buffer[] = []
+  let total = 0
+  while (total <= maxBytes) {
+    const capacity = Math.min(MAX_READ_CHUNK_BYTES, maxBytes + 1 - total)
+    const chunk = Buffer.allocUnsafe(capacity)
+    const bytesRead = readSync(fd, chunk, 0, capacity, null)
+    if (bytesRead === 0) break
+    total += bytesRead
+    if (total > maxBytes) {
+      throw new SecureFileError('JSON file exceeds the allowed size.')
+    }
+    chunks.push(chunk.subarray(0, bytesRead))
+  }
+  return Buffer.concat(chunks, total)
 }
 
 export function readJsonFile<T>(filePath: string, maxBytes: number): T {
-  assertRegularFile(filePath, maxBytes)
-  const raw = readFileSync(filePath, 'utf8')
-  if (Buffer.byteLength(raw, 'utf8') > maxBytes) {
-    throw new SecureFileError('JSON file exceeds the allowed size.')
+  const checked = assertPathCandidate(filePath, maxBytes)
+  let fd: number | null = null
+  try {
+    fd = openSync(filePath, READ_ONLY_NO_FOLLOW)
+    assertOpenedFile(checked, fstatSync(fd), maxBytes)
+    return JSON.parse(readBoundedSync(fd, maxBytes).toString('utf8')) as T
+  } finally {
+    if (fd !== null) closeSync(fd)
   }
-  return JSON.parse(raw) as T
 }
 
 export function writeJsonFileAtomic<T>(
@@ -89,10 +140,10 @@ export function writeJsonFileAtomic<T>(
  * （例如使用者按下儲存/刪除 API Key 時）使用，避免同步磁碟 I/O
  * ——尤其是 writeFileSync 的 flush:true（fsync）——卡住整個視窗沒有回應。
  */
-async function assertRegularFileAsync(
+async function assertPathCandidateAsync(
   filePath: string,
   maxBytes: number
-): Promise<void> {
+): Promise<Stats> {
   const info = await lstat(filePath)
   if (info.isSymbolicLink() || !info.isFile()) {
     throw new SecureFileError('Refusing to read a non-regular file.')
@@ -100,6 +151,7 @@ async function assertRegularFileAsync(
   if (info.size > maxBytes) {
     throw new SecureFileError('JSON file exceeds the allowed size.')
   }
+  return info
 }
 
 async function existsAsync(filePath: string): Promise<boolean> {
@@ -115,12 +167,31 @@ export async function readJsonFileAsync<T>(
   filePath: string,
   maxBytes: number
 ): Promise<T> {
-  await assertRegularFileAsync(filePath, maxBytes)
-  const raw = await readFile(filePath, 'utf8')
-  if (Buffer.byteLength(raw, 'utf8') > maxBytes) {
-    throw new SecureFileError('JSON file exceeds the allowed size.')
+  const checked = await assertPathCandidateAsync(filePath, maxBytes)
+  const handle = await open(filePath, READ_ONLY_NO_FOLLOW)
+  try {
+    const opened = await handle.stat()
+    assertOpenedFile(checked, opened, maxBytes)
+    const chunks: Buffer[] = []
+    let total = 0
+    while (total <= maxBytes) {
+      const capacity = Math.min(
+        MAX_READ_CHUNK_BYTES,
+        maxBytes + 1 - total
+      )
+      const chunk = Buffer.allocUnsafe(capacity)
+      const { bytesRead } = await handle.read(chunk, 0, capacity, null)
+      if (bytesRead === 0) break
+      total += bytesRead
+      if (total > maxBytes) {
+        throw new SecureFileError('JSON file exceeds the allowed size.')
+      }
+      chunks.push(chunk.subarray(0, bytesRead))
+    }
+    return JSON.parse(Buffer.concat(chunks, total).toString('utf8')) as T
+  } finally {
+    await handle.close()
   }
-  return JSON.parse(raw) as T
 }
 
 export async function writeJsonFileAtomicAsync<T>(

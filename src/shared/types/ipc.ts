@@ -176,6 +176,12 @@ export interface EngineStatus {
   protocol?: EngineProtocol | null
 }
 
+/** Native picker 建立的單次引擎路徑授權；token 不可重複使用。 */
+export interface EnginePathSelection {
+  token: string
+  displayPath: string
+}
+
 /** 引擎連線測試結果（engine:test） */
 export interface EngineTestResult {
   ok: boolean
@@ -284,7 +290,7 @@ export interface GenerateExplanationErrorPayload {
 }
 
 /**
- * 金鑰健康檢查（testCredential）輸入；apiKey 為選填的「草稿」金鑰
+ * 指定模型低用量推論測試輸入；apiKey 為選填的「草稿」金鑰
  * ——尚未儲存、只在這次請求中使用、main 不會落地。
  * 省略 apiKey 時改用 SecretStore 內已儲存的精確憑證。
  */
@@ -339,14 +345,14 @@ export interface RendererApi {
     cancelAnalysis(requestId: string): void
     status(): Promise<EngineStatus>
     getPath(): Promise<string | null>
-    setPath(path: string | null): Promise<EngineStatus>
-    browsePath(): Promise<string | null>
+    setPath(selectionToken: string | null): Promise<EngineStatus>
+    browsePath(): Promise<EnginePathSelection | null>
     test(): Promise<EngineTestResult>
     listInstallations(): Promise<EngineRegistrySnapshot>
     addInstallation(input: {
       profileId: EngineProfileId
       displayName?: string
-      executablePath: string
+      selectionToken: string
     }): Promise<EngineInstallation>
     removeInstallation(id: string): Promise<EngineRegistrySnapshot>
     selectInstallation(
@@ -384,7 +390,7 @@ export interface RendererApi {
     cancelExplanation(requestId: string): void
     /** Harness 停滯等待時，允許繼續加深研究 */
     continueExplanation(requestId: string): void
-    /** 輕量金鑰健康檢查；不消耗生成 token，不落地任何草稿金鑰 */
+    /** 低用量實際推論測試；不落地任何草稿金鑰 */
     testCredential(input: TestCredentialInput): Promise<TestCredentialResult>
   }
   data: {

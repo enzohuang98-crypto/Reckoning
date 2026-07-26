@@ -74,6 +74,8 @@ export function SettingsPage({
   const [newEngineProfile, setNewEngineProfile] = useState<EngineProfileId>('pikafish')
   const [newEngineName, setNewEngineName] = useState('')
   const [newEnginePath, setNewEnginePath] = useState('')
+  const [newEngineSelectionToken, setNewEngineSelectionToken] =
+    useState<string | null>(null)
   const [testingEngineId, setTestingEngineId] = useState<string | null>(null)
   const [traceCount, setTraceCount] = useState(0)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
@@ -160,6 +162,11 @@ export function SettingsPage({
       useCredential(result.status.activeCredential ?? credential)
       setApiKey('')
       setSecretStatus(result.status)
+      setTestResults((previous) => {
+        const next = { ...previous }
+        delete next[credentialValue(credential)]
+        return next
+      })
       setSavedMessage(
         `${PROVIDER_LABEL[credential.provider]} · ${credential.model} 金鑰已安全儲存並設為使用中。`
       )
@@ -216,6 +223,11 @@ export function SettingsPage({
         SECRET_TIMEOUT_MESSAGE
       )
       setSecretStatus(result.status)
+      setTestResults((previous) => {
+        const next = { ...previous }
+        delete next[credentialValue(credential)]
+        return next
+      })
       const deletedCurrent =
         credential.provider === settings.aiProvider &&
         credential.model === settings.aiModel &&
@@ -275,14 +287,17 @@ export function SettingsPage({
   const browseNewEngine = async (): Promise<void> => {
     try {
       const picked = await window.api.engine.browsePath()
-      if (picked) setNewEnginePath(picked)
+      if (picked) {
+        setNewEnginePath(picked.displayPath)
+        setNewEngineSelectionToken(picked.token)
+      }
     } catch {
-      setEngineMessage('無法開啟檔案選擇器，請手動輸入引擎路徑。')
+      setEngineMessage('無法開啟檔案選擇器，請稍後重試。')
     }
   }
 
   const addEngine = async (): Promise<void> => {
-    if (!newEnginePath.trim()) {
+    if (!newEnginePath.trim() || !newEngineSelectionToken) {
       setEngineMessage('請先選擇本機引擎 EXE。')
       return
     }
@@ -290,10 +305,11 @@ export function SettingsPage({
       const installation = await window.api.engine.addInstallation({
         profileId: newEngineProfile,
         displayName: newEngineName.trim() || undefined,
-        executablePath: newEnginePath.trim()
+        selectionToken: newEngineSelectionToken
       })
       setNewEngineName('')
       setNewEnginePath('')
+      setNewEngineSelectionToken(null)
       setEngineMessage(
         `已加入 ${installation.displayName}；實際通過搜尋測試後才會標示已驗證。`
       )
@@ -468,7 +484,6 @@ export function SettingsPage({
               newName={newEngineName}
               onNewNameChange={setNewEngineName}
               newPath={newEnginePath}
-              onNewPathChange={setNewEnginePath}
               testingEngineId={testingEngineId}
               message={engineMessage}
               testResult={engineTest}

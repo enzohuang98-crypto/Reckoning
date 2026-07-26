@@ -21,6 +21,7 @@ $blockmap = "$setup.blockmap"
 $latest = Join-Path $releaseDir 'latest.yml'
 
 & (Join-Path $PSScriptRoot 'verify-update-artifacts.ps1') -ExpectedVersion $version
+& (Join-Path $PSScriptRoot 'verify-signature.ps1') -ExpectedVersion $version
 
 gh auth status
 if ($LASTEXITCODE -ne 0) {

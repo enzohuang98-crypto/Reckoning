@@ -18,8 +18,13 @@ import type {
 } from '@shared/types/AIExplanationTypes'
 import {
   CREDENTIAL_TEST_TIMEOUT_MS,
-  describeCredentialTestError
+  describeCredentialTestError,
+  fetchAiResponseBounded
 } from '../http'
+import {
+  credentialTestRequest,
+  credentialTestSucceeded
+} from '../credentialTest'
 
 /** 長篇分析輸出上限 */
 const MAX_OUTPUT_TOKENS = 4096
@@ -31,7 +36,12 @@ export class AnthropicProvider implements AIProvider {
   constructor(private readonly options: { baseUrl?: string } = {}) {}
 
   private client(apiKey: string): Anthropic {
-    return new Anthropic({ apiKey, baseURL: this.options.baseUrl })
+    return new Anthropic({
+      apiKey,
+      baseURL: this.options.baseUrl,
+      maxRetries: 0,
+      fetch: (input, init) => fetchAiResponseBounded(input, init)
+    })
   }
 
   async generateExplanation(
@@ -42,7 +52,6 @@ export class AnthropicProvider implements AIProvider {
       {
         model: request.model,
         max_tokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
-        temperature: 0.3,
         messages: [{ role: 'user', content: request.prompt }]
       },
       { signal }
@@ -77,7 +86,6 @@ export class AnthropicProvider implements AIProvider {
       {
         model: request.model,
         max_tokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
-        temperature: 0.3,
         stream: true,
         messages: [{ role: 'user', content: request.prompt }]
       },
@@ -105,15 +113,16 @@ export class AnthropicProvider implements AIProvider {
 
   async testCredential(
     apiKey: string,
+    model: string,
     _baseUrl?: string,
     timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
   ): Promise<AITestCredentialResult> {
     try {
-      await this.client(apiKey).models.list(
-        { limit: 1 },
-        { signal: AbortSignal.timeout(timeoutMs) }
+      await this.generateExplanation(
+        credentialTestRequest(this.id, model, apiKey),
+        AbortSignal.timeout(timeoutMs)
       )
-      return { ok: true, message: '金鑰驗證成功，可以正常呼叫 Anthropic API。' }
+      return credentialTestSucceeded(this.displayName, model)
     } catch (error) {
       return describeCredentialTestError(error, 'Anthropic')
     }

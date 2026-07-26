@@ -27,6 +27,8 @@ interface Props {
 
 export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): JSX.Element {
   const [enginePath, setEnginePath] = useState('')
+  const [engineSelectionToken, setEngineSelectionToken] =
+    useState<string | null>(null)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<EngineTestResult | null>(null)
   const [apiKey, setApiKey] = useState('')
@@ -40,11 +42,12 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
     try {
       const picked = await window.api.engine.browsePath()
       if (!picked) return
-      setEnginePath(picked)
+      setEnginePath(picked.displayPath)
+      setEngineSelectionToken(picked.token)
       setTestResult(null)
       setError(null)
     } catch {
-      setError('無法開啟檔案選擇器；請直接輸入引擎 EXE 的完整路徑。')
+      setError('無法開啟檔案選擇器，請稍後重試。')
     }
   }
 
@@ -53,8 +56,10 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
     setTestResult(null)
     setError(null)
     try {
-      const trimmed = enginePath.trim()
-      if (trimmed) await window.api.engine.setPath(trimmed)
+      if (engineSelectionToken) {
+        await window.api.engine.setPath(engineSelectionToken)
+        setEngineSelectionToken(null)
+      }
       setTestResult(await window.api.engine.test())
     } catch {
       setError('引擎測試失敗，請確認檔案路徑與執行權限。')
@@ -67,8 +72,10 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
     setFinishing(true)
     setError(null)
     try {
-      const trimmed = enginePath.trim()
-      if (trimmed) await window.api.engine.setPath(trimmed)
+      if (engineSelectionToken) {
+        await window.api.engine.setPath(engineSelectionToken)
+        setEngineSelectionToken(null)
+      }
       const key = apiKey.trim()
       const credential = {
         provider: aiProvider,
@@ -139,10 +146,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
                 type="text"
                 placeholder="留白使用安裝版內建 Pikafish，或選擇其他引擎 EXE"
                 value={enginePath}
-                onChange={(e) => {
-                  setEnginePath(e.target.value)
-                  setTestResult(null)
-                }}
+                readOnly
               />
               <button className="btn ghost" onClick={browse}>
                 瀏覽…

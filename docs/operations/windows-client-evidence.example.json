@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "result": "pass",
+  "testRunId": "00000000-0000-4000-8000-000000000000",
+  "testedAt": "2026-07-26T00:00:00Z",
+  "repository": "enzohuang98-crypto/Reckoning",
+  "releaseTag": "v0.3.7",
+  "commitSha": "REPLACE_WITH_40_HEX_COMMIT_SHA",
+  "workflowRunId": "REPLACE_WITH_RELEASE_WORKFLOW_RUN_ID",
+  "installerUrl": "https://github.com/enzohuang98-crypto/Reckoning/releases/download/v0.3.7/xiangqi-analyzer-0.3.7-setup.exe",
+  "installerSha256": "REPLACE_WITH_64_HEX_CHARACTERS",
+  "os": {
+    "family": "Windows 10",
+    "edition": "Windows 10 Pro",
+    "displayVersion": "22H2",
+    "build": "19045.0000",
+    "productType": "client",
+    "architecture": "x64"
+  },
+  "cleanSnapshot": true,
+  "preexistingInstallation": false,
+  "downloadedInBrowser": true,
+  "markOfTheWebPresent": true,
+  "authenticodeStatus": "Valid",
+  "timestampValid": true,
+  "installed": true,
+  "launched": true,
+  "pikafishUciReady": true,
+  "pikafishSearchCompleted": true,
+  "shortcutsCreated": true,
+  "uninstalled": true
+}

@@ -4,57 +4,94 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to release, for example v0.3.0
+        description: Existing annotated version tag, for example v0.3.7
         required: true
         type: string
-      allow_unsigned:
-        description: Permit an explicitly marked unsigned Windows release
-        required: true
-        default: false
-        type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
+env:
+  REQUESTED_TAG: ${{ inputs.tag }}
+  RELEASE_ARTIFACT_NAME: windows-x64-release-${{ github.run_id }}
+
 jobs:
-  release:
-    name: Build and publish GitHub Release
-    runs-on: windows-latest
-    timeout-minutes: 45
+  build:
+    name: Build signed Windows x64 artifact once
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: windows-2022
+    timeout-minutes: 50
+    environment:
+      name: windows-signing
+    outputs:
+      setup_sha256: ${{ steps.metadata.outputs.setup_sha256 }}
+      release_commit: ${{ steps.source.outputs.release_commit }}
 
     steps:
       - name: Check out the requested tag
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Validate tag and release notes
+      - name: Validate tag, ancestry, version, and notes
+        id: source
         shell: pwsh
         run: |
+          if ($env:REQUESTED_TAG -notmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw 'Requested tag must be a stable semantic version such as v0.3.7.'
+          }
           $version = (Get-Content -Raw -Encoding UTF8 package.json | ConvertFrom-Json).version
           $expectedTag = "v$version"
-          if ('${{ inputs.tag }}' -ne $expectedTag) {
-            throw "Requested tag '${{ inputs.tag }}' does not match package version '$expectedTag'."
+          if ($env:REQUESTED_TAG -ne $expectedTag) {
+            throw "Requested tag '$env:REQUESTED_TAG' does not match package version '$expectedTag'."
           }
-          $pointingTags = @(git tag --points-at HEAD)
-          if ($expectedTag -notin $pointingTags) {
-            throw "HEAD is not the commit referenced by $expectedTag."
+          $tagType = (git cat-file -t $env:REQUESTED_TAG 2>$null)
+          if ($LASTEXITCODE -ne 0 -or $tagType -ne 'tag') {
+            throw "$env:REQUESTED_TAG must be an existing annotated tag."
+          }
+          $tagCommit = (git rev-parse "$($env:REQUESTED_TAG)^{commit}").Trim()
+          $headCommit = (git rev-parse HEAD).Trim()
+          if ($tagCommit -ne $headCommit) {
+            throw 'Checked-out HEAD is not the commit referenced by the requested tag.'
+          }
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not fetch origin/main for the release ancestry check.'
+          }
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The tagged commit is not merged into origin/main.'
           }
           $notes = "docs/releases/$version.md"
           if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) {
             throw "Release notes are missing: $notes"
           }
+          "release_commit=$tagCommit" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
+      - name: Require trusted Windows signing material
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) {
+            throw 'WINDOWS_CSC_LINK is required. Formal releases cannot publish unsigned installers.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
+            throw 'WINDOWS_CSC_KEY_PASSWORD is required.'
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -71,52 +108,184 @@ jobs:
       - name: Audit dependencies
         run: npm run security:audit
 
-      - name: Enforce signing policy
-        shell: pwsh
-        env:
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-        run: |
-          $hasSigningCertificate = -not [string]::IsNullOrWhiteSpace($env:CSC_LINK)
-          $allowUnsigned = '${{ inputs.allow_unsigned }}' -eq 'true'
-          if (-not $hasSigningCertificate -and -not $allowUnsigned) {
-            throw 'WINDOWS_CSC_LINK is not configured and allow_unsigned is false.'
-          }
-          if (-not $hasSigningCertificate) {
-            Write-Warning 'Building an explicitly approved unsigned Windows release.'
-          }
-
-      - name: Build update package
+      - name: Build signed update package
         shell: pwsh
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: npm run dist:update:github
 
-      - name: Smoke-test installer lifecycle
+      - name: Verify metadata, Authenticode, timestamp, and SHA-256
+        id: metadata
         shell: pwsh
-        run: npm run smoke:installer
+        run: |
+          npm run verify:update
+          npm run verify:signature
+          $version = (Get-Content -Raw -Encoding UTF8 package.json | ConvertFrom-Json).version
+          $setup = "release/xiangqi-analyzer-$version-setup.exe"
+          $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash
+          $manifest = (Get-Content -Raw -Encoding ASCII release/SHA256SUMS.txt).Trim()
+          if ($manifest -ne "$sha256  $([IO.Path]::GetFileName($setup))") {
+            throw 'SHA256SUMS.txt does not match the freshly built installer.'
+          }
+          "setup_sha256=$sha256" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
-      - name: Verify update artifacts
+      - name: Install and uninstall the exact signed build
         shell: pwsh
-        run: npm run verify:update
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File tools/release/smoke-installer.ps1 `
+            -ExpectedSha256 '${{ steps.metadata.outputs.setup_sha256 }}'
 
-      - name: Verify Windows Authenticode signature
-        shell: pwsh
-        env:
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-        run: npm run verify:signature
+      - name: Upload the immutable candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.RELEASE_ARTIFACT_NAME }}
+          path: |
+            release/xiangqi-analyzer-*-setup.exe
+            release/xiangqi-analyzer-*-setup.exe.blockmap
+            release/latest.yml
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Create GitHub Release
-        shell: pwsh
+  publish-candidate:
+    name: Publish signed prerelease candidate
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+
+      - name: Download the accepted build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.RELEASE_ARTIFACT_NAME }}
+          path: release
+
+      - name: Create a public prerelease for client testing
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="v$version"
+          setup="release/xiangqi-analyzer-$version-setup.exe"
+          gh release create "$tag" \
+            "$setup" \
+            "$setup.blockmap" \
+            release/latest.yml \
+            release/SHA256SUMS.txt \
+            --verify-tag \
+            --prerelease \
+            --title "象棋 AI 分析講解 $tag（用戶端驗收中）" \
+            --notes-file "docs/releases/$version.md"
+
+  server-proxy-acceptance:
+    name: Public installer check (${{ matrix.label }} proxy)
+    needs: [build, publish-candidate]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            label: Windows Server 2022 compatibility proxy
+          - runner: windows-2025
+            label: Windows Server 2025 compatibility proxy
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out release test scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+
+      - name: Download installer from the anonymous public URL
+        shell: pwsh
+        run: |
           $version = (Get-Content -Raw -Encoding UTF8 package.json | ConvertFrom-Json).version
-          $tag = "v$version"
-          $setup = "release/xiangqi-analyzer-$version-setup.exe"
-          $blockmap = "$setup.blockmap"
-          $notes = "docs/releases/$version.md"
-          gh release create $tag $setup $blockmap release/latest.yml `
-            --verify-tag `
-            --title "象棋 AI 分析講解 $tag" `
-            --notes-file $notes
+          $setupName = "xiangqi-analyzer-$version-setup.exe"
+          $url = "https://github.com/${{ github.repository }}/releases/download/v$version/$setupName"
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile "release/$setupName" -MaximumRedirection 5
+
+      - name: Verify, install, and uninstall public bytes
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File tools/release/smoke-installer.ps1 `
+            -ExpectedSha256 '${{ needs.build.outputs.setup_sha256 }}'
+          "This runner is a ${{ matrix.label }}. It is not Windows 10 or Windows 11 consumer-client evidence." |
+            Out-File -Append -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+
+  windows-client-evidence:
+    name: Require clean Windows 10 22H2 and Windows 11 client evidence
+    needs: [build, server-proxy-acceptance]
+    runs-on: windows-2022
+    timeout-minutes: 8
+    environment:
+      name: windows-client-release
+
+    steps:
+      - name: Check out evidence validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+
+      - name: Match two real client runs to the exact public installer
+        shell: pwsh
+        env:
+          WIN10_EVIDENCE_URL: ${{ vars.WINDOWS_10_CLIENT_EVIDENCE_URL }}
+          WIN11_EVIDENCE_URL: ${{ vars.WINDOWS_11_CLIENT_EVIDENCE_URL }}
+          WIN10_EVIDENCE_SHA256: ${{ vars.WINDOWS_10_CLIENT_EVIDENCE_SHA256 }}
+          WIN11_EVIDENCE_SHA256: ${{ vars.WINDOWS_11_CLIENT_EVIDENCE_SHA256 }}
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File tools/release/validate-client-evidence.ps1 `
+            -ExpectedSha256 '${{ needs.build.outputs.setup_sha256 }}' `
+            -ExpectedRepository '${{ github.repository }}' `
+            -ExpectedReleaseTag '${{ inputs.tag }}' `
+            -ExpectedCommitSha '${{ needs.build.outputs.release_commit }}' `
+            -ExpectedWorkflowRunId '${{ github.run_id }}' `
+            -Windows10EvidenceUrl $env:WIN10_EVIDENCE_URL `
+            -Windows10EvidenceSha256 $env:WIN10_EVIDENCE_SHA256 `
+            -Windows11EvidenceUrl $env:WIN11_EVIDENCE_URL `
+            -Windows11EvidenceSha256 $env:WIN11_EVIDENCE_SHA256
+          @(
+            "Exact installer SHA-256: ${{ needs.build.outputs.setup_sha256 }}",
+            "Release commit: ${{ needs.build.outputs.release_commit }}",
+            "Windows 10 22H2 evidence SHA-256: $env:WIN10_EVIDENCE_SHA256",
+            "Windows 11 evidence SHA-256: $env:WIN11_EVIDENCE_SHA256"
+          ) | Out-File -Append -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+
+  promote:
+    name: Promote validated candidate to latest
+    needs: windows-client-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish only after both client checks pass
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "${{ inputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --prerelease=false \
+            --latest \
+            --title "象棋 AI 分析講解 ${{ inputs.tag }}"

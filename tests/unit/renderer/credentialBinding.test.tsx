@@ -11,7 +11,8 @@ import { SetupWizard } from '../../../src/renderer/src/pages/SetupWizard'
 
 function render(
   status: SecretStatus,
-  settings: Partial<AppSettings> = {}
+  settings: Partial<AppSettings> = {},
+  onDeleteKey: () => void = () => undefined
 ): TestRenderer.ReactTestRenderer {
   return TestRenderer.create(
     <AiSettingsSection
@@ -32,7 +33,7 @@ function render(
       onSaveKey={() => undefined}
       onActivateCredential={() => undefined}
       onUseLocalCredential={() => undefined}
-      onDeleteKey={() => undefined}
+      onDeleteKey={onDeleteKey}
       onTestKey={() => undefined}
     />
   )
@@ -170,6 +171,45 @@ assert(
   ),
   '新增金鑰區仍可從 catalog 選擇另一個模型'
 )
+assert(
+  addModelSelect.findAllByType('option').some(
+    (option) => option.props.value === '__custom_model_id__'
+  ),
+  '官方供應商必須能輸入新開放的自訂 model ID'
+)
+
+let deleteCalls = 0
+const inlineDelete = render(
+  {
+    configured: true,
+    needsReentry: false,
+    activeCredential: { provider: 'gemini', model: 'gemini-3.5-flash' },
+    credentials: [
+      {
+        provider: 'gemini',
+        model: 'gemini-3.5-flash',
+        configured: true,
+        needsReentry: false
+      }
+    ]
+  },
+  {},
+  () => {
+    deleteCalls++
+  }
+)
+const firstDelete = inlineDelete.root.findAllByType('button').find(
+  (button) => button.children.join('') === '刪除目前模型金鑰'
+)
+assert(firstDelete)
+TestRenderer.act(() => firstDelete.props.onClick())
+assert.equal(deleteCalls, 0, '第一次按下只在頁內要求確認，不得直接刪除')
+const confirmedDelete = inlineDelete.root.findAllByType('button').find(
+  (button) => button.children.join('') === '再次按下確認刪除'
+)
+assert(confirmedDelete)
+TestRenderer.act(() => confirmedDelete.props.onClick())
+assert.equal(deleteCalls, 1, '第二次按下才刪除，不使用阻塞式 window.confirm')
 
 const wizard = TestRenderer.create(
   <SetupWizard

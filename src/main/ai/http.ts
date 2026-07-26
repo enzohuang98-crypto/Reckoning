@@ -9,8 +9,59 @@ import type { AITestCredentialResult } from '@shared/types/AIProviderTypes'
 
 export const MAX_AI_HTTP_RESPONSE_BYTES = 5 * 1024 * 1024
 
-/** 金鑰健康檢查（testCredential）逾時；獨立於一般生成請求的逾時設定。 */
-export const CREDENTIAL_TEST_TIMEOUT_MS = 10_000
+/** 指定模型低用量推論逾時；必須短於 renderer 的保險逾時。 */
+export const CREDENTIAL_TEST_TIMEOUT_MS = 8_000
+
+/**
+ * Anthropic SDK 使用的受限 transport。所有 AI 請求都拒絕重新導向，
+ * 並在 SDK 解析 JSON／SSE 前限制實際收到的 bytes。
+ */
+export async function fetchAiResponseBounded(
+  input: string | URL | Request,
+  init?: RequestInit,
+  maxBytes = MAX_AI_HTTP_RESPONSE_BYTES
+): Promise<Response> {
+  const response = await fetch(input, { ...init, redirect: 'error' })
+  if (!response.body) return response
+
+  const declaredLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    await response.body.cancel()
+    throw new Error('AI 服務回應超過允許大小。')
+  }
+
+  const reader = response.body.getReader()
+  let total = 0
+  const boundedBody = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read()
+        if (done) {
+          controller.close()
+          return
+        }
+        total += value.byteLength
+        if (total > maxBytes) {
+          await reader.cancel()
+          controller.error(new Error('AI 服務回應超過允許大小。'))
+          return
+        }
+        controller.enqueue(value)
+      } catch (error) {
+        controller.error(error)
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason)
+    }
+  })
+
+  return new Response(boundedBody, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  })
+}
 
 /**
  * 金鑰健康檢查共用的錯誤轉換；只依 HTTP 狀態碼與錯誤型別分類，
@@ -31,7 +82,17 @@ export function describeCredentialTestError(
   ) {
     return { ok: false, message: '測試逾時，請檢查網路連線或稍後重試。' }
   }
-  const status = (error as { status?: unknown } | null)?.status
+  const explicitStatus = (error as { status?: unknown } | null)?.status
+  const messageStatus =
+    error instanceof Error
+      ? /\((\d{3})\)/.exec(error.message)?.[1]
+      : undefined
+  const status =
+    typeof explicitStatus === 'number'
+      ? explicitStatus
+      : messageStatus
+        ? Number(messageStatus)
+        : undefined
   if (status === 401 || status === 403) {
     return {
       ok: false,

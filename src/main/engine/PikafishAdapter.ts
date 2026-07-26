@@ -335,19 +335,25 @@ export class PikafishAdapter {
 
   private spawnAndHandshake(
     enginePath: string,
-    multiPv: number | null
+    multiPv: number | null,
+    signal?: AbortSignal
   ): Promise<ReadySession> {
     const order: EngineProtocol[] =
       this.knownProtocol === 'ucci' ? ['ucci', 'uci'] : ['uci', 'ucci']
-    return this.attemptHandshake(enginePath, order, multiPv)
+    return this.attemptHandshake(enginePath, order, multiPv, signal)
   }
 
   private attemptHandshake(
     enginePath: string,
     protocols: EngineProtocol[],
-    multiPv: number | null
+    multiPv: number | null,
+    signal?: AbortSignal
   ): Promise<ReadySession> {
     return new Promise<ReadySession>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(abortError())
+        return
+      }
       let child: ChildProcessWithoutNullStreams
       try {
         // Pikafish 預設從目前工作目錄載入 pikafish.nnue。
@@ -386,6 +392,7 @@ export class PikafishAdapter {
       const clearTimers = (): void => {
         if (detectTimer) clearTimeout(detectTimer)
         if (readyTimer) clearTimeout(readyTimer)
+        signal?.removeEventListener('abort', onAbort)
       }
 
       const dispose = (): void => {
@@ -399,6 +406,10 @@ export class PikafishAdapter {
         settled = true
         dispose()
         reject(err)
+      }
+
+      const onAbort = (): void => {
+        fail(abortError())
       }
 
       const greetCurrent = (): void => {
@@ -456,7 +467,7 @@ export class PikafishAdapter {
           return
         }
         if (phase === 'awaiting-readyok' && line === 'readyok') {
-          if (readyTimer) clearTimeout(readyTimer)
+          clearTimers()
           phase = 'ready'
           settled = true
           resolve({
@@ -514,7 +525,12 @@ export class PikafishAdapter {
         // 若還有未試過的協定，重新啟動行程改用下一個
         const remaining = protocols.slice(trying + 1)
         if (detected === null && remaining.length > 0) {
-          this.attemptHandshake(enginePath, remaining, multiPv).then(resolve, reject)
+          this.attemptHandshake(
+            enginePath,
+            remaining,
+            multiPv,
+            signal
+          ).then(resolve, reject)
         } else {
           reject(
             new EngineAnalysisError(
@@ -525,6 +541,7 @@ export class PikafishAdapter {
         }
       })
 
+      signal?.addEventListener('abort', onAbort, { once: true })
       greetCurrent()
     })
   }
@@ -545,8 +562,19 @@ export class PikafishAdapter {
     if (options.signal?.aborted) throw abortError()
 
     const searchStartedAt = Date.now()
-    const session = await this.spawnAndHandshake(options.enginePath, options.multiPv)
-    const accumulator = new MultiPvAccumulator(options.scoreSource)
+    const session = await this.spawnAndHandshake(
+      options.enginePath,
+      options.multiPv,
+      options.signal
+    )
+    if (options.signal?.aborted) {
+      session.dispose()
+      throw abortError()
+    }
+    const accumulator = new MultiPvAccumulator(
+      options.scoreSource,
+      options.multiPv
+    )
     const rawLines: string[] = []
     let lastProgressAt = 0
 
@@ -623,7 +651,11 @@ export class PikafishAdapter {
       session.setLineHandler((line) => {
         recordRawLine(line)
         accumulator.ingestLine(line)
-        const parsed = parseInfoLine(line, options.scoreSource)
+        const parsed = parseInfoLine(
+          line,
+          options.scoreSource,
+          options.multiPv
+        )
         const now = Date.now()
         if (
           parsed?.multipv === 1 &&

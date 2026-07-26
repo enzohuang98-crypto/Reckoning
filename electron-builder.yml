@@ -25,9 +25,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   include: resources/packaging/custom-installer.nsh
-# Release workflow 會讀取 WINDOWS_CSC_LINK / WINDOWS_CSC_KEY_PASSWORD。
-# forceCodeSigning 保持 false 只為允許明確核准的過渡版；正式發布門檻預設拒絕未簽章產物。
-forceCodeSigning: false
+# 正式安裝檔缺少 WINDOWS_CSC_LINK / WINDOWS_CSC_KEY_PASSWORD 時直接失敗。
+forceCodeSigning: true
 electronFuses:
   runAsNode: false
   enableCookieEncryption: true

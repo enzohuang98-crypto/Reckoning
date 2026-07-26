@@ -7,7 +7,10 @@
 
 import catalog from '@shared/config/model_catalog.json'
 import { isValidModelConfig } from '@shared/logic/validation/ValidationUtils'
-import type { AIProviderId } from '@shared/types/AIProviderTypes'
+import {
+  isValidAIModelId,
+  type AIProviderId
+} from '@shared/types/AIProviderTypes'
 
 /** 模型設定 */
 export interface AIModelConfig {
@@ -26,10 +29,10 @@ export class UnsupportedModelError extends Error {
   }
 }
 
-/** 各 Provider 預設模型（§2.19.4：anthropic 無使用者設定時用 claude-sonnet-4-6） */
+/** 各 Provider 預設模型。 */
 const DEFAULT_MODEL_BY_PROVIDER: Record<AIProviderId, string> = {
-  anthropic: 'claude-sonnet-4-6',
-  openai: 'gpt-5.4',
+  anthropic: 'claude-sonnet-5',
+  openai: 'gpt-5.6-sol',
   gemini: 'gemini-3.5-flash',
   'openai-compatible': 'custom-model'
 }
@@ -50,22 +53,21 @@ class JsonModelRegistry implements ModelRegistry {
   }
 
   getModel(provider: AIProviderId, model: string): AIModelConfig {
-    if (
-      provider === 'openai-compatible' &&
-      /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(model)
-    ) {
-      return { provider, model, displayName: model }
-    }
     const found = this.models.find((m) => m.provider === provider && m.model === model)
-    if (!found) throw new UnsupportedModelError(provider, model)
-    return found
+    if (found) return found
+    if (this.models.some((m) => m.provider !== provider && m.model === model)) {
+      throw new UnsupportedModelError(provider, model)
+    }
+    if (isValidAIModelId(model)) return { provider, model, displayName: model }
+    throw new UnsupportedModelError(provider, model)
   }
 
   hasModel(provider: AIProviderId, model: string): boolean {
-    if (provider === 'openai-compatible') {
-      return /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(model)
-    }
-    return this.models.some((m) => m.provider === provider && m.model === model)
+    return (
+      (isValidAIModelId(model) &&
+        !this.models.some((m) => m.provider !== provider && m.model === model)) ||
+      this.models.some((m) => m.provider === provider && m.model === model)
+    )
   }
 
   listModels(provider?: AIProviderId): AIModelConfig[] {
