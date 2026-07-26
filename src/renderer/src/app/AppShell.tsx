@@ -80,7 +80,7 @@ export function AppShell({
           onClick={() => onTabChange('analyze')}
         >
           <span className="brand-seal" aria-hidden="true">象</span>
-          <b className="app-title">象棋 AI 分析講解</b>
+          <b className="app-title">Reckoning</b>
         </button>
 
         <nav className="app-nav" aria-label="主要功能">
@@ -97,7 +97,7 @@ export function AppShell({
           </button>
 
           <ToolbarMenu
-            icon="grid"
+            icon="wrench"
             label="工具"
             active={activeTab !== 'analyze'}
             items={toolNavItems.map((item) => ({

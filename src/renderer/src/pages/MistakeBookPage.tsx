@@ -164,18 +164,23 @@ export function MistakeBookPage({
                   {MISTAKE_LEVEL_LABELS[entry.mistakeLevel]}
                 </span>
                 {entry.understood && <span className="badge on">已理解</span>}
-                <code className="mono">{entry.positionFen}</code>
               </div>
-              <div className="mistake-body">
-                你走 <b>{localizedMove(entry.positionFen, entry.userMove)}</b> → 最佳{' '}
-                <b>
+              {/* 這張卡片講的就是「你走了什麼、該走什麼」，所以它是標題行。 */}
+              <p className="mistake-headline">
+                <span className="mistake-move played">
+                  <small>你走</small>
+                  {localizedMove(entry.positionFen, entry.userMove)}
+                </span>
+                <span className="mistake-arrow" aria-hidden="true">→</span>
+                <span className="mistake-move best">
+                  <small>最佳</small>
                   {localizedMove(
                     entry.positionFen,
                     entry.engineBestMove,
                     entry.engineAnalysis.displayBestMove
                   )}
-                </b>
-              </div>
+                </span>
+              </p>
               <label className="field">
                 <span className="field-label">筆記</span>
                 <textarea
@@ -214,6 +219,7 @@ export function MistakeBookPage({
               <details className="mistake-details">
                 <summary>單筆詳情與原始分析</summary>
                 {entry.explanation && <ExplanationView text={entry.explanation} />}
+                <code className="mono mistake-fen">{entry.positionFen}</code>
                 <div className="muted small">
                   深度 {entry.engineAnalysis.depth ?? '—'}；候選著法：{' '}
                   {entry.engineAnalysis.candidateMoves

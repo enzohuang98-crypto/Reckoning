@@ -58,11 +58,13 @@
   font-size: 36px;
 }
 
+/* 拉丁字母不需要中文標題那種寬字距，0.14em 會把 Reckoning 撐得鬆散。 */
 .app-title {
   color: #20372b;
   font-family: var(--font-serif);
-  font-size: 19px;
-  letter-spacing: 0.14em;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 /*

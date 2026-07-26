@@ -179,7 +179,7 @@ export function AnalysisToolbar({
 
       <div className="toolbar-group">
         <ToolbarButton
-          icon="board"
+          icon={boardCompact ? 'expand' : 'collapse'}
           label={boardCompact ? '放大棋盤' : '縮小棋盤'}
           title={boardCompact ? '放大棋盤工作區' : '縮小棋盤，騰出更多教練空間'}
           active={boardCompact}

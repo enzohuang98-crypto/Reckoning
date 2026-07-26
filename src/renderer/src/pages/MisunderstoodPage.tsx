@@ -154,12 +154,12 @@ export function MisunderstoodPage({
                     )}
                   </details>
                 )}
-                <div className="row gap">
-                  <button className="btn" onClick={() => onOpenPosition(entry)}>
+                <div className="row gap mistake-item-actions">
+                  <button className="btn small" onClick={() => onOpenPosition(entry)}>
                     回到分析並追問
                   </button>
                   <button
-                    className="btn ghost"
+                    className="btn ghost small"
                     disabled={!canMove}
                     title={canMove ? undefined : '需先以猜著模式產生比較資料'}
                     onClick={() => moveToMistakeBook(entry)}
@@ -167,7 +167,7 @@ export function MisunderstoodPage({
                     移入錯題本
                   </button>
                   <button
-                    className="btn danger"
+                    className="btn danger small"
                     onClick={() => deleteEntry(entry)}
                   >
                     刪除

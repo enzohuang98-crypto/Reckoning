@@ -3,8 +3,9 @@ export type IconName =
   | 'board'
   | 'brain'
   | 'chevronDown'
+  | 'collapse'
   | 'details'
-  | 'grid'
+  | 'expand'
   | 'live'
   | 'play'
   | 'redo'
@@ -14,6 +15,7 @@ export type IconName =
   | 'stop'
   | 'target'
   | 'undo'
+  | 'wrench'
 
 interface Props {
   name: IconName
@@ -44,20 +46,28 @@ const paths: Record<IconName, JSX.Element> = {
     </>
   ),
   chevronDown: <path d="m7 10 5 5 5-5" />,
+  collapse: (
+    <>
+      <path d="M10 20v-6H4" />
+      <path d="M14 4v6h6" />
+      <path d="m3 21 7-7" />
+      <path d="m21 3-7 7" />
+    </>
+  ),
+  expand: (
+    <>
+      <path d="M15 3h6v6" />
+      <path d="M9 21H3v-6" />
+      <path d="m21 3-7 7" />
+      <path d="m3 21 7-7" />
+    </>
+  ),
   details: (
     <>
       <path d="M4 5h16M4 12h16M4 19h16" />
       <circle cx="8" cy="5" r="1.5" />
       <circle cx="15" cy="12" r="1.5" />
       <circle cx="10" cy="19" r="1.5" />
-    </>
-  ),
-  grid: (
-    <>
-      <rect x="3" y="3" width="7.5" height="7.5" rx="1.6" />
-      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" />
-      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" />
-      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" />
     </>
   ),
   live: (
@@ -105,6 +115,9 @@ const paths: Record<IconName, JSX.Element> = {
       <path d="m8 5-4 4 4 4" />
       <path d="M4 9h9a6 6 0 0 1 6 6v2" />
     </>
+  ),
+  wrench: (
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" />
   )
 }
 
