@@ -4,7 +4,8 @@
     padding: 0 12px;
   }
 
-  .nav-btn {
+  .nav-btn,
+  .app-nav .toolbar-menu > summary.toolbar-btn {
     min-width: 64px;
     padding: 0 9px;
   }
@@ -44,7 +45,9 @@
     padding: 3px;
   }
 
-  .nav-btn {
+  /* 標籤收起後只剩 icon，兩顆按鈕都要縮成方形，否則會留下大片空白。 */
+  .nav-btn,
+  .app-nav .toolbar-menu > summary.toolbar-btn {
     min-width: 40px;
     padding: 0 10px;
   }
@@ -212,7 +215,8 @@
     display: none;
   }
 
-  .nav-btn {
+  .nav-btn,
+  .app-nav .toolbar-menu > summary.toolbar-btn {
     min-height: 32px;
   }
 

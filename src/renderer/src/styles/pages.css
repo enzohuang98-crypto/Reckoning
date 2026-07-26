@@ -296,6 +296,11 @@
   flex: 0 0 auto;
 }
 
+/* 與同一列的輸入框、下拉選單等高，避免按鈕比欄位矮一截。 */
+.list-toolbar-row .btn {
+  min-height: 40px;
+}
+
 .mistake-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

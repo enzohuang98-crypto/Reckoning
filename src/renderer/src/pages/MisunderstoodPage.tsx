@@ -99,7 +99,7 @@ export function MisunderstoodPage({
               onChange={(event) => setSearch(event.target.value)}
             />
             {search.trim() && (
-              <button type="button" className="btn ghost small" onClick={() => setSearch('')}>
+              <button type="button" className="btn ghost" onClick={() => setSearch('')}>
                 清除搜尋
               </button>
             )}

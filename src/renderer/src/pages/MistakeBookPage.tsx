@@ -139,7 +139,7 @@ export function MistakeBookPage({
           {filtersActive && (
             <button
               type="button"
-              className="btn ghost small"
+              className="btn ghost"
               onClick={() => {
                 setSearch('')
                 setLevelFilter('all')

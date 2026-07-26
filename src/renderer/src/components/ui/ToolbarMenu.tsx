@@ -46,7 +46,16 @@ export function ToolbarMenu({ icon, label, active, children, items }: Props): JS
 
   return (
     <details className="toolbar-menu" ref={detailsRef}>
-      <summary className={`toolbar-btn${active ? ' active' : ''}`}>
+      {/*
+        窄視窗會用 CSS 把 .toolbar-label 收起來只留 icon，而 icon 都是
+        aria-hidden；沒有這裡的 aria-label／title，收合後的選單按鈕就完全
+        沒有可辨識名稱（架構測試只掃 <button>，掃不到 <summary>）。
+      */}
+      <summary
+        className={`toolbar-btn${active ? ' active' : ''}`}
+        aria-label={label}
+        title={label}
+      >
         <Icon name={icon} className="toolbar-icon" />
         <span className="toolbar-label">{label}</span>
         <Icon name="chevronDown" size={14} className="toolbar-menu-chevron" />

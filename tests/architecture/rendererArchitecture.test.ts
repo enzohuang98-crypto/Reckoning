@@ -344,6 +344,39 @@ async function main(): Promise<void> {
     )
   })
 
+  await check('主導覽任何寬度都點得到：分析固定分頁 + 工具選單且收合後仍有名稱', () => {
+    const appShell = readFileSync(
+      resolve('src/renderer/src/app/AppShell.tsx'),
+      'utf8'
+    )
+    const toolbarMenu = readFileSync(
+      resolve('src/renderer/src/components/ui/ToolbarMenu.tsx'),
+      'utf8'
+    )
+    const responsiveStyles = readFileSync(
+      resolve('src/renderer/src/styles/responsive.css'),
+      'utf8'
+    )
+
+    // 分析是固定首頁分頁；錯題本／待理解／設定收進同一個「工具」選單。
+    assert.match(
+      appShell,
+      /className=\{'nav-btn' \+ \(activeTab === 'analyze' \? ' active' : ''\)\}/
+    )
+    assert.match(appShell, /<ToolbarMenu[\s\S]*?label="工具"/)
+    for (const tab of ['mistakes', 'misunderstood', 'settings']) {
+      assert.match(appShell, new RegExp(`id: '${tab}'`))
+    }
+
+    // 曾經有 .app-nav { display: none }，窄視窗會讓整排導覽消失、完全點不到。
+    assert.doesNotMatch(responsiveStyles, /\.app-nav\s*\{[^}]*display:\s*none/s)
+
+    // 窄視窗把 .toolbar-label 收起來只剩 aria-hidden 的 icon，
+    // summary 必須自帶 aria-label，否則收合後沒有任何可辨識名稱。
+    assert.match(responsiveStyles, /\.toolbar-label,/)
+    assert.match(toolbarMenu, /<summary[\s\S]*?aria-label=\{label\}/)
+  })
+
   await check('分析首頁沿用已驗收比例：預設中等棋盤與局面分析同屏', () => {
     const shellStyles = readFileSync(
       resolve('src/renderer/src/styles/shell.css'),
