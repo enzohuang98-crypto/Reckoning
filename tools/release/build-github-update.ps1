@@ -11,13 +11,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $version = (Get-Content -Raw -LiteralPath 'package.json' | ConvertFrom-Json).version
-$artifacts = @(
+$builtArtifacts = @(
   Join-Path 'release' 'latest.yml'
   Join-Path 'release' "xiangqi-analyzer-$version-setup.exe"
   Join-Path 'release' "xiangqi-analyzer-$version-setup.exe.blockmap"
 )
 
-foreach ($path in $artifacts) {
+foreach ($path in $builtArtifacts) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
     throw "Missing auto-update artifact: $path"
   }
@@ -26,6 +26,13 @@ foreach ($path in $artifacts) {
     throw "Auto-update artifact was not freshly built: $path"
   }
 }
+
+$setupPath = $builtArtifacts[1]
+$setupSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $setupPath).Hash
+$shaManifest = Join-Path 'release' 'SHA256SUMS.txt'
+Set-Content -Encoding ASCII -LiteralPath $shaManifest `
+  -Value "$setupSha256  $([IO.Path]::GetFileName($setupPath))"
+$artifacts = @($builtArtifacts) + $shaManifest
 
 $appUpdate = Join-Path 'release' 'win-unpacked\resources\app-update.yml'
 if (-not (Test-Path -LiteralPath $appUpdate -PathType Leaf)) {

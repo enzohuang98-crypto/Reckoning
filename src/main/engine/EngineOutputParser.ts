@@ -22,6 +22,8 @@ import {
   type ScoreSource
 } from '@shared/types/EngineAnalysis'
 
+const MAX_PV_MOVES = 256
+
 /** cp 分數轉 EngineScore（§2.14.2） */
 export function convertCpScore(
   cp: number,
@@ -94,7 +96,8 @@ export interface ParsedInfoLine {
  */
 export function parseInfoLine(
   line: string,
-  source: ScoreSource = 'root_analysis'
+  source: ScoreSource = 'root_analysis',
+  maxMultiPv = 20
 ): ParsedInfoLine | null {
   const trimmed = line.trim()
   if (!trimmed.startsWith('info ')) return null
@@ -144,7 +147,14 @@ export function parseInfoLine(
       }
       case 'multipv': {
         const m = Number(tokens[i + 1])
-        if (Number.isFinite(m)) multipv = m
+        if (
+          !Number.isSafeInteger(m) ||
+          m < 1 ||
+          m > maxMultiPv
+        ) {
+          return null
+        }
+        multipv = m
         i += 1
         break
       }
@@ -166,7 +176,7 @@ export function parseInfoLine(
         break
       }
       case 'pv':
-        pv = tokens.slice(i + 1)
+        pv = tokens.slice(i + 1, i + 1 + MAX_PV_MOVES)
         i = tokens.length
         break
       default:
@@ -196,15 +206,21 @@ export function parseBestMove(line: string): string | null {
 export class MultiPvAccumulator {
   private readonly byMultiPv = new Map<number, ParsedInfoLine>()
   private readonly source: ScoreSource
+  private readonly maxMultiPv: number
 
-  constructor(source: ScoreSource = 'root_analysis') {
+  constructor(
+    source: ScoreSource = 'root_analysis',
+    maxMultiPv = 20
+  ) {
     this.source = source
+    this.maxMultiPv = Math.max(1, Math.min(20, Math.trunc(maxMultiPv)))
   }
 
   ingestLine(line: string): void {
-    const parsed = parseInfoLine(line, this.source)
+    const parsed = parseInfoLine(line, this.source, this.maxMultiPv)
     if (!parsed) return
     const existing = this.byMultiPv.get(parsed.multipv)
+    if (!existing && this.byMultiPv.size >= this.maxMultiPv) return
     if (!existing || (parsed.depth ?? 0) >= (existing.depth ?? 0)) {
       this.byMultiPv.set(parsed.multipv, parsed)
     }

@@ -18,6 +18,7 @@
  * API key 不得被 log（§2.11）。
  */
 
+import { createHash } from 'node:crypto'
 import { dialog, ipcMain } from 'electron'
 import {
   IPC,
@@ -53,6 +54,10 @@ import {
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { StorageService } from '../storage/StorageService'
 import { HarnessTraceStore } from '../storage/HarnessTraceStore'
+import {
+  KeyedOperationGate,
+  OperationBusyError
+} from '../security/KeyedOperationGate'
 
 /** API key 缺失（§2.17.9：不得用空字串或 placeholder 繼續呼叫） */
 export class MissingApiKeyError extends Error {
@@ -249,6 +254,7 @@ export function registerAiExplanationHandlers(
   storage: StorageService
 ): void {
   const traceStore = new HarnessTraceStore(storage)
+  const credentialTestGate = new KeyedOperationGate(2)
 
   const normalizeCredential = (rawInput: unknown): SecretCredentialRef => {
     if (typeof rawInput !== 'object' || rawInput === null) {
@@ -387,7 +393,7 @@ export function registerAiExplanationHandlers(
     }
   )
 
-  // ---- 金鑰健康檢查（不消耗生成 token，不落地草稿金鑰） ----
+  // ---- 低用量實際推論測試（不落地草稿金鑰） ----
   ipcMain.handle(
     IPC.AI_TEST_CREDENTIAL,
     async (event, rawInput: unknown): Promise<TestCredentialResult> => {
@@ -414,10 +420,30 @@ export function registerAiExplanationHandlers(
           return { ok: false, message: '尚未設定金鑰，請先貼上金鑰再測試。' }
         }
       }
-      return getAIProvider(credential.provider).testCredential(
-        apiKey,
-        credential.baseUrl
-      )
+      const apiKeyDigest = createHash('sha256').update(apiKey).digest('hex')
+      const admissionKey = [
+        credential.provider,
+        credential.model,
+        credential.baseUrl ?? '',
+        apiKeyDigest
+      ].join('\u001f')
+      try {
+        return await credentialTestGate.run(admissionKey, () =>
+          getAIProvider(credential.provider).testCredential(
+            apiKey,
+            credential.model,
+            credential.baseUrl
+          )
+        )
+      } catch (error) {
+        if (error instanceof OperationBusyError) {
+          return {
+            ok: false,
+            message: '同時測試工作過多，請等目前測試完成後再試。'
+          }
+        }
+        throw error
+      }
     }
   )
 

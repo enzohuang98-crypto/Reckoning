@@ -16,7 +16,6 @@ interface Props {
   newName: string
   onNewNameChange: (name: string) => void
   newPath: string
-  onNewPathChange: (path: string) => void
   testingEngineId: string | null
   message: string | null
   testResult: EngineTestResult | null
@@ -37,7 +36,6 @@ export function EngineSettingsSection({
   newName,
   onNewNameChange,
   newPath,
-  onNewPathChange,
   testingEngineId,
   message,
   testResult,
@@ -189,8 +187,8 @@ export function EngineSettingsSection({
               <input
                 className="text-input"
                 value={newPath}
-                onChange={(event) => onNewPathChange(event.target.value)}
-                placeholder="例如 C:\\Engines\\engine.exe"
+                readOnly
+                placeholder="按「瀏覽」選擇本機引擎 EXE"
               />
               <button className="btn ghost" onClick={onBrowse}>瀏覽…</button>
             </div>

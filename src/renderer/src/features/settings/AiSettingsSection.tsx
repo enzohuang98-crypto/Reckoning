@@ -2,13 +2,14 @@ import { useState } from 'react'
 import {
   AI_COMPATIBLE_PRESETS,
   ALL_PROVIDER_IDS,
+  CUSTOM_MODEL_OPTION_ID,
   PROVIDER_DEFAULT_MODELS,
   PROVIDER_LABEL,
+  isValidAIModelId,
   type AIProviderId
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type {
-  SecretCredentialMetadata,
   SecretCredentialRef,
   SecretStatus,
   TestCredentialResult
@@ -85,9 +86,22 @@ export function AiSettingsSection({
   onDeleteKey,
   onTestKey
 }: Props): JSX.Element {
+  const initialModelIsCatalogued = PROVIDER_DEFAULT_MODELS[
+    settings.aiProvider
+  ].some((model) => model.id === settings.aiModel)
   const [addProvider, setAddProvider] = useState<AIProviderId>(settings.aiProvider)
-  const [addModel, setAddModel] = useState(settings.aiModel)
+  const [addModel, setAddModel] = useState(
+    settings.aiProvider === 'openai-compatible' || initialModelIsCatalogued
+      ? settings.aiModel
+      : CUSTOM_MODEL_OPTION_ID
+  )
+  const [customModel, setCustomModel] = useState(
+    settings.aiProvider !== 'openai-compatible' && !initialModelIsCatalogued
+      ? settings.aiModel
+      : ''
+  )
   const [addBaseUrl, setAddBaseUrl] = useState(settings.aiBaseUrl)
+  const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null)
 
   const currentCredential = settingsCredential(settings)
   const localCompatibleWithoutKey =
@@ -114,9 +128,15 @@ export function AiSettingsSection({
     AI_COMPATIBLE_PRESETS.find(
       (preset) => preset.baseUrl && preset.baseUrl === addBaseUrl
     )?.id ?? 'custom'
+  const customOfficialModel =
+    addProvider !== 'openai-compatible' &&
+    addModel === CUSTOM_MODEL_OPTION_ID
+  const resolvedAddModel = (
+    customOfficialModel ? customModel : addModel
+  ).trim()
   const draftCredential: SecretCredentialRef = {
     provider: addProvider,
-    model: addModel,
+    model: resolvedAddModel,
     ...(addProvider === 'openai-compatible' ? { baseUrl: addBaseUrl } : {})
   }
   const draftIsLoopback =
@@ -127,6 +147,7 @@ export function AiSettingsSection({
   const draftKey = credentialValue(draftCredential)
   const draftTesting = testingCredentialKey === draftKey
   const draftTestResult = testResults[draftKey]
+  const draftModelValid = isValidAIModelId(resolvedAddModel)
 
   const changeAddProvider = (provider: AIProviderId): void => {
     const defaultModel =
@@ -134,6 +155,7 @@ export function AiSettingsSection({
       PROVIDER_DEFAULT_MODELS[provider][0]
     setAddProvider(provider)
     setAddModel(defaultModel.id)
+    setCustomModel('')
     setAddBaseUrl(
       provider === 'openai-compatible'
         ? AI_COMPATIBLE_PRESETS.find((preset) => preset.id === 'ollama')
@@ -157,13 +179,13 @@ export function AiSettingsSection({
     onActivateCredential(credential)
   }
 
-  const deleteApiKey = (): void => {
-    if (!window.confirm('確定要刪除目前模型綁定的 AI API Key 嗎？其他模型的金鑰會保留。')) return
-    onDeleteKey()
-  }
-
-  const deleteSpecificApiKey = (credential: SecretCredentialMetadata): void => {
-    if (!window.confirm(`確定刪除 ${credentialLabel(credential)} 的 API Key 嗎？`)) return
+  const requestDelete = (credential: SecretCredentialRef): void => {
+    const id = credentialValue(credential)
+    if (deleteConfirmation !== id) {
+      setDeleteConfirmation(id)
+      return
+    }
+    setDeleteConfirmation(null)
     onDeleteKey(credential)
   }
 
@@ -205,6 +227,7 @@ export function AiSettingsSection({
         <p className="muted">
           使用中的選單只列出已儲存且可解密的精確模型。新增其他模型時，必須另外儲存對應金鑰；
           程式不會把某個模型的金鑰自動套用到同供應商的其他模型。
+          「測試金鑰」會用該模型產生一次極短回應，可能產生少量 API 費用。
         </p>
 
         <div className="field">
@@ -251,9 +274,31 @@ export function AiSettingsSection({
         )}
 
         {(currentMetadata?.configured || currentMetadata?.needsReentry) && (
-          <button className="btn danger" disabled={secretBusy} onClick={deleteApiKey}>
-            刪除目前模型金鑰
-          </button>
+          <div className="row gap">
+            <button
+              className="btn danger"
+              disabled={secretBusy}
+              onClick={() => requestDelete(currentCredential)}
+            >
+              {deleteConfirmation === credentialValue(currentCredential)
+                ? '再次按下確認刪除'
+                : '刪除目前模型金鑰'}
+            </button>
+            {deleteConfirmation === credentialValue(currentCredential) && (
+              <button
+                className="btn ghost"
+                onClick={() => setDeleteConfirmation(null)}
+              >
+                取消
+              </button>
+            )}
+          </div>
+        )}
+
+        {deleteConfirmation && (
+          <p className="error-text" role="status">
+            只會刪除所選模型的本機金鑰。請再按一次確認；設定頁不會跳出阻塞視窗。
+          </p>
         )}
 
         {secretStatus.credentials.length > 0 && (
@@ -279,10 +324,20 @@ export function AiSettingsSection({
                   <button
                     className="btn danger"
                     disabled={secretBusy}
-                    onClick={() => deleteSpecificApiKey(credential)}
+                    onClick={() => requestDelete(credential)}
                   >
-                    刪除
+                    {deleteConfirmation === credentialValue(credential)
+                      ? '確認刪除'
+                      : '刪除'}
                   </button>
+                  {deleteConfirmation === credentialValue(credential) && (
+                    <button
+                      className="btn ghost small"
+                      onClick={() => setDeleteConfirmation(null)}
+                    >
+                      取消
+                    </button>
+                  )}
                   {result && (
                     <span
                       className={result.ok ? 'success-text small' : 'error-text small'}
@@ -370,8 +425,26 @@ export function AiSettingsSection({
                   {model.label}{model.isDefault ? '（預設）' : ''}
                 </option>
               ))}
+              <option value={CUSTOM_MODEL_OPTION_ID}>自行輸入模型 ID</option>
             </select>
+            {customOfficialModel && (
+              <input
+                aria-label="自訂官方 API 模型 ID"
+                className="text-input"
+                value={customModel}
+                maxLength={128}
+                aria-invalid={!draftModelValid}
+                placeholder="輸入供應商提供的模型 ID"
+                onChange={(event) => setCustomModel(event.target.value)}
+              />
+            )}
           </div>
+        )}
+
+        {!draftModelValid && (
+          <p className="error-text" role="status">
+            模型 ID 須以英文字母或數字開頭，最多 128 個字元。
+          </p>
         )}
 
         <div className="settings-key-input">
@@ -389,14 +462,16 @@ export function AiSettingsSection({
           <button
             className="btn"
             onClick={() => onSaveKey(draftCredential)}
-            disabled={!apiKey.trim() || secretBusy}
+            disabled={!apiKey.trim() || !draftModelValid || secretBusy}
           >
             儲存並使用
           </button>
           <button
             className="btn ghost"
             onClick={() => onTestKey(draftCredential, apiKey)}
-            disabled={!apiKey.trim() || secretBusy || draftTesting}
+            disabled={
+              !apiKey.trim() || !draftModelValid || secretBusy || draftTesting
+            }
           >
             {draftTesting ? '測試中…' : '測試金鑰'}
           </button>

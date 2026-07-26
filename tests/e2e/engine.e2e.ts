@@ -25,6 +25,7 @@ import {
 import {
   convertCpScore,
   convertMateScore,
+  MultiPvAccumulator,
   parseInfoLine,
   parseBestMove
 } from '../../src/main/engine/EngineOutputParser'
@@ -136,6 +137,36 @@ async function main(): Promise<void> {
     check('無效 score → score null 但 pv 保留（§2.14.6）', invalidScore !== null && invalidScore.score === null)
     const noScoreNoPv = parseInfoLine('info nodes 12345 nps 100000')
     check('無 score 無 pv → null', noScoreNoPv === null)
+    check(
+      '超出要求範圍的 multipv 不進入解析結果',
+      parseInfoLine(
+        'info depth 12 multipv 99 score cp 20 pv h2e2',
+        'root_analysis',
+        5
+      ) === null
+    )
+    check(
+      '非整數 multipv 不進入解析結果',
+      parseInfoLine(
+        'info depth 12 multipv 1.5 score cp 20 pv h2e2',
+        'root_analysis',
+        5
+      ) === null
+    )
+    const boundedAccumulator = new MultiPvAccumulator('root_analysis', 2)
+    boundedAccumulator.ingestLine(
+      'info depth 12 multipv 1 score cp 30 pv h2e2'
+    )
+    boundedAccumulator.ingestLine(
+      'info depth 12 multipv 2 score cp 20 pv b2b6'
+    )
+    boundedAccumulator.ingestLine(
+      'info depth 12 multipv 3 score cp 10 pv c3c4'
+    )
+    check(
+      'MultiPV accumulator 最多保留要求的候選數',
+      boundedAccumulator.getCandidateMoves().length === 2
+    )
     check('bestmove 解析', parseBestMove('bestmove h2e2 ponder h9g7') === 'h2e2')
     check('bestmove (none) → null', parseBestMove('bestmove (none)') === null)
   }

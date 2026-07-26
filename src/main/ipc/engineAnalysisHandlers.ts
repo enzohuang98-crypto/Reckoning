@@ -5,6 +5,7 @@ import {
   type AnalyzePositionStartPayload,
   type EngineAnalysisErrorPayload,
   type EngineAnalysisProgressPayload,
+  type EnginePathSelection,
   type EngineStatus,
   type EngineTestResult
 } from '@shared/types/ipc'
@@ -32,6 +33,14 @@ import {
   SecurityValidationError,
   validateAnalyzePositionPayload
 } from '../security/InputValidation'
+import {
+  EnginePathGrantError,
+  EnginePathGrantStore
+} from '../security/EnginePathGrantStore'
+import {
+  KeyedOperationGate,
+  OperationBusyError
+} from '../security/KeyedOperationGate'
 
 export const ENGINE_CONFIG_FILE = 'engine-config.json'
 
@@ -123,11 +132,25 @@ function validateEngineId(value: unknown): string {
   return value
 }
 
+function validateSelectionToken(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+  ) {
+    throw new SecurityValidationError('請重新使用檔案選擇器選擇引擎。')
+  }
+  return value
+}
+
 export function registerEngineAnalysisHandlers(
   registry: EngineRegistryService,
   sessionStore: AnalysisSessionStore
 ): void {
   const activeAnalyses = new Map<string, EngineAnalysisHandle>()
+  const enginePathGrants = new EnginePathGrantStore()
+  const engineTestGate = new KeyedOperationGate(2)
 
   ipcMain.on(
     IPC.ENGINE_ANALYZE_POSITION_START,
@@ -187,8 +210,12 @@ export function registerEngineAnalysisHandlers(
         return
       }
       if (previous) {
-        previous.controller.abort()
-        for (const controls of previous.controls) controls.sendStop()
+        event.reply(IPC.ENGINE_ANALYSIS_ERROR, {
+          requestId: payload.requestId,
+          code: 'too_many_requests',
+          message: '相同的分析工作仍在進行，請等待完成或先取消。'
+        } satisfies EngineAnalysisErrorPayload)
+        return
       }
       const handle: EngineAnalysisHandle = {
         controller: new AbortController(),
@@ -401,28 +428,53 @@ export function registerEngineAnalysisHandlers(
     return registry.getInstallation()?.executablePath ?? null
   })
 
-  ipcMain.handle(IPC.ENGINE_SET_PATH, (event, rawPath: unknown): EngineStatus => {
+  ipcMain.handle(IPC.ENGINE_SET_PATH, (event, rawToken: unknown): EngineStatus => {
     assertTrustedIpcSender(event)
-    registry.replaceLegacyPath(normalizeEnginePath(rawPath))
+    if (rawToken === null) {
+      registry.replaceLegacyPath(null)
+      return buildStatus(registry)
+    }
+    try {
+      const executablePath = enginePathGrants.consume(
+        event.sender.id,
+        validateSelectionToken(rawToken)
+      )
+      registry.replaceLegacyPath(executablePath)
+    } catch (error) {
+      if (error instanceof EnginePathGrantError) {
+        throw new SecurityValidationError(
+          '引擎選擇已逾時或已使用，請重新按「瀏覽」。'
+        )
+      }
+      throw error
+    }
     return buildStatus(registry)
   })
 
-  ipcMain.handle(IPC.ENGINE_BROWSE_PATH, async (event): Promise<string | null> => {
-    assertTrustedIpcSender(event)
-    const result = await dialog.showOpenDialog({
-      title: '選擇象棋引擎執行檔',
-      properties: ['openFile'],
-      filters:
-        process.platform === 'win32'
-          ? [
-              { name: '可執行檔', extensions: ['exe'] },
-              { name: '所有檔案', extensions: ['*'] }
-            ]
-          : [{ name: '所有檔案', extensions: ['*'] }]
-    })
-    if (result.canceled || result.filePaths.length === 0) return null
-    return normalizeEnginePath(result.filePaths[0])
-  })
+  ipcMain.handle(
+    IPC.ENGINE_BROWSE_PATH,
+    async (event): Promise<EnginePathSelection | null> => {
+      assertTrustedIpcSender(event)
+      const result = await dialog.showOpenDialog({
+        title: '選擇象棋引擎執行檔',
+        properties: ['openFile'],
+        filters:
+          process.platform === 'win32'
+            ? [
+                { name: '可執行檔', extensions: ['exe'] },
+                { name: '所有檔案', extensions: ['*'] }
+              ]
+            : [{ name: '所有檔案', extensions: ['*'] }]
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      const displayPath = normalizeEnginePath(result.filePaths[0])
+      if (!displayPath) return null
+      return {
+        displayPath,
+        token: enginePathGrants.issue(event.sender.id, displayPath)
+      }
+    }
+  )
 
   const testInstallation = async (id?: string): Promise<EngineTestResult> => {
     const installation = registry.getInstallation(id)
@@ -430,28 +482,40 @@ export function registerEngineAnalysisHandlers(
     if (!installation || !adapter) {
       return { ok: false, message: '找不到指定的引擎。' }
     }
-    const result = await adapter.test()
-    const capabilities = {
-      multiPv: result.ok,
-      configurableThreads: false,
-      configurableHash: false
-    }
-    registry.updateDetected(installation.id, {
-      protocol: result.protocol ?? installation.protocol,
-      detectedName: result.engineName ?? installation.detectedName,
-      verified: result.ok,
-      capabilities,
-      lastTestedAt: new Date().toISOString(),
-      lastError: result.ok
-        ? undefined
-        : sanitizePublicErrorMessage(result.message, '引擎測試失敗。')
-    })
-    return {
-      ...result,
-      capabilities,
-      message: result.ok
-        ? result.message
-        : sanitizePublicErrorMessage(result.message, '引擎連線測試失敗。')
+    try {
+      return await engineTestGate.run(installation.id, async () => {
+        const result = await adapter.test()
+        const capabilities = {
+          multiPv: result.ok,
+          configurableThreads: false,
+          configurableHash: false
+        }
+        registry.updateDetected(installation.id, {
+          protocol: result.protocol ?? installation.protocol,
+          detectedName: result.engineName ?? installation.detectedName,
+          verified: result.ok,
+          capabilities,
+          lastTestedAt: new Date().toISOString(),
+          lastError: result.ok
+            ? undefined
+            : sanitizePublicErrorMessage(result.message, '引擎測試失敗。')
+        })
+        return {
+          ...result,
+          capabilities,
+          message: result.ok
+            ? result.message
+            : sanitizePublicErrorMessage(result.message, '引擎連線測試失敗。')
+        }
+      })
+    } catch (error) {
+      if (error instanceof OperationBusyError) {
+        return {
+          ok: false,
+          message: '同時測試的引擎過多，請等目前測試完成後再試。'
+        }
+      }
+      throw error
     }
   }
 
@@ -474,9 +538,19 @@ export function registerEngineAnalysisHandlers(
     if (!isEngineProfileId(input.profileId)) {
       throw new SecurityValidationError('引擎類型無效。')
     }
-    const executablePath = normalizeEnginePath(input.executablePath)
-    if (!executablePath) {
-      throw new SecurityValidationError('必須選擇引擎執行檔。')
+    let executablePath: string
+    try {
+      executablePath = enginePathGrants.consume(
+        event.sender.id,
+        validateSelectionToken(input.selectionToken)
+      )
+    } catch (error) {
+      if (error instanceof EnginePathGrantError) {
+        throw new SecurityValidationError(
+          '引擎選擇已逾時或已使用，請重新按「瀏覽」。'
+        )
+      }
+      throw error
     }
     const displayName =
       typeof input.displayName === 'string'

@@ -43,7 +43,8 @@ const api: RendererApi = {
       ipcRenderer.send(IPC.ENGINE_ANALYSIS_CANCEL, { requestId }),
     status: () => ipcRenderer.invoke(IPC.ENGINE_STATUS),
     getPath: () => ipcRenderer.invoke(IPC.ENGINE_GET_PATH),
-    setPath: (path: string | null) => ipcRenderer.invoke(IPC.ENGINE_SET_PATH, path),
+    setPath: (selectionToken: string | null) =>
+      ipcRenderer.invoke(IPC.ENGINE_SET_PATH, selectionToken),
     browsePath: () => ipcRenderer.invoke(IPC.ENGINE_BROWSE_PATH),
     test: () => ipcRenderer.invoke(IPC.ENGINE_TEST),
     listInstallations: () => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_LIST),

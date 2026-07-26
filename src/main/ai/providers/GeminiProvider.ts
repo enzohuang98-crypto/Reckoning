@@ -20,6 +20,10 @@ import {
   extractApiErrorMessage,
   readJsonResponseBounded
 } from '../http'
+import {
+  credentialTestRequest,
+  credentialTestSucceeded
+} from '../credentialTest'
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const MAX_OUTPUT_TOKENS = 4096
@@ -62,6 +66,7 @@ export class GeminiProvider implements AIProvider {
       `${baseUrl}/models/${encodeURIComponent(request.model)}:generateContent`,
       {
         method: 'POST',
+        redirect: 'error',
         signal,
         headers: {
           'content-type': 'application/json',
@@ -72,7 +77,9 @@ export class GeminiProvider implements AIProvider {
           contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
           generationConfig: {
             maxOutputTokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
-            temperature: 0.3,
+            ...(!/^gemini-3(?:[.-]|$)/.test(request.model)
+              ? { temperature: 0.3 }
+              : {}),
             // Gemini 3.5 Flash defaults to medium thinking. Harness already
             // separates planning, validation and repair into explicit calls,
             // so low thinking preserves reasoning while reducing UI latency.
@@ -138,19 +145,16 @@ export class GeminiProvider implements AIProvider {
 
   async testCredential(
     apiKey: string,
+    model: string,
     _baseUrlOverride?: string,
     timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
   ): Promise<AITestCredentialResult> {
-    const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
     try {
-      const res = await fetch(`${baseUrl}/models?pageSize=1`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(timeoutMs),
-        // 金鑰走 header，不放 URL query（避免進入日誌；§2.11）
-        headers: { 'x-goog-api-key': apiKey }
-      })
-      if (!res.ok) return describeCredentialTestError({ status: res.status }, 'Gemini')
-      return { ok: true, message: '金鑰驗證成功，可以正常呼叫 Gemini API。' }
+      await this.generateExplanation(
+        credentialTestRequest(this.id, model, apiKey),
+        AbortSignal.timeout(timeoutMs)
+      )
+      return credentialTestSucceeded(this.displayName, model)
     } catch (error) {
       return describeCredentialTestError(error, 'Gemini')
     }

@@ -1,6 +1,8 @@
 param(
   [ValidateSet('Lifecycle', 'Install', 'Uninstall')]
-  [string]$Phase = 'Lifecycle'
+  [string]$Phase = 'Lifecycle',
+  [ValidatePattern('^[A-Fa-f0-9]{64}$')]
+  [string]$ExpectedSha256
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +39,24 @@ function Assert-Path([string]$Path, [string]$Label) {
   }
 }
 
+function Assert-SetupIntegrity {
+  Assert-Path $setup 'Setup artifact'
+  if ([string]::IsNullOrWhiteSpace($ExpectedSha256)) {
+    throw 'ExpectedSha256 is required for release installer testing.'
+  }
+  $actualSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash
+  if ($actualSha256 -ne $ExpectedSha256.ToUpperInvariant()) {
+    throw "Setup SHA-256 is $actualSha256; expected $($ExpectedSha256.ToUpperInvariant())."
+  }
+  $signature = Get-AuthenticodeSignature -LiteralPath $setup
+  if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+    throw "Setup Authenticode signature is not valid: $($signature.Status)"
+  }
+  if (-not $signature.TimeStamperCertificate) {
+    throw 'Setup Authenticode signature has no trusted timestamp.'
+  }
+}
+
 function Get-LinkTarget([string]$Path) {
   $shell = New-Object -ComObject Shell.Application
   $folder = $shell.Namespace([IO.Path]::GetDirectoryName($Path))
@@ -57,7 +77,7 @@ function Test-CleanState {
 }
 
 function Invoke-InstallValidation {
-  Assert-Path $setup 'Setup artifact'
+  Assert-SetupIntegrity
   if (-not (Test-CleanState)) {
     throw 'Installer smoke test requires a machine without an existing Reckoning installation.'
   }
@@ -134,13 +154,13 @@ if ($Phase -eq 'Uninstall') {
 # separate child processes so the smoke test matches two real user sessions.
 $powerShellExe = (Get-Process -Id $PID).Path
 & $powerShellExe -NoProfile -ExecutionPolicy Bypass `
-  -File $PSCommandPath -Phase Install
+  -File $PSCommandPath -Phase Install -ExpectedSha256 $ExpectedSha256
 $installExitCode = $LASTEXITCODE
 
 $uninstallExitCode = 0
 if (-not (Test-CleanState)) {
   & $powerShellExe -NoProfile -ExecutionPolicy Bypass `
-    -File $PSCommandPath -Phase Uninstall
+    -File $PSCommandPath -Phase Uninstall -ExpectedSha256 $ExpectedSha256
   $uninstallExitCode = $LASTEXITCODE
 }
 

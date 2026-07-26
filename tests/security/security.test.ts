@@ -32,6 +32,10 @@ import {
   assertProviderEndpointBinding,
   ProviderEndpointMismatchError
 } from '../../src/main/ipc/aiExplanationHandlers'
+import {
+  EnginePathGrantError,
+  EnginePathGrantStore
+} from '../../src/main/security/EnginePathGrantStore'
 
 let passed = 0
 let failed = 0
@@ -357,6 +361,27 @@ const updaterPublishConfig = readFileSync(
   resolve('electron-builder.publish.cjs'),
   'utf8'
 )
+const aiHandlerSource = readFileSync(
+  resolve('src/main/ipc/aiExplanationHandlers.ts'),
+  'utf8'
+)
+const engineHandlerSource = readFileSync(
+  resolve('src/main/ipc/engineAnalysisHandlers.ts'),
+  'utf8'
+)
+const preloadSource = readFileSync(resolve('src/preload/index.ts'), 'utf8')
+const secureJsonSource = readFileSync(
+  resolve('src/main/storage/SecureJsonFile.ts'),
+  'utf8'
+)
+const aiProviderSources = [
+  'AnthropicProvider.ts',
+  'OpenAIProvider.ts',
+  'GeminiProvider.ts',
+  'OpenAICompatibleProvider.ts'
+].map((name) =>
+  readFileSync(resolve('src/main/ai/providers', name), 'utf8')
+)
 const updateBuildScript = readFileSync(
   resolve('tools/release/build-github-update.ps1'),
   'utf8'
@@ -381,6 +406,34 @@ const compileFakeEngineAction = readFileSync(
 )
 const verifySignatureScript = readFileSync(
   resolve('tools/release/verify-signature.ps1'),
+  'utf8'
+)
+
+let grantClock = 1_000
+const enginePathGrants = new EnginePathGrantStore(500, () => grantClock)
+const selectedPath = 'C:\\Engines\\pikafish.exe'
+const validGrant = enginePathGrants.issue(7, selectedPath)
+check(
+  'Native picker grant 綁定 sender 且只可使用一次',
+  enginePathGrants.consume(7, validGrant) === selectedPath &&
+    rejects(() => enginePathGrants.consume(7, validGrant), EnginePathGrantError)
+)
+const wrongSenderGrant = enginePathGrants.issue(7, selectedPath)
+check(
+  '其他 renderer sender 無法使用 picker grant',
+  rejects(
+    () => enginePathGrants.consume(8, wrongSenderGrant),
+    EnginePathGrantError
+  )
+)
+const expiredGrant = enginePathGrants.issue(7, selectedPath)
+grantClock += 501
+check(
+  'Picker grant 逾時後 fail closed',
+  rejects(() => enginePathGrants.consume(7, expiredGrant), EnginePathGrantError)
+)
+const clientEvidenceScript = readFileSync(
+  resolve('tools/release/validate-client-evidence.ps1'),
   'utf8'
 )
 const rendererHtml = readFileSync(resolve('src/renderer/index.html'), 'utf8')
@@ -461,7 +514,44 @@ check(
   '更新發布只覆寫指定 Release 資產並檢查上傳失敗',
   updatePublishScript.includes('gh release upload') &&
     updatePublishScript.includes('--clobber') &&
-    updatePublishScript.includes('Unable to upload update artifacts')
+    updatePublishScript.includes('Unable to upload update artifacts') &&
+    updatePublishScript.includes("'verify-signature.ps1'")
+)
+check(
+  '所有 AI transport 都拒絕 redirect，Anthropic 在 SDK 解析前限制回應 bytes',
+  aiProviderSources.slice(1).every((source) =>
+    source.includes("redirect: 'error'")
+  ) &&
+    aiProviderSources[0].includes('fetchAiResponseBounded') &&
+    readFileSync(resolve('src/main/ai/http.ts'), 'utf8').includes(
+      "redirect: 'error'"
+    )
+)
+check(
+  '金鑰實際推論由 main process 限制並合併重複工作',
+  aiHandlerSource.includes('new KeyedOperationGate(2)') &&
+    aiHandlerSource.includes('credentialTestGate.run') &&
+    aiHandlerSource.includes("createHash('sha256')")
+)
+check(
+  '引擎路徑只能使用 native picker 的 sender-bound 單次 grant',
+  engineHandlerSource.includes('enginePathGrants.issue(event.sender.id') &&
+    engineHandlerSource.includes('enginePathGrants.consume(') &&
+    preloadSource.includes('selectionToken') &&
+    !preloadSource.includes('setPath: (path:')
+)
+check(
+  '引擎測試有全域 admission，重複分析 requestId 不再替換既有工作',
+  engineHandlerSource.includes('engineTestGate.run') &&
+    engineHandlerSource.includes('相同的分析工作仍在進行') &&
+    !engineHandlerSource.includes('previous.controller.abort()')
+)
+check(
+  'JSON 匯入以單一 descriptor 做 bounded read',
+  secureJsonSource.includes('openSync(filePath, READ_ONLY_NO_FOLLOW)') &&
+    secureJsonSource.includes('fstatSync(fd)') &&
+    secureJsonSource.includes('maxBytes + 1 - total') &&
+    !secureJsonSource.includes('readFileSync(filePath')
 )
 check(
   '互動式安裝頁以 App registry 與主程式檔判斷全新安裝或升級',
@@ -483,12 +573,15 @@ check(
     installerSmokeScript.includes("$appGuid = 'c3970037-5aa0-51b0-95c7-b57bf9f33552'") &&
     installerSmokeScript.includes('Installer smoke checks passed') &&
     installerSmokeScript.includes('Silent uninstall cleanup passed') &&
-    releaseWorkflow.includes('npm run smoke:installer')
+    releaseWorkflow.includes('-File tools/release/smoke-installer.ps1') &&
+    installerSmokeScript.includes('ExpectedSha256') &&
+    installerSmokeScript.includes('TimeStamperCertificate')
 )
 check(
   'CI 會編譯假引擎並執行完整品質門檻',
-  ciWorkflow.includes('actions/checkout@v7') &&
-    ciWorkflow.includes('actions/setup-node@v7') &&
+  ciWorkflow.includes('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') &&
+    ciWorkflow.includes('actions/setup-node@820762786026740c76f36085b0efc47a31fe5020') &&
+    ciWorkflow.includes('persist-credentials: false') &&
     ciWorkflow.includes('uses: ./.github/actions/compile-fake-engine') &&
     compileFakeEngineAction.includes('tests\\support\\fake-engine.exe') &&
     ciWorkflow.includes('npm run typecheck') &&
@@ -497,17 +590,53 @@ check(
     ciWorkflow.includes('npm run build')
 )
 check(
-  'Release workflow 預設拒絕缺少受信任憑證的未簽章發行',
-  releaseWorkflow.includes('actions/checkout@v7') &&
-    releaseWorkflow.includes('actions/setup-node@v7') &&
-    releaseWorkflow.includes('uses: ./.github/actions/compile-fake-engine') &&
+  'Release workflow 沒有未簽章通道且要求有效簽章與時間戳',
+  builderConfig.includes('forceCodeSigning: true') &&
+    !releaseWorkflow.includes('allow_unsigned') &&
+    releaseWorkflow.includes('name: windows-signing') &&
+    releaseWorkflow.includes(
+      "if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)"
+    ) &&
     releaseWorkflow.includes('WINDOWS_CSC_LINK') &&
-    releaseWorkflow.includes('allow_unsigned') &&
+    releaseWorkflow.includes('WINDOWS_CSC_KEY_PASSWORD') &&
+    releaseWorkflow.includes('uses: ./.github/actions/compile-fake-engine') &&
     releaseWorkflow.includes('npm run verify:signature') &&
-    verifySignatureScript.includes('signtool.exe') &&
-    verifySignatureScript.includes('No signature found') &&
-    verifySignatureScript.includes('$verifyExitCode -ne 0') &&
-    verifySignatureScript.includes('$global:LASTEXITCODE = 0')
+    verifySignatureScript.includes('SignatureStatus]::Valid') &&
+    verifySignatureScript.includes('TimeStamperCertificate') &&
+    !verifySignatureScript.includes('NotSigned')
+)
+check(
+  'Release 只把 Windows Server 當代理，Latest 前強制核對 Win10 22H2 與 Win11 用戶端',
+  releaseWorkflow.includes('Windows Server 2022 compatibility proxy') &&
+    releaseWorkflow.includes('Windows Server 2025 compatibility proxy') &&
+    releaseWorkflow.includes('environment:') &&
+    releaseWorkflow.includes('windows-client-release') &&
+    releaseWorkflow.includes('WINDOWS_10_CLIENT_EVIDENCE_URL') &&
+    releaseWorkflow.includes('WINDOWS_10_CLIENT_EVIDENCE_SHA256') &&
+    releaseWorkflow.includes('WINDOWS_11_CLIENT_EVIDENCE_URL') &&
+    releaseWorkflow.includes('WINDOWS_11_CLIENT_EVIDENCE_SHA256') &&
+    releaseWorkflow.indexOf('name: Promote validated candidate to latest') >
+      releaseWorkflow.indexOf('name: Require clean Windows 10 22H2') &&
+    clientEvidenceScript.includes("displayVersion -ne '22H2'") &&
+    clientEvidenceScript.includes('$buildNumber -ne 19045') &&
+    clientEvidenceScript.includes("productType -ne 'client'") &&
+    clientEvidenceScript.includes('markOfTheWebPresent') &&
+    clientEvidenceScript.includes('pikafishSearchCompleted') &&
+    clientEvidenceScript.includes('authenticodeStatus') &&
+    clientEvidenceScript.includes('protected SHA-256') &&
+    clientEvidenceScript.includes('$ExpectedReleaseTag') &&
+    clientEvidenceScript.includes('$ExpectedCommitSha') &&
+    clientEvidenceScript.includes('$ExpectedWorkflowRunId') &&
+    clientEvidenceScript.includes('$EvidenceMaxAgeHours') &&
+    clientEvidenceScript.includes('-MaximumRedirection 0')
+)
+check(
+  'Release tag 必須是 main 上的 annotated tag，工作流程權限採最小化',
+  releaseWorkflow.includes("tagType -ne 'tag'") &&
+    releaseWorkflow.includes('git merge-base --is-ancestor HEAD origin/main') &&
+    releaseWorkflow.includes('permissions:\n  contents: read') &&
+    releaseWorkflow.includes('persist-credentials: false') &&
+    releaseWorkflow.includes('permissions:\n      contents: write')
 )
 
 console.log(`結果：${passed} 通過，${failed} 失敗`)
