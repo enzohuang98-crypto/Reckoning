@@ -399,7 +399,9 @@ const installerSmokeScript = readFileSync(
   'utf8'
 )
 const ciWorkflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
+  .replace(/\r\n/g, '\n')
 const releaseWorkflow = readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+  .replace(/\r\n/g, '\n')
 const compileFakeEngineAction = readFileSync(
   resolve('.github/actions/compile-fake-engine/action.yml'),
   'utf8'
