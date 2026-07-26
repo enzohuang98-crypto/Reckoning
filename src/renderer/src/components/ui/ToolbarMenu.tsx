@@ -24,6 +24,8 @@ export function ToolbarMenu({ icon, label, active, children, items }: Props): JS
   const detailsRef = useRef<HTMLDetailsElement>(null)
 
   useEffect(() => {
+    if (typeof document === 'undefined') return
+
     const closeOnOutsideClick = (event: PointerEvent): void => {
       const details = detailsRef.current
       if (!details?.open || !(event.target instanceof Node)) return

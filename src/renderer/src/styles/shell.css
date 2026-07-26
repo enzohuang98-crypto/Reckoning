@@ -65,15 +65,20 @@
   letter-spacing: 0.14em;
 }
 
+/*
+ * 分析（固定首頁）與「工具」選單共用同一個分頁列容器；兩者顏色改用
+ * 與 .toolbar-btn（分析工具列）相同的 design token，讓 App 內所有可點擊的
+ * 工具列按鈕看起來是同一套視覺語言，不是各自長得不一樣的散裝元件。
+ */
 .app-nav {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   padding: 4px;
-  border: 1px solid #e2ebe5;
+  border: 1px solid var(--color-border);
   border-radius: 13px;
-  background: #f4f7f5;
+  background: var(--color-bg-soft);
 }
 
 .nav-btn {
@@ -86,7 +91,7 @@
   padding: 0 12px;
   border: 0;
   border-radius: 9px;
-  color: #6d7d73;
+  color: var(--color-text-soft);
   background: transparent;
   cursor: pointer;
   font-size: 14px;
@@ -95,12 +100,24 @@
 }
 
 .nav-btn:hover {
-  color: #294b3a;
+  color: var(--color-primary-hover);
   background: rgba(255, 255, 255, 0.72);
 }
 
 .nav-btn.active {
-  color: #24553f;
+  color: var(--color-primary);
+  background: #fff;
+  box-shadow: var(--shadow-xs), 0 4px 12px rgba(44, 72, 58, 0.07);
+}
+
+.app-nav .toolbar-menu > summary.toolbar-btn {
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.app-nav .toolbar-menu > summary.toolbar-btn.active {
+  color: var(--color-primary);
+  border-color: transparent;
   background: #fff;
   box-shadow: var(--shadow-xs), 0 4px 12px rgba(44, 72, 58, 0.07);
 }

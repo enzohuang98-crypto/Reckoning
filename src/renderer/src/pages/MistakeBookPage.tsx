@@ -1,9 +1,22 @@
 import { useMemo, useState } from 'react'
 import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
-import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
+import { MISTAKE_LEVEL_LABELS, type MistakeLevel } from '@shared/types/MoveComparisonResult'
 import { parseFen } from '@shared/logic/board/fen'
 import { formatChineseMove } from '@shared/logic/board/ChineseNotation'
 import { ExplanationView } from '../features/explanations/ExplanationView'
+
+type LevelFilter = 'all' | MistakeLevel
+type UnderstoodFilter = 'all' | 'understood' | 'not_understood'
+
+const LEVEL_FILTER_OPTIONS: LevelFilter[] = [
+  'all',
+  'major_blunder',
+  'serious_mistake',
+  'mistake',
+  'inaccuracy',
+  'acceptable_or_tiny_inaccuracy',
+  'unknown'
+]
 
 interface Props {
   entries: MistakeBookEntry[]
@@ -25,13 +38,18 @@ export function MistakeBookPage({
   onOpenPosition
 }: Props): JSX.Element {
   const [search, setSearch] = useState('')
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>('all')
+  const [understoodFilter, setUnderstoodFilter] = useState<UnderstoodFilter>('all')
   const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({})
 
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase()
-    if (!keyword) return entries
-    return entries.filter((entry) =>
-      [
+    return entries.filter((entry) => {
+      if (levelFilter !== 'all' && entry.mistakeLevel !== levelFilter) return false
+      if (understoodFilter === 'understood' && !entry.understood) return false
+      if (understoodFilter === 'not_understood' && entry.understood) return false
+      if (!keyword) return true
+      return [
         entry.positionFen,
         entry.userMove,
         entry.engineBestMove,
@@ -42,8 +60,11 @@ export function MistakeBookPage({
         .join(' ')
         .toLowerCase()
         .includes(keyword)
-    )
-  }, [entries, search])
+    })
+  }, [entries, search, levelFilter, understoodFilter])
+
+  const filtersActive =
+    search.trim() !== '' || levelFilter !== 'all' || understoodFilter !== 'all'
 
   const update = (id: string, patch: Partial<MistakeBookEntry>): void => {
     onChange(
@@ -80,20 +101,60 @@ export function MistakeBookPage({
           <h1>錯題本</h1>
           <p>把每一次判斷偏差整理成可搜尋、可追蹤的複盤資料。</p>
         </div>
-        <div className="page-count">{entries.length} 筆紀錄</div>
+        <div className="page-count">
+          {filtersActive ? `${filtered.length} / ${entries.length} 筆` : `${entries.length} 筆紀錄`}
+        </div>
       </div>
       <div className="list-toolbar">
-        <input
-          className="text-input"
-          value={search}
-          placeholder="搜尋 FEN、著法、筆記、解說或標籤"
-          onChange={(event) => setSearch(event.target.value)}
-        />
+        <div className="list-toolbar-row">
+          <input
+            className="text-input list-toolbar-search"
+            value={search}
+            placeholder="搜尋 FEN、著法、筆記、解說或標籤"
+            aria-label="搜尋錯題本"
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <select
+            className="select list-toolbar-select"
+            value={levelFilter}
+            aria-label="依錯誤等級篩選"
+            onChange={(event) => setLevelFilter(event.target.value as LevelFilter)}
+          >
+            {LEVEL_FILTER_OPTIONS.map((level) => (
+              <option key={level} value={level}>
+                {level === 'all' ? '全部等級' : MISTAKE_LEVEL_LABELS[level]}
+              </option>
+            ))}
+          </select>
+          <select
+            className="select list-toolbar-select"
+            value={understoodFilter}
+            aria-label="依是否已理解篩選"
+            onChange={(event) => setUnderstoodFilter(event.target.value as UnderstoodFilter)}
+          >
+            <option value="all">全部狀態</option>
+            <option value="understood">已理解</option>
+            <option value="not_understood">未理解</option>
+          </select>
+          {filtersActive && (
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() => {
+                setSearch('')
+                setLevelFilter('all')
+                setUnderstoodFilter('all')
+              }}
+            >
+              清除篩選
+            </button>
+          )}
+        </div>
       </div>
       {entries.length === 0 ? (
         <p className="muted">目前沒有錯題。</p>
       ) : filtered.length === 0 ? (
-        <p className="muted">找不到符合條件的錯題。</p>
+        <p className="muted">找不到符合篩選條件的錯題。</p>
       ) : (
         <ul className="mistake-list">
           {filtered.map((entry) => (

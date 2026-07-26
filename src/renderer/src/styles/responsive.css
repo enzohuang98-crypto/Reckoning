@@ -144,10 +144,6 @@
 }
 
 @media (max-width: 720px) {
-  .app-nav {
-    display: none;
-  }
-
   .live-analysis-table-scroll {
     max-height: 280px;
   }

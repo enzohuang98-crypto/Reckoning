@@ -4,6 +4,7 @@ export type IconName =
   | 'brain'
   | 'chevronDown'
   | 'details'
+  | 'grid'
   | 'live'
   | 'play'
   | 'redo'
@@ -49,6 +50,14 @@ const paths: Record<IconName, JSX.Element> = {
       <circle cx="8" cy="5" r="1.5" />
       <circle cx="15" cy="12" r="1.5" />
       <circle cx="10" cy="19" r="1.5" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.6" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" />
     </>
   ),
   live: (
