@@ -58,35 +58,45 @@
   font-size: 36px;
 }
 
+/* 拉丁字母不需要中文標題那種寬字距，0.14em 會把 Reckoning 撐得鬆散。 */
 .app-title {
   color: #20372b;
   font-family: var(--font-serif);
-  font-size: 19px;
-  letter-spacing: 0.14em;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
+/*
+ * 分頁列（膠囊）裡有兩個成員，但它們來自兩套不同的 class：
+ * 「分析」是原生 button.nav-btn，「工具」是 ToolbarMenu 的 summary.toolbar-btn。
+ * 兩者原本在 min-width、padding、gap 與 hover 表現上都不一致，並排時看得出
+ * 寬窄與描邊差異。這裡把盒模型與三種狀態定義成同一份，顏色沿用與分析
+ * 工具列相同的 design token，讓整個 App 的工具列是同一套視覺語言。
+ */
 .app-nav {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   padding: 4px;
-  border: 1px solid #e2ebe5;
+  border: 1px solid var(--color-border);
   border-radius: 13px;
-  background: #f4f7f5;
+  background: var(--color-bg-soft);
 }
 
-.nav-btn {
+.nav-btn,
+.app-nav .toolbar-menu > summary.toolbar-btn {
   display: inline-flex;
   min-height: 40px;
-  min-width: 72px;
+  min-width: 86px;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0 12px;
-  border: 0;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid transparent;
   border-radius: 9px;
-  color: #6d7d73;
+  color: var(--color-text-soft);
   background: transparent;
   cursor: pointer;
   font-size: 14px;
@@ -94,21 +104,43 @@
   transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
-.nav-btn:hover {
-  color: #294b3a;
-  background: rgba(255, 255, 255, 0.72);
+.nav-btn:hover,
+.app-nav .toolbar-menu > summary.toolbar-btn:hover {
+  color: var(--color-primary-hover);
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.78);
 }
 
-.nav-btn.active {
-  color: #24553f;
-  background: #fff;
+/* 作用中的分頁浮起成白色卡片，與膠囊底色形成對比（segmented control）。 */
+.nav-btn.active,
+.app-nav .toolbar-menu > summary.toolbar-btn.active {
+  color: var(--color-primary);
+  border-color: transparent;
+  background: var(--color-surface);
   box-shadow: var(--shadow-xs), 0 4px 12px rgba(44, 72, 58, 0.07);
+}
+
+/* 選單展開時即使尚未切頁也要有按下感，否則點開會像沒反應。 */
+.app-nav .toolbar-menu[open] > summary.toolbar-btn {
+  color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs), 0 4px 12px rgba(44, 72, 58, 0.07);
+}
+
+/* 選單對齊膠囊左緣，並與 header 底線留出與分析工具列相同的間距。 */
+.app-nav .toolbar-popover {
+  top: calc(100% + 10px);
+  left: -4px;
 }
 
 /*
  * 只在有新版可下載／待安裝時才渲染，因此平常完全不佔空間。
  * flex: 0 0 auto 確保它不與 .analysis-command-mount 的 flex: 1 搶伸縮，
  * 工具列仍靠右對齊、既有比例不變。
+ *
+ * margin-left: auto 只在「沒有分析工具列」的頁面（錯題本／待理解）生效：
+ * flex-grow 會先吃掉所有剩餘空間，所以分析頁上這個 auto margin 拿到 0，
+ * 位置完全不變；其他頁則把提示推到 header 右緣，而不是懸在導覽旁邊。
  */
 .app-update-chip {
   display: inline-flex;
@@ -116,9 +148,10 @@
   align-items: center;
   gap: 7px;
   height: 32px;
+  margin-left: auto;
   padding: 0 12px;
   border: 1px solid #d8c69b;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: #7c5521;
   background: #fff6e5;
   cursor: pointer;

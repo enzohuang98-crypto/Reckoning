@@ -1,20 +1,25 @@
 import type { ReactNode } from 'react'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import { Icon, type IconName } from '../components/ui/Icon'
+import { ToolbarMenu } from '../components/ui/ToolbarMenu'
 
 export type AppTab = 'analyze' | 'settings' | 'mistakes' | 'misunderstood'
 
-interface NavigationItem {
+interface ToolNavItem {
   id: AppTab
   label: string
+  description: string
   icon: IconName
 }
 
-const navigation: NavigationItem[] = [
-  { id: 'analyze', label: '分析', icon: 'board' },
-  { id: 'mistakes', label: '錯題本', icon: 'archive' },
-  { id: 'misunderstood', label: '待理解', icon: 'brain' },
-  { id: 'settings', label: '設定', icon: 'settings' }
+/**
+ * 分析是固定首頁，永遠是獨立分頁；其餘目的地收進同一個「工具」選單，
+ * 避免四個等重分頁攤平在同一列（窄視窗更會直接消失，見 responsive.css）。
+ */
+const toolNavItems: ToolNavItem[] = [
+  { id: 'mistakes', label: '錯題本', description: '搜尋、篩選並追蹤走錯的局面', icon: 'archive' },
+  { id: 'misunderstood', label: '待理解', description: '收藏尚未想通的關鍵局面', icon: 'brain' },
+  { id: 'settings', label: '設定', description: 'AI、本機引擎、解說品質與系統', icon: 'settings' }
 ]
 
 /**
@@ -75,24 +80,35 @@ export function AppShell({
           onClick={() => onTabChange('analyze')}
         >
           <span className="brand-seal" aria-hidden="true">象</span>
-          <b className="app-title">象棋 AI 分析講解</b>
+          <b className="app-title">Reckoning</b>
         </button>
 
         <nav className="app-nav" aria-label="主要功能">
-          {navigation.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={'nav-btn' + (activeTab === item.id ? ' active' : '')}
-              aria-label={item.label}
-              aria-current={activeTab === item.id ? 'page' : undefined}
-              title={item.label}
-              onClick={() => onTabChange(item.id)}
-            >
-              <Icon name={item.icon} size={16} />
-              <span>{item.label}</span>
-            </button>
-          ))}
+          <button
+            type="button"
+            className={'nav-btn' + (activeTab === 'analyze' ? ' active' : '')}
+            aria-label="分析"
+            aria-current={activeTab === 'analyze' ? 'page' : undefined}
+            title="分析首頁"
+            onClick={() => onTabChange('analyze')}
+          >
+            <Icon name="board" size={16} />
+            <span>分析</span>
+          </button>
+
+          <ToolbarMenu
+            icon="wrench"
+            label="工具"
+            active={activeTab !== 'analyze'}
+            items={toolNavItems.map((item) => ({
+              id: item.id,
+              icon: item.icon,
+              label: item.label,
+              description: item.description,
+              active: activeTab === item.id,
+              onSelect: () => onTabChange(item.id)
+            }))}
+          />
         </nav>
 
         {prompt && activeTab !== 'settings' && (

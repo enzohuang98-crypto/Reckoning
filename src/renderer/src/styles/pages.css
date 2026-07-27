@@ -55,7 +55,12 @@
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /*
+   * 內容寬度即可，不要把四個分類拉開撐滿整條寬度——那會在每個項目右側
+   * 留下一大片空白，看起來像四個各自散落的區塊而不是一組分類切換。
+   */
+  grid-template-columns: repeat(4, minmax(0, max-content));
+  justify-content: start;
   gap: 5px;
   margin-bottom: 14px;
   padding: 7px;
@@ -278,18 +283,45 @@
   box-shadow: var(--shadow-sm);
 }
 
+.list-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 搜尋框不必吃掉整條寬度；超過這個長度只是空白，讀起來反而更散。 */
+.list-toolbar-search {
+  min-width: 200px;
+  max-width: 420px;
+  flex: 1 1 320px;
+}
+
+.list-toolbar-select {
+  width: auto;
+  min-width: 132px;
+  flex: 0 0 auto;
+}
+
+/* 與同一列的輸入框、下拉選單等高，避免按鈕比欄位矮一截。 */
+.list-toolbar-row .btn {
+  min-height: 40px;
+}
+
 .mistake-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin: 0;
   padding: 0;
+  /* 每張卡片用自己的自然高度，不被同一列最高的那張撐開留白。 */
+  align-items: start;
   list-style: none;
 }
 
 .mistake-item {
   min-width: 0;
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--color-border);
   border-radius: 15px;
   background: var(--color-surface);
@@ -303,40 +335,75 @@
   box-shadow: 0 12px 28px rgba(44, 72, 58, 0.09);
 }
 
+/* 只放狀態標籤；FEN 已降級進「單筆詳情」，不再霸佔卡片頂端。 */
 .mistake-head {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 9px;
 }
 
-.mistake-head .mono,
-.mistake-item > .mono {
+.mistake-item > .mono,
+.mistake-fen {
+  display: block;
   min-width: 0;
+  margin: 8px 0;
   color: var(--color-muted);
   font-size: 10px;
   line-height: 1.5;
   word-break: break-all;
 }
 
-.mistake-head .mono {
-  flex: 1;
+/*
+ * 卡片標題行：這筆錯題的重點就是「你走了什麼 vs 該走什麼」，
+ * 所以它是整張卡片唯一的大字，其餘資訊一律比它小。
+ */
+.mistake-headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
 }
 
-.mistake-item > .mono {
-  display: block;
-  margin-bottom: 14px;
+.mistake-move {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 16px;
+  font-weight: 700;
 }
 
-.mistake-body {
-  margin-bottom: 13px;
-  padding: 11px;
-  border-radius: 9px;
-  color: var(--color-text-soft);
-  background: var(--color-bg-soft);
+.mistake-move small {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mistake-move.played {
+  color: var(--color-danger);
+}
+
+.mistake-move.best {
+  color: var(--color-primary);
+}
+
+.mistake-arrow {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+/* 筆記是散文，不該用等寬字，也不需要 FEN 那種高度。 */
+.mistake-item .field {
+  margin-bottom: 10px;
+}
+
+.mistake-item .fen-textarea {
+  min-height: 0;
+  padding: 7px 9px;
+  font-family: var(--font-sans);
   font-size: 12px;
-  line-height: 1.65;
 }
 
 .mistake-details {
@@ -347,7 +414,8 @@
 }
 
 .mistake-item-actions {
-  margin-top: 6px;
+  margin-top: 10px;
+  justify-content: flex-end;
 }
 
 .tag-editor {
@@ -358,9 +426,14 @@
   margin-top: 9px;
 }
 
+/* 新增標籤是次要動作，撐滿整行會讓它看起來比主要動作還重要。 */
 .tag-editor .text-input {
-  min-width: 140px;
-  flex: 1;
+  width: 128px;
+  min-width: 0;
+  min-height: 30px;
+  flex: 0 1 128px;
+  padding: 4px 9px;
+  font-size: 12px;
 }
 
 .setup-wizard {

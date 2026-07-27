@@ -22,8 +22,28 @@
   height: 68px;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 3px;
   padding: 0;
+}
+
+/*
+ * 工具列一律是等大的方形 icon 按鈕（參考傳統象棋 GUI 的工具列）。
+ * 先前每顆按鈕都帶文字標籤，寬度隨字數 2～5 字不等，並排起來參差不齊，
+ * 這是整條工具列看起來「散」的主因。文字改走 title／aria-label，
+ * 滑鼠停留仍看得到名稱，朗讀器也讀得到，但視覺上只剩整齊的方塊。
+ * 主要動作與危險動作靠顏色區分，不靠尺寸。
+ */
+.analysis-command-mount .toolbar-btn {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+}
+
+.analysis-command-mount .toolbar-label,
+.analysis-command-mount .toolbar-menu-chevron {
+  display: none;
 }
 
 .toolbar-group {
