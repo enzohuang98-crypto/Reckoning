@@ -183,16 +183,21 @@ jobs:
           > **Windows installer is intentionally unsigned.** Windows SmartScreen may warn or block it because it has no trusted Authenticode publisher. Download only from this GitHub Release, verify `SHA256SUMS.txt`, and continue only if you accept that warning.
 
           EOF
-          cat "docs/releases/$version.md" >> release-notes.md
-          gh release create "$tag" \
-            "$setup" \
-            "$setup.blockmap" \
-            release/latest.yml \
-            release/SHA256SUMS.txt \
-            --verify-tag \
-            --prerelease \
-            --title "象棋 AI 分析講解 $tag（未簽章 Windows 安裝程式；用戶端驗收中）" \
-            --notes-file release-notes.md
+          awk '/^## Windows 發布門檻/{exit} {print}' "docs/releases/$version.md" >> release-notes.md
+          cat >> release-notes.md <<'EOF'
+
+          ## 本次 Windows 發布狀態
+
+          本次 v0.3.7 是**刻意未簽章**的公開 prerelease：沒有受信任的 Authenticode 發行者與時間戳，Windows SmartScreen 可能警告或封鎖。請只從此 GitHub Release 下載，先驗證 `SHA256SUMS.txt`，並且僅在了解及接受這項風險後才繼續。它不會升為 Latest，直到另有簽章與乾淨 Windows 用戶端驗收證據。
+          EOF
+          title="象棋 AI 分析講解 $tag（未簽章 Windows 安裝程式；用戶端驗收中）"
+          assets=("$setup" "$setup.blockmap" release/latest.yml release/SHA256SUMS.txt)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release edit "$tag" --prerelease --title "$title" --notes-file release-notes.md
+          else
+            gh release create "$tag" "${assets[@]}" --verify-tag --prerelease --title "$title" --notes-file release-notes.md
+          fi
 
   server-proxy-acceptance:
     name: Public installer check (${{ matrix.label }} proxy)
@@ -212,7 +217,7 @@ jobs:
       - name: Check out release test scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Download installer from the anonymous public URL
@@ -229,6 +234,7 @@ jobs:
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass `
             -File tools/release/smoke-installer.ps1 `
+            -AllowUnsigned `
             -ExpectedSha256 '${{ needs.build.outputs.setup_sha256 }}'
           "This runner is a ${{ matrix.label }}. It is not Windows 10 or Windows 11 consumer-client evidence." |
             Out-File -Append -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
