@@ -107,7 +107,7 @@ jobs:
             'forceCodeSigning: false'
           )
           Set-Content -NoNewline -Encoding utf8 -LiteralPath $builderConfig -Value $unsignedConfig
-          npm run dist:update:github
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/build-github-update.ps1
 
       - name: Verify unsigned metadata and SHA-256
         id: metadata
