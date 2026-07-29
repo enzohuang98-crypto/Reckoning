@@ -592,20 +592,23 @@ check(
     ciWorkflow.includes('npm run build')
 )
 check(
-  'Release workflow 沒有未簽章通道且要求有效簽章與時間戳',
+  'Release workflow 的未簽章模式必須明示、保留完整測試與安裝檢查，且公開警告',
   builderConfig.includes('forceCodeSigning: true') &&
-    !releaseWorkflow.includes('allow_unsigned') &&
-    releaseWorkflow.includes('name: windows-signing') &&
     releaseWorkflow.includes(
       "if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)"
     ) &&
-    releaseWorkflow.includes('WINDOWS_CSC_LINK') &&
-    releaseWorkflow.includes('WINDOWS_CSC_KEY_PASSWORD') &&
     releaseWorkflow.includes('uses: ./.github/actions/compile-fake-engine') &&
-    releaseWorkflow.includes('npm run verify:signature') &&
+    releaseWorkflow.includes('npm run typecheck') &&
+    releaseWorkflow.includes('npm test') &&
+    releaseWorkflow.includes('npm run security:audit') &&
+    releaseWorkflow.includes('forceCodeSigning: false') &&
+    releaseWorkflow.includes('SignatureStatus]::NotSigned') &&
+    releaseWorkflow.includes('-AllowUnsigned') &&
+    releaseWorkflow.includes('Windows SmartScreen may warn or block it') &&
+    installerSmokeScript.includes('[switch]$AllowUnsigned') &&
+    installerSmokeScript.includes('SignatureStatus]::NotSigned') &&
     verifySignatureScript.includes('SignatureStatus]::Valid') &&
-    verifySignatureScript.includes('TimeStamperCertificate') &&
-    !verifySignatureScript.includes('NotSigned')
+    verifySignatureScript.includes('TimeStamperCertificate')
 )
 check(
   'Release 只把 Windows Server 當代理，Latest 前強制核對 Win10 22H2 與 Win11 用戶端',

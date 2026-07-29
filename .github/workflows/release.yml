@@ -21,12 +21,10 @@ env:
 
 jobs:
   build:
-    name: Build signed Windows x64 artifact once
+    name: Build unsigned Windows x64 artifact once
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: windows-2022
     timeout-minutes: 50
-    environment:
-      name: windows-signing
     outputs:
       setup_sha256: ${{ steps.metadata.outputs.setup_sha256 }}
       release_commit: ${{ steps.source.outputs.release_commit }}
@@ -74,19 +72,6 @@ jobs:
           }
           "release_commit=$tagCommit" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
-      - name: Require trusted Windows signing material
-        shell: pwsh
-        env:
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) {
-            throw 'WINDOWS_CSC_LINK is required. Formal releases cannot publish unsigned installers.'
-          }
-          if ([string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
-            throw 'WINDOWS_CSC_KEY_PASSWORD is required.'
-          }
-
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -108,33 +93,47 @@ jobs:
       - name: Audit dependencies
         run: npm run security:audit
 
-      - name: Build signed update package
+      - name: Build explicitly unsigned update package
         shell: pwsh
-        env:
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-        run: npm run dist:update:github
+        run: |
+          $builderConfig = 'electron-builder.yml'
+          $sourceConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath $builderConfig
+          if ($sourceConfig -notmatch '(?m)^forceCodeSigning:\s*true\s*$') {
+            throw 'Release source must retain forceCodeSigning: true; unsigned mode is an explicit workflow-only exception.'
+          }
+          $unsignedConfig = [regex]::Replace(
+            $sourceConfig,
+            '(?m)^forceCodeSigning:\s*true\s*$',
+            'forceCodeSigning: false'
+          )
+          Set-Content -NoNewline -Encoding utf8 -LiteralPath $builderConfig -Value $unsignedConfig
+          npm run dist:update:github
 
-      - name: Verify metadata, Authenticode, timestamp, and SHA-256
+      - name: Verify unsigned metadata and SHA-256
         id: metadata
         shell: pwsh
         run: |
           npm run verify:update
-          npm run verify:signature
           $version = (Get-Content -Raw -Encoding UTF8 package.json | ConvertFrom-Json).version
           $setup = "release/xiangqi-analyzer-$version-setup.exe"
           $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned) {
+            throw "This release must be explicitly unsigned; installer signature status was $($signature.Status)."
+          }
           $manifest = (Get-Content -Raw -Encoding ASCII release/SHA256SUMS.txt).Trim()
           if ($manifest -ne "$sha256  $([IO.Path]::GetFileName($setup))") {
             throw 'SHA256SUMS.txt does not match the freshly built installer.'
           }
           "setup_sha256=$sha256" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
-      - name: Install and uninstall the exact signed build
+      - name: Install and uninstall the exact unsigned build
         shell: pwsh
         run: |
+          git checkout origin/main -- tools/release/smoke-installer.ps1
           pwsh -NoProfile -ExecutionPolicy Bypass `
             -File tools/release/smoke-installer.ps1 `
+            -AllowUnsigned `
             -ExpectedSha256 '${{ steps.metadata.outputs.setup_sha256 }}'
 
       - name: Upload the immutable candidate
@@ -150,7 +149,7 @@ jobs:
           retention-days: 7
 
   publish-candidate:
-    name: Publish signed prerelease candidate
+    name: Publish unsigned prerelease candidate
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -170,7 +169,7 @@ jobs:
           name: ${{ env.RELEASE_ARTIFACT_NAME }}
           path: release
 
-      - name: Create a public prerelease for client testing
+      - name: Create a public unsigned prerelease for client testing
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -179,6 +178,12 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           tag="v$version"
           setup="release/xiangqi-analyzer-$version-setup.exe"
+          cat > release-notes.md <<'EOF'
+          > [!WARNING]
+          > **Windows installer is intentionally unsigned.** Windows SmartScreen may warn or block it because it has no trusted Authenticode publisher. Download only from this GitHub Release, verify `SHA256SUMS.txt`, and continue only if you accept that warning.
+
+          EOF
+          cat "docs/releases/$version.md" >> release-notes.md
           gh release create "$tag" \
             "$setup" \
             "$setup.blockmap" \
@@ -186,8 +191,8 @@ jobs:
             release/SHA256SUMS.txt \
             --verify-tag \
             --prerelease \
-            --title "象棋 AI 分析講解 $tag（用戶端驗收中）" \
-            --notes-file "docs/releases/$version.md"
+            --title "象棋 AI 分析講解 $tag（未簽章 Windows 安裝程式；用戶端驗收中）" \
+            --notes-file release-notes.md
 
   server-proxy-acceptance:
     name: Public installer check (${{ matrix.label }} proxy)

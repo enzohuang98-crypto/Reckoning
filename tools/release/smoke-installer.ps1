@@ -1,6 +1,7 @@
 param(
   [ValidateSet('Lifecycle', 'Install', 'Uninstall')]
   [string]$Phase = 'Lifecycle',
+  [switch]$AllowUnsigned,
   [ValidatePattern('^[A-Fa-f0-9]{64}$')]
   [string]$ExpectedSha256
 )
@@ -49,11 +50,17 @@ function Assert-SetupIntegrity {
     throw "Setup SHA-256 is $actualSha256; expected $($ExpectedSha256.ToUpperInvariant())."
   }
   $signature = Get-AuthenticodeSignature -LiteralPath $setup
-  if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-    throw "Setup Authenticode signature is not valid: $($signature.Status)"
-  }
-  if (-not $signature.TimeStamperCertificate) {
-    throw 'Setup Authenticode signature has no trusted timestamp.'
+  if ($AllowUnsigned) {
+    if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned) {
+      throw "Unsigned release expected an unsigned setup, got: $($signature.Status)"
+    }
+  } else {
+    if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+      throw "Setup Authenticode signature is not valid: $($signature.Status)"
+    }
+    if (-not $signature.TimeStamperCertificate) {
+      throw 'Setup Authenticode signature has no trusted timestamp.'
+    }
   }
 }
 
@@ -154,13 +161,13 @@ if ($Phase -eq 'Uninstall') {
 # separate child processes so the smoke test matches two real user sessions.
 $powerShellExe = (Get-Process -Id $PID).Path
 & $powerShellExe -NoProfile -ExecutionPolicy Bypass `
-  -File $PSCommandPath -Phase Install -ExpectedSha256 $ExpectedSha256
+  -File $PSCommandPath -Phase Install -AllowUnsigned:$AllowUnsigned -ExpectedSha256 $ExpectedSha256
 $installExitCode = $LASTEXITCODE
 
 $uninstallExitCode = 0
 if (-not (Test-CleanState)) {
   & $powerShellExe -NoProfile -ExecutionPolicy Bypass `
-    -File $PSCommandPath -Phase Uninstall -ExpectedSha256 $ExpectedSha256
+    -File $PSCommandPath -Phase Uninstall -AllowUnsigned:$AllowUnsigned -ExpectedSha256 $ExpectedSha256
   $uninstallExitCode = $LASTEXITCODE
 }
 
