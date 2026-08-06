@@ -15,6 +15,9 @@ interface FrozenCase {
 interface FrozenCasesDocument {
   schemaVersion: number
   canonicalizationVersion: number
+  caseSetStatus: string
+  teacherConfirmedCaseCount: number
+  teacherConfirmedCaseSlotsRequired: number
   sourceFixture: { path: string; sha256: string }
   cases: FrozenCase[]
 }
@@ -30,6 +33,9 @@ const document = JSON.parse(
 
 assert.equal(document.schemaVersion, 1)
 assert.equal(document.canonicalizationVersion, 1)
+assert.equal(document.caseSetStatus, 'fixture-only; teacher-confirmation-pending')
+assert.equal(document.teacherConfirmedCaseCount, 0)
+assert.equal(document.teacherConfirmedCaseSlotsRequired, 3)
 assert.equal(document.cases.length, 6)
 assert.equal(
   createHash('sha256')
