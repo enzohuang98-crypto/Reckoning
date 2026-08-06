@@ -9,12 +9,12 @@ import {
 
 async function main(): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), 'reckoning-teacher-test-'))
-  const installerPath = join(directory, 'xiangqi-analyzer-0.3.8-setup.exe')
+  const installerPath = join(directory, 'xiangqi-analyzer-0.3.9-setup.exe')
   await writeFile(installerPath, Buffer.from('teacher candidate bytes'))
 
   let now = new Date('2026-08-06T12:00:00.000Z')
   const runtime: TeacherTestRuntimeSnapshot = {
-    appVersion: '0.3.8',
+    appVersion: '0.3.9',
     platform: 'win32',
     systemVersion: '10.0.22631',
     osBuild: 'Windows 11 10.0.22631',
@@ -27,14 +27,14 @@ async function main(): Promise<void> {
 
   try {
     const manifest = await service.start({
-      releaseTag: 'v0.3.8',
+      releaseTag: 'v0.3.9',
       productSourceCommit: 'A'.repeat(40),
       installerPath
     })
-    assert.equal(manifest.artifactClaim.appVersion, '0.3.8')
-    assert.equal(manifest.artifactClaim.releaseTag, 'v0.3.8')
+    assert.equal(manifest.artifactClaim.appVersion, '0.3.9')
+    assert.equal(manifest.artifactClaim.releaseTag, 'v0.3.9')
     assert.equal(manifest.artifactClaim.productSourceCommit, 'a'.repeat(40))
-    assert.equal(manifest.artifactClaim.installerFileName, 'xiangqi-analyzer-0.3.8-setup.exe')
+    assert.equal(manifest.artifactClaim.installerFileName, 'xiangqi-analyzer-0.3.9-setup.exe')
     assert.match(manifest.artifactClaim.installerSha256, /^[0-9a-f]{64}$/)
     assert.equal(JSON.stringify(manifest).includes(directory), false)
 
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
 
     now = new Date('2026-08-06T12:20:00.000Z')
     const secondManifest = await service.start({
-      releaseTag: 'v0.3.8',
+      releaseTag: 'v0.3.9',
       productSourceCommit: 'b'.repeat(40),
       installerPath
     })

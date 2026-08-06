@@ -1,6 +1,6 @@
 # Reckoning teacher-test protocol v1
 
-這份 protocol 是 v0.3.8 teacher candidate 的雙機實測操作契約。它定義要重播的題目、要留下的匿名證據與停止條件；它不替代老師的實際評分，也不把本機自測誤稱為老師驗收。
+這份 protocol 是 teacher candidate 的雙機實測操作契約。它定義要重播的題目、要留下的匿名證據與停止條件；它不替代老師的實際評分，也不把本機自測誤稱為老師驗收。實際 Release tag 必須以 run manifest 的 `artifactClaim` 為準。
 
 ## 固定輸入
 
@@ -8,6 +8,12 @@
 - 原始題目取自 `tests/fixtures/playok/acceptance-cases.json`，其 SHA-256 已寫在 JSON。`historicalFixture` 只代表既有工程 fixture 的背景，不是這次老師分數的預設答案或通過門檻。
 - App、Release tag、product source commit、installer 檔名與 installer SHA-256 必須先由 Settings 的 `TEACHER PILOT EVIDENCE` run manifest 核對。沒有完整 artifactClaim 就停止，不進入題目測試。
 - 兩台電腦必須使用同一個公開 GitHub teacher-candidate Release asset。每台各自建立一個 `testRunId`；不可把一台電腦的 trace 併入另一台的 run。
+
+## Case-set status before teacher confirmation
+
+- 目前 `teacher-test-cases-v1.json` 的六題是工程乾跑基線，全部來自既有 PlayOK fixture；JSON 明確標記 `fixture-only; teacher-confirmation-pending`。
+- 這六題可以驗證 case canonicalization、engine fixture 與 export schema，但不能被寫成老師已確認的題目，也不能代填外部 rubric。
+- 計畫要求的正式 pilot 還缺三個由專業象棋／學習歷程老師提供或明確確認的題目：防守資源／利用對手、PlayOK WXF 中局、以及需要回答「為什麼／如何反思」的題目。老師確認後，必須更新 frozen case 文件與其 metadata，再讓兩台機器使用同一份新文件。
 
 ## 每台電腦的操作
 

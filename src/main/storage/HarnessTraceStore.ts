@@ -353,8 +353,9 @@ export class HarnessTraceStore {
   }
 
   /** Export uses the same positive allowlist as storage, never arbitrary JSON fields. */
-  listForExport(): HarnessTrace[] {
+  listForExport(testRunId?: string): HarnessTrace[] {
     return this.list()
+      .filter((trace) => testRunId === undefined || trace.evaluation?.testRunId === testRunId)
       .map(sanitizeTrace)
       .filter((trace): trace is HarnessTrace => trace !== null)
   }
@@ -381,10 +382,13 @@ export class HarnessTraceStore {
    * 匯出後可直接加入 tests/fixtures 的回歸評測集，
    * 用 screenExplanationText 驗證未來版本不再產出同類問題。
    */
-  listRegressionCases(): HarnessRegressionCase[] {
+  listRegressionCases(testRunId?: string): HarnessRegressionCase[] {
     return this.list()
       .filter(
-        (trace) => trace.feedback !== undefined && trace.feedback !== 'helpful'
+        (trace) =>
+          (testRunId === undefined || trace.evaluation?.testRunId === testRunId) &&
+          trace.feedback !== undefined &&
+          trace.feedback !== 'helpful'
       )
       .map((trace) => ({
         traceId: trace.id,

@@ -34,6 +34,43 @@ assert.equal(JSON.stringify(exported).includes('should-never-export'), false)
 assert.equal(JSON.stringify(exported).includes('secrets.json'), false)
 assert.equal(Object.prototype.hasOwnProperty.call(exported[0], 'apiKey'), false)
 
+const teacherRunId = 'teacher-run-a'
+const teacherTrace = {
+  ...trace,
+  id: 'trace-teacher-run-a',
+  evaluation: {
+    schemaVersion: 1,
+    testRunId: teacherRunId,
+    testCaseId: 'case-a',
+    canonicalizationVersion: 1,
+    externalReviewId: 'review-a'
+  },
+  feedback: 'incorrect'
+} as unknown as HarnessTrace
+const previousRunTrace = {
+  ...trace,
+  id: 'trace-previous-run',
+  evaluation: {
+    schemaVersion: 1,
+    testRunId: 'teacher-run-previous',
+    testCaseId: 'case-previous',
+    canonicalizationVersion: 1,
+    externalReviewId: 'review-previous'
+  },
+  feedback: 'incorrect'
+} as unknown as HarnessTrace
+const runScopedStore = new HarnessTraceStore({
+  read: () => [teacherTrace, previousRunTrace]
+} as never)
+assert.deepEqual(
+  runScopedStore.listForExport(teacherRunId).map((item) => item.id),
+  ['trace-teacher-run-a']
+)
+assert.deepEqual(
+  runScopedStore.listRegressionCases(teacherRunId).map((item) => item.traceId),
+  ['trace-teacher-run-a']
+)
+
 store.save(trace)
 assert(written)
 assert.equal(JSON.stringify(written).includes('should-never-export'), false)

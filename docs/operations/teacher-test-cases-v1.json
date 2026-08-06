@@ -1,6 +1,9 @@
 {
   "schemaVersion": 1,
   "canonicalizationVersion": 1,
+  "caseSetStatus": "fixture-only; teacher-confirmation-pending",
+  "teacherConfirmedCaseCount": 0,
+  "teacherConfirmedCaseSlotsRequired": 3,
   "purpose": "Reckoning teacher-test pilot frozen cases; runtime testCaseId is computed from the exact identity fields.",
   "sourceFixture": {
     "path": "tests/fixtures/playok/acceptance-cases.json",

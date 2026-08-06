@@ -344,13 +344,15 @@ export function registerAiExplanationHandlers(
     if (result.canceled || !result.filePath) {
       return { ok: false as const, cancelled: true }
     }
+    const runManifest = teacherTestRun.getManifest()
+    const testRunId = runManifest?.testRunId
     storage.writeAbsolute(result.filePath, {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),
-      runManifest: teacherTestRun.getManifest(),
-      traces: traceStore.listForExport(),
+      runManifest,
+      traces: traceStore.listForExport(testRunId),
       // 使用者標記「不清楚／不正確／證據不足」的解說，轉為可重放的回歸案例
-      regressionCases: traceStore.listRegressionCases()
+      regressionCases: traceStore.listRegressionCases(testRunId)
     } satisfies TeacherTestExportV1)
     return { ok: true as const, filePath: result.filePath }
   })
