@@ -12,7 +12,7 @@
 - `v0.3.7` annotated tag object 是 `f7efc67da97f3f4fc77bfc89625f8cb902d53cf6`，product commit 是
   `e6cce2f7e0a045b080f40c4e4454cc0d32335ab8`；v0.3.7 Release workflow 當時的 head snapshot 是
   `81bee70dd1eaf53014fa8ffd736195f5eae98855`。目前 `main` 已進到
-  `5514b3ecfc63481a3942a277605d9114f1b54308`，不可把歷史 snapshot、Release product commit 與目前 main 混為同一版。
+  `459cf004691dfd56178e8983c038dbdeec09c63a`，不可把歷史 snapshot、Release product commit 與目前 main 混為同一版。
 - v0.3.7 安裝檔 `xiangqi-analyzer-0.3.7-setup.exe` 的公開 SHA-256 是
   `1277f5a3da64519178d38ec6bec09cf8fc7bbeb44cd4562ca4f466ff32ee8c21`。
 - v0.3.7 Release run `30426166887` 的建置、測試、unsigned smoke 與 Server proxy 成功；clean Windows
