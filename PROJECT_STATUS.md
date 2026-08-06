@@ -4,14 +4,15 @@
 
 ## 1. 目前狀態
 
-- 目前 source candidate：**v0.3.8**（public teacher-test prerelease；刻意未簽章，非 Latest）
+- 目前 source candidate：**v0.3.9**（public teacher-test prerelease；刻意未簽章，非 Latest）
 - GitHub：`https://github.com/enzohuang98-crypto/Reckoning`
 - 歷史公開 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.7>（2026-07-29 發布、非 draft、prerelease、刻意未簽章）
-- v0.3.8 teacher candidate Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.8>（2026-08-06 發布、非 draft、prerelease、刻意未簽章；沒有升為 Latest）
+- 歷史 teacher candidate Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.8>（2026-08-06 發布、非 draft、prerelease、刻意未簽章；沒有升為 Latest）
+- v0.3.9 teacher candidate Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.9>（2026-08-06 發布、非 draft、prerelease、刻意未簽章；沒有升為 Latest）
 - `v0.3.7` annotated tag object 是 `f7efc67da97f3f4fc77bfc89625f8cb902d53cf6`，product commit 是
   `e6cce2f7e0a045b080f40c4e4454cc0d32335ab8`；v0.3.7 Release workflow 當時的 head snapshot 是
   `81bee70dd1eaf53014fa8ffd736195f5eae98855`。目前 `main` 已進到
-  `bd9df58df04f17e0e641322ecf155ffe6c68f838`，不可把歷史 snapshot、Release product commit 與目前 main 混為同一版。
+  `5514b3ecfc63481a3942a277605d9114f1b54308`，不可把歷史 snapshot、Release product commit 與目前 main 混為同一版。
 - v0.3.7 安裝檔 `xiangqi-analyzer-0.3.7-setup.exe` 的公開 SHA-256 是
   `1277f5a3da64519178d38ec6bec09cf8fc7bbeb44cd4562ca4f466ff32ee8c21`。
 - v0.3.7 Release run `30426166887` 的建置、測試、unsigned smoke 與 Server proxy 成功；clean Windows
@@ -20,10 +21,15 @@
   smoke 與 Server 2022/2025 proxy 全部成功；安裝檔大小 `164630417` bytes、SHA-256 為
   `e3e9fd0b727e614ed911ff5dbabc5b8df843de2cbdba3566af8e0cae9127d94c`。Win10/Win11 client evidence 與
   promotion 依 mode 明確 skipped，完整紀錄見 [`release-v0.3.8-evidence.md`](docs/operations/release-v0.3.8-evidence.md)。
+- v0.3.9 teacher-candidate Release run `31105552449` 的 build、完整測試、audit、unsigned install/uninstall
+  smoke 與 Server 2022/2025 proxy 全部成功；安裝檔大小 `164630467` bytes、SHA-256 為
+  `f29e5687437a54ea43a7f7fa75503e85a752aa64ae37ec6e0b9c9fb8c69df8b8`。它包含 teacher-test export
+  run isolation 修正；Win10/Win11 client evidence 與 promotion 依 mode 明確 skipped，完整紀錄見
+  [`release-v0.3.9-evidence.md`](docs/operations/release-v0.3.9-evidence.md)。
 - 安裝下載與自動更新的唯一權威來源為本倉庫的 GitHub Releases，流程見
   [`docs/operations/release.md`](docs/operations/release.md) 與
   [`docs/operations/update-channel.md`](docs/operations/update-channel.md)。
-- v0.3.8 teacher-test 的 frozen 六案例與雙機 protocol 見
+- teacher-test 的 frozen 六案例與雙機 protocol 見
   [`docs/operations/teacher-test-cases-v1.json`](docs/operations/teacher-test-cases-v1.json) 與
   [`docs/operations/teacher-test-protocol-v1.md`](docs/operations/teacher-test-protocol-v1.md)。
 
@@ -42,6 +48,7 @@
 | v0.3.6 | 2026-07-25 | 修正新增 API 金鑰時整個視窗卡住無回應（`SecretStore`／`SecureJsonFile` 改用 `node:fs/promises`）；新增金鑰健康檢查（測試金鑰）與逾時保護；分數顯示統一以 `displayText` 為主；App 內部品牌名稱統一 |
 | v0.3.7 | 2026-07-25 | 修正桌面 App 實質上不會自動更新：有新版時標題列會主動提示（先前只藏在設定頁內），並改為每 4 小時重新檢查（先前只在啟動後檢查一次） |
 | v0.3.8 | 2026-08-06 | public unsigned teacher-test candidate：run manifest、保守 case ID、匿名 review link、非同步 installer SHA、正向 allowlist export；尚未代表老師或 Windows 雙 client 驗收 |
+| v0.3.9 | 2026-08-06 | teacher-test candidate revision：export 依 `testRunId` 隔離 trace／regression case；三個老師確認案例與雙機真人驗收仍 pending |
 
 ## 3. 2026-07-25（上午）：相依弱點、CI 整理與文件同步
 
@@ -200,9 +207,9 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - `teacher-candidate`：可在明確揭露風險下建立未簽章 prerelease；永遠不會自動升為 Latest。
 - `formal-release`：必須使用受信任 Authenticode 憑證與時間戳，並通過獨立的 Windows 10 22H2 與 Windows 11 client evidence，才允許 promotion。
 - 不可用自簽憑證宣稱已完成正式簽章，也不可把 Server proxy 成功寫成 Win10/Win11 client evidence。
-- v0.3.7 保留為歷史 unsigned prerelease，不覆寫 tag、Release 或 asset；v0.3.8 必須使用新 tag、新 commit 與新 SHA。
+- v0.3.7 與 v0.3.8 保留為歷史 unsigned prerelease，不覆寫既有 tag、Release 或 asset；v0.3.9 使用新 tag、新 commit 與新 SHA。
 
-v0.3.8 teacher candidate 已按上述例外實際發布：Release run `31102841850`、tag/source 綁定與 installer SHA-256 均已獨立核對；它仍不具可信簽章、不進 Latest，也沒有真人老師或第二台電腦結果。
+v0.3.9 teacher candidate 已按上述例外實際發布：Release run `31105552449`、tag/source 綁定與 installer SHA-256 均已獨立核對；它仍不具可信簽章、不進 Latest，也沒有真人老師或第二台電腦結果。v0.3.8 的公開候選與證據仍完整保留。
 
 teacher-test 程式只保存 main-memory run context；正式測試每台機器都必須在測試當天匯出 trace，並由外部評分表保存姓名、簽名與質性理由。六案例與 runtime canonicalization 已由本機測試驗證，但尚未有專業象棋老師或學習歷程老師的實測結果，不能宣稱整體棋理或教學價值已驗證。
 
