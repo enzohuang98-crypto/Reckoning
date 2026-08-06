@@ -8,6 +8,7 @@ This file records the public GitHub state observed on 2026-08-06 after the v0.3.
 - Release: [v0.3.8](https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.8)
 - Annotated tag object: `4e25c45857e9c9febb24305fe72691f9d7ed0cd9`
 - Peeled product/source commit: `f4eceb293780c3974189ada2a5ada2767cb02520`
+- Workflow definition commit: `f4eceb293780c3974189ada2a5ada2767cb02520` (`.github/workflows/release.yml`); the dispatched run's `head_sha` matches this commit.
 - Release workflow run: [31102841850](https://github.com/enzohuang98-crypto/Reckoning/actions/runs/31102841850)
 - Workflow mode: `teacher-candidate`
 - Published at: `2026-08-06T12:50:21Z`
