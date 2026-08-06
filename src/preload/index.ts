@@ -17,7 +17,8 @@ import {
   type GenerateExplanationDonePayload,
   type GenerateExplanationErrorPayload,
   type GenerateExplanationStartPayload,
-  type RendererApi
+  type RendererApi,
+  type TeacherTestStartInput
 } from '@shared/types/ipc'
 import type { HarnessProgressPayload } from '@shared/types/Harness'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
@@ -78,6 +79,12 @@ const api: RendererApi = {
     continueExplanation: (requestId: string) =>
       ipcRenderer.send(IPC.AI_HARNESS_CONTINUE, { requestId }),
     testCredential: (input) => ipcRenderer.invoke(IPC.AI_TEST_CREDENTIAL, input)
+  },
+  teacherTest: {
+    status: () => ipcRenderer.invoke(IPC.TEACHER_TEST_STATUS),
+    start: (input: TeacherTestStartInput) =>
+      ipcRenderer.invoke(IPC.TEACHER_TEST_START, input),
+    end: () => ipcRenderer.invoke(IPC.TEACHER_TEST_END)
   },
   data: {
     load: () => ipcRenderer.invoke(IPC.DATA_LOAD),

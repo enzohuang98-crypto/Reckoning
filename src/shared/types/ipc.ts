@@ -35,7 +35,8 @@ import type {
   HarnessAnswerMode,
   HarnessBudget,
   HarnessEvidence,
-  HarnessProgressPayload
+  HarnessProgressPayload,
+  TeacherTestRunStatusV1
 } from './Harness'
 import type { AppUpdateStatus } from './AppUpdate'
 import type { DualEngineComparison } from './DualEngine'
@@ -72,6 +73,9 @@ export const IPC = {
   AI_HARNESS_TRACE_EXPORT: 'ai:harness:trace:export',
   AI_HARNESS_TRACE_FEEDBACK: 'ai:harness:trace:feedback',
   AI_TEST_CREDENTIAL: 'ai:test-credential',
+  TEACHER_TEST_STATUS: 'teacher-test:status',
+  TEACHER_TEST_START: 'teacher-test:start',
+  TEACHER_TEST_END: 'teacher-test:end',
   // 永久資料與備份
   DATA_LOAD: 'data:load',
   DATA_SAVE: 'data:save',
@@ -327,6 +331,15 @@ export type HarnessTraceExportResult =
   | { ok: true; filePath: string }
   | { ok: false; cancelled?: boolean; message?: string }
 
+export interface TeacherTestStartInput {
+  releaseTag: string
+  productSourceCommit: string
+}
+
+export type TeacherTestActionResult =
+  | { ok: true; status: TeacherTestRunStatusV1 }
+  | { ok: false; cancelled?: boolean; message?: string }
+
 /* ---------- preload API 形狀 ---------- */
 
 export interface RendererApi {
@@ -392,6 +405,11 @@ export interface RendererApi {
     continueExplanation(requestId: string): void
     /** 低用量實際推論測試；不落地任何草稿金鑰 */
     testCredential(input: TestCredentialInput): Promise<TestCredentialResult>
+  }
+  teacherTest: {
+    status(): Promise<TeacherTestRunStatusV1>
+    start(input: TeacherTestStartInput): Promise<TeacherTestActionResult>
+    end(): Promise<TeacherTestActionResult>
   }
   data: {
     load(): Promise<DataLoadResult>

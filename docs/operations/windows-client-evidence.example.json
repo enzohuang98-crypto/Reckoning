@@ -4,10 +4,11 @@
   "testRunId": "00000000-0000-4000-8000-000000000000",
   "testedAt": "2026-07-26T00:00:00Z",
   "repository": "enzohuang98-crypto/Reckoning",
-  "releaseTag": "v0.3.7",
+  "mode": "formal-release",
+  "releaseTag": "v0.3.8",
   "commitSha": "REPLACE_WITH_40_HEX_COMMIT_SHA",
   "workflowRunId": "REPLACE_WITH_RELEASE_WORKFLOW_RUN_ID",
-  "installerUrl": "https://github.com/enzohuang98-crypto/Reckoning/releases/download/v0.3.7/xiangqi-analyzer-0.3.7-setup.exe",
+  "installerUrl": "https://github.com/enzohuang98-crypto/Reckoning/releases/download/v0.3.8/xiangqi-analyzer-0.3.8-setup.exe",
   "installerSha256": "REPLACE_WITH_64_HEX_CHARACTERS",
   "os": {
     "family": "Windows 10",

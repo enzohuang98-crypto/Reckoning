@@ -15,6 +15,7 @@ import { registerEngineAnalysisHandlers } from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
 import { registerLicenseHandlers } from './ipc/licenseHandlers'
 import { registerDataHandlers } from './ipc/dataHandlers'
+import { registerTeacherTestHandlers } from './ipc/teacherTestHandlers'
 import { LicenseService } from './license/LicenseService'
 import {
   InMemoryAnalysisSessionStore,
@@ -29,6 +30,10 @@ import {
 import { configureTrustedRendererUrl } from './security/IpcSecurity'
 import { AppUpdaterService } from './update/AppUpdaterService'
 import { startupFailurePageUrl } from './startup/StartupFailurePage'
+import {
+  getDefaultTeacherTestRuntime,
+  TeacherTestRunService
+} from './teacherTest/TeacherTestRunService'
 
 const isDev = !app.isPackaged
 
@@ -135,11 +140,21 @@ function registerIpc(): AppUpdaterService {
     packagedEnginePath && existsSync(packagedEnginePath) ? packagedEnginePath : null
   )
   const secretStore = new SecretStore()
+  const teacherTestRun = new TeacherTestRunService({
+    getRuntime: () => getDefaultTeacherTestRuntime(app.getVersion())
+  })
   // 短期分析快取（SDS §2.18）：in-memory + TTL，啟動 10 分鐘定時清理
   const sessionStore = new InMemoryAnalysisSessionStore()
   startAnalysisSessionCleanup(sessionStore)
   registerEngineAnalysisHandlers(engineRegistry, sessionStore)
-  registerAiExplanationHandlers(secretStore, sessionStore, engineRegistry, storage)
+  registerTeacherTestHandlers(teacherTestRun)
+  registerAiExplanationHandlers(
+    secretStore,
+    sessionStore,
+    engineRegistry,
+    storage,
+    teacherTestRun
+  )
   registerDataHandlers(storage)
   // 買斷授權（SDS Q5）：離線 Ed25519 簽章驗證
   registerLicenseHandlers(new LicenseService(storage))

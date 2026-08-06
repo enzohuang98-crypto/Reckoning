@@ -54,6 +54,11 @@ import {
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { StorageService } from '../storage/StorageService'
 import { HarnessTraceStore } from '../storage/HarnessTraceStore'
+import type {
+  TeacherTestExportV1,
+  TeacherTestCaseIdentityV1
+} from '@shared/types/Harness'
+import { TeacherTestRunService } from '../teacherTest/TeacherTestRunService'
 import {
   KeyedOperationGate,
   OperationBusyError
@@ -251,7 +256,8 @@ export function registerAiExplanationHandlers(
   secretStore: SecretStore,
   sessionStore: AnalysisSessionStore,
   engineRegistry: EngineRegistryService,
-  storage: StorageService
+  storage: StorageService,
+  teacherTestRun: TeacherTestRunService
 ): void {
   const traceStore = new HarnessTraceStore(storage)
   const credentialTestGate = new KeyedOperationGate(2)
@@ -339,11 +345,13 @@ export function registerAiExplanationHandlers(
       return { ok: false as const, cancelled: true }
     }
     storage.writeAbsolute(result.filePath, {
+      schemaVersion: 1,
       exportedAt: new Date().toISOString(),
-      traces: traceStore.list(),
+      runManifest: teacherTestRun.getManifest(),
+      traces: traceStore.listForExport(),
       // 使用者標記「不清楚／不正確／證據不足」的解說，轉為可重放的回歸案例
       regressionCases: traceStore.listRegressionCases()
-    })
+    } satisfies TeacherTestExportV1)
     return { ok: true as const, filePath: result.filePath }
   })
 
@@ -499,6 +507,12 @@ export function registerAiExplanationHandlers(
         const provider = getAIProvider(request.provider)
         const session = await sessionStore.get(payload.analysisId)
         if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
+        const evaluationInput: TeacherTestCaseIdentityV1 = {
+          positionFen: session.positionFen,
+          question: payload.followUpQuestion,
+          attachedMove: payload.attachedMove ?? session.userMove,
+          mode: payload.answerMode ?? 'research'
+        }
         const result = await runExplanationHarness(payload, {
           provider,
           apiKey: request.apiKey,
@@ -506,6 +520,7 @@ export function registerAiExplanationHandlers(
           session,
           registry: engineRegistry,
           traceStore,
+          evaluation: teacherTestRun.createEvaluationLink(evaluationInput),
           signal: controller.signal,
           explanationPrompt: request.prompt,
           onProgress: (progress) => {

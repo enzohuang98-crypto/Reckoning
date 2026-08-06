@@ -1,15 +1,25 @@
 # 象棋 AI 分析講解：專案交接狀態
 
-最後更新：2026-07-25
+最後更新：2026-08-06
 
 ## 1. 目前狀態
 
-- 目前版本：**v0.3.7**（`package.json` 與最新 GitHub Release 一致）
+- 目前 source candidate：**v0.3.8**（teacher-test prerelease 準備中；尚未建立公開 Release）
 - GitHub：`https://github.com/enzohuang98-crypto/Reckoning`
-- 最新 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.7>（2026-07-25 發布，非 draft、非 prerelease）
+- 目前公開 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.7>（2026-07-29 發布、非 draft、prerelease、刻意未簽章）
+- `v0.3.7` annotated tag object 是 `f7efc67da97f3f4fc77bfc89625f8cb902d53cf6`，product commit 是
+  `e6cce2f7e0a045b080f40c4e4454cc0d32335ab8`；目前 `main` 是
+  `81bee70dd1eaf53014fa8ffd736195f5eae98855`，不可把兩者當成同一版。
+- v0.3.7 安裝檔 `xiangqi-analyzer-0.3.7-setup.exe` 的公開 SHA-256 是
+  `1277f5a3da64519178d38ec6bec09cf8fc7bbeb44cd4562ca4f466ff32ee8c21`。
+- v0.3.7 Release run `30426166887` 的建置、測試、unsigned smoke 與 Server proxy 成功；clean Windows
+  10/11 client-evidence job 曾長時間 waiting，已於 2026-08-06 取消，不能算作 client gate。
 - 安裝下載與自動更新的唯一權威來源為本倉庫的 GitHub Releases，流程見
   [`docs/operations/release.md`](docs/operations/release.md) 與
   [`docs/operations/update-channel.md`](docs/operations/update-channel.md)。
+- v0.3.8 teacher-test 的 frozen 六案例與雙機 protocol 見
+  [`docs/operations/teacher-test-cases-v1.json`](docs/operations/teacher-test-cases-v1.json) 與
+  [`docs/operations/teacher-test-protocol-v1.md`](docs/operations/teacher-test-protocol-v1.md)。
 
 各版本的完整說明保存在 [`docs/releases/`](docs/releases/)，本檔只記錄跨版本的狀態、限制與維護原則。
 
@@ -25,6 +35,7 @@
 | v0.3.5 | 2026-07-21 | 明確寫入並回讀 App 專屬安裝／解除安裝登錄；Release 會在乾淨 runner 實跑靜默安裝與解除安裝驗收 |
 | v0.3.6 | 2026-07-25 | 修正新增 API 金鑰時整個視窗卡住無回應（`SecretStore`／`SecureJsonFile` 改用 `node:fs/promises`）；新增金鑰健康檢查（測試金鑰）與逾時保護；分數顯示統一以 `displayText` 為主；App 內部品牌名稱統一 |
 | v0.3.7 | 2026-07-25 | 修正桌面 App 實質上不會自動更新：有新版時標題列會主動提示（先前只藏在設定頁內），並改為每 4 小時重新檢查（先前只在啟動後檢查一次） |
+| v0.3.8 | 2026-08-06 | teacher-test evidence context：run manifest、保守 case ID、匿名 review link、非同步 installer SHA、正向 allowlist export；只準備 teacher candidate，尚未代表老師或 Windows 雙 client 驗收 |
 
 ## 3. 2026-07-25（上午）：相依弱點、CI 整理與文件同步
 
@@ -174,15 +185,18 @@ npm.cmd run dist
 
 完整 `npm test` 需要 Windows：引擎 E2E 與 secret-store 測試需要先以 `csc.exe` 編譯 `tests/support/FakeEngine.cs`，並需要真正的 Electron runtime。部分測試（`security.test.ts`、`engineRegistry.test.ts`）的斷言使用 `C:\...` 路徑，在非 Windows 環境會失敗，屬預期行為。
 
-## 7. 唯一外部發行阻塞：受信任 Windows 簽章
+## 7. Windows 發行政策與 teacher-test 限制
 
 GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secrets，也沒有受信任 CA 核發的程式碼簽章憑證。沒有它就無法讓 Windows 對公開下載的安裝檔建立可信發行者身分。
 
-因此：
+因此目前保留兩種明確分離的 workflow 語意：
 
-- 可以發行明確標示風險的未簽章過渡版（v0.3.0 至 v0.3.5 皆是）。
-- 不可用自簽憑證宣稱已完成正式簽章，也不可保證 SmartScreen 不警告。
-- 正式公開販售前，必須取得受信任 CA 的 PFX、設定 GitHub secrets，保持 `allow_unsigned=false` 重新封裝，並重新驗證簽章、安裝與自動更新。
+- `teacher-candidate`：可在明確揭露風險下建立未簽章 prerelease；永遠不會自動升為 Latest。
+- `formal-release`：必須使用受信任 Authenticode 憑證與時間戳，並通過獨立的 Windows 10 22H2 與 Windows 11 client evidence，才允許 promotion。
+- 不可用自簽憑證宣稱已完成正式簽章，也不可把 Server proxy 成功寫成 Win10/Win11 client evidence。
+- v0.3.7 保留為歷史 unsigned prerelease，不覆寫 tag、Release 或 asset；v0.3.8 必須使用新 tag、新 commit 與新 SHA。
+
+teacher-test 程式只保存 main-memory run context；正式測試每台機器都必須在測試當天匯出 trace，並由外部評分表保存姓名、簽名與質性理由。六案例與 runtime canonicalization 已由本機測試驗證，但尚未有專業象棋老師或學習歷程老師的實測結果，不能宣稱整體棋理或教學價值已驗證。
 
 ## 8. 其他已知產品限制
 
@@ -191,7 +205,7 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - 雙引擎實測使用兩個不同的 Pikafish 執行檔，可證明雙程序、不中斷 Live 與 AI 證據整合管線，但不等同兩個獨立棋力家族的分歧裁決品質驗收。
 - 授權閘門依使用者要求以 `LICENSE_GATE_DISABLED = true` 維持測試停用（`src/renderer/src/app/productFlags.ts`）；這不代表商業授權與付費流程已可公開販售。
 - 官方與相容服務的 model id 需在發行前依各服務商目前模型頁重新核對。
-- 建置工具鏈（electron-builder 及其相依）帶有上游尚無安全修法的已知弱點，見 §3.2 第 3 層與 `security-l2.md` 的剩餘風險說明。
+- 目前 lockfile 經 `npm audit fix` 後，`npm run security:audit` 為執行期與建置工具相依皆 0 個未處理弱點；§3.2 保留的是 2026-07-25 的歷史稽核背景，後續 Advisory 變動仍須在每次 CI 重新核對。
 
 ## 9. 過往驗證紀錄（v0.3.1 時期，2026-07-16）
 
