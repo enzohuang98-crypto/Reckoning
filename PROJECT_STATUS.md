@@ -33,6 +33,9 @@
 - teacher-test 的 frozen 六案例與雙機 protocol 見
   [`docs/operations/teacher-test-cases-v1.json`](docs/operations/teacher-test-cases-v1.json) 與
   [`docs/operations/teacher-test-protocol-v1.md`](docs/operations/teacher-test-protocol-v1.md)。
+- 學習歷程與外部實測回填底稿見
+  [`teacher-pilot-v0.3.9-draft.md`](docs/learning-history/teacher-pilot-v0.3.9-draft.md)；目前明確標記為
+  `DRAFT / EXTERNAL EVIDENCE PENDING`，不含真人分數或回饋。
 
 各版本的完整說明保存在 [`docs/releases/`](docs/releases/)，本檔只記錄跨版本的狀態、限制與維護原則。
 
