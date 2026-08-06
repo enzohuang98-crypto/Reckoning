@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "canonicalizationVersion": 1,
+  "purpose": "Reckoning teacher-test pilot frozen cases; runtime testCaseId is computed from the exact identity fields.",
+  "sourceFixture": {
+    "path": "tests/fixtures/playok/acceptance-cases.json",
+    "sha256": "12cb4bcd8ff0f53a7676a000d33d21e409098943c0500d37fa53c046a81028ca",
+    "selection": "first six selected=true cases from the existing PlayOK acceptance artifact"
+  },
+  "cases": [
+    {
+      "caseKey": "xq272174077#88",
+      "positionFen": "3akab2/9/4b4/5P3/6r2/9/1N6R/9/4A4/2B1KAB2 b - - 0 44",
+      "sideToMove": "b",
+      "attachedMove": "d9e8",
+      "question": "請比較實戰步與 AI 首選，說明這一步放棄了什麼，以及對手如何用具體走子利用。",
+      "mode": "research",
+      "historicalFixture": {
+        "actualMoveWxf": "a4+5",
+        "actualMoveChinese": "士4進5",
+        "fixtureDepth": 19,
+        "fixtureEvaluationLoss": 0.8
+      }
+    },
+    {
+      "caseKey": "xq272174077#94",
+      "positionFen": "2b1kab2/4a4/9/4P4/5r3/9/1N1R5/4B4/4A4/2B1KA3 b - - 2 47",
+      "sideToMove": "b",
+      "attachedMove": "f5e5",
+      "question": "請先給直接結論，再用兩條真實主線解釋車6平5與 AI 首選的差異；不要只談分數。",
+      "mode": "research",
+      "historicalFixture": {
+        "actualMoveWxf": "r6.5",
+        "actualMoveChinese": "車6平5",
+        "fixtureDepth": 18,
+        "fixtureEvaluationLoss": 0.59
+      }
+    },
+    {
+      "caseKey": "xq267431809#58",
+      "positionFen": "2b1k2r1/9/4ba1C1/p3pN2p/6p2/9/P5PRP/9/9/1r1AKAB2 b - - 6 29",
+      "sideToMove": "b",
+      "attachedMove": "b0b5",
+      "question": "請指出至少兩個可由盤面與主線核對的後果，並說明對手下一步取得了什麼主動權。",
+      "mode": "research",
+      "historicalFixture": {
+        "actualMoveWxf": "r2-5",
+        "actualMoveChinese": "車2退5",
+        "fixtureDepth": 17,
+        "fixtureEvaluationLoss": 2.52
+      }
+    },
+    {
+      "caseKey": "xq267431809#74",
+      "positionFen": "2b1k2r1/4a4/4b4/p3p2Cp/9/6N2/P5r1P/4B2R1/4A4/3AK4 b - - 1 37",
+      "sideToMove": "b",
+      "attachedMove": "g3i3",
+      "question": "請用初學者能核對的語言解釋車7平9造成的具體問題；如果證據不足，請把未知部分明確分開。",
+      "mode": "research",
+      "historicalFixture": {
+        "actualMoveWxf": "r7.9",
+        "actualMoveChinese": "車7平9",
+        "fixtureDepth": 17,
+        "fixtureEvaluationLoss": 56.94
+      }
+    },
+    {
+      "caseKey": "xq276129901#46",
+      "positionFen": "2bak1b2/4a4/2n3n2/p1N5p/2p1pr3/c7P/2P1R2N1/4BC3/4A4/4KAB2 b - - 1 23",
+      "sideToMove": "b",
+      "attachedMove": "a4a3",
+      "question": "請以精簡模式說明炮1進1與 AI 首選的差別，至少連回一個棋子、線路或王區後果。",
+      "mode": "focused",
+      "historicalFixture": {
+        "actualMoveWxf": "c1+1",
+        "actualMoveChinese": "炮1進1",
+        "fixtureDepth": 15,
+        "fixtureEvaluationLoss": 0.72
+      }
+    },
+    {
+      "caseKey": "xq276129901#160",
+      "positionFen": "3k2b2/4a4/3ab4/9/3Nn4/9/2p1p1p2/9/4AC3/2BK1AB2 b - - 9 80",
+      "sideToMove": "b",
+      "attachedMove": "c3c2",
+      "question": "請說明卒3進1是否讓對手取得可見的先手或部署節奏，並逐步引用實際走子而非抽象標籤。",
+      "mode": "focused",
+      "historicalFixture": {
+        "actualMoveWxf": "p3+1",
+        "actualMoveChinese": "卒3進1",
+        "fixtureDepth": 18,
+        "fixtureEvaluationLoss": 0.64
+      }
+    }
+  ]
+}

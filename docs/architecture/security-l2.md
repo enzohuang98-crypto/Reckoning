@@ -47,7 +47,7 @@
 
 第 2、3 層只針對「自身中招」的根因判斷。`npm audit` 的 `via` 若只含字串，代表該套件僅因相依於別人而被連坐（例如 `glob ← minimatch ← brace-expansion`、`temp ← rimraf ← glob`）；這類套件跟隨根因，不各自把關。這點是必要的：npm 對**同一個根因**在不同平台會回報不一致的 `fixAvailable`——Linux 說只能破壞性修復，Windows 卻對同一條 `brace-expansion` 鏈上的 `glob`／`rimraf`／`temp`／`electron-winstaller`／`electron-builder-squirrel-windows` 回報「可安全修復」。若讓連坐套件各自把關，CI 會卡在一個沒有任何 `npm audit fix` 能滿足的紅燈。
 
-第 3 層的存在原因：`electron-builder` 的相依鏈仍使用 `minimatch` 3.x／5.x／9.x，而它們所需的 `brace-expansion` 1.x／2.x 沒有任何 backport 修正版。唯一修好的 `brace-expansion@5.0.8` 把匯出從 `module.exports = expand` 改成 `{ expand }`，強制覆蓋會讓舊 `minimatch` 在含大括號的 glob pattern 上丟 `TypeError: expand is not a function`，直接破壞 `npm run dist` 打包；而 `npm audit fix --force` 的建議是把 `electron-builder` **降版**到 25.x，同樣不可接受。
+第 3 層的存在原因（2026-07-25 歷史背景）：`electron-builder` 的相依鏈當時使用 `minimatch` 3.x／5.x／9.x，而它們所需的 `brace-expansion` 1.x／2.x 沒有 backport 修正版。當時唯一修好的 `brace-expansion@5.0.8` 會讓舊 `minimatch` 在含大括號的 glob pattern 上丟 `TypeError: expand is not a function`，直接破壞 `npm run dist` 打包；`npm audit fix --force` 也曾建議把 `electron-builder` **降版**到 25.x，因此當時只能記錄而不採用。2026-08-06 的 lockfile 已更新至可安全修復版本，當前稽核結果需以最新 `npm run security:audit` 為準。
 
 這個豁免不是永久免死金牌：第 2 層會在上游一釋出可安全套用的修正時立刻要求套用。放寬僅限於「只在開發者與 CI 機器上執行、不隨安裝檔散布」的建置工具，執行期相依維持零容忍。
 
@@ -56,7 +56,7 @@
 - 使用者自行選擇的象棋引擎是受信任的本機可執行檔。本程式會隔離 renderer，但不會沙箱第三方引擎程序；只應使用可信來源與已驗證雜湊的引擎。
 - AI 解說會把棋局與追問送到使用者選定的第三方 Provider。API Key 不會送到 renderer，但第三方服務仍受其隱私條款約束。
 - 本機系統管理員、已入侵的作業系統、鍵盤側錄器與記憶體擷取不在 L2 防護範圍。
-- 建置工具鏈（`electron-builder` 及其相依）目前帶有上游尚無安全修法的已知弱點，詳見「相依套件弱點政策」第 3 層。這些程式只在開發者與 CI 機器上處理本專案自有的設定與檔案，不隨安裝檔散布，也不接受外部攻擊者可控的輸入；但建置環境本身遭入侵仍屬供應鏈風險，不在 L2 涵蓋範圍。
+- 目前 lockfile 的執行期與建置工具相依均已通過 `npm run security:audit`；本政策仍要求每次 CI 重新稽核，因為 GitHub Advisory Database 可能在版本不變時新增公告。建置環境遭入侵仍屬供應鏈風險，不在 L2 涵蓋範圍。
 - 目前個人測試安裝檔未做發行者程式碼簽章。公開散布前必須使用可信憑證簽署安裝檔，並發布 SHA-256 雜湊；這屬於發行供應鏈控制。
 
 ## 驗收與發行檢查

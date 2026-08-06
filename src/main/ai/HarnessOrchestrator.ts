@@ -8,6 +8,7 @@ import type {
   HarnessPhase,
   HarnessProgressPayload,
   HarnessSectionId,
+  HarnessEvaluationLinkV1,
   HarnessTrace
 } from '@shared/types/Harness'
 import {
@@ -123,6 +124,7 @@ interface HarnessDependencies {
   session: AnalysisSession
   registry: EngineRegistryService
   traceStore: HarnessTraceStore
+  evaluation?: HarnessEvaluationLinkV1
   signal: AbortSignal
   onProgress: (payload: Omit<HarnessProgressPayload, 'requestId'>) => void
   waitForContinuation?: () => Promise<void>
@@ -2244,6 +2246,7 @@ export async function runExplanationHarness(
       modelCalls,
       engineRounds,
       usage,
+      evaluation: deps.evaluation,
       status,
       finalText
     })

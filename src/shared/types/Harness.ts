@@ -4,6 +4,51 @@ import type { ExplanationLanguage } from './AIExplanationTypes'
 
 export type HarnessAnswerMode = 'focused' | 'research'
 
+export const TEACHER_TEST_SCHEMA_VERSION = 1 as const
+export const TEACHER_TEST_CANONICALIZATION_VERSION = 1 as const
+
+/** 可把本機 trace 對接到外部老師評分表的匿名連結。 */
+export interface HarnessEvaluationLinkV1 {
+  schemaVersion: typeof TEACHER_TEST_SCHEMA_VERSION
+  testRunId: string
+  testCaseId: string
+  canonicalizationVersion: typeof TEACHER_TEST_CANONICALIZATION_VERSION
+  externalReviewId: string
+}
+
+export interface TeacherTestRunManifestV1 {
+  schemaVersion: typeof TEACHER_TEST_SCHEMA_VERSION
+  testRunId: string
+  startedAt: string
+  endedAt?: string
+  artifactClaim: {
+    appVersion: string
+    releaseTag: string
+    productSourceCommit: string
+    installerFileName: string
+    installerSha256: string
+  }
+  runtime: {
+    platform: 'win32'
+    systemVersion: string
+    osBuild: string
+    arch: string
+  }
+}
+
+export interface TeacherTestRunStatusV1 {
+  currentAppVersion: string
+  active: boolean
+  manifest: TeacherTestRunManifestV1 | null
+}
+
+export interface TeacherTestCaseIdentityV1 {
+  positionFen: string
+  question?: string
+  attachedMove?: string
+  mode: HarnessAnswerMode
+}
+
 /**
  * Stable machine-readable section identifiers. Display headings may be
  * translated or reworded without changing validation or repair routing.
@@ -155,7 +200,30 @@ export interface HarnessTrace {
   engineRounds: number
   usage?: TokenUsage
   feedback?: 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
+  /** 正式 teacher run 才會存在；舊 trace 保持相容。 */
+  evaluation?: HarnessEvaluationLinkV1
   status: 'completed' | 'clarification_required' | 'cancelled' | 'failed'
   /** 最終顯示給使用者的文字（供未來建立回歸評測集用）；儲存時會截斷長度。 */
   finalText?: string
+}
+
+export interface TeacherTestExportV1 {
+  schemaVersion: typeof TEACHER_TEST_SCHEMA_VERSION
+  exportedAt: string
+  runManifest: TeacherTestRunManifestV1 | null
+  traces: HarnessTrace[]
+  regressionCases: HarnessRegressionCase[]
+}
+
+/** 自包含回歸案例：不依賴本機 trace 也能重放品質檢查。 */
+export interface HarnessRegressionCase {
+  traceId: string
+  createdAt: string
+  positionFen: string
+  question?: string
+  attachedMove?: string
+  feedback: NonNullable<HarnessTrace['feedback']>
+  finalText?: string
+  validationErrors: string[]
+  availableMoves: string[]
 }
