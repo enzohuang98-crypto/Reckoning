@@ -4,9 +4,10 @@
 
 ## 1. 目前狀態
 
-- 目前 source candidate：**v0.3.8**（teacher-test prerelease 準備中；尚未建立公開 Release）
+- 目前 source candidate：**v0.3.8**（public teacher-test prerelease；刻意未簽章，非 Latest）
 - GitHub：`https://github.com/enzohuang98-crypto/Reckoning`
 - 目前公開 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.7>（2026-07-29 發布、非 draft、prerelease、刻意未簽章）
+- v0.3.8 teacher candidate Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.8>（2026-08-06 發布、非 draft、prerelease、刻意未簽章；沒有升為 Latest）
 - `v0.3.7` annotated tag object 是 `f7efc67da97f3f4fc77bfc89625f8cb902d53cf6`，product commit 是
   `e6cce2f7e0a045b080f40c4e4454cc0d32335ab8`；目前 `main` 是
   `81bee70dd1eaf53014fa8ffd736195f5eae98855`，不可把兩者當成同一版。
@@ -14,6 +15,10 @@
   `1277f5a3da64519178d38ec6bec09cf8fc7bbeb44cd4562ca4f466ff32ee8c21`。
 - v0.3.7 Release run `30426166887` 的建置、測試、unsigned smoke 與 Server proxy 成功；clean Windows
   10/11 client-evidence job 曾長時間 waiting，已於 2026-08-06 取消，不能算作 client gate。
+- v0.3.8 teacher-candidate Release run `31102841850` 的 build、完整測試、audit、unsigned install/uninstall
+  smoke 與 Server 2022/2025 proxy 全部成功；安裝檔大小 `164630417` bytes、SHA-256 為
+  `e3e9fd0b727e614ed911ff5dbabc5b8df843de2cbdba3566af8e0cae9127d94c`。Win10/Win11 client evidence 與
+  promotion 依 mode 明確 skipped，完整紀錄見 [`release-v0.3.8-evidence.md`](docs/operations/release-v0.3.8-evidence.md)。
 - 安裝下載與自動更新的唯一權威來源為本倉庫的 GitHub Releases，流程見
   [`docs/operations/release.md`](docs/operations/release.md) 與
   [`docs/operations/update-channel.md`](docs/operations/update-channel.md)。
@@ -35,7 +40,7 @@
 | v0.3.5 | 2026-07-21 | 明確寫入並回讀 App 專屬安裝／解除安裝登錄；Release 會在乾淨 runner 實跑靜默安裝與解除安裝驗收 |
 | v0.3.6 | 2026-07-25 | 修正新增 API 金鑰時整個視窗卡住無回應（`SecretStore`／`SecureJsonFile` 改用 `node:fs/promises`）；新增金鑰健康檢查（測試金鑰）與逾時保護；分數顯示統一以 `displayText` 為主；App 內部品牌名稱統一 |
 | v0.3.7 | 2026-07-25 | 修正桌面 App 實質上不會自動更新：有新版時標題列會主動提示（先前只藏在設定頁內），並改為每 4 小時重新檢查（先前只在啟動後檢查一次） |
-| v0.3.8 | 2026-08-06 | teacher-test evidence context：run manifest、保守 case ID、匿名 review link、非同步 installer SHA、正向 allowlist export；只準備 teacher candidate，尚未代表老師或 Windows 雙 client 驗收 |
+| v0.3.8 | 2026-08-06 | public unsigned teacher-test candidate：run manifest、保守 case ID、匿名 review link、非同步 installer SHA、正向 allowlist export；尚未代表老師或 Windows 雙 client 驗收 |
 
 ## 3. 2026-07-25（上午）：相依弱點、CI 整理與文件同步
 
@@ -195,6 +200,8 @@ GitHub Actions 尚未設定 `WINDOWS_CSC_LINK`／`WINDOWS_CSC_KEY_PASSWORD` secr
 - `formal-release`：必須使用受信任 Authenticode 憑證與時間戳，並通過獨立的 Windows 10 22H2 與 Windows 11 client evidence，才允許 promotion。
 - 不可用自簽憑證宣稱已完成正式簽章，也不可把 Server proxy 成功寫成 Win10/Win11 client evidence。
 - v0.3.7 保留為歷史 unsigned prerelease，不覆寫 tag、Release 或 asset；v0.3.8 必須使用新 tag、新 commit 與新 SHA。
+
+v0.3.8 teacher candidate 已按上述例外實際發布：Release run `31102841850`、tag/source 綁定與 installer SHA-256 均已獨立核對；它仍不具可信簽章、不進 Latest，也沒有真人老師或第二台電腦結果。
 
 teacher-test 程式只保存 main-memory run context；正式測試每台機器都必須在測試當天匯出 trace，並由外部評分表保存姓名、簽名與質性理由。六案例與 runtime canonicalization 已由本機測試驗證，但尚未有專業象棋老師或學習歷程老師的實測結果，不能宣稱整體棋理或教學價值已驗證。
 
