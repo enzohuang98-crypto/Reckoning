@@ -6,12 +6,12 @@
 
 - 目前 source candidate：**v0.3.8**（public teacher-test prerelease；刻意未簽章，非 Latest）
 - GitHub：`https://github.com/enzohuang98-crypto/Reckoning`
-- 目前公開 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.7>（2026-07-29 發布、非 draft、prerelease、刻意未簽章）
+- 歷史公開 Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.7>（2026-07-29 發布、非 draft、prerelease、刻意未簽章）
 - v0.3.8 teacher candidate Release：<https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.8>（2026-08-06 發布、非 draft、prerelease、刻意未簽章；沒有升為 Latest）
 - `v0.3.7` annotated tag object 是 `f7efc67da97f3f4fc77bfc89625f8cb902d53cf6`，product commit 是
   `e6cce2f7e0a045b080f40c4e4454cc0d32335ab8`；v0.3.7 Release workflow 當時的 head snapshot 是
   `81bee70dd1eaf53014fa8ffd736195f5eae98855`。目前 `main` 已進到
-  `92ae93652112d0fe65d85dbd1226f06f837a25ec`，不可把歷史 snapshot、Release product commit 與目前 main 混為同一版。
+  `bd9df58df04f17e0e641322ecf155ffe6c68f838`，不可把歷史 snapshot、Release product commit 與目前 main 混為同一版。
 - v0.3.7 安裝檔 `xiangqi-analyzer-0.3.7-setup.exe` 的公開 SHA-256 是
   `1277f5a3da64519178d38ec6bec09cf8fc7bbeb44cd4562ca4f466ff32ee8c21`。
 - v0.3.7 Release run `30426166887` 的建置、測試、unsigned smoke 與 Server proxy 成功；clean Windows
