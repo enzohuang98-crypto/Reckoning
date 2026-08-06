@@ -124,15 +124,27 @@ flowchart LR
 
 ### 6.3 Rubric
 
-每題由外部老師以 0–2 分評分：
+每題由外部老師以 1–5 分評分；2 與 4 是相鄰描述之間的中間值：
 
-| 維度 | 0 | 1 | 2 |
+| 維度 | 1 分 | 3 分 | 5 分 |
 | --- | --- | --- | --- |
-| 結論可判斷性 | 沒回答題目 | 有方向但含糊 | 直接且可核對 |
-| 證據忠實度 | 補造／誤引證據 | 大致正確但連結不完整 | 關鍵主張都連回局面／走子／主線 |
-| 因果與後果 | 只有標籤／分數 | 有部分機制 | 說清楚棋子／線路、對手利用與後果 |
-| 教學清楚度 | 難理解 | 可理解但需追問 | 適合帶學生複盤 |
-| 不確定性誠實度 | 把推測當事實 | 偶爾模糊 | 分開已證明、推論與未知 |
+| 最佳著／實戰步判斷正確性 | 核心判斷錯誤或無法判斷 | 大致正確，但有重要遺漏 | 判斷正確，且指出實戰步與候選最佳步的關鍵差異 |
+| 變化是否合法且連貫 | 有非法、跳步或矛盾變化 | 主線大致可走，但部分連接不完整 | 變化合法、連貫，且能回到引擎主線核對 |
+| 文字符合引擎 evidence | 補造／誤引，或把一般棋理冒充本局證據 | 多數主張有依據，但連結不完整 | 每個關鍵主張都連回局面、走子或主線 |
+| 象棋術語與因果解釋清楚 | 只有標籤／分數，沒有機制 | 有部分棋理機制，但需追問 | 說清楚棋子／線路、對手利用與後續後果 |
+| 建議具體且可實際練習 | 沒有可執行建議 | 有方向，但學生不知道如何練 | 有明確、可操作、可複盤的練習建議 |
+| 能引導學生反思，而非只公布答案 | 只公布結論 | 有一個反思方向，但不夠具體 | 能提出「為什麼」與下一步反思／修正行動 |
+| 是否值得放入學習歷程 | 不宜放入，會誤導 | 需大量編修後才可使用 | 可作為學習歷程證據，限制也有清楚標示 |
+
+三個 gate 另行記錄 `pass`／`concern`／`fail`／`not_assessed`，不從單題分數自動推導：
+
+| Gate | 判定原則 | 狀態／原因 |
+| --- | --- | --- |
+| `softwareEnvironment` | 兩台可安裝、啟動、匯入、分析、解說、feedback、export，artifact／run 證據完整 | `pending` |
+| `xiangqiContent` | 六題中至少五題 correctness ≥ 4/5、證據一致性平均 ≥ 4/5，且無非法／錯局面／錯誤 timeout 描述 | `pending` |
+| `teachingValue` | teaching value 平均 ≥ 3.5/5，且老師能指出學生練習／反思行動 | `pending` |
+
+每個 gate 若不是 `pass`，必須保留原因；不能用 fixture 的 `evaluationLoss`、CI 或 App 自動填入。外部評分表應保留各項 1–5 分、短評、`externalReviewId`、case key 與機器 run。
 
 計畫中的驗收門檻：
 
@@ -173,7 +185,20 @@ flowchart LR
 
 真正凍結三個老師確認案例後，將此表的 Case label 換成不可歧義的 `caseKey`／`testCaseId`，不能使用順序編號作為唯一身份。
 
-### 7.3 證據一致性與異常
+### 7.3 每題 rubric 回填
+
+以下欄位在真人實測前全部保持 `pending`；每列對應一個 frozen `caseKey`，不能用順序編號取代 case identity。
+
+| Case | 最佳／實戰 1–5 | 變化合法 1–5 | Evidence 1–5 | 因果／術語 1–5 | 練習建議 1–5 | 反思引導 1–5 | 學習歷程 1–5 | Gate reference |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `pending caseKey 01` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` |
+| `pending caseKey 02` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` |
+| `pending caseKey 03` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` |
+| `pending caseKey 04` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` |
+| `pending caseKey 05` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` |
+| `pending caseKey 06` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` | `pending` |
+
+### 7.4 證據一致性與異常
 
 | 檢查 | 結果 | 證據位置 |
 | --- | --- | --- |

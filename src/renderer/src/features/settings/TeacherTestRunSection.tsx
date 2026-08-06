@@ -87,7 +87,16 @@ export function TeacherTestRunSection({
             <b>testRunId：</b>{manifest.testRunId}
           </p>
           <p className="muted">
-            <b>artifactClaim：</b>{manifest.artifactClaim.releaseTag} · {manifest.artifactClaim.installerFileName} · {manifest.artifactClaim.installerSha256}
+            <b>App version：</b>{manifest.artifactClaim.appVersion}
+          </p>
+          <p className="muted">
+            <b>release tag：</b>{manifest.artifactClaim.releaseTag}
+          </p>
+          <p className="muted">
+            <b>source commit：</b>{manifest.artifactClaim.productSourceCommit}
+          </p>
+          <p className="muted">
+            <b>installer：</b>{manifest.artifactClaim.installerFileName} · {manifest.artifactClaim.installerSha256}
           </p>
           <p className="muted">
             <b>runtime：</b>{manifest.runtime.systemVersion} · {manifest.runtime.osBuild} · {manifest.runtime.arch}
