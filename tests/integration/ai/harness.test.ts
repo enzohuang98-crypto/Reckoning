@@ -1102,6 +1102,127 @@ async function main(): Promise<void> {
       formalTraces[0]?.teacherCaseKey === frozenCase.caseKey &&
       formalTraces[0]?.evaluation?.externalReviewId === 'review-formal'
   )
+
+  const nominalTraces: HarnessTrace[] = []
+  const nominalCatalog = getTeacherTestCatalog()
+  const nominalRun = {
+    getActiveManifest: formalRun.getActiveManifest,
+    createEvaluationLink: (input: {
+      positionFen: string
+      question?: string
+      attachedMove?: string
+      mode: 'focused' | 'research'
+    }) => {
+      const caseIndex = nominalCatalog.cases.findIndex(
+        (item) =>
+          item.positionFen === input.positionFen &&
+          item.question === input.question &&
+          item.attachedMove === input.attachedMove &&
+          item.mode === input.mode
+      )
+      return caseIndex < 0
+        ? undefined
+        : {
+            schemaVersion: 1 as const,
+            testRunId: 'formal-run',
+            testCaseId: String(caseIndex + 1).padStart(64, '0'),
+            canonicalizationVersion: 1 as const,
+            externalReviewId: `review-nominal-${caseIndex + 1}`
+          }
+    }
+  } satisfies Parameters<typeof prepareExplanationExecution>[3]
+  for (const [caseIndex, teacherCase] of nominalCatalog.cases.entries()) {
+    const nominalSession: AnalysisSession = {
+      ...session,
+      analysisId: `nominal-analysis-${caseIndex + 1}`,
+      positionFen: teacherCase.positionFen,
+      userMove: teacherCase.attachedMove,
+      engineAnalysis: {
+        ...session.engineAnalysis,
+        positionFen: teacherCase.positionFen,
+        userMove: teacherCase.attachedMove
+      },
+      moveComparison: {
+        ...session.moveComparison,
+        positionFen: teacherCase.positionFen,
+        userMove: teacherCase.attachedMove
+      }
+    }
+    const basePayload: GenerateExplanationStartPayload = {
+      requestId: `nominal-prelude-${caseIndex + 1}`,
+      analysisId: nominalSession.analysisId,
+      provider: 'openai',
+      model: 'fake-model',
+      userLevel: 'intermediate',
+      explanationStyle: 'long_analytical',
+      language: 'zh-TW',
+      attachedMove: teacherCase.attachedMove,
+      answerMode: teacherCase.mode,
+      conversationHistory: []
+    }
+    const runNominal = async (
+      execution: ReturnType<typeof prepareExplanationExecution>
+    ): Promise<void> => {
+      await runPreparedExplanationHarness(execution, {
+        provider: new FakeProvider(),
+        apiKey: 'not-stored-in-trace',
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: (trace: HarnessTrace) => nominalTraces.push(trace) } as never,
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+        explanationPrompt: ''
+      })
+    }
+    await runNominal(
+      prepareExplanationExecution(basePayload, nominalSession, 'fake-model', nominalRun)
+    )
+    await runNominal(
+      prepareExplanationExecution(
+        {
+          ...basePayload,
+          requestId: `nominal-formal-${caseIndex + 1}`,
+          followUpQuestion: teacherCase.question,
+          conversationHistory: [
+            {
+              id: `nominal-prelude-message-${caseIndex + 1}`,
+              role: 'assistant',
+              text: excludedHistoryMarker,
+              createdAt: '2026-08-07T00:00:00.000Z'
+            }
+          ]
+        },
+        nominalSession,
+        'fake-model',
+        nominalRun
+      )
+    )
+  }
+  const nominalEvaluated = nominalTraces.filter((trace) => trace.evaluation)
+  check(
+    '六組 prelude → frozen case 只產生六筆 evaluated traces',
+    nominalTraces.length === 12 &&
+      nominalEvaluated.length === 6 &&
+      new Set(nominalEvaluated.map((trace) => trace.evaluation?.testCaseId)).size === 6
+  )
+  check(
+    '六筆 prelude traces 明確不帶 evaluation，六筆 formal traces 都標示 v2',
+    nominalTraces.filter((trace) => trace.interactionKind === 'teacher-prelude').length === 6 &&
+      nominalTraces
+        .filter((trace) => trace.interactionKind === 'teacher-prelude')
+        .every((trace) => trace.evaluation === undefined) &&
+      nominalTraces.filter(
+        (trace) =>
+          trace.interactionKind === 'teacher-formal-case' &&
+          trace.executionSemanticsVersion === 2
+      ).length === 6
+  )
   check('棋手正文不顯示證據編號', !result.finalText.includes('[E1]'))
   check('回答先顯示直接結論', result.finalText.indexOf('### 直接結論') < result.finalText.indexOf('### 實戰步問題'))
   check('回答使用五個具名內容區塊', ['直接結論', '實戰步問題', 'AI 首選', '對手利用與後果', '實戰原則'].every((heading) => result.finalText.includes(`### ${heading}`)))
