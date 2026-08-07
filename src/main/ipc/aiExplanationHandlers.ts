@@ -37,6 +37,12 @@ import {
 } from '../storage/AnalysisSessionStore'
 import { getAIProvider } from '../ai/AIProvider'
 import { runExplanationHarness } from '../ai/HarnessOrchestrator'
+import {
+  prepareExplanationExecution,
+  TeacherCaseBusyError,
+  TeacherCaseRejectedError,
+  type PreparedExplanationExecution
+} from '../ai/prepareExplanationExecution'
 import { buildExplanationPrompt } from '../ai/promptBuilder'
 import { modelRegistry, UnsupportedModelError } from '../ai/ModelRegistry'
 import { logger } from '../logger'
@@ -54,10 +60,7 @@ import {
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { StorageService } from '../storage/StorageService'
 import { HarnessTraceStore } from '../storage/HarnessTraceStore'
-import type {
-  TeacherTestExportV1,
-  TeacherTestCaseIdentityV1
-} from '@shared/types/Harness'
+import type { TeacherTestExportV1 } from '@shared/types/Harness'
 import { TeacherTestRunService } from '../teacherTest/TeacherTestRunService'
 import {
   KeyedOperationGate,
@@ -105,22 +108,20 @@ export function assertProviderEndpointBinding(
  * IPC handler 不得自己組 prompt 或讀 API key。
  */
 export async function buildAIExplanationRequest(
-  payload: GenerateExplanationStartPayload,
+  execution: PreparedExplanationExecution,
   deps: {
     secretStore: SecretStore
-    analysisSessionStore: AnalysisSessionStore
   }
 ): Promise<AIExplanationRequest> {
-  // 不存在則丟 UnsupportedModelError（§2.19.1）
-  const modelConfig = modelRegistry.getModel(payload.provider, payload.model)
+  const payload = execution.effective
   const apiKey = (await deps.secretStore.getCredential(
     payload.provider,
-    modelConfig.model,
+    payload.model,
     payload.baseUrl
   )) ?? ''
   const hasExactCredential = await deps.secretStore.hasCredential(
     payload.provider,
-    modelConfig.model,
+    payload.model,
     payload.baseUrl
   )
   if (!apiKey && (
@@ -130,7 +131,7 @@ export async function buildAIExplanationRequest(
   )) {
     throw new MissingApiKeyError(
       payload.provider,
-      modelConfig.model,
+      payload.model,
       hasExactCredential
     )
   }
@@ -140,8 +141,7 @@ export async function buildAIExplanationRequest(
     apiKey,
     hasExactCredential ? payload.baseUrl ?? null : null
   )
-  const session = await deps.analysisSessionStore.get(payload.analysisId)
-  if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
+  const session = payload.session
   const prompt = buildExplanationPrompt({
     engineAnalysis: session.engineAnalysis,
     moveComparison: session.moveComparison,
@@ -153,7 +153,7 @@ export async function buildAIExplanationRequest(
   })
   return {
     provider: payload.provider,
-    model: modelConfig.model,
+    model: payload.model,
     apiKey,
     baseUrl: payload.baseUrl,
     prompt,
@@ -202,6 +202,20 @@ export function mapStreamingErrorToPayload(
       requestId,
       code: 'analysis_session_not_found',
       message: '這次分析結果已過期，請重新分析局面後再生成 AI 解釋。'
+    }
+  }
+  if (error instanceof TeacherCaseRejectedError) {
+    return {
+      requestId,
+      code: 'teacher_case_rejected',
+      message: error.message
+    }
+  }
+  if (error instanceof TeacherCaseBusyError) {
+    return {
+      requestId,
+      code: 'teacher_case_busy',
+      message: error.message
     }
   }
   if (error instanceof SecurityValidationError) {
@@ -261,6 +275,7 @@ export function registerAiExplanationHandlers(
 ): void {
   const traceStore = new HarnessTraceStore(storage)
   const credentialTestGate = new KeyedOperationGate(2)
+  const formalCaseGate = new KeyedOperationGate(2)
 
   const normalizeCredential = (rawInput: unknown): SecretCredentialRef => {
     if (typeof rawInput !== 'object' || rawInput === null) {
@@ -502,49 +517,56 @@ export function registerAiExplanationHandlers(
       activeExplanationRequests.set(requestId, controller)
       let completedNormally = false
       try {
-        const request = await buildAIExplanationRequest(payload, {
-          secretStore,
-          analysisSessionStore: sessionStore
-        })
-        const provider = getAIProvider(request.provider)
         const session = await sessionStore.get(payload.analysisId)
         if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
-        const evaluationInput: TeacherTestCaseIdentityV1 = {
-          positionFen: session.positionFen,
-          question: payload.followUpQuestion,
-          attachedMove: payload.attachedMove ?? session.userMove,
-          mode: payload.answerMode ?? 'research'
-        }
-        const result = await runExplanationHarness(payload, {
-          provider,
-          apiKey: request.apiKey,
-          model: request.model,
+        const resolvedModel = modelRegistry.getModel(payload.provider, payload.model).model
+        const execution = prepareExplanationExecution(
+          payload,
           session,
-          registry: engineRegistry,
-          traceStore,
-          evaluation: teacherTestRun.createEvaluationLink(evaluationInput),
-          signal: controller.signal,
-          explanationPrompt: request.prompt,
-          onProgress: (progress) => {
-            event.reply(IPC.AI_HARNESS_PROGRESS, {
-              requestId,
-              ...progress
-            })
-          },
-          waitForContinuation: () =>
-            new Promise<void>((resolve, reject) => {
-              const onAbort = (): void => {
-                activeHarnessContinuations.delete(requestId)
-                reject(new DOMException('Request cancelled', 'AbortError'))
-              }
-              controller.signal.addEventListener('abort', onAbort, { once: true })
-              activeHarnessContinuations.set(requestId, () => {
-                controller.signal.removeEventListener('abort', onAbort)
-                activeHarnessContinuations.delete(requestId)
-                resolve()
+          resolvedModel,
+          teacherTestRun
+        )
+        const request = await buildAIExplanationRequest(execution, { secretStore })
+        const provider = getAIProvider(request.provider)
+        const runHarness = () =>
+          runExplanationHarness(execution, {
+            provider,
+            apiKey: request.apiKey,
+            registry: engineRegistry,
+            traceStore,
+            signal: controller.signal,
+            explanationPrompt: request.prompt,
+            onProgress: (progress) => {
+              event.reply(IPC.AI_HARNESS_PROGRESS, {
+                requestId,
+                ...progress
               })
-            })
-        })
+            },
+            waitForContinuation: () =>
+              new Promise<void>((resolve, reject) => {
+                const onAbort = (): void => {
+                  activeHarnessContinuations.delete(requestId)
+                  reject(new DOMException('Request cancelled', 'AbortError'))
+                }
+                controller.signal.addEventListener('abort', onAbort, { once: true })
+                activeHarnessContinuations.set(requestId, () => {
+                  controller.signal.removeEventListener('abort', onAbort)
+                  activeHarnessContinuations.delete(requestId)
+                  resolve()
+                })
+              })
+          })
+        let result
+        try {
+          result = execution.formalAttemptKey
+            ? await formalCaseGate.runExclusive(execution.formalAttemptKey, runHarness)
+            : await runHarness()
+        } catch (error) {
+          if (error instanceof OperationBusyError && execution.formalAttemptKey) {
+            throw new TeacherCaseBusyError()
+          }
+          throw error
+        }
         if (
           controller.signal.aborted ||
           activeExplanationRequests.get(requestId) !== controller
@@ -566,7 +588,28 @@ export function registerAiExplanationHandlers(
           evidence: result.evidence,
           warnings: result.warnings,
           traceId: result.traceId,
-          clarificationRequired: result.clarificationRequired
+          clarificationRequired: result.clarificationRequired,
+          ...(execution.interactionKind === 'ordinary'
+            ? {}
+            : {
+                teacherExecution: {
+                  interactionKind: execution.interactionKind,
+                  executionSemanticsVersion: execution.executionSemanticsVersion,
+                  ...(execution.teacherCase
+                    ? {
+                        caseSetId: execution.teacherCase.caseSetId,
+                        caseSetStatus: execution.teacherCase.caseSetStatus,
+                        caseKey: execution.teacherCase.caseKey
+                      }
+                    : {}),
+                  ...(execution.evaluation
+                    ? {
+                        testCaseId: execution.evaluation.testCaseId,
+                        externalReviewId: execution.evaluation.externalReviewId
+                      }
+                    : {})
+                }
+              })
         })
       } catch (error) {
         if (!completedNormally) {

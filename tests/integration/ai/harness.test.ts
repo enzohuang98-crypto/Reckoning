@@ -10,10 +10,15 @@ import {
   playerFacingAnswerText
 } from '../../../src/shared/logic/ai/ExplanationQualityScorer'
 import {
-  runExplanationHarness,
+  runExplanationHarness as runPreparedExplanationHarness,
+  type HarnessRuntimeDependencies,
   validateAnswer,
   validateConsequenceAudit
 } from '../../../src/main/ai/HarnessOrchestrator'
+import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
+import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
+import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
 import type {
   ConsequenceAudit,
   ConsequenceFinding
@@ -120,6 +125,32 @@ const session: AnalysisSession = {
   primaryEngineId: 'engine-1',
   engineAnalysis,
   moveComparison: compareMove(engineAnalysis)
+}
+
+const inactiveTeacherRun = new TeacherTestRunService({
+  getRuntime: () => ({
+    appVersion: '0.3.11',
+    platform: 'win32',
+    systemVersion: '10.0.22631',
+    osBuild: 'Windows 11 10.0.22631',
+    arch: 'x64'
+  })
+})
+
+type LegacyHarnessDependencies = HarnessRuntimeDependencies & {
+  model: string
+  session: AnalysisSession
+}
+
+async function runExplanationHarness(
+  payload: GenerateExplanationStartPayload,
+  deps: LegacyHarnessDependencies
+) {
+  const { model, session: analysisSession, ...runtimeDeps } = deps
+  return runPreparedExplanationHarness(
+    prepareExplanationExecution(payload, analysisSession, model, inactiveTeacherRun),
+    runtimeDeps
+  )
 }
 
 const DEEP_INITIAL_EXPLANATION_EXTENSION =
@@ -947,6 +978,129 @@ async function main(): Promise<void> {
       provider.prompts[0]?.includes('只使用下方既有主引擎快照') &&
       !initialProgressEvents.some((event) => event.message.includes('複核引擎')) &&
       !provider.prompts[0]?.includes('主引擎／複核引擎快照')
+  )
+
+  const frozenCase = getTeacherTestCatalog().cases[0]
+  const formalQuestionMarker = frozenCase.question
+  const excludedHistoryMarker = 'GENERIC-PRELUDE-MARKER-DO-NOT-SEND'
+  const formalProvider = new FakeProvider()
+  const formalSession: AnalysisSession = {
+    ...session,
+    positionFen: frozenCase.positionFen,
+    userMove: frozenCase.attachedMove,
+    engineAnalysis: {
+      ...session.engineAnalysis,
+      positionFen: frozenCase.positionFen,
+      userMove: frozenCase.attachedMove
+    },
+    moveComparison: {
+      ...session.moveComparison,
+      positionFen: frozenCase.positionFen,
+      userMove: frozenCase.attachedMove
+    }
+  }
+  const formalRun = {
+    getActiveManifest: () => ({
+      schemaVersion: 1 as const,
+      testRunId: 'formal-run',
+      startedAt: '2026-08-07T00:00:00.000Z',
+      artifactClaim: {
+        appVersion: '0.3.11',
+        releaseTag: 'v0.3.11',
+        productSourceCommit: 'a'.repeat(40),
+        installerFileName: 'candidate.exe',
+        installerSha256: 'b'.repeat(64)
+      },
+      runtime: {
+        platform: 'win32' as const,
+        systemVersion: '10.0.22631',
+        osBuild: 'Windows 11 10.0.22631',
+        arch: 'x64'
+      }
+    }),
+    createEvaluationLink: () => ({
+      schemaVersion: 1 as const,
+      testRunId: 'formal-run',
+      testCaseId: 'a'.repeat(64),
+      canonicalizationVersion: 1 as const,
+      externalReviewId: 'review-formal'
+    })
+  } satisfies Parameters<typeof prepareExplanationExecution>[3]
+  const formalExecution = prepareExplanationExecution(
+    {
+      requestId: 'teacher-formal-characterization',
+      analysisId: formalSession.analysisId,
+      provider: 'openai',
+      model: 'fake-model',
+      userLevel: 'intermediate',
+      explanationStyle: 'long_analytical',
+      language: 'zh-TW',
+      followUpQuestion: formalQuestionMarker,
+      attachedMove: frozenCase.attachedMove,
+      answerMode: frozenCase.mode,
+      conversationHistory: [
+        {
+          id: 'teacher-prelude',
+          role: 'assistant',
+          text: excludedHistoryMarker,
+          createdAt: new Date().toISOString()
+        }
+      ],
+      budget: {
+        engineTimeMs: 3000,
+        maxEngineRounds: 3,
+        maxModelCalls: 4,
+        maxOutputTokens: 4000
+      }
+    },
+    formalSession,
+    'fake-model',
+    formalRun
+  )
+  const formalTraces: HarnessTrace[] = []
+  const formalResult = await runPreparedExplanationHarness(
+    formalExecution,
+    {
+      provider: formalProvider,
+      apiKey: 'not-stored-in-trace',
+      registry: {
+        list: () => ({
+          installations: [],
+          activeEngineId: 'engine-1',
+          verificationEngineId: null
+        }),
+        getAdapter: () => null
+      } as never,
+      traceStore: { save: (trace: HarnessTrace) => formalTraces.push(trace) } as never,
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+      explanationPrompt: excludedHistoryMarker
+    }
+  )
+  check(
+    '正式案例固定問題進入真正的 answer-writing prompt',
+    formalProvider.prompts.some((prompt) => prompt.includes(formalQuestionMarker))
+  )
+  check(
+    '正式案例不把 prelude 或既有 history 送入任何 provider prompt',
+    formalProvider.prompts.every((prompt) => !prompt.includes(excludedHistoryMarker))
+  )
+  check(
+    '正式案例即使 history 清空仍保留完整五段 move-comparison contract',
+    formalExecution.answerStrategy === 'formal-move-comparison' &&
+      ['直接結論', '實戰步問題', 'AI 首選', '對手利用與後果', '實戰原則'].every((heading) =>
+        formalResult.finalText.includes(`### ${heading}`)
+      )
+  )
+  check(
+    '正式案例成功輸出與 trace 都保留固定問題及 v2 execution metadata',
+    formalResult.finalText.includes(formalQuestionMarker) &&
+      formalTraces[0]?.question === formalQuestionMarker &&
+      formalTraces[0]?.interactionKind === 'teacher-formal-case' &&
+      formalTraces[0]?.executionSemanticsVersion === 2 &&
+      formalTraces[0]?.teacherCaseSetId === 'teacher-test-cases-v1' &&
+      formalTraces[0]?.teacherCaseKey === frozenCase.caseKey &&
+      formalTraces[0]?.evaluation?.externalReviewId === 'review-formal'
   )
   check('棋手正文不顯示證據編號', !result.finalText.includes('[E1]'))
   check('回答先顯示直接結論', result.finalText.indexOf('### 直接結論') < result.finalText.indexOf('### 實戰步問題'))

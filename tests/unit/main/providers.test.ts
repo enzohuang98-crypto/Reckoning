@@ -195,6 +195,32 @@ async function main(): Promise<void> {
         (await second) === 'second-result' &&
         gate.activeCount() === 0
     )
+
+    let releaseExclusive!: () => void
+    let exclusiveCalls = 0
+    const exclusive = gate.runExclusive('formal-case', async () => {
+      exclusiveCalls += 1
+      await new Promise<void>((resolve) => {
+        releaseExclusive = resolve
+      })
+      return 'formal-result'
+    })
+    let duplicateExclusiveBusy = false
+    try {
+      await gate.runExclusive('formal-case', async () => 'must-not-run')
+    } catch (error) {
+      duplicateExclusiveBusy = error instanceof OperationBusyError
+    }
+    check(
+      'exclusive 模式拒絕相同正式案例的併發請求',
+      duplicateExclusiveBusy && exclusiveCalls === 1
+    )
+    releaseExclusive()
+    check(
+      'exclusive 模式完成後允許人工重送',
+      (await exclusive) === 'formal-result' &&
+        (await gate.runExclusive('formal-case', async () => 'resubmitted')) === 'resubmitted'
+    )
   }
 
   section('ModelRegistry')

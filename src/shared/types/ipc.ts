@@ -273,6 +273,15 @@ export interface GenerateExplanationDonePayload {
   warnings?: string[]
   traceId?: string
   clarificationRequired?: boolean
+  teacherExecution?: {
+    interactionKind: 'teacher-prelude' | 'teacher-formal-case'
+    executionSemanticsVersion: 2
+    caseSetId?: 'teacher-test-cases-v1'
+    caseSetStatus?: 'fixture-only; teacher-confirmation-pending'
+    caseKey?: string
+    testCaseId?: string
+    externalReviewId?: string
+  }
 }
 
 export type AIExplanationErrorCode =
@@ -284,6 +293,8 @@ export type AIExplanationErrorCode =
   | 'network_error'
   | 'rate_limited'
   | 'too_many_requests'
+  | 'teacher_case_rejected'
+  | 'teacher_case_busy'
   | 'cancelled'
   | 'unknown_error'
 

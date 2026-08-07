@@ -7,11 +7,10 @@ import {
   buildAIExplanationRequest,
   MissingApiKeyError
 } from '../../../src/main/ipc/aiExplanationHandlers'
-import type {
-  AnalysisSession,
-  AnalysisSessionStore
-} from '../../../src/main/storage/AnalysisSessionStore'
+import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import type { AnalysisSession } from '../../../src/main/storage/AnalysisSessionStore'
 import { SecretStore } from '../../../src/main/storage/SecretStore'
+import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
 
 const encryption = {
@@ -93,13 +92,15 @@ async function main(): Promise<void> {
         uncertaintyReasons: ['credential test']
       }
     }
-    const analysisSessionStore: AnalysisSessionStore = {
-      save: async () => undefined,
-      get: async (analysisId) =>
-        analysisId === session.analysisId ? session : null,
-      delete: async () => undefined,
-      clearExpiredSessions: async () => undefined
-    }
+    const teacherRun = new TeacherTestRunService({
+      getRuntime: () => ({
+        appVersion: '0.3.11',
+        platform: 'win32',
+        systemVersion: '10.0.22631',
+        osBuild: 'Windows 11 10.0.22631',
+        arch: 'x64'
+      })
+    })
     const requestPayload: GenerateExplanationStartPayload = {
       requestId: 'credential-binding-request',
       analysisId: session.analysisId,
@@ -109,10 +110,13 @@ async function main(): Promise<void> {
       explanationStyle: 'long_analytical',
       language: 'zh-TW'
     }
-    const proRequest = await buildAIExplanationRequest(requestPayload, {
-      secretStore: store,
-      analysisSessionStore
-    })
+    const proExecution = prepareExplanationExecution(
+      requestPayload,
+      session,
+      requestPayload.model,
+      teacherRun
+    )
+    const proRequest = await buildAIExplanationRequest(proExecution, { secretStore: store })
     assert.equal(
       proRequest.apiKey,
       'gemini-pro-key',
@@ -121,8 +125,13 @@ async function main(): Promise<void> {
     await assert.rejects(
       () =>
         buildAIExplanationRequest(
-          { ...requestPayload, model: 'gemini-3.1-flash-lite' },
-          { secretStore: store, analysisSessionStore }
+          prepareExplanationExecution(
+            { ...requestPayload, model: 'gemini-3.1-flash-lite' },
+            session,
+            'gemini-3.1-flash-lite',
+            teacherRun
+          ),
+          { secretStore: store }
         ),
       MissingApiKeyError,
       'backend 不得 fallback 到同 provider 的其他 key'

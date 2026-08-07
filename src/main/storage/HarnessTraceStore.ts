@@ -312,6 +312,20 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
     ...(sanitizeEvaluation(trace.evaluation)
       ? { evaluation: sanitizeEvaluation(trace.evaluation) }
       : {}),
+    ...(trace.interactionKind === 'ordinary' ||
+    trace.interactionKind === 'teacher-prelude' ||
+    trace.interactionKind === 'teacher-formal-case'
+      ? { interactionKind: trace.interactionKind }
+      : {}),
+    ...(trace.executionSemanticsVersion === 2
+      ? { executionSemanticsVersion: 2 as const }
+      : {}),
+    ...(trace.teacherCaseSetId === 'teacher-test-cases-v1'
+      ? { teacherCaseSetId: trace.teacherCaseSetId }
+      : {}),
+    ...(typeof trace.teacherCaseKey === 'string'
+      ? { teacherCaseKey: trace.teacherCaseKey.slice(0, 128) }
+      : {}),
     status: trace.status,
     ...(typeof trace.finalText === 'string'
       ? { finalText: trace.finalText.slice(0, MAX_FINAL_TEXT_CHARS) }

@@ -12,13 +12,17 @@ import type { AppSettings } from '@shared/types/Settings'
 import type {
   EngineAnalysisProgressPayload,
   EngineAnalysisResultPayload,
-  EngineStatus
+  EngineStatus,
+  GenerateExplanationDonePayload
 } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type {
   EngineRegistrySnapshot
 } from '@shared/types/EngineRegistry'
-import type { HarnessProgressPayload } from '@shared/types/Harness'
+import type {
+  HarnessProgressPayload,
+  TeacherTestRunStatusV1
+} from '@shared/types/Harness'
 import type {
   AIConversation,
   ConversationMessage,
@@ -168,6 +172,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [harnessProgress, setHarnessProgress] =
     useState<HarnessProgressPayload | null>(null)
   const [traceId, setTraceId] = useState<string | null>(null)
+  const [teacherTestStatus, setTeacherTestStatus] =
+    useState<TeacherTestRunStatusV1 | null>(null)
+  const [teacherExecution, setTeacherExecution] =
+    useState<GenerateExplanationDonePayload['teacherExecution'] | null>(null)
   const activeRequestId = useRef<string | null>(null)
   const activeAnalysisKey = useRef<string | null>(null)
   const engineDeadlineTimer = useRef<number | null>(null)
@@ -193,6 +201,22 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   useEffect(() => {
     conversationRef.current = conversation
   }, [conversation])
+
+  useEffect(() => {
+    if (activeView !== 'coach') return
+    let current = true
+    void window.api.teacherTest
+      .status()
+      .then((next) => {
+        if (current) setTeacherTestStatus(next)
+      })
+      .catch(() => {
+        if (current) setTeacherTestStatus(null)
+      })
+    return () => {
+      current = false
+    }
+  }, [activeView, board.fen, actualMove?.selectionId])
 
   const refreshEngineState = useCallback(async (): Promise<void> => {
     try {
@@ -301,6 +325,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setNotice(null)
     setAiError(null)
     setAiNotice(null)
+    setTeacherExecution(null)
     onResult(null)
     onExplanation(null)
   }, [board.fen, analysisMove, actualMove?.selectionId])
@@ -403,6 +428,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setHarnessProgress(null)
       setStreamingText('')
       setTraceId(payload.traceId ?? null)
+      setTeacherExecution(payload.teacherExecution ?? null)
       const response: AIExplanationResponse = {
         text: payload.finalText,
         provider: pending?.provider ?? settingsRef.current.aiProvider,
@@ -449,6 +475,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setAiBusy(false)
       setAiCancelling(false)
       setHarnessProgress(null)
+      setStreamingText('')
       if (payload.code === 'cancelled') setAiNotice('已取消生成；追問內容仍保留。')
       else setAiError(payload.message)
     })
@@ -723,6 +750,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setStreamingText('')
     setHarnessProgress(null)
     setTraceId(null)
+    setTeacherExecution(null)
     if (regenerate || cleanedQuestion === null) {
       setExplanation(null)
       onExplanation(null)
@@ -1036,6 +1064,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               }
               error={aiError ?? (actualMove ? error : null)}
               notice={aiNotice}
+              teacherTestStatus={teacherTestStatus}
+              teacherExecution={teacherExecution}
               followUp={followUp}
               onFollowUpChange={setFollowUp}
               onGenerate={() => generateExplanation(null)}
@@ -1043,6 +1073,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               onCancel={cancelExplain}
               onSubmitFollowUp={submitFollowUp}
               onCopy={() => void copyExplanation()}
+              onCopyTeacherId={(value) => {
+                void navigator.clipboard.writeText(value).then(() => {
+                  setAiNotice('已複製老師案例識別碼。')
+                }).catch(() => {
+                  setAiError('無法複製識別碼，請手動選取。')
+                })
+              }}
               onFeedback={(feedback) => {
                 if (!traceId) return
                 void window.api.ai

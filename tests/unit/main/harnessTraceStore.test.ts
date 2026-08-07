@@ -45,6 +45,10 @@ const teacherTrace = {
     canonicalizationVersion: 1,
     externalReviewId: 'review-a'
   },
+  interactionKind: 'teacher-formal-case',
+  executionSemanticsVersion: 2,
+  teacherCaseSetId: 'teacher-test-cases-v1',
+  teacherCaseKey: 'case-a',
   feedback: 'incorrect'
 } as unknown as HarnessTrace
 const previousRunTrace = {
@@ -69,6 +73,16 @@ assert.deepEqual(
 assert.deepEqual(
   runScopedStore.listRegressionCases(teacherRunId).map((item) => item.traceId),
   ['trace-teacher-run-a']
+)
+const exportedTeacherTrace = runScopedStore.listForExport(teacherRunId)[0]
+assert.equal(exportedTeacherTrace.interactionKind, 'teacher-formal-case')
+assert.equal(exportedTeacherTrace.executionSemanticsVersion, 2)
+assert.equal(exportedTeacherTrace.teacherCaseSetId, 'teacher-test-cases-v1')
+assert.equal(exportedTeacherTrace.teacherCaseKey, 'case-a')
+assert.equal(
+  Object.prototype.hasOwnProperty.call(runScopedStore.listForExport('teacher-run-previous')[0], 'executionSemanticsVersion'),
+  false,
+  '舊 trace 不得被推斷成 v2 isolated-input evidence'
 )
 
 store.save(trace)

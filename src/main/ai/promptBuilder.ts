@@ -41,7 +41,7 @@ export interface BuildExplanationPromptInput {
   userLevel: UserLevel
   explanationStyle: ExplanationStyle
   language: ExplanationLanguage
-  conversationHistory?: ConversationMessage[]
+  conversationHistory?: readonly ConversationMessage[]
   followUpQuestion?: string
 }
 

@@ -115,6 +115,10 @@ export class TeacherTestRunService {
     return cloneManifest(this.storedRun?.manifest ?? null)
   }
 
+  getActiveManifest(): TeacherTestRunManifestV1 | null {
+    return this.storedRun?.active ? cloneManifest(this.storedRun.manifest) : null
+  }
+
   async start(input: TeacherTestRunStartInput): Promise<TeacherTestRunManifestV1> {
     if (this.storedRun?.active) {
       throw new Error('已有進行中的老師實測 run，請先結束或匯出目前 run。')
