@@ -1,4 +1,4 @@
-# Reckoning v0.3.9 teacher pilot learning-history pack（draft）
+# Reckoning v0.3.10 teacher pilot learning-history pack（draft）
 
 > 狀態：`DRAFT / EXTERNAL EVIDENCE PENDING`
 >
@@ -26,6 +26,7 @@ Reckoning 的目標不是只顯示「AI 認為哪一步比較好」，而是把�
 | v0.3.7 | 保留歷史 unsigned prerelease，建立 GitHub Release 來源與更新門檻的歷史證據。 | 不能推出 Win10/Win11 clean-client gate 已完成；舊 client evidence run 已取消。 |
 | v0.3.8 | 建立 teacher-test run manifest、保守 case ID、匿名 review link、非同步 installer SHA-256、正向 allowlist export 與六題 fixture baseline。 | 不能推出有老師、第二台機器、真人 rubric 或正式簽章。 |
 | v0.3.9 | 修正 teacher-test export 的 run isolation：有 `runManifest` 時，trace 與 regression case 只保留同一個 `testRunId`；新增回歸測試並以新 tag／新 installer 發布。 | 仍不能推出老師雙機驗收、模型內容正確率、教學價值或 formal Release 已完成。 |
+| v0.3.10 | 補上 Settings active run 的完整 app／release／source／installer／runtime identity；新增 renderer regression test，並將外部 protocol 對齊七個 1–5 維度與三個獨立 gate。 | 仍不能推出老師雙機驗收、三個 teacher-confirmed cases、臨時 key 零殘留、clean Win10/Win11 evidence 或正式簽章。 |
 
 本次工程問題的因果鏈如下：
 
@@ -54,6 +55,7 @@ flowchart LR
 - `canonicalizeTeacherTestCase` 只對 case identity 做 NFC 與 CRLF→LF 正規化，不折疊空白、不改標點、不做語義改寫。
 - `HarnessOrchestrator` 使用引擎留下的局面與主線證據；AI 的回答若證據不足，應明確區分已證明、推論與未知。
 - `HarnessTraceStore` 用正向 allowlist 保存與 export trace；v0.3.9 另以 `evaluation.testRunId` 做 run isolation。
+- v0.3.10 的 active-run UI 顯示 app version、release tag、product source commit、installer filename／SHA-256 與 Windows runtime，讓外部 rubric 能直接核對被測 artifact claim。
 - 老師姓名、簽名與質性理由留在外部 rubric，以 `testRunId`、`testCaseId`、`externalReviewId` 對接，不進 App export。
 
 ## 4. 目前案例集狀態
@@ -89,10 +91,16 @@ flowchart LR
 | v0.3.9 Release state | public、non-draft、prerelease、非 Latest；Latest 仍 v0.3.6 | unsigned candidate 沒有被誤升為正式 Latest。 |
 | Windows CI | typecheck、full test、audit、production build 全綠 | 工程回歸與建置門檻通過，不等於真人教學驗收。 |
 | run-isolation regression | previous run trace 不會進入 current run export | v0.3.9 修正了 evidence pack 的資料邊界。 |
+| v0.3.10 merged product/source | `fd43bdad500418570d8dc3f7f0bdbb7794c1ed46` | 完整 teacher-test identity、7 維度 rubric 合約與 renderer regression test 已合併，Release workflow 以此 commit 執行。 |
+| v0.3.10 annotated tag | object `6b3144c84bc4e8459462b83c8453630cff03c83e`；peeled commit `fd43bdad500418570d8dc3f7f0bdbb7794c1ed46` | tag、product source 與 workflow head SHA 可互相核對。 |
+| v0.3.10 Release workflow | run `31108379560`；build／publish／Server 2022／Server 2025 全成功 | 公開 unsigned teacher candidate 可重現；Win10/Win11 client gate 與 promotion 明確 skipped。 |
+| v0.3.10 installer | `xiangqi-analyzer-0.3.10-setup.exe`；`164630893` bytes；SHA-256 `6facf8bca3a202fe4d668da3235b0b90b006d96f0cfc6ecd04c61ac0113c0aa7` | GitHub asset digest、公開 `SHA256SUMS.txt` 與獨立 HTTPS stream hash 完全一致。 |
+| v0.3.10 Release state | public、non-draft、prerelease、非 Latest；stable latest 仍 v0.3.6 | 刻意未簽章 candidate 沒有被誤升為正式 Latest。 |
 
 詳細可核對文件：
 
 - [`docs/operations/release-v0.3.9-evidence.md`](../operations/release-v0.3.9-evidence.md)
+- [`docs/operations/release-v0.3.10-evidence.md`](../operations/release-v0.3.10-evidence.md)
 - [`docs/operations/teacher-test-cases-v1.json`](../operations/teacher-test-cases-v1.json)
 - [`docs/operations/teacher-test-protocol-v1.md`](../operations/teacher-test-protocol-v1.md)
 - [`PROJECT_STATUS.md`](../../PROJECT_STATUS.md)
@@ -101,7 +109,7 @@ flowchart LR
 
 ### 6.1 開始前
 
-每台機器都必須從同一個 v0.3.9 GitHub Release 下載相同 installer，先讀取公開 `SHA256SUMS.txt`，核對檔名、大小與 SHA-256，並記錄未簽章 SmartScreen／Mark-of-the-Web 行為。兩台都要保存獨立的 run manifest；不能把開發端或 CI 的 runtime 當成老師電腦證據。
+每台機器都必須從同一個 v0.3.10 GitHub Release 下載相同 installer，先讀取公開 `SHA256SUMS.txt`，核對檔名、大小與 SHA-256，並記錄未簽章 SmartScreen／Mark-of-the-Web 行為。兩台都要保存獨立的 run manifest；不能把開發端或 CI 的 runtime 當成老師電腦證據。
 
 暫時 API key 只能在受測電腦的 SecretStore／本次流程使用：
 
@@ -218,6 +226,8 @@ flowchart LR
 | 三個正式 teacher-confirmed case 尚未存在 | 目前六題全部是 fixture baseline | 保留 pending metadata，不偽造老師確認；取得同意後重新 freeze | `teacher-test-cases-v1.json`；`teacherTestCases.test.ts` | pending |
 | clean Win10/Win11 client evidence 尚未取得 | candidate mode 明確跳過 client gate | 保持 prerelease，不把 Server proxy 當 client evidence | run `31105552449` jobs `92631033394`／`92631033727` | pending |
 | 可信 Windows publisher 尚未建立 | 沒有受信任 Authenticode certificate／timestamp secrets | 保留 `forceCodeSigning: true`，teacher candidate 使用窄範圍 workflow exception | v0.3.9 Release notes／evidence | pending |
+| 外部 rubric 曾與原始計畫的維度／分數範圍不一致 | 文件早期使用 5 維度與 0–2 分草稿，無法支持計畫的 7 維度與 1–5 門檻 | 以 v0.3.10 protocol 對齊七個 1–5 維度，並將三個 gate 明確獨立記錄 | PR #36；v0.3.10 Release run `31108379560`；protocol／learning-history draft | 待真人 rubric 回填 |
+| Active run 畫面缺少完整 artifact identity | 受測者原先只能直接看到部分 tag／installer 欄位，難以在畫面核對 app／source 身分 | 顯示 app version、release tag、product source commit、installer filename／SHA-256、Windows runtime | PR #36；`teacherTestRunSection.test.tsx`；v0.3.10 installer SHA | 待雙機畫面觀察 |
 
 ## 9. 學習反思欄位
 
@@ -241,16 +251,17 @@ flowchart LR
 - 學習歷程老師已驗證教學價值；
 - 兩台真實 Windows client 已完成安裝與完整六題流程；
 - 臨時 API key 已在兩台機器完成刪除與零殘留核對；
-- v0.3.9 是正式 signed release 或 GitHub Latest；
+- v0.3.10 是正式 signed release 或 GitHub Latest；
 - 產品網站已同步或已被查看。
 
 下一個可執行的外部步驟是：取得三個 teacher-confirmed cases 與受控臨時 key，準備兩台可觀察 Windows client，依 protocol 建立 Machine A／B run，完成六題與 failure paths，再把 manifest／export digest／外部 rubric 回填本文件。若測試發現產品問題，依 GitHub branch → PR → Windows CI → merge → new tag → Release 的流程處理；不得直接改安裝目錄或覆寫既有 Release。
 
 ## Appendix：固定參考
 
-- v0.3.9 Release：[GitHub Release](https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.9)
-- v0.3.9 workflow：[Actions run 31105552449](https://github.com/enzohuang98-crypto/Reckoning/actions/runs/31105552449)
-- v0.3.9 evidence：[`release-v0.3.9-evidence.md`](../operations/release-v0.3.9-evidence.md)
+- v0.3.10 Release：[GitHub Release](https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.10)
+- v0.3.10 workflow：[Actions run 31108379560](https://github.com/enzohuang98-crypto/Reckoning/actions/runs/31108379560)
+- v0.3.10 evidence：[`release-v0.3.10-evidence.md`](../operations/release-v0.3.10-evidence.md)
+- v0.3.9 historical evidence：[`release-v0.3.9-evidence.md`](../operations/release-v0.3.9-evidence.md)
 - 雙機 protocol：[`teacher-test-protocol-v1.md`](../operations/teacher-test-protocol-v1.md)
 - frozen cases：[`teacher-test-cases-v1.json`](../operations/teacher-test-cases-v1.json)
 - current handoff：[`PROJECT_STATUS.md`](../../PROJECT_STATUS.md)
