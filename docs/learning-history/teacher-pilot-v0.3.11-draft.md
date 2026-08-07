@@ -1,4 +1,4 @@
-# Reckoning v0.3.10 teacher pilot learning-history pack（draft）
+# Reckoning v0.3.11 teacher pilot learning-history pack（draft）
 
 > 狀態：`DRAFT / EXTERNAL EVIDENCE PENDING`
 >
@@ -27,6 +27,7 @@ Reckoning 的目標不是只顯示「AI 認為哪一步比較好」，而是把�
 | v0.3.8 | 建立 teacher-test run manifest、保守 case ID、匿名 review link、非同步 installer SHA-256、正向 allowlist export 與六題 fixture baseline。 | 不能推出有老師、第二台機器、真人 rubric 或正式簽章。 |
 | v0.3.9 | 修正 teacher-test export 的 run isolation：有 `runManifest` 時，trace 與 regression case 只保留同一個 `testRunId`；新增回歸測試並以新 tag／新 installer 發布。 | 仍不能推出老師雙機驗收、模型內容正確率、教學價值或 formal Release 已完成。 |
 | v0.3.10 | 補上 Settings active run 的完整 app／release／source／installer／runtime identity；新增 renderer regression test，並將外部 protocol 對齊七個 1–5 維度與三個獨立 gate。 | 仍不能推出老師雙機驗收、三個 teacher-confirmed cases、臨時 key 零殘留、clean Win10/Win11 evidence 或正式簽章。 |
+| v0.3.11 | 修復新出現的 `js-yaml` high advisory（4.3.0 → 4.3.1），以新 candidate 重新通過 dependency audit、Windows build、測試與 unsigned packaging。 | 仍不能推出老師雙機驗收、三個 teacher-confirmed cases、臨時 key 零殘留、clean Win10/Win11 evidence 或正式簽章。 |
 
 本次工程問題的因果鏈如下：
 
@@ -96,11 +97,17 @@ flowchart LR
 | v0.3.10 Release workflow | run `31108379560`；build／publish／Server 2022／Server 2025 全成功 | 公開 unsigned teacher candidate 可重現；Win10/Win11 client gate 與 promotion 明確 skipped。 |
 | v0.3.10 installer | `xiangqi-analyzer-0.3.10-setup.exe`；`164630893` bytes；SHA-256 `6facf8bca3a202fe4d668da3235b0b90b006d96f0cfc6ecd04c61ac0113c0aa7` | GitHub asset digest、公開 `SHA256SUMS.txt` 與獨立 HTTPS stream hash 完全一致。 |
 | v0.3.10 Release state | public、non-draft、prerelease、非 Latest；stable latest 仍 v0.3.6 | 刻意未簽章 candidate 沒有被誤升為正式 Latest。 |
+| v0.3.11 merged product/source | `c45c92585d35bee62a1186dd9816fb12ae2e0284` | `js-yaml` 4.3.1 lockfile 修正與 v0.3.11 release notes 已合併，Release workflow 以此 commit 執行。 |
+| v0.3.11 annotated tag | object `ed31686815caafb100c3a5113557f9a35f4b0fee`；peeled commit `c45c92585d35bee62a1186dd9816fb12ae2e0284` | tag、product source 與 workflow head SHA 可互相核對。 |
+| v0.3.11 Release workflow | run `31134511847`；build／publish／Server 2022／Server 2025 全成功；audit 綠燈 | 新 candidate 已重新通過 dependency security gate；Win10/Win11 client gate 與 promotion 明確 skipped。 |
+| v0.3.11 installer | `xiangqi-analyzer-0.3.11-setup.exe`；`164630863` bytes；SHA-256 `31d89f8c69dbaec1aec2be2205108b54d4bec243dc9e2eb7b8ccfb412c762824` | GitHub asset digest、公開 `SHA256SUMS.txt` 與獨立 HTTPS stream hash 完全一致。 |
+| v0.3.11 Release state | public、non-draft、prerelease、非 Latest；stable latest 仍 v0.3.6 | 安全修正版仍是刻意未簽章 candidate，沒有被誤升為正式 Latest。 |
 
 詳細可核對文件：
 
 - [`docs/operations/release-v0.3.9-evidence.md`](../operations/release-v0.3.9-evidence.md)
 - [`docs/operations/release-v0.3.10-evidence.md`](../operations/release-v0.3.10-evidence.md)
+- [`docs/operations/release-v0.3.11-evidence.md`](../operations/release-v0.3.11-evidence.md)
 - [`docs/operations/teacher-test-cases-v1.json`](../operations/teacher-test-cases-v1.json)
 - [`docs/operations/teacher-test-protocol-v1.md`](../operations/teacher-test-protocol-v1.md)
 - [`PROJECT_STATUS.md`](../../PROJECT_STATUS.md)
@@ -109,7 +116,7 @@ flowchart LR
 
 ### 6.1 開始前
 
-每台機器都必須從同一個 v0.3.10 GitHub Release 下載相同 installer，先讀取公開 `SHA256SUMS.txt`，核對檔名、大小與 SHA-256，並記錄未簽章 SmartScreen／Mark-of-the-Web 行為。兩台都要保存獨立的 run manifest；不能把開發端或 CI 的 runtime 當成老師電腦證據。
+每台機器都必須從同一個 v0.3.11 GitHub Release 下載相同 installer，先讀取公開 `SHA256SUMS.txt`，核對檔名、大小與 SHA-256，並記錄未簽章 SmartScreen／Mark-of-the-Web 行為。兩台都要保存獨立的 run manifest；不能把開發端或 CI 的 runtime 當成老師電腦證據。
 
 暫時 API key 只能在受測電腦的 SecretStore／本次流程使用：
 
@@ -228,6 +235,7 @@ flowchart LR
 | 可信 Windows publisher 尚未建立 | 沒有受信任 Authenticode certificate／timestamp secrets | 保留 `forceCodeSigning: true`，teacher candidate 使用窄範圍 workflow exception | v0.3.9 Release notes／evidence | pending |
 | 外部 rubric 曾與原始計畫的維度／分數範圍不一致 | 文件早期使用 5 維度與 0–2 分草稿，無法支持計畫的 7 維度與 1–5 門檻 | 以 v0.3.10 protocol 對齊七個 1–5 維度，並將三個 gate 明確獨立記錄 | PR #36；v0.3.10 Release run `31108379560`；protocol／learning-history draft | 待真人 rubric 回填 |
 | Active run 畫面缺少完整 artifact identity | 受測者原先只能直接看到部分 tag／installer 欄位，難以在畫面核對 app／source 身分 | 顯示 app version、release tag、product source commit、installer filename／SHA-256、Windows runtime | PR #36；`teacherTestRunSection.test.tsx`；v0.3.10 installer SHA | 待雙機畫面觀察 |
+| 新 `js-yaml` high advisory 使候選 CI audit 轉紅 | v0.3.10 lockfile 解析到 `js-yaml` 4.3.0，位於 runtime updater 與 build chain | 以 `npm audit fix --package-lock-only --omit=dev` 升至 4.3.1，bump v0.3.11，重新跑 Windows release workflow | PR #38；run `31134387222` CI；v0.3.11 run `31134511847`；公開 `0.3.11` Release | candidate audit 已綠；外部 pilot pending |
 
 ## 9. 學習反思欄位
 
@@ -251,16 +259,17 @@ flowchart LR
 - 學習歷程老師已驗證教學價值；
 - 兩台真實 Windows client 已完成安裝與完整六題流程；
 - 臨時 API key 已在兩台機器完成刪除與零殘留核對；
-- v0.3.10 是正式 signed release 或 GitHub Latest；
+- v0.3.11 是正式 signed release 或 GitHub Latest；
 - 產品網站已同步或已被查看。
 
 下一個可執行的外部步驟是：取得三個 teacher-confirmed cases 與受控臨時 key，準備兩台可觀察 Windows client，依 protocol 建立 Machine A／B run，完成六題與 failure paths，再把 manifest／export digest／外部 rubric 回填本文件。若測試發現產品問題，依 GitHub branch → PR → Windows CI → merge → new tag → Release 的流程處理；不得直接改安裝目錄或覆寫既有 Release。
 
 ## Appendix：固定參考
 
-- v0.3.10 Release：[GitHub Release](https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.10)
-- v0.3.10 workflow：[Actions run 31108379560](https://github.com/enzohuang98-crypto/Reckoning/actions/runs/31108379560)
-- v0.3.10 evidence：[`release-v0.3.10-evidence.md`](../operations/release-v0.3.10-evidence.md)
+- v0.3.11 Release：[GitHub Release](https://github.com/enzohuang98-crypto/Reckoning/releases/tag/v0.3.11)
+- v0.3.11 workflow：[Actions run 31134511847](https://github.com/enzohuang98-crypto/Reckoning/actions/runs/31134511847)
+- v0.3.11 evidence：[`release-v0.3.11-evidence.md`](../operations/release-v0.3.11-evidence.md)
+- v0.3.10 historical evidence：[`release-v0.3.10-evidence.md`](../operations/release-v0.3.10-evidence.md)
 - v0.3.9 historical evidence：[`release-v0.3.9-evidence.md`](../operations/release-v0.3.9-evidence.md)
 - 雙機 protocol：[`teacher-test-protocol-v1.md`](../operations/teacher-test-protocol-v1.md)
 - frozen cases：[`teacher-test-cases-v1.json`](../operations/teacher-test-cases-v1.json)
