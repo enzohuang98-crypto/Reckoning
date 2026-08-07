@@ -4,6 +4,19 @@ import type { ExplanationLanguage } from './AIExplanationTypes'
 
 export type HarnessAnswerMode = 'focused' | 'research'
 
+export type ExplanationInteractionKind =
+  | 'ordinary'
+  | 'teacher-prelude'
+  | 'teacher-formal-case'
+
+export type ExplanationAnswerStrategy =
+  | 'position-explanation'
+  | 'move-comparison'
+  | 'conversation-follow-up'
+  | 'formal-move-comparison'
+
+export const EXPLANATION_EXECUTION_SEMANTICS_VERSION = 2 as const
+
 export const TEACHER_TEST_SCHEMA_VERSION = 1 as const
 export const TEACHER_TEST_CANONICALIZATION_VERSION = 1 as const
 
@@ -202,6 +215,11 @@ export interface HarnessTrace {
   feedback?: 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
   /** 正式 teacher run 才會存在；舊 trace 保持相容。 */
   evaluation?: HarnessEvaluationLinkV1
+  /** v2 起由 main-process prepared execution 明確指定；舊 trace 不得反推。 */
+  interactionKind?: ExplanationInteractionKind
+  executionSemanticsVersion?: typeof EXPLANATION_EXECUTION_SEMANTICS_VERSION
+  teacherCaseSetId?: 'teacher-test-cases-v1'
+  teacherCaseKey?: string
   status: 'completed' | 'clarification_required' | 'cancelled' | 'failed'
   /** 最終顯示給使用者的文字（供未來建立回歸評測集用）；儲存時會截斷長度。 */
   finalText?: string

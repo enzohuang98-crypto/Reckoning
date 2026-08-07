@@ -7,7 +7,8 @@ export class OperationBusyError extends Error {
 
 /**
  * Main-process admission control for costly operations.
- * Identical keys share one in-flight promise; unrelated work is capped globally.
+ * Identical keys can share one in-flight promise through run(); runExclusive()
+ * rejects duplicates. Unrelated work is capped globally in both modes.
  */
 export class KeyedOperationGate {
   private readonly inFlight = new Map<string, Promise<unknown>>()
@@ -30,6 +31,13 @@ export class KeyedOperationGate {
     })
     this.inFlight.set(key, promise)
     return promise
+  }
+
+  runExclusive<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    if (this.inFlight.has(key) || this.inFlight.size >= this.maxActive) {
+      return Promise.reject(new OperationBusyError())
+    }
+    return this.run(key, operation)
   }
 
   activeCount(): number {
