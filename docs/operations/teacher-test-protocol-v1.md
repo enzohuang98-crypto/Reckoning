@@ -48,8 +48,6 @@
 
 每個 gate 為 `not_assessed` 時必須保留原因，不能寫成 pass。評分是外部人的真實資料，不能由 fixture 的 `evaluationLoss` 或 App 自動填入。若老師認為回答不可接受，請保留 `externalReviewId`、case key、機器 run、各項 1–5 分與短評，讓後續工程能重現。
 
-評分是外部人的真實資料，不能由 fixture 的 `evaluationLoss` 或 App 自動填入。若老師認為回答不可接受，請保留 `externalReviewId`、case key、機器 run 與短評，讓後續工程能重現。
-
 ## 雙機完成條件
 
 只有同時取得以下證據，才可說「老師雙機實測完成」：
