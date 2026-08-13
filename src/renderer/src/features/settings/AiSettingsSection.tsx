@@ -234,37 +234,40 @@ export function AiSettingsSection({
           <label className="field-label" htmlFor="active-ai-credential">
             使用中的 API 模型
           </label>
-          <select
-            id="active-ai-credential"
-            aria-label="使用中的 API 模型"
-            className="select"
-            value={activeValue}
-            disabled={selectableCredentials.length === 0 || secretBusy}
-            onChange={(event) => changeActiveCredential(event.target.value)}
-          >
-            {selectableCredentials.length === 0 && (
-              <option value="">
-                {localCompatibleWithoutKey
-                  ? '目前使用本機免金鑰模型；尚無 API 模型'
-                  : '請先在下方新增模型金鑰'}
-              </option>
-            )}
-            {selectableCredentials.length > 0 && !activeValue && (
-              <option value="">
-                {localCompatibleWithoutKey
-                  ? '目前使用本機免金鑰模型'
-                  : '請選擇已設定的模型'}
-              </option>
-            )}
-            {selectableCredentials.map((credential) => (
-              <option
-                key={credentialValue(credential)}
-                value={credentialValue(credential)}
-              >
-                {credentialLabel(credential)}
-              </option>
-            ))}
-          </select>
+          {selectableCredentials.length === 0 ? (
+            <a
+              aria-label="新增 API 模型金鑰"
+              className="btn"
+              href="#add-ai-credential"
+            >
+              新增模型金鑰
+            </a>
+          ) : (
+            <select
+              id="active-ai-credential"
+              aria-label="使用中的 API 模型"
+              className="select"
+              value={activeValue}
+              disabled={secretBusy}
+              onChange={(event) => changeActiveCredential(event.target.value)}
+            >
+              {!activeValue && (
+                <option value="">
+                  {localCompatibleWithoutKey
+                    ? '目前使用本機免金鑰模型'
+                    : '請選擇已設定的模型'}
+                </option>
+              )}
+              {selectableCredentials.map((credential) => (
+                <option
+                  key={credentialValue(credential)}
+                  value={credentialValue(credential)}
+                >
+                  {credentialLabel(credential)}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {currentMetadata?.needsReentry && (
@@ -352,7 +355,7 @@ export function AiSettingsSection({
         )}
       </section>
 
-      <section className="card">
+      <section id="add-ai-credential" className="card">
         <div className="section-heading">
           <div>
             <span className="eyebrow">ADD CREDENTIAL</span>
