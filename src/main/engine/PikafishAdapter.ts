@@ -374,6 +374,7 @@ export class PikafishAdapter {
       let trying = 0
       let detected: EngineProtocol | null = null
       let engineId: string | null = null
+      let supportsPawnValueNormalizedScore = false
       let phase: 'detecting' | 'awaiting-readyok' | 'ready' = 'detecting'
       let detectTimer: ReturnType<typeof setTimeout> | null = null
       let readyTimer: ReturnType<typeof setTimeout> | null = null
@@ -438,8 +439,13 @@ export class PikafishAdapter {
           // UCCI 時間單位預設為秒，要求改用毫秒；setoption 無 name/value 關鍵字
           send('setoption usemillisec true')
           if (multiPv !== null) send(`setoption multipv ${multiPv}`)
-        } else if (multiPv !== null) {
-          send(`setoption name MultiPV value ${multiPv}`)
+        } else {
+          // Pikafish 的預設 ScoreType=Elo，不是 parser 契約所假設的「一兵 = 100」。
+          // 只在引擎明確宣告支援時切換，避免把私有選項送給其他 UCI 引擎。
+          if (supportsPawnValueNormalizedScore) {
+            send('setoption name ScoreType value PawnValueNormalized')
+          }
+          if (multiPv !== null) send(`setoption name MultiPV value ${multiPv}`)
         }
         send('isready')
         readyTimer = setTimeout(() => {
@@ -459,6 +465,13 @@ export class PikafishAdapter {
         }
         if (line.startsWith('id name ')) {
           engineId = line.slice('id name '.length).trim()
+          return
+        }
+        if (
+          phase === 'detecting' &&
+          /^option name ScoreType\b.*\bvar PawnValueNormalized\b/i.test(line)
+        ) {
+          supportsPawnValueNormalizedScore = true
           return
         }
         if (phase === 'detecting') {

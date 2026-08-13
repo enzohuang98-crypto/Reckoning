@@ -48,6 +48,28 @@ function activeOptions(
   return select.findAllByType('option')
 }
 
+const emptyCredentials = render({
+  configured: false,
+  needsReentry: false,
+  activeCredential: null,
+  credentials: []
+})
+assert.equal(
+  emptyCredentials.root.findAll(
+    (node) => node.type === 'select' && node.props['aria-label'] === '使用中的 API 模型'
+  ).length,
+  0,
+  '尚無金鑰時不得顯示無法操作、帶禁止游標的使用中下拉選單'
+)
+const addCredentialLink = emptyCredentials.root.find(
+  (node) => node.type === 'a' && node.props['aria-label'] === '新增 API 模型金鑰'
+)
+assert.equal(
+  addCredentialLink.props.href,
+  '#add-ai-credential',
+  '空狀態必須能直接前往新增模型金鑰表單'
+)
+
 const onlyFlash = render({
   configured: true,
   needsReentry: false,
@@ -115,13 +137,19 @@ const localWithoutKey = render(
     aiBaseUrl: 'http://127.0.0.1:11434/v1'
   }
 )
-const localOptions = activeOptions(localWithoutKey)
 assert.equal(
-  localOptions.filter((option) => option.props.value !== '').length,
+  localWithoutKey.root.findAll(
+    (node) => node.type === 'select' && node.props['aria-label'] === '使用中的 API 模型'
+  ).length,
   0,
   '本機免金鑰模型不得混入使用中的 API credential 選單'
 )
-assert.match(localOptions[0].children.join(''), /本機免金鑰模型/)
+assert.equal(
+  localWithoutKey.root.find(
+    (node) => node.type === 'a' && node.props['aria-label'] === '新增 API 模型金鑰'
+  ).props.href,
+  '#add-ai-credential'
+)
 
 const twoCompatibleEndpoints = render(
   {

@@ -1,6 +1,7 @@
 // 假引擎（測試用）：模擬 UCI / UCCI 象棋引擎的 stdin/stdout 行為。
 // 以環境變數 FAKE_ENGINE_MODE 切換模式：
 //   uci             — 標準 UCI 引擎（Pikafish 行為）
+//   uci-score-type  — 模擬預設 Elo、可切換 PawnValueNormalized 的 Pikafish
 //   ucci            — 標準 UCCI 引擎；收到未知指令（uci）時忽略
 //   ucci-strict     — UCCI 引擎；收到 uci 直接退出（測試 adapter 的重啟換協定路徑）
 //   mate            — UCI 引擎；go 後回 bestmove (none)（測試無合法著法處理）
@@ -17,6 +18,7 @@ class FakeEngine
     {
         string mode = Environment.GetEnvironmentVariable("FAKE_ENGINE_MODE") ?? "uci";
         bool isUcci = false;
+        bool pawnValueNormalized = false;
         bool positionHasMoves = false;
         bool searching = false;
         string line;
@@ -26,10 +28,12 @@ class FakeEngine
             if (line == "uci")
             {
                 if (mode == "ucci-strict") return; // 收到未知指令就退出的引擎
-                if (mode == "uci" || mode == "mate" || mode == "mate-after-move" || mode == "progress" || mode == "slow")
+                if (mode == "uci" || mode == "uci-score-type" || mode == "mate" || mode == "mate-after-move" || mode == "progress" || mode == "slow")
                 {
                     Console.WriteLine("id name FakeUCI 1.0");
                     Console.WriteLine("option name MultiPV type spin default 1 min 1 max 128");
+                    if (mode == "uci-score-type")
+                        Console.WriteLine("option name ScoreType type combo default Elo var Elo var PawnValueNormalized var Raw");
                     Console.WriteLine("uciok");
                     Console.Out.Flush();
                 }
@@ -50,6 +54,10 @@ class FakeEngine
                 Console.WriteLine("readyok");
                 Console.Out.Flush();
             }
+            else if (line.Equals("setoption name ScoreType value PawnValueNormalized", StringComparison.OrdinalIgnoreCase))
+            {
+                pawnValueNormalized = true;
+            }
             else if (line.StartsWith("position"))
             {
                 positionHasMoves = line.Contains(" moves ");
@@ -69,6 +77,12 @@ class FakeEngine
                 if (mode == "slow")
                 {
                     searching = true; // 收到 stop 才回 bestmove
+                }
+                else if (mode == "uci-score-type")
+                {
+                    int score = pawnValueNormalized ? 100 : 6;
+                    Console.WriteLine("info depth 10 multipv 1 score cp " + score + " pv h2e2 h9g7");
+                    Console.WriteLine("bestmove h2e2");
                 }
                 else if (mode == "progress")
                 {

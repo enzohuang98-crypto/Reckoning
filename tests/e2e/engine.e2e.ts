@@ -371,6 +371,20 @@ async function main(): Promise<void> {
     )
   }
 
+  section('E2E：Pikafish 分數正規化（FAKE_ENGINE_MODE=uci-score-type）')
+  process.env.FAKE_ENGINE_MODE = 'uci-score-type'
+  {
+    const adapter = new PikafishAdapter(FAKE_ENGINE)
+    const analysis = await adapter.analyzePosition({ positionFen: START_FEN }, config)
+    check(
+      '支援 ScoreType 的 UCI 引擎使用 PawnValueNormalized（一兵 = 100）',
+      analysis.scoreAfterBestMove?.type === 'cp' &&
+        analysis.scoreAfterBestMove.cp === 100 &&
+        analysis.scoreAfterBestMove.displayText === '+1.00',
+      analysis.scoreAfterBestMove
+    )
+  }
+
   section('E2E：UCCI 引擎（FAKE_ENGINE_MODE=ucci，2 秒偵測逾時 fallback）')
   process.env.FAKE_ENGINE_MODE = 'ucci'
   {
