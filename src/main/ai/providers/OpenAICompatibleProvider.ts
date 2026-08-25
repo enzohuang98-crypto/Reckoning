@@ -116,6 +116,10 @@ export class OpenAICompatibleProvider implements AIProvider {
     yield { type: 'done', usage: response.usage }
   }
 
+  async listModels(): Promise<string[]> {
+    return []
+  }
+
   async testCredential(
     apiKey: string,
     model: string,

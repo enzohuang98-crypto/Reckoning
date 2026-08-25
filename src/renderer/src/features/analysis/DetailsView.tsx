@@ -11,10 +11,7 @@ interface Props {
   verificationEngineId: string | null
   busy: boolean
   aiBusy: boolean
-  collectionReason: string
   diagnostics: string[]
-  onCollectionReasonChange: (value: string) => void
-  onSaveMisunderstood: () => void
   onSelectPrimary: (id: string) => void
   onSelectVerification: (id: string | null) => void
 }
@@ -27,10 +24,7 @@ export function DetailsView({
   verificationEngineId,
   busy,
   aiBusy,
-  collectionReason,
   diagnostics,
-  onCollectionReasonChange,
-  onSaveMisunderstood,
   onSelectPrimary,
   onSelectVerification
 }: Props): JSX.Element {
@@ -100,22 +94,6 @@ export function DetailsView({
 
           <section className="detail-card">
             <div className="section-heading">
-              <h4>收藏目前局面</h4>
-              <span className="muted small">保存到「待理解局面」</span>
-            </div>
-            <div className="analysis-bookmark-row">
-              <input
-                className="text-input"
-                value={collectionReason}
-                placeholder="例如：看不懂中炮交換"
-                onChange={(event) => onCollectionReasonChange(event.target.value)}
-              />
-              <button className="btn ghost small" onClick={onSaveMisunderstood}>收藏</button>
-            </div>
-          </section>
-
-          <section className="detail-card">
-            <div className="section-heading">
               <h4>{analysis?.engineName ?? '引擎'}原始輸出</h4>
               <span className="muted small">
                 最佳著法 {analysis?.displayBestMove ?? '無'} · 深度 {analysis?.depth ?? '—'}
@@ -151,7 +129,7 @@ export function DetailsView({
         <div className="panel-empty-state">
           <span className="empty-state-mark">i</span>
           <h3>尚無分析資料</h3>
-          <p>完成一次引擎分析後，這裡會顯示原始輸出與收藏工具。</p>
+          <p>完成一次引擎分析後，這裡會顯示原始輸出。</p>
         </div>
       )}
 

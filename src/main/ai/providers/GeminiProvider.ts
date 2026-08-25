@@ -18,6 +18,7 @@ import {
   CREDENTIAL_TEST_TIMEOUT_MS,
   describeCredentialTestError,
   extractApiErrorMessage,
+  fetchAiResponseBounded,
   readJsonResponseBounded
 } from '../http'
 import {
@@ -38,6 +39,13 @@ interface GeminiGenerateContentResponse {
     candidatesTokenCount?: number
     thoughtsTokenCount?: number
   }
+}
+
+interface GeminiModelsResponse {
+  models?: Array<{
+    name?: string
+    supportedGenerationMethods?: string[]
+  }>
 }
 
 export class GeminiProvider implements AIProvider {
@@ -141,6 +149,24 @@ export class GeminiProvider implements AIProvider {
     if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
     yield { type: 'text_delta', deltaText: response.text }
     yield { type: 'done', usage: response.usage }
+  }
+
+  async listModels(
+    apiKey: string,
+    timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
+  ): Promise<string[]> {
+    const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const response = await fetchAiResponseBounded(`${baseUrl}/models?pageSize=1000`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'x-goog-api-key': apiKey }
+    })
+    if (!response.ok) throw new Error(`Gemini models API 错误 (${response.status})`)
+    const body = await readJsonResponseBounded<GeminiModelsResponse>(response)
+    return (body.models ?? [])
+      .filter((model) => model.supportedGenerationMethods?.includes('generateContent'))
+      .map((model) => model.name?.trim() ?? '')
+      .filter(Boolean)
   }
 
   async testCredential(

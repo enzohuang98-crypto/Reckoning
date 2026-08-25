@@ -9,7 +9,6 @@ interface Props {
   onExportBackup: () => void
   onImportBackup: () => void
   onCheckUpdate: () => void
-  onDownloadUpdate: () => void
   onInstallUpdate: () => void
   onDeactivateLicense: () => void
 }
@@ -22,13 +21,17 @@ export function SystemSettingsSection({
   onExportBackup,
   onImportBackup,
   onCheckUpdate,
-  onDownloadUpdate,
   onInstallUpdate,
   onDeactivateLicense
 }: Props): JSX.Element {
   const deactivateLicense = (): void => {
     if (!window.confirm('確定要解除這台電腦上的授權嗎？解除後需要重新輸入 License Key 才能再次啟用。')) return
     onDeactivateLicense()
+  }
+
+  const installUpdate = (): void => {
+    if (!window.confirm('更新已下载。现在要关闭 Reckoning、安装更新并重新启动吗？')) return
+    onInstallUpdate()
   }
 
   return (
@@ -42,7 +45,7 @@ export function SystemSettingsSection({
             </div>
           </div>
           <p className="muted">
-            備份包含錯題本、待理解局面、保存局面、猜著紀錄與 AI 對話；不包含 API Key。
+            备份包含保存局面、猜着纪录与 AI 对话；不包含 API Key。
           </p>
           <div className="row gap">
             <button className="btn" onClick={onExportBackup}>匯出 JSON 備份</button>
@@ -134,13 +137,8 @@ export function SystemSettingsSection({
               >
                 {updateStatus.phase === 'checking' ? '檢查中…' : '立即檢查'}
               </button>
-              {updateStatus.phase === 'available' && (
-                <button className="btn" disabled={updateBusy} onClick={onDownloadUpdate}>
-                  下載更新
-                </button>
-              )}
               {updateStatus.phase === 'downloaded' && (
-                <button className="btn" disabled={updateBusy} onClick={onInstallUpdate}>
+                <button className="btn" disabled={updateBusy} onClick={installUpdate}>
                   重新啟動並安裝
                 </button>
               )}

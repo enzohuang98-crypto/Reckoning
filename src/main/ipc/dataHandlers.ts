@@ -17,10 +17,10 @@ import {
 } from '../security/InputValidation'
 
 export function registerDataHandlers(storage: StorageService): void {
-  ipcMain.handle(IPC.DATA_LOAD, (event): DataLoadResult => {
+  ipcMain.handle(IPC.DATA_LOAD, async (event): Promise<DataLoadResult> => {
     assertTrustedIpcSender(event)
     try {
-      return { ok: true, snapshot: storage.readAppData() }
+      return { ok: true, snapshot: await storage.readAppDataWithMigration() }
     } catch (error) {
       logger.error('讀取永久資料失敗', error)
       return {
@@ -32,11 +32,11 @@ export function registerDataHandlers(storage: StorageService): void {
 
   ipcMain.handle(
     IPC.DATA_SAVE,
-    (event, snapshot: unknown): DataSaveResult => {
+    async (event, snapshot: unknown): Promise<DataSaveResult> => {
       assertTrustedIpcSender(event)
       try {
         assertJsonSize(snapshot, MAX_APP_DATA_BYTES, '應用程式資料')
-        storage.writeAppData(sanitizeAppData(snapshot) as AppDataSnapshot)
+        await storage.writeAppDataAsync(sanitizeAppData(snapshot) as AppDataSnapshot)
         return { ok: true }
       } catch (error) {
         logger.error('儲存永久資料失敗', error)
@@ -57,7 +57,10 @@ export function registerDataHandlers(storage: StorageService): void {
     })
     if (result.canceled || !result.filePath) return { ok: false, cancelled: true }
     try {
-      storage.writeAbsolute(result.filePath, storage.readAppData())
+      await storage.writeAbsoluteAsync(
+        result.filePath,
+        await storage.readAppDataWithMigration()
+      )
       return { ok: true, filePath: result.filePath }
     } catch (error) {
       logger.error('匯出備份失敗', error)
@@ -76,10 +79,10 @@ export function registerDataHandlers(storage: StorageService): void {
       return { ok: false, cancelled: true }
     }
     try {
-      const incoming = storage.readAbsolute<unknown>(result.filePaths[0])
+      const incoming = await storage.readAbsoluteAsync<unknown>(result.filePaths[0])
       assertJsonSize(incoming, MAX_BACKUP_BYTES, '備份資料')
-      const merged = mergeAppData(storage.readAppData(), incoming)
-      storage.writeAppData(merged.snapshot)
+      const merged = mergeAppData(await storage.readAppDataWithMigration(), incoming)
+      await storage.writeAppDataAsync(merged.snapshot)
       return { ok: true, snapshot: merged.snapshot, summary: merged.summary }
     } catch (error) {
       logger.error('匯入備份失敗', error)

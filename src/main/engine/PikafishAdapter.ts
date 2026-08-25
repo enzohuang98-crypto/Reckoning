@@ -35,6 +35,7 @@ import type {
   EngineTestResult
 } from '@shared/types/ipc'
 import { parseFen } from '@shared/logic/board/fen'
+import { formatCentipawnDisplay } from '@shared/logic/analysis/EngineScoreDisplay'
 import { applyUciMove, legalMoveCheck } from '@shared/logic/board/moves'
 import {
   formatChineseMove,
@@ -132,7 +133,7 @@ export function invertEngineScore(score: EngineScore): EngineScore {
       value,
       comparableValue: value,
       raw: score.raw,
-      displayText: value >= 0 ? `+${value.toFixed(2)}` : value.toFixed(2),
+      displayText: formatCentipawnDisplay(invertedCp),
       wasInverted: true,
       source: 'separate_engine_call'
     }

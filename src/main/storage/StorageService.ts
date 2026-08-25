@@ -9,7 +9,9 @@ import { app } from 'electron'
 import { existsSync } from 'node:fs'
 import { basename, isAbsolute, resolve } from 'node:path'
 import {
+  APP_DATA_SCHEMA_VERSION,
   EMPTY_APP_DATA,
+  extractRetiredStudyData,
   sanitizeAppData,
   type AppDataSnapshot
 } from '@shared/types/AppData'
@@ -18,9 +20,15 @@ import {
   MAX_BACKUP_BYTES,
   MAX_SETTINGS_FILE_BYTES
 } from '../security/InputValidation'
-import { readJsonFile, writeJsonFileAtomic } from './SecureJsonFile'
+import {
+  readJsonFile,
+  readJsonFileAsync,
+  writeJsonFileAtomic,
+  writeJsonFileAtomicAsync
+} from './SecureJsonFile'
 
 export const APP_DATA_FILE = 'app-data.json'
+export const RETIRED_STUDY_DATA_FILE = 'retired-study-data-v1.json'
 
 export class StorageService {
   private readonly baseDir: string
@@ -71,6 +79,46 @@ export class StorageService {
 
   writeAppData(data: AppDataSnapshot): void {
     this.write(APP_DATA_FILE, sanitizeAppData(data), MAX_APP_DATA_BYTES)
+  }
+
+  async readAppDataWithMigration(): Promise<AppDataSnapshot> {
+    const path = this.resolve(APP_DATA_FILE)
+    if (!existsSync(path)) return sanitizeAppData(EMPTY_APP_DATA)
+    const raw = await readJsonFileAsync<unknown>(path, MAX_APP_DATA_BYTES)
+    const retired = extractRetiredStudyData(raw)
+    if (retired) {
+      const backupPath = this.resolve(RETIRED_STUDY_DATA_FILE)
+      if (!existsSync(backupPath)) {
+        await writeJsonFileAtomicAsync(backupPath, retired, MAX_BACKUP_BYTES)
+      }
+    }
+    const snapshot = sanitizeAppData(raw)
+    if (
+      typeof raw === 'object' &&
+      raw !== null &&
+      (raw as { schemaVersion?: unknown }).schemaVersion !== APP_DATA_SCHEMA_VERSION
+    ) {
+      await writeJsonFileAtomicAsync(path, snapshot, MAX_APP_DATA_BYTES)
+    }
+    return snapshot
+  }
+
+  async writeAppDataAsync(data: AppDataSnapshot): Promise<void> {
+    await writeJsonFileAtomicAsync(
+      this.resolve(APP_DATA_FILE),
+      sanitizeAppData(data),
+      MAX_APP_DATA_BYTES
+    )
+  }
+
+  async readAbsoluteAsync<T>(path: string): Promise<T> {
+    if (!isAbsolute(path)) throw new Error('Backup path must be absolute.')
+    return readJsonFileAsync<T>(path, MAX_BACKUP_BYTES)
+  }
+
+  async writeAbsoluteAsync<T>(path: string, data: T): Promise<void> {
+    if (!isAbsolute(path)) throw new Error('Backup path must be absolute.')
+    await writeJsonFileAtomicAsync(path, data, MAX_BACKUP_BYTES)
   }
 
   readAbsolute<T>(path: string): T {

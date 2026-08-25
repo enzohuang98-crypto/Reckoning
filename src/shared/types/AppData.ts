@@ -1,13 +1,10 @@
-import type { EngineAnalysis } from './EngineAnalysis'
-import type { MistakeBookEntry } from './MistakeBookEntry'
-import type { MoveComparisonResult } from './MoveComparisonResult'
 import type { UserGuess } from './UserGuess'
 import {
   ALL_PROVIDER_IDS,
   type AIProviderId
 } from './AIProviderTypes'
 
-export const APP_DATA_SCHEMA_VERSION = 1
+export const APP_DATA_SCHEMA_VERSION = 2
 
 export interface SavedPosition {
   id: string
@@ -35,40 +32,28 @@ export interface AIConversation {
   messages: ConversationMessage[]
 }
 
-export interface MisunderstoodPosition {
-  id: string
-  positionFen: string
-  reason: string
-  createdAt: string
-  updatedAt: string
-  analysisId?: string
-  engineAnalysis?: EngineAnalysis
-  moveComparison?: MoveComparisonResult
-  explanation?: string
-  conversationId?: string
-}
-
 export interface AppDataSnapshot {
   schemaVersion: number
-  mistakeBookEntries: MistakeBookEntry[]
-  misunderstoodPositions: MisunderstoodPosition[]
   savedPositions: SavedPosition[]
   conversations: AIConversation[]
   userGuesses: UserGuess[]
 }
 
 export interface AppDataImportSummary {
-  mistakeBookEntries: number
-  misunderstoodPositions: number
   savedPositions: number
   conversations: number
   userGuesses: number
 }
 
+export interface RetiredStudyDataBackup {
+  schemaVersion: 1
+  retiredAt: string
+  mistakeBookEntries: unknown[]
+  misunderstoodPositions: unknown[]
+}
+
 export const EMPTY_APP_DATA: AppDataSnapshot = {
   schemaVersion: APP_DATA_SCHEMA_VERSION,
-  mistakeBookEntries: [],
-  misunderstoodPositions: [],
   savedPositions: [],
   conversations: [],
   userGuesses: []
@@ -108,28 +93,6 @@ function sanitizeArray<T>(
   return Array.isArray(value)
     ? value.filter(isValid).slice(0, 5000).map((entry) => stripSensitiveFields(entry))
     : []
-}
-
-function isMistakeBookEntry(value: unknown): value is MistakeBookEntry {
-  return (
-    isRecord(value) &&
-    hasString(value, 'id') &&
-    hasString(value, 'positionFen') &&
-    hasString(value, 'userMove') &&
-    hasString(value, 'engineBestMove') &&
-    isRecord(value.engineAnalysis)
-  )
-}
-
-function isMisunderstoodPosition(value: unknown): value is MisunderstoodPosition {
-  return (
-    isRecord(value) &&
-    hasString(value, 'id') &&
-    hasString(value, 'positionFen') &&
-    hasString(value, 'reason') &&
-    hasString(value, 'createdAt') &&
-    hasString(value, 'updatedAt')
-  )
 }
 
 function isSavedPosition(value: unknown): value is SavedPosition {
@@ -222,14 +185,29 @@ export function sanitizeAppData(value: unknown): AppDataSnapshot {
   if (!isRecord(value)) return { ...EMPTY_APP_DATA }
   return {
     schemaVersion: APP_DATA_SCHEMA_VERSION,
-    mistakeBookEntries: sanitizeArray(value.mistakeBookEntries, isMistakeBookEntry),
-    misunderstoodPositions: sanitizeArray(
-      value.misunderstoodPositions,
-      isMisunderstoodPosition
-    ),
     savedPositions: sanitizeArray(value.savedPositions, isSavedPosition),
     conversations: sanitizeConversations(value.conversations),
     userGuesses: sanitizeArray(value.userGuesses, isUserGuess)
+  }
+}
+
+export function extractRetiredStudyData(
+  value: unknown,
+  retiredAt = new Date().toISOString()
+): RetiredStudyDataBackup | null {
+  if (!isRecord(value) || value.schemaVersion === APP_DATA_SCHEMA_VERSION) return null
+  const mistakes = Array.isArray(value.mistakeBookEntries)
+    ? value.mistakeBookEntries.slice(0, 5000).map((entry) => stripSensitiveFields(entry))
+    : []
+  const misunderstood = Array.isArray(value.misunderstoodPositions)
+    ? value.misunderstoodPositions.slice(0, 5000).map((entry) => stripSensitiveFields(entry))
+    : []
+  if (mistakes.length === 0 && misunderstood.length === 0) return null
+  return {
+    schemaVersion: 1,
+    retiredAt,
+    mistakeBookEntries: mistakes,
+    misunderstoodPositions: misunderstood
   }
 }
 
@@ -254,17 +232,6 @@ export function mergeAppData(
 ): { snapshot: AppDataSnapshot; summary: AppDataImportSummary } {
   const current = sanitizeAppData(currentValue)
   const incoming = sanitizeAppData(incomingValue)
-  const mistakes = mergeUnique(
-    current.mistakeBookEntries,
-    incoming.mistakeBookEntries,
-    (entry) =>
-      `${entry.positionFen}|${entry.userMove}|${entry.engineBestMove}|${entry.createdAt}`
-  )
-  const misunderstood = mergeUnique(
-    current.misunderstoodPositions,
-    incoming.misunderstoodPositions,
-    (entry) => `${entry.positionFen}|${entry.reason}|${entry.createdAt}`
-  )
   const saved = mergeUnique(
     current.savedPositions,
     incoming.savedPositions,
@@ -284,15 +251,11 @@ export function mergeAppData(
   return {
     snapshot: {
       schemaVersion: APP_DATA_SCHEMA_VERSION,
-      mistakeBookEntries: mistakes.entries,
-      misunderstoodPositions: misunderstood.entries,
       savedPositions: saved.entries,
       conversations: conversations.entries,
       userGuesses: guesses.entries
     },
     summary: {
-      mistakeBookEntries: mistakes.imported,
-      misunderstoodPositions: misunderstood.imported,
       savedPositions: saved.imported,
       conversations: conversations.imported,
       userGuesses: guesses.imported

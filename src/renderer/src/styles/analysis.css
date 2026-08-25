@@ -126,9 +126,102 @@
 }
 
 .analysis-view-content {
+  -webkit-user-select: text;
+  user-select: text;
   display: grid;
   gap: 12px;
   padding: 14px;
+}
+
+.live-analysis-table,
+.analysis-details-panel,
+.engine-console-pv {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.board-context-menu {
+  position: fixed;
+  z-index: 1200;
+  display: grid;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-elevated, #fffdf7);
+  box-shadow: 0 14px 38px rgb(31 24 16 / 22%);
+}
+
+.board-context-menu button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-context-menu button:hover:not(:disabled) { background: var(--wash); }
+.board-context-menu button:disabled { cursor: not-allowed; opacity: 0.5; }
+.board-context-menu span { padding: 4px 12px 7px; color: var(--muted); font-size: 12px; }
+
+.pv-replay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(12 17 15 / 58%);
+}
+
+.pv-replay-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--surface-elevated, #fffdf7);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 34%);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.pv-replay-heading,
+.pv-replay-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pv-replay-heading h2 { margin: 2px 0 0; }
+.pv-replay-board { display: grid; place-items: center; margin: 12px 0; }
+.pv-replay-board .xiangqi-board { width: min(100%, 430px); height: auto; }
+.pv-replay-controls > span { flex: 1; text-align: center; font-weight: 650; }
+
+.pv-replay-candidates,
+.pv-replay-line {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.pv-replay-candidates button,
+.pv-replay-line button {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pv-replay-candidates button.active,
+.pv-replay-line button.active {
+  border-color: var(--jade);
+  background: color-mix(in srgb, var(--jade) 12%, transparent);
 }
 
 .live-analysis-table {

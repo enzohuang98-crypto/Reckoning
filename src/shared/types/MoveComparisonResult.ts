@@ -1,8 +1,8 @@
 /**
  * 著法比較結果型別 (Move comparison result types) — SDS v0.2 §2.6.4、§2.6.5
  *
- * MistakeLevel 為全系統共用：MoveComparisonService、MistakeBookEntry、
- * StorageService、UI 與資料庫欄位都必須使用同一組值。
+ * MistakeLevel 為全系統共用：MoveComparisonService、GuessModePanel
+ * 與分析 UI 都必須使用同一組值。
  * 第一版不使用 turning_point（§2.13.4）。
  */
 

@@ -19,6 +19,7 @@ import {
   CREDENTIAL_TEST_TIMEOUT_MS,
   describeCredentialTestError,
   extractApiErrorMessage,
+  fetchAiResponseBounded,
   readJsonResponseBounded
 } from '../http'
 import {
@@ -48,6 +49,10 @@ interface OpenAIResponsesResponse {
     content?: Array<{ type?: string; text?: string }>
   }>
   usage?: { input_tokens?: number; output_tokens?: number }
+}
+
+interface OpenAIModelsResponse {
+  data?: Array<{ id?: string }>
 }
 
 function responsesText(data: OpenAIResponsesResponse): string {
@@ -156,6 +161,24 @@ export class OpenAIProvider implements AIProvider {
     if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
     yield { type: 'text_delta', deltaText: response.text }
     yield { type: 'done', usage: response.usage }
+  }
+
+  async listModels(
+    apiKey: string,
+    timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
+  ): Promise<string[]> {
+    const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const response = await fetchAiResponseBounded(`${baseUrl}/models`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { authorization: `Bearer ${apiKey}` }
+    })
+    if (!response.ok) throw new Error(`OpenAI models API 错误 (${response.status})`)
+    const body = await readJsonResponseBounded<OpenAIModelsResponse>(response)
+    return (body.data ?? [])
+      .map((item) => item.id?.trim() ?? '')
+      .filter((id) => /^(?:gpt-|o\d)/.test(id))
+      .filter((id) => !/(?:audio|realtime|transcribe|tts|image|search|instruct|codex)/i.test(id))
   }
 
   async testCredential(

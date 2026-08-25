@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
-import type {
-  AIConversation,
-  MisunderstoodPosition,
-  SavedPosition
-} from '@shared/types/AppData'
+import type { AIConversation, SavedPosition } from '@shared/types/AppData'
 import type { BoardState } from '@shared/types/BoardState'
-import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import type { AppSettings } from '@shared/types/Settings'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
@@ -48,9 +43,7 @@ interface Props {
   onDeleteSavedPosition: (id: string) => void
   conversation: AIConversation | null
   onConversationChange: (conversation: AIConversation | null) => void
-  onAddMistake: (entry: MistakeBookEntry) => void
   onRecordGuess: (guess: UserGuess) => void
-  onSaveMisunderstood: (entry: MisunderstoodPosition) => void
 }
 
 export function AnalysisWorkspace({
@@ -70,9 +63,7 @@ export function AnalysisWorkspace({
   onDeleteSavedPosition,
   conversation,
   onConversationChange,
-  onAddMistake,
-  onRecordGuess,
-  onSaveMisunderstood
+  onRecordGuess
 }: Props): JSX.Element {
   const [activeView, setActiveView] = useState<AnalysisView>('coach')
   const [draftMove, setDraftMove] = useState('')
@@ -259,7 +250,8 @@ export function AnalysisWorkspace({
               setActualMove(null)
               onLoadSavedPosition(position)
             }}
-            onDeleteSavedPosition={onDeleteSavedPosition}
+        onDeleteSavedPosition={onDeleteSavedPosition}
+        replayCandidates={result?.engineAnalysis.candidateMoves ?? []}
           />
 
           {importOpen && (
@@ -300,7 +292,6 @@ export function AnalysisWorkspace({
                   onConversationChange={onConversationChange}
                   onResult={setResult}
                   onExplanation={setExplanation}
-                  onSaveMisunderstood={onSaveMisunderstood}
                   onStatusChange={setAnalysisStatus}
                 />
               </div>
@@ -333,7 +324,6 @@ export function AnalysisWorkspace({
                   onCancelMoveSelection={() => setGuessSelectionActive(false)}
                   result={result}
                   explanation={explanation}
-                  onAddMistake={onAddMistake}
                   onRecordGuess={onRecordGuess}
                   onRequestExplanation={requestExplanation}
                 />

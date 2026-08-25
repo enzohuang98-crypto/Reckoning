@@ -21,6 +21,7 @@ import {
   type EngineScore,
   type ScoreSource
 } from '@shared/types/EngineAnalysis'
+import { formatCentipawnDisplay } from '@shared/logic/analysis/EngineScoreDisplay'
 
 const MAX_PV_MOVES = 256
 
@@ -37,7 +38,7 @@ export function convertCpScore(
     value,
     comparableValue: value,
     raw,
-    displayText: value >= 0 ? `+${value.toFixed(2)}` : value.toFixed(2),
+    displayText: formatCentipawnDisplay(cp),
     wasInverted: false,
     source
   }

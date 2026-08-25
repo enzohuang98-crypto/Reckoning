@@ -297,7 +297,6 @@ async function main(): Promise<void> {
       if (payload) deliveredResults.push(payload)
     },
     onExplanation: () => undefined,
-    onSaveMisunderstood: () => undefined,
     onStatusChange: () => undefined
   }
   const props = (actualMove: ActualMoveSelection) => ({

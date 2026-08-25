@@ -7,13 +7,6 @@
  */
 
 import { useState } from 'react'
-import {
-  AI_COMPATIBLE_PRESETS,
-  ALL_PROVIDER_IDS,
-  PROVIDER_DEFAULT_MODELS,
-  PROVIDER_LABEL,
-  type AIProviderId
-} from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type { EngineTestResult } from '@shared/types/ipc'
 import { markSetupCompleted, saveSettings } from '../storage/localSettings'
@@ -32,9 +25,6 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<EngineTestResult | null>(null)
   const [apiKey, setApiKey] = useState('')
-  const [aiProvider, setAiProvider] = useState<AIProviderId>(settings.aiProvider)
-  const [aiModel, setAiModel] = useState(settings.aiModel)
-  const [aiBaseUrl, setAiBaseUrl] = useState(settings.aiBaseUrl)
   const [finishing, setFinishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,26 +67,19 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
         setEngineSelectionToken(null)
       }
       const key = apiKey.trim()
-      const credential = {
-        provider: aiProvider,
-        model: aiModel,
-        ...(aiProvider === 'openai-compatible'
-          ? { baseUrl: aiBaseUrl }
-          : {})
-      }
       const keyResult = key
-        ? await window.api.secret.set({ ...credential, apiKey: key })
+        ? await window.api.ai.autoConfigureCredential(key)
         : null
-      const selectedCredential =
-        keyResult?.status.activeCredential ?? credential
+      if (keyResult && !keyResult.ok) {
+        setError(keyResult.message)
+        return
+      }
+      const selectedCredential = keyResult?.credential
       const next = {
         ...settings,
-        aiProvider: selectedCredential.provider,
-        aiModel: selectedCredential.model,
-        aiBaseUrl:
-          selectedCredential.provider === 'openai-compatible'
-            ? selectedCredential.baseUrl ?? ''
-            : ''
+        aiProvider: selectedCredential?.provider ?? settings.aiProvider,
+        aiModel: selectedCredential?.model ?? settings.aiModel,
+        aiBaseUrl: selectedCredential ? '' : settings.aiBaseUrl
       }
       const saved = saveSettings(next)
       if (!saved.ok) {
@@ -190,81 +173,17 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
             </div>
           </div>
           <div className="field">
-            <label className="field-label">AI Provider</label>
-            <select
-              aria-label="初始設定 API Provider"
-              className="select"
-              value={aiProvider}
-              onChange={(event) => {
-                const provider = event.target.value as AIProviderId
-                const models = PROVIDER_DEFAULT_MODELS[provider]
-                const selected = models.find((model) => model.isDefault) ?? models[0]
-                setAiProvider(provider)
-                setAiModel(selected.id)
-                setAiBaseUrl(
-                  provider === 'openai-compatible'
-                    ? AI_COMPATIBLE_PRESETS.find((preset) => preset.id === 'ollama')
-                        ?.baseUrl ?? ''
-                    : ''
-                )
-              }}
-            >
-              {ALL_PROVIDER_IDS.map((provider) => (
-                <option key={provider} value={provider}>
-                  {PROVIDER_LABEL[provider]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {aiProvider === 'openai-compatible' ? (
-            <>
-              <div className="field">
-                <label className="field-label">Base URL</label>
-                <input
-                  className="text-input"
-                  value={aiBaseUrl}
-                  onChange={(event) => setAiBaseUrl(event.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label className="field-label">模型 ID</label>
-                <input
-                  className="text-input"
-                  value={aiModel}
-                  onChange={(event) => setAiModel(event.target.value)}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="field">
-              <label className="field-label">金鑰要綁定的模型</label>
-              <select
-                aria-label="初始設定 API 模型"
-                className="select"
-                value={aiModel}
-                onChange={(event) => setAiModel(event.target.value)}
-              >
-                {PROVIDER_DEFAULT_MODELS[aiProvider].map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.label}{model.isDefault ? '（預設）' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="field">
             <label className="field-label">API Key</label>
             <input
               className="text-input"
               type="password"
-              placeholder={`貼上 ${PROVIDER_LABEL[aiProvider]} · ${aiModel} API Key`}
+              placeholder="贴上 OpenAI、Anthropic 或 Gemini 官方 API Key"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
             <p className="muted small">
-              金鑰只會綁定到上方選定的 Provider 與模型，並以作業系統加密
-              (safeStorage) 儲存於本機；不會自動套用到其他模型。
+              程式会自动辨识官方服务、读取实际可用模型并完成一次真实生成验证；
+              成功后才以作业系统加密 (safeStorage) 储存于本机。
             </p>
           </div>
         </section>

@@ -101,10 +101,10 @@ async function main(): Promise<void> {
   section('EngineOutputParser：convertCpScore / convertMateScore（§2.14.6）')
   {
     const pos = convertCpScore(120, 'score cp 120')
-    check('cp 正分 +1.20', pos.type === 'cp' && pos.displayText === '+1.20' && pos.comparableValue === 1.2)
+    check('cp 正分 +120 cp', pos.type === 'cp' && pos.displayText === '+120 cp' && pos.comparableValue === 1.2)
     check('cp 正分 wasInverted=false / source=root', !pos.wasInverted && pos.source === 'root_analysis')
     const neg = convertCpScore(-80, 'score cp -80')
-    check('cp 負分 -0.80', neg.displayText === '-0.80' && neg.comparableValue === -0.8)
+    check('cp 負分 -80 cp', neg.displayText === '-80 cp' && neg.comparableValue === -0.8)
     const m3 = convertMateScore(3, 'score mate 3')
     check('mate 3 → 殺 3 / 29997', m3.type === 'mate' && m3.displayText === '殺 3' && m3.comparableValue === MATE_SCORE - 3)
     check('mate 3 非終局', m3.type === 'mate' && !m3.isTerminalMate)
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
   section('invertEngineScore（§2.15.4）')
   {
     const cp = invertEngineScore(convertCpScore(42, 'score cp 42', 'separate_engine_call'))
-    check('cp 取負 -0.42', cp.type === 'cp' && cp.cp === -42 && cp.comparableValue === -0.42)
+    check('cp 取負 -42 cp', cp.type === 'cp' && cp.cp === -42 && cp.comparableValue === -0.42 && cp.displayText === '-42 cp')
     check('cp 反轉標記', cp.wasInverted && cp.source === 'separate_engine_call')
     const mate = invertEngineScore(convertMateScore(2, 'score mate 2', 'separate_engine_call'))
     check('mate 2 反轉 → 被殺 2', mate.type === 'mate' && mate.mateIn === -2 && mate.displayText === '被殺 2')

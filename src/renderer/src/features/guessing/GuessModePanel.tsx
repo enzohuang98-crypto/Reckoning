@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { BoardState } from '@shared/types/BoardState'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
-import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
 import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
 import { validateMoveInput } from '@shared/logic/validation/ValidationUtils'
@@ -22,7 +21,6 @@ interface Props {
   onCancelMoveSelection: () => void
   result: EngineAnalysisResultPayload | null
   explanation: AIExplanationResponse | null
-  onAddMistake: (entry: MistakeBookEntry) => void
   onRecordGuess: (guess: UserGuess) => void
   onRequestExplanation: () => void
 }
@@ -41,22 +39,16 @@ export function GuessModePanel({
   onCancelMoveSelection,
   result,
   explanation,
-  onAddMistake,
   onRecordGuess,
   onRequestExplanation
 }: Props): JSX.Element {
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [savedToBook, setSavedToBook] = useState(false)
   const recordedGuessKeys = useRef(new Set<string>())
 
   const comparison = result?.moveComparison ?? null
   const ea = result?.engineAnalysis ?? null
   const hasGuessResult = comparison !== null && comparison.userMove.length > 0
   const isCorrect = hasGuessResult && comparison.userMove === comparison.engineBestMove
-  const canSave =
-    hasGuessResult &&
-    comparison.mistakeLevel !== 'unknown' &&
-    comparison.mistakeLevel !== 'acceptable_or_tiny_inaccuracy'
   const selectedMove = submittedGuess?.move ?? draftMove
   const selectedMoveText = selectedMove
     ? formatChineseMove(board, selectedMove) ?? '無法辨識著法'
@@ -99,38 +91,11 @@ export function GuessModePanel({
       return
     }
     setSubmitError(null)
-    setSavedToBook(false)
     onSubmitGuess({
       move,
       reason: draftReason.trim() || undefined,
       submittedAt: Date.now()
     })
-  }
-
-  const addToMistakeBook = (): void => {
-    if (!comparison || !ea || savedToBook) return
-    const now = new Date().toISOString()
-    onAddMistake({
-      id: crypto.randomUUID(),
-      createdAt: now,
-      updatedAt: now,
-      positionFen: comparison.positionFen,
-      sideToMove: comparison.sideToMove,
-      userMove: comparison.userMove,
-      engineBestMove: comparison.engineBestMove,
-      evaluationAfterUserMove: comparison.evaluationAfterUserMove,
-      evaluationAfterBestMove: comparison.evaluationAfterBestMove,
-      scoreDifference: comparison.scoreDifference,
-      mistakeLevel: comparison.mistakeLevel,
-      confidence: comparison.confidence,
-      uncertaintyReasons: comparison.uncertaintyReasons,
-      explanation: explanation?.text ?? '',
-      engineAnalysis: ea,
-      userNote: submittedGuess?.reason,
-      tags: [],
-      understood: false
-    })
-    setSavedToBook(true)
   }
 
   return (
@@ -245,13 +210,6 @@ export function GuessModePanel({
                   </button>
                 </span>
               )}
-            </div>
-          )}
-          {canSave && (
-            <div className="row gap guess-result-actions">
-              <button className="btn small" onClick={addToMistakeBook} disabled={savedToBook}>
-                {savedToBook ? '✓ 已加入錯題本' : '加入錯題本'}
-              </button>
             </div>
           )}
         </div>
