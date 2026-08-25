@@ -5,10 +5,10 @@ import {
 } from '../../../src/shared/logic/analysis/EngineScoreDisplay'
 import type { EngineScore } from '../../../src/shared/types/EngineAnalysis'
 
-assert.equal(formatCentipawnDisplay(125), '+125 cp')
-assert.equal(formatCentipawnDisplay(-40), '-40 cp')
-assert.equal(formatCentipawnDisplay(0), '0 cp')
-assert.equal(formatCentipawnDisplay(1.6), '+2 cp')
+assert.equal(formatCentipawnDisplay(125), '125')
+assert.equal(formatCentipawnDisplay(-40), '-40')
+assert.equal(formatCentipawnDisplay(0), '0')
+assert.equal(formatCentipawnDisplay(1.6), '2')
 
 const cpScore: EngineScore = {
   type: 'cp',
@@ -20,7 +20,7 @@ const cpScore: EngineScore = {
   wasInverted: false,
   source: 'root_analysis'
 }
-assert.equal(formatEngineScoreDisplay(cpScore), '+125 cp')
+assert.equal(formatEngineScoreDisplay(cpScore), '125')
 
 const mateScore: EngineScore = {
   type: 'mate',
@@ -34,4 +34,4 @@ const mateScore: EngineScore = {
 }
 assert.equal(formatEngineScoreDisplay(mateScore), '殺 3')
 
-console.log('整数 cp 显示测试：通过')
+console.log('皮卡魚整數分數顯示測試：通過')
