@@ -1,29 +1,11 @@
 import type { ReactNode } from 'react'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
-import { Icon, type IconName } from '../components/ui/Icon'
-import { ToolbarMenu } from '../components/ui/ToolbarMenu'
+import { Icon } from '../components/ui/Icon'
 
-export type AppTab = 'analyze' | 'settings' | 'mistakes' | 'misunderstood'
-
-interface ToolNavItem {
-  id: AppTab
-  label: string
-  description: string
-  icon: IconName
-}
+export type AppTab = 'analyze' | 'settings'
 
 /**
- * 分析是固定首頁，永遠是獨立分頁；其餘目的地收進同一個「工具」選單，
- * 避免四個等重分頁攤平在同一列（窄視窗更會直接消失，見 responsive.css）。
- */
-const toolNavItems: ToolNavItem[] = [
-  { id: 'mistakes', label: '錯題本', description: '搜尋、篩選並追蹤走錯的局面', icon: 'archive' },
-  { id: 'misunderstood', label: '待理解', description: '收藏尚未想通的關鍵局面', icon: 'brain' },
-  { id: 'settings', label: '設定', description: 'AI、本機引擎、解說品質與系統', icon: 'settings' }
-]
-
-/**
- * 只有「有新版可下載」與「已下載待安裝」需要主動提示；其餘狀態
+ * 只有「发现新版／下载中」与「已下载待安装」需要主动提示；其余状态
  * （檢查中、已是最新、錯誤）留在設定頁即可，不打擾使用者。
  */
 function updatePrompt(
@@ -32,7 +14,13 @@ function updatePrompt(
   if (status?.phase === 'available') {
     return {
       label: `有新版 ${status.availableVersion ?? ''}`.trim(),
-      title: `${status.message} 點此前往設定頁下載。`
+      title: `${status.message} 點此前往設定頁查看。`
+    }
+  }
+  if (status?.phase === 'downloading') {
+    return {
+      label: `下载更新 ${Math.round(status.downloadPercent ?? 0)}%`,
+      title: status.message
     }
   }
   if (status?.phase === 'downloaded') {
@@ -96,19 +84,17 @@ export function AppShell({
             <span>分析</span>
           </button>
 
-          <ToolbarMenu
-            icon="wrench"
-            label="工具"
-            active={activeTab !== 'analyze'}
-            items={toolNavItems.map((item) => ({
-              id: item.id,
-              icon: item.icon,
-              label: item.label,
-              description: item.description,
-              active: activeTab === item.id,
-              onSelect: () => onTabChange(item.id)
-            }))}
-          />
+          <button
+            type="button"
+            className={'nav-btn' + (activeTab === 'settings' ? ' active' : '')}
+            aria-label="設定"
+            aria-current={activeTab === 'settings' ? 'page' : undefined}
+            title="AI、本機引擎、解說品質與系统設定"
+            onClick={() => onTabChange('settings')}
+          >
+            <Icon name="settings" size={16} />
+            <span>設定</span>
+          </button>
         </nav>
 
         {prompt && activeTab !== 'settings' && (

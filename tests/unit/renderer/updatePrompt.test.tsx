@@ -97,6 +97,13 @@ for (const phase of ['idle', 'checking', 'not-available', 'error', 'unconfigured
 
 {
   const renderer = render(
+    status({ phase: 'downloading', downloadPercent: 42, message: '正在下载更新。' })
+  )
+  check('downloading 会提示进度', chipText(renderer).includes('42%'), chipText(renderer))
+}
+
+{
+  const renderer = render(
     status({ phase: 'available', availableVersion: '0.3.7', message: '發現新版本 0.3.7，可立即下載。' })
   )
   check('available 會提示', chips(renderer).length === 1)

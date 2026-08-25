@@ -1,6 +1,5 @@
 .analyze-page,
-.settings-page,
-.mistake-page {
+.settings-page {
   width: min(100%, 1720px);
   margin: 0 auto;
 }

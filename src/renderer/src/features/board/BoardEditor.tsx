@@ -14,6 +14,8 @@ import { createEmptyGrid } from '@shared/logic/board/fen'
 import { applyUciMove, formatUciMove } from '@shared/logic/board/moves'
 import type { BoardState, PieceColor, PieceType } from '@shared/types/BoardState'
 import type { SavedPosition } from '@shared/types/AppData'
+import type { EngineCandidateMove } from '@shared/types/EngineAnalysis'
+import { PvReplayDialog } from '../analysis/PvReplayDialog'
 
 interface Props {
   board: BoardState
@@ -27,6 +29,7 @@ interface Props {
   onSavePosition: (name: string) => void
   onLoadSavedPosition: (position: SavedPosition) => void
   onDeleteSavedPosition: (id: string) => void
+  replayCandidates: EngineCandidateMove[]
 }
 
 type Tool =
@@ -45,12 +48,22 @@ export function BoardEditor({
   savedPositions,
   onSavePosition,
   onLoadSavedPosition,
-  onDeleteSavedPosition
+  onDeleteSavedPosition,
+  replayCandidates
 }: Props): JSX.Element {
   const [tool, setTool] = useState<Tool>({ kind: 'move' })
   const [selected, setSelected] = useState<[number, number] | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
   const [positionName, setPositionName] = useState('')
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [replayOpen, setReplayOpen] = useState(false)
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = (): void => setContextMenu(null)
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [contextMenu])
 
   const selectTool = (next: Tool): void => {
     setSelected(null)
@@ -73,6 +86,8 @@ export function BoardEditor({
     setSelected(null)
     setMoveError(null)
     setTool({ kind: 'move' })
+    setContextMenu(null)
+    setReplayOpen(false)
   }, [board.fen])
 
   useEffect(() => {
@@ -258,7 +273,13 @@ export function BoardEditor({
           </button>
         )}
       </div>
-      <div className="board-wrap">
+      <div
+        className="board-wrap"
+        onContextMenu={(event) => {
+          event.preventDefault()
+          setContextMenu({ x: event.clientX, y: event.clientY })
+        }}
+      >
         <XiangqiBoard
           grid={board.grid}
           selected={selected}
@@ -266,6 +287,34 @@ export function BoardEditor({
           onCellClick={handleCellClick}
         />
       </div>
+      {contextMenu && (
+        <div
+          className="board-context-menu"
+          role="menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={replayCandidates.length === 0}
+            onClick={() => {
+              setContextMenu(null)
+              setReplayOpen(true)
+            }}
+          >
+            查看引擎想法
+          </button>
+          {replayCandidates.length === 0 && <span>请先完成一次局面分析</span>}
+        </div>
+      )}
+      {replayOpen && replayCandidates.length > 0 && (
+        <PvReplayDialog
+          initialBoard={board}
+          candidates={replayCandidates}
+          onClose={() => setReplayOpen(false)}
+        />
+      )}
       {!toolsOpen && moveError && (
         <div className="error-text small board-move-error">{moveError}</div>
       )}

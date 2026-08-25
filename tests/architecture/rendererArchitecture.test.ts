@@ -344,13 +344,9 @@ async function main(): Promise<void> {
     )
   })
 
-  await check('主導覽任何寬度都點得到：分析固定分頁 + 工具選單且收合後仍有名稱', () => {
+  await check('主導覽任何寬度都点得到：只保留分析与设定两个直接入口', () => {
     const appShell = readFileSync(
       resolve('src/renderer/src/app/AppShell.tsx'),
-      'utf8'
-    )
-    const toolbarMenu = readFileSync(
-      resolve('src/renderer/src/components/ui/ToolbarMenu.tsx'),
       'utf8'
     )
     const responsiveStyles = readFileSync(
@@ -358,23 +354,19 @@ async function main(): Promise<void> {
       'utf8'
     )
 
-    // 分析是固定首頁分頁；錯題本／待理解／設定收進同一個「工具」選單。
+    // 移除錯題本／待理解后，分析与设定都维持直接、可命名的原生按钮。
     assert.match(
       appShell,
       /className=\{'nav-btn' \+ \(activeTab === 'analyze' \? ' active' : ''\)\}/
     )
-    assert.match(appShell, /<ToolbarMenu[\s\S]*?label="工具"/)
-    for (const tab of ['mistakes', 'misunderstood', 'settings']) {
-      assert.match(appShell, new RegExp(`id: '${tab}'`))
-    }
+    assert.match(appShell, /aria-label="設定"[\s\S]*?onClick=\{\(\) => onTabChange\('settings'\)\}/)
+    assert.doesNotMatch(appShell, /mistakes|misunderstood|錯題本|待理解/)
 
     // 曾經有 .app-nav { display: none }，窄視窗會讓整排導覽消失、完全點不到。
     assert.doesNotMatch(responsiveStyles, /\.app-nav\s*\{[^}]*display:\s*none/s)
 
-    // 窄視窗把 .toolbar-label 收起來只剩 aria-hidden 的 icon，
-    // summary 必須自帶 aria-label，否則收合後沒有任何可辨識名稱。
-    assert.match(responsiveStyles, /\.toolbar-label,/)
-    assert.match(toolbarMenu, /<summary[\s\S]*?aria-label=\{label\}/)
+    assert.match(appShell, /aria-label="分析"/)
+    assert.match(appShell, /aria-label="設定"/)
   })
 
   await check('分析首頁沿用已驗收比例：預設中等棋盤與局面分析同屏', () => {
@@ -732,14 +724,6 @@ async function main(): Promise<void> {
   })
 
   await check('不可逆刪除會先明確確認，取消時不會呼叫刪除 handler', () => {
-    const mistakeBook = readFileSync(
-      resolve('src/renderer/src/pages/MistakeBookPage.tsx'),
-      'utf8'
-    )
-    const misunderstood = readFileSync(
-      resolve('src/renderer/src/pages/MisunderstoodPage.tsx'),
-      'utf8'
-    )
     const boardEditor = readFileSync(
       resolve('src/renderer/src/features/board/BoardEditor.tsx'),
       'utf8'
@@ -757,18 +741,16 @@ async function main(): Promise<void> {
       'utf8'
     )
 
-    assert.match(mistakeBook, /const removeTag[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?update\(entry\.id/)
-    assert.match(mistakeBook, /const deleteEntry[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onChange\(/)
-    assert.match(misunderstood, /const deleteEntry[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onChange\(/)
     assert.match(boardEditor, /const clearBoard[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?reserialize\(/)
     assert.match(boardEditor, /const deleteSavedPosition[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeleteSavedPosition\(/)
     assert.match(
       aiSettings,
-      /const requestDelete[\s\S]*?deleteConfirmation !== id[\s\S]*?setDeleteConfirmation\(id\)[\s\S]*?return[\s\S]*?onDeleteKey\(credential\)/
+      /if \(!deleteConfirmation\)[\s\S]*?setDeleteConfirmation\(true\)[\s\S]*?return[\s\S]*?onDeleteKey\(\)/
     )
     assert.doesNotMatch(aiSettings, /window\.confirm/)
     assert.match(engineSettings, /const removeEngine[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onRemove\(id\)/)
     assert.match(systemSettings, /const deactivateLicense[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeactivateLicense\(\)/)
+    assert.match(systemSettings, /const installUpdate[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onInstallUpdate\(\)/)
   })
 
   console.log(`結果：${passed} 通過，${failed} 失敗`)

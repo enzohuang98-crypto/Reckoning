@@ -78,7 +78,9 @@ const api: RendererApi = {
       ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_CANCEL, { requestId }),
     continueExplanation: (requestId: string) =>
       ipcRenderer.send(IPC.AI_HARNESS_CONTINUE, { requestId }),
-    testCredential: (input) => ipcRenderer.invoke(IPC.AI_TEST_CREDENTIAL, input)
+    testCredential: (input) => ipcRenderer.invoke(IPC.AI_TEST_CREDENTIAL, input),
+    autoConfigureCredential: (apiKey) =>
+      ipcRenderer.invoke(IPC.AI_AUTO_CONFIGURE_CREDENTIAL, { apiKey })
   },
   teacherTest: {
     status: () => ipcRenderer.invoke(IPC.TEACHER_TEST_STATUS),

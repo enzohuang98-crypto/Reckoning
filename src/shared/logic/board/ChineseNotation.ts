@@ -5,6 +5,7 @@ import type {
   PieceType
 } from '../../types/BoardState'
 import type { EngineScore } from '../../types/EngineAnalysis'
+import { formatCentipawnDisplay } from '../analysis/EngineScoreDisplay'
 import { applyUciMove, parseUciMove } from './moves'
 
 const RED_NUMERALS = ['九', '八', '七', '六', '五', '四', '三', '二', '一']
@@ -120,7 +121,7 @@ export function formatChineseVariation(
 export function formatChineseScore(score: EngineScore | null): string {
   if (score === null) return '暫無評估'
   if (score.type === 'mate') return score.displayText
-  if (score.value > 0) return `行棋方優勢 ${score.value.toFixed(2)} 兵`
-  if (score.value < 0) return `行棋方落後 ${Math.abs(score.value).toFixed(2)} 兵`
+  if (score.cp > 0) return `行棋方優勢 ${formatCentipawnDisplay(score.cp)}`
+  if (score.cp < 0) return `行棋方落後 ${Math.abs(Math.round(score.cp))} cp`
   return '局勢均衡'
 }

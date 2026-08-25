@@ -73,6 +73,7 @@ export const IPC = {
   AI_HARNESS_TRACE_EXPORT: 'ai:harness:trace:export',
   AI_HARNESS_TRACE_FEEDBACK: 'ai:harness:trace:feedback',
   AI_TEST_CREDENTIAL: 'ai:test-credential',
+  AI_AUTO_CONFIGURE_CREDENTIAL: 'ai:auto-configure-credential',
   TEACHER_TEST_STATUS: 'teacher-test:status',
   TEACHER_TEST_START: 'teacher-test:start',
   TEACHER_TEST_END: 'teacher-test:end',
@@ -318,6 +319,15 @@ export interface TestCredentialInput {
 
 export type TestCredentialResult = AITestCredentialResult
 
+export type AutoConfigureCredentialResult =
+  | {
+      ok: true
+      credential: SecretCredentialRef
+      status: SecretStatus
+      message: string
+    }
+  | { ok: false; message: string }
+
 /* ---------- 永久資料與備份 ---------- */
 
 export type DataLoadResult =
@@ -416,6 +426,8 @@ export interface RendererApi {
     continueExplanation(requestId: string): void
     /** 低用量實際推論測試；不落地任何草稿金鑰 */
     testCredential(input: TestCredentialInput): Promise<TestCredentialResult>
+    /** 自动辨识官方 Provider、取得可用模型、实际生成验证后才安全储存。 */
+    autoConfigureCredential(apiKey: string): Promise<AutoConfigureCredentialResult>
   }
   teacherTest: {
     status(): Promise<TeacherTestRunStatusV1>

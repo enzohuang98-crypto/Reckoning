@@ -138,9 +138,9 @@
  * flex: 0 0 auto 確保它不與 .analysis-command-mount 的 flex: 1 搶伸縮，
  * 工具列仍靠右對齊、既有比例不變。
  *
- * margin-left: auto 只在「沒有分析工具列」的頁面（錯題本／待理解）生效：
+ * margin-left: auto 只在没有分析工具列的设定页面生效：
  * flex-grow 會先吃掉所有剩餘空間，所以分析頁上這個 auto margin 拿到 0，
- * 位置完全不變；其他頁則把提示推到 header 右緣，而不是懸在導覽旁邊。
+ * 位置完全不变；设定页则把提示推到 header 右缘，而不是悬在导览旁边。
  */
 .app-update-chip {
   display: inline-flex;

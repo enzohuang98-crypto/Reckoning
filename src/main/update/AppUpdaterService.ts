@@ -10,6 +10,7 @@ import { IPC } from '@shared/types/ipc'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
+import { configureUpdatePolicy } from './UpdatePolicy'
 
 /** 啟動後第一次檢查的延遲；讓視窗先完成初始渲染。 */
 const FIRST_CHECK_DELAY_MS = 5_000
@@ -49,8 +50,7 @@ export class AppUpdaterService {
 
     if (!this.configured) return
 
-    this.updater.autoDownload = false
-    this.updater.autoInstallOnAppQuit = true
+    configureUpdatePolicy(this.updater)
     this.updater.on('checking-for-update', () => {
       this.setStatus({
         phase: 'checking',
@@ -62,7 +62,7 @@ export class AppUpdaterService {
         phase: 'available',
         availableVersion: info.version,
         downloadPercent: undefined,
-        message: `發現新版本 ${info.version}，可立即下載。`
+        message: `發現新版本 ${info.version}，正在自动下载。`
       })
     })
     this.updater.on('update-not-available', () => {
@@ -85,7 +85,7 @@ export class AppUpdaterService {
         phase: 'downloaded',
         availableVersion: info.version,
         downloadPercent: 100,
-        message: `版本 ${info.version} 已下載，重新啟動後即可安裝。`
+        message: `版本 ${info.version} 已下载；请确认后重新启动并安装。`
       })
     })
     this.updater.on('error', (error: Error) => {

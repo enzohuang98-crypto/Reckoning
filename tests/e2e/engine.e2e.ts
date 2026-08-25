@@ -101,10 +101,10 @@ async function main(): Promise<void> {
   section('EngineOutputParser：convertCpScore / convertMateScore（§2.14.6）')
   {
     const pos = convertCpScore(120, 'score cp 120')
-    check('cp 正分 +1.20', pos.type === 'cp' && pos.displayText === '+1.20' && pos.comparableValue === 1.2)
+    check('cp 正分 +120 cp', pos.type === 'cp' && pos.displayText === '+120 cp' && pos.comparableValue === 1.2)
     check('cp 正分 wasInverted=false / source=root', !pos.wasInverted && pos.source === 'root_analysis')
     const neg = convertCpScore(-80, 'score cp -80')
-    check('cp 負分 -0.80', neg.displayText === '-0.80' && neg.comparableValue === -0.8)
+    check('cp 負分 -80 cp', neg.displayText === '-80 cp' && neg.comparableValue === -0.8)
     const m3 = convertMateScore(3, 'score mate 3')
     check('mate 3 → 殺 3 / 29997', m3.type === 'mate' && m3.displayText === '殺 3' && m3.comparableValue === MATE_SCORE - 3)
     check('mate 3 非終局', m3.type === 'mate' && !m3.isTerminalMate)
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
   section('invertEngineScore（§2.15.4）')
   {
     const cp = invertEngineScore(convertCpScore(42, 'score cp 42', 'separate_engine_call'))
-    check('cp 取負 -0.42', cp.type === 'cp' && cp.cp === -42 && cp.comparableValue === -0.42)
+    check('cp 取負 -42 cp', cp.type === 'cp' && cp.cp === -42 && cp.comparableValue === -0.42 && cp.displayText === '-42 cp')
     check('cp 反轉標記', cp.wasInverted && cp.source === 'separate_engine_call')
     const mate = invertEngineScore(convertMateScore(2, 'score mate 2', 'separate_engine_call'))
     check('mate 2 反轉 → 被殺 2', mate.type === 'mate' && mate.mateIn === -2 && mate.displayText === '被殺 2')
@@ -306,8 +306,8 @@ async function main(): Promise<void> {
     check('最佳著法轉為中文炮二平五', root.displayBestMove === '炮二平五')
     check('MultiPV 兩條候選', root.candidateMoves.length === 2, root.candidateMoves.length)
     check(
-      'scoreAfterBestMove +0.42（root_analysis）',
-      root.scoreAfterBestMove?.displayText === '+0.42' && root.scoreAfterBestMove.source === 'root_analysis'
+      'scoreAfterBestMove +42 cp（root_analysis）',
+      root.scoreAfterBestMove?.displayText === '+42 cp' && root.scoreAfterBestMove.source === 'root_analysis'
     )
     check(
       'EngineAnalysis.engineName 使用握手偵測名稱',
@@ -329,8 +329,8 @@ async function main(): Promise<void> {
     const inCand = await adapter.analyzePosition({ positionFen: START_FEN, userMove: 'b2e2' }, config)
     check('候選 fast path：source=candidate_move', inCand.userMoveEvaluationSource === 'candidate_move')
     check(
-      '候選分數未反轉 +0.15',
-      inCand.scoreAfterUserMove?.displayText === '+0.15' && inCand.scoreAfterUserMove.wasInverted === false
+      '候選分數未反轉 +15 cp',
+      inCand.scoreAfterUserMove?.displayText === '+15 cp' && inCand.scoreAfterUserMove.wasInverted === false
     )
     check('evaluation 派生一致（§2.14.5）', inCand.evaluationAfterUserMove === inCand.scoreAfterUserMove?.comparableValue)
     check(
@@ -380,7 +380,7 @@ async function main(): Promise<void> {
       '支援 ScoreType 的 UCI 引擎使用 PawnValueNormalized（一兵 = 100）',
       analysis.scoreAfterBestMove?.type === 'cp' &&
         analysis.scoreAfterBestMove.cp === 100 &&
-        analysis.scoreAfterBestMove.displayText === '+1.00',
+        analysis.scoreAfterBestMove.displayText === '+100 cp',
       analysis.scoreAfterBestMove
     )
   }

@@ -19,7 +19,8 @@ import type {
 import {
   CREDENTIAL_TEST_TIMEOUT_MS,
   describeCredentialTestError,
-  fetchAiResponseBounded
+  fetchAiResponseBounded,
+  readJsonResponseBounded
 } from '../http'
 import {
   credentialTestRequest,
@@ -28,6 +29,11 @@ import {
 
 /** 長篇分析輸出上限 */
 const MAX_OUTPUT_TOKENS = 4096
+const DEFAULT_BASE_URL = 'https://api.anthropic.com'
+
+interface AnthropicModelsResponse {
+  data?: Array<{ id?: string }>
+}
 
 export class AnthropicProvider implements AIProvider {
   readonly id = 'anthropic' as const
@@ -109,6 +115,26 @@ export class AnthropicProvider implements AIProvider {
 
     const usage = { inputTokens, outputTokens }
     yield { type: 'done', usage }
+  }
+
+  async listModels(
+    apiKey: string,
+    timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
+  ): Promise<string[]> {
+    const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const response = await fetchAiResponseBounded(`${baseUrl}/v1/models?limit=1000`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      }
+    })
+    if (!response.ok) throw new Error(`Anthropic models API 错误 (${response.status})`)
+    const body = await readJsonResponseBounded<AnthropicModelsResponse>(response)
+    return (body.data ?? [])
+      .map((item) => item.id?.trim() ?? '')
+      .filter((id) => id.startsWith('claude-'))
   }
 
   async testCredential(

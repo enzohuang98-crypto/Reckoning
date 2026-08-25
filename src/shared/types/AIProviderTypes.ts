@@ -99,6 +99,8 @@ export interface AIProvider {
     request: AIExplanationRequest,
     signal: AbortSignal
   ): AsyncIterable<AIExplanationStreamChunk>
+  /** 向 Provider 官方端点取得这把金钥匙当前可用的模型 ID。 */
+  listModels(apiKey: string, timeoutMs?: number): Promise<string[]>
   /**
    * 指定模型低用量推論：必須走與正式解說相同的生成 endpoint 與回應解析，
    * 才能同時驗證金鑰、模型權限與實際推論能力。

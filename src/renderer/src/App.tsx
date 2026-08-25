@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { parseFen } from '@shared/logic/board/fen'
-import type {
-  AIConversation,
-  MisunderstoodPosition,
-  SavedPosition
-} from '@shared/types/AppData'
-import type { MistakeBookEntry } from '@shared/types/MistakeBookEntry'
+import type { AIConversation, SavedPosition } from '@shared/types/AppData'
 import type { AppSettings } from '@shared/types/Settings'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import type { UserGuess } from '@shared/types/UserGuess'
@@ -16,8 +11,6 @@ import { AnalysisWorkspace } from './features/workspace/AnalysisWorkspace'
 import { useAppDataStore } from './features/app-data/useAppDataStore'
 import { useBoardWorkspace } from './features/board/useBoardWorkspace'
 import { LicensePage } from './pages/LicensePage'
-import { MistakeBookPage } from './pages/MistakeBookPage'
-import { MisunderstoodPage } from './pages/MisunderstoodPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SetupWizard } from './pages/SetupWizard'
 import {
@@ -66,7 +59,7 @@ export function App(): JSX.Element {
   } = useBoardWorkspace()
 
   // 更新狀態：main 會在啟動後與每隔數小時自動檢查，並以事件廣播結果。
-  // 這裡只負責收下狀態讓 header 能提示；實際下載／安裝仍在設定頁操作。
+  // 这里收下状态让 header 提示；下载由 main 自动进行，安装仍须在设定页明确确认。
   useEffect(() => {
     const unsubscribe = window.api.update.onChanged(setUpdateStatus)
     void window.api.update
@@ -188,36 +181,6 @@ export function App(): JSX.Element {
     [changeBoard, setDataError]
   )
 
-  const openMisunderstoodPosition = useCallback(
-    (entry: MisunderstoodPosition): void => {
-      pendingConversationId.current = entry.conversationId ?? null
-      if (entry.positionFen === board.fen) {
-        setActiveConversation(
-          entry.conversationId
-            ? appData.conversations.find((item) => item.id === entry.conversationId) ?? null
-            : null
-        )
-        setActiveTab('analyze')
-        return
-      }
-      openPosition(entry.positionFen)
-    },
-    [appData.conversations, board.fen, openPosition]
-  )
-
-  const addMistake = useCallback(
-    (entry: MistakeBookEntry): void => {
-      updateAppData((current) => ({
-        ...current,
-        mistakeBookEntries: [
-          entry,
-          ...current.mistakeBookEntries.filter((item) => item.id !== entry.id)
-        ]
-      }))
-    },
-    [updateAppData]
-  )
-
   const recordGuess = useCallback(
     (guess: UserGuess): void => {
       updateAppData((current) => ({
@@ -238,16 +201,6 @@ export function App(): JSX.Element {
           conversation,
           ...current.conversations.filter((item) => item.id !== conversation.id)
         ]
-      }))
-    },
-    [updateAppData]
-  )
-
-  const saveMisunderstood = useCallback(
-    (entry: MisunderstoodPosition): void => {
-      updateAppData((current) => ({
-        ...current,
-        misunderstoodPositions: [entry, ...current.misunderstoodPositions]
       }))
     },
     [updateAppData]
@@ -323,9 +276,7 @@ export function App(): JSX.Element {
         }
         conversation={activeConversation}
         onConversationChange={changeConversation}
-        onAddMistake={addMistake}
         onRecordGuess={recordGuess}
-        onSaveMisunderstood={saveMisunderstood}
       />
 
       {activeTab === 'settings' && (
@@ -336,27 +287,6 @@ export function App(): JSX.Element {
         />
       )}
 
-      {activeTab === 'mistakes' && (
-        <MistakeBookPage
-          entries={appData.mistakeBookEntries}
-          onOpenPosition={openPosition}
-          onChange={(entries) =>
-            updateAppData((current) => ({ ...current, mistakeBookEntries: entries }))
-          }
-        />
-      )}
-
-      {activeTab === 'misunderstood' && (
-        <MisunderstoodPage
-          entries={appData.misunderstoodPositions}
-          conversations={appData.conversations}
-          onOpenPosition={openMisunderstoodPosition}
-          onChange={(entries) =>
-            updateAppData((current) => ({ ...current, misunderstoodPositions: entries }))
-          }
-          onMoveToMistakeBook={addMistake}
-        />
-      )}
     </AppShell>
   )
 }

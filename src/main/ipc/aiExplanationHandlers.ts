@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto'
 import { dialog, ipcMain } from 'electron'
 import {
   IPC,
+  type AutoConfigureCredentialResult,
   type GenerateExplanationErrorPayload,
   type GenerateExplanationStartPayload,
   type SecretCredentialRef,
@@ -29,6 +30,7 @@ import {
   type TestCredentialResult
 } from '@shared/types/ipc'
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
+import { selectAutomaticModel } from '@shared/logic/ai/AutoCredential'
 import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
 import { SecretStore } from '../storage/SecretStore'
 import {
@@ -415,6 +417,55 @@ export function registerAiExplanationHandlers(
         credential.baseUrl
       )
       return { ok: true, status: await secretStore.getStatus() }
+    }
+  )
+
+  // ---- 单一金钥匙自动辨识、列出实际可用模型、验证并储存 ----
+  ipcMain.handle(
+    IPC.AI_AUTO_CONFIGURE_CREDENTIAL,
+    async (event, rawInput: unknown): Promise<AutoConfigureCredentialResult> => {
+      assertTrustedIpcSender(event)
+      const value =
+        typeof rawInput === 'object' && rawInput !== null
+          ? (rawInput as Record<string, unknown>)
+          : {}
+      const { provider, apiKey } = normalizeApiKey(value.apiKey)
+      if (provider === 'openai-compatible') {
+        return { ok: false, message: '只支援 OpenAI、Anthropic 与 Google Gemini 官方金钥匙。' }
+      }
+      const digest = createHash('sha256').update(apiKey).digest('hex')
+      try {
+        return await credentialTestGate.run(`auto\u001f${provider}\u001f${digest}`, async () => {
+          const adapter = getAIProvider(provider)
+          const availableModels = await adapter.listModels(apiKey)
+          const model = selectAutomaticModel(provider, availableModels)
+          if (!model) {
+            return {
+              ok: false,
+              message: '金钥匙可连线，但目前帐号没有本软体支援的稳定文字生成模型。'
+            }
+          }
+          const tested = await adapter.testCredential(apiKey, model)
+          if (!tested.ok) return { ok: false, message: tested.message }
+          await secretStore.setCredential(provider, model, apiKey)
+          const status = await secretStore.getStatus()
+          return {
+            ok: true,
+            credential: { provider, model },
+            status,
+            message: `${adapter.displayName} · ${model} 已通过实际生成验证并安全储存。`
+          }
+        })
+      } catch (error) {
+        if (error instanceof OperationBusyError) {
+          return { ok: false, message: '已有金钥匙连线测试进行中，请稍后再试。' }
+        }
+        logger.warn('AI credential auto configuration failed', {
+          provider,
+          error: error instanceof Error ? error.name : 'unknown'
+        })
+        return { ok: false, message: '无法完成官方 API 连线，请检查金钥匙与网路后重试。' }
+      }
     }
   )
 

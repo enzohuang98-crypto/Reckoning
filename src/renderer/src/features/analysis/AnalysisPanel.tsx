@@ -25,8 +25,7 @@ import type {
 } from '@shared/types/Harness'
 import type {
   AIConversation,
-  ConversationMessage,
-  MisunderstoodPosition
+  ConversationMessage
 } from '@shared/types/AppData'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
 import { validateMoveInput } from '@shared/logic/validation/ValidationUtils'
@@ -74,7 +73,6 @@ interface Props {
   onConversationChange: (conversation: AIConversation | null) => void
   onResult: (payload: EngineAnalysisResultPayload | null) => void
   onExplanation: (explanation: AIExplanationResponse | null) => void
-  onSaveMisunderstood: (entry: MisunderstoodPosition) => void
   onStatusChange: (status: AnalysisPanelStatus) => void
 }
 
@@ -134,7 +132,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     onConversationChange,
     onResult,
     onExplanation,
-    onSaveMisunderstood,
     onStatusChange
   }: Props,
   ref
@@ -159,7 +156,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [aiCancelling, setAiCancelling] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const [followUp, setFollowUp] = useState('')
-  const [collectionReason, setCollectionReason] = useState('')
   const [engineRegistry, setEngineRegistry] = useState<EngineRegistrySnapshot>({
     installations: [],
     activeEngineId: null,
@@ -317,7 +313,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setLiveRetryCount(0)
     setStreamingText('')
     setFollowUp('')
-    setCollectionReason('')
     setHarnessProgress(null)
     setTraceId(null)
     setError(null)
@@ -886,26 +881,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
   const coachResult = explainedResult ?? result
 
-  const saveMisunderstood = (): void => {
-    if (!coachResult) return
-    const now = new Date().toISOString()
-    onSaveMisunderstood({
-      id: crypto.randomUUID(),
-      positionFen: coachResult.engineAnalysis.positionFen,
-      reason: collectionReason.trim() || '需要之後再研究',
-      createdAt: now,
-      updatedAt: now,
-      analysisId: coachResult.analysisId,
-      engineAnalysis: coachResult.engineAnalysis,
-      moveComparison: coachResult.moveComparison,
-      explanation: explanation?.text,
-      conversationId: conversation?.id
-    })
-    setCollectionReason('')
-    setNotice('已收藏到「待理解局面」。')
-    setError(null)
-  }
-
   const cancelExplain = (): void => {
     if (!activeAiRequestId.current) return
     setAiCancelling(true)
@@ -1025,10 +1000,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         verificationEngineId={verificationEngineId}
         busy={busy}
         aiBusy={aiBusy}
-        collectionReason={collectionReason}
         diagnostics={engineDiagnostics}
-        onCollectionReasonChange={setCollectionReason}
-        onSaveMisunderstood={saveMisunderstood}
         onSelectPrimary={(id) => void selectPrimaryEngine(id)}
         onSelectVerification={(id) => void selectVerificationEngine(id)}
       />

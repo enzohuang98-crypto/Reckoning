@@ -1,17 +1,15 @@
 /**
  * Renderer 本機儲存 (localStorage)
  *
- * 一般設定仍存於 localStorage；錯題本只保留舊版資料遷移讀取。
+ * 一般設定仍存於 localStorage。
  * 重要：此處絕不存放 API 金鑰，金鑰一律走 window.api.secret（SecretStore）。
  */
 
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/types/Settings'
-import type { MistakeBook, MistakeBookEntry } from '@shared/types/MistakeBookEntry'
 import { ALL_PROVIDER_IDS, type AIProviderId } from '@shared/types/AIProviderTypes'
 import { normalizeSettings } from '@shared/logic/validation/ValidationUtils'
 
 const SETTINGS_KEY = 'xiangqi.settings'
-const MISTAKE_BOOK_KEY = 'xiangqi.mistakeBook'
 /** 初始設定嚮導完成旗標（'1' = 不再顯示嚮導） */
 const SETUP_COMPLETED_KEY = 'setup_completed'
 
@@ -85,40 +83,4 @@ export function loadSettings(): AppSettings {
 
 export function saveSettings(settings: AppSettings): LocalStorageWriteResult {
   return safeSetItem(SETTINGS_KEY, JSON.stringify(settings))
-}
-
-const EMPTY_BOOK: MistakeBook = { entries: [], version: 2 }
-
-/**
- * 載入錯題本。v1 條目（開發期資料，缺 mistakeLevel 等欄位）無法對應
- * SDS v0.2 形狀，載入時過濾並警告。
- */
-export function loadLegacyMistakeBook(): MistakeBook {
-  try {
-    const raw = localStorage.getItem(MISTAKE_BOOK_KEY)
-    if (!raw) return EMPTY_BOOK
-    const parsed = JSON.parse(raw) as { entries?: unknown[]; version?: number }
-    const entries = (parsed.entries ?? []).filter(
-      (e): e is MistakeBookEntry =>
-        typeof e === 'object' &&
-        e !== null &&
-        'mistakeLevel' in e &&
-        'engineBestMove' in e
-    )
-    if (entries.length !== (parsed.entries ?? []).length) {
-      console.warn('錯題本含舊版（v1）條目，已略過無法遷移的項目。')
-    }
-    return { entries, version: 2 }
-  } catch {
-    return EMPTY_BOOK
-  }
-}
-
-export function clearLegacyMistakeBook(): LocalStorageWriteResult {
-  try {
-    localStorage.removeItem(MISTAKE_BOOK_KEY)
-    return { ok: true }
-  } catch {
-    return { ok: false, message: '舊版錯題本資料無法清除，但不影響新資料使用。' }
-  }
 }

@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import {
   APP_DATA_SCHEMA_VERSION,
   EMPTY_APP_DATA,
+  extractRetiredStudyData,
   mergeAppData,
   sanitizeAppData
 } from '../../../src/shared/types/AppData'
@@ -93,9 +94,18 @@ const sanitized = sanitizeAppData({
 
 check('import pins current schemaVersion', sanitized.schemaVersion === APP_DATA_SCHEMA_VERSION)
 check('invalid array entries are skipped', sanitized.savedPositions.length === 1)
-check('wrong collection type falls back to empty array', sanitized.mistakeBookEntries.length === 0)
+check('retired collections are absent from schema v2', !('mistakeBookEntries' in sanitized) && !('misunderstoodPositions' in sanitized))
 check('import sanitizer strips top-level apiKey fields', !JSON.stringify(sanitized).includes('should-not-survive'))
-check('import sanitizer strips nested token fields', !JSON.stringify(sanitized).includes('nested-secret'))
+const retired = extractRetiredStudyData(
+  {
+    schemaVersion: 1,
+    mistakeBookEntries: [{ id: 'old', apiKey: 'secret' }],
+    misunderstoodPositions: [{ id: 'old-2', nested: { token: 'nested-secret' } }]
+  },
+  '2026-08-25T00:00:00.000Z'
+)
+check('retired data is extracted before migration', retired?.mistakeBookEntries.length === 1 && retired.misunderstoodPositions.length === 1)
+check('retired backup strips sensitive fields', !JSON.stringify(retired).includes('secret'))
 check(
   'import sanitizer preserves valid conversation provenance',
   sanitized.conversations[0]?.messages[0]?.provider === 'gemini' &&

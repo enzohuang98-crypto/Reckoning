@@ -3,10 +3,6 @@ import {
   EMPTY_APP_DATA,
   type AppDataSnapshot
 } from '@shared/types/AppData'
-import {
-  clearLegacyMistakeBook,
-  loadLegacyMistakeBook
-} from '../../storage/localSettings'
 import { withTimeout } from '../../utils/withTimeout'
 
 interface AppDataStore {
@@ -103,23 +99,7 @@ export function useAppDataStore(): AppDataStore {
     )
     if (!loaded.ok) throw new Error(loaded.message)
 
-    let snapshot = loaded.snapshot
-    let warning: string | null = null
-    const legacy = loadLegacyMistakeBook()
-    if (legacy.entries.length > 0) {
-      const existingIds = new Set(snapshot.mistakeBookEntries.map((entry) => entry.id))
-      const additions = legacy.entries.filter((entry) => !existingIds.has(entry.id))
-      if (additions.length > 0) {
-        snapshot = {
-          ...snapshot,
-          mistakeBookEntries: [...snapshot.mistakeBookEntries, ...additions]
-        }
-        const migrated = await window.api.data.save(snapshot)
-        if (migrated.ok) void clearLegacyMistakeBook()
-        else warning = migrated.message
-      }
-    }
-    return { snapshot, warning }
+    return { snapshot: loaded.snapshot, warning: null }
   }, [])
 
   const applyLoadedData = useCallback(({ snapshot, warning }: LoadedAppData): void => {
