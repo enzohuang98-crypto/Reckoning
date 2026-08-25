@@ -306,8 +306,8 @@ async function main(): Promise<void> {
     check('最佳著法轉為中文炮二平五', root.displayBestMove === '炮二平五')
     check('MultiPV 兩條候選', root.candidateMoves.length === 2, root.candidateMoves.length)
     check(
-      'scoreAfterBestMove +0.42（root_analysis）',
-      root.scoreAfterBestMove?.displayText === '+0.42' && root.scoreAfterBestMove.source === 'root_analysis'
+      'scoreAfterBestMove +42 cp（root_analysis）',
+      root.scoreAfterBestMove?.displayText === '+42 cp' && root.scoreAfterBestMove.source === 'root_analysis'
     )
     check(
       'EngineAnalysis.engineName 使用握手偵測名稱',
@@ -329,8 +329,8 @@ async function main(): Promise<void> {
     const inCand = await adapter.analyzePosition({ positionFen: START_FEN, userMove: 'b2e2' }, config)
     check('候選 fast path：source=candidate_move', inCand.userMoveEvaluationSource === 'candidate_move')
     check(
-      '候選分數未反轉 +0.15',
-      inCand.scoreAfterUserMove?.displayText === '+0.15' && inCand.scoreAfterUserMove.wasInverted === false
+      '候選分數未反轉 +15 cp',
+      inCand.scoreAfterUserMove?.displayText === '+15 cp' && inCand.scoreAfterUserMove.wasInverted === false
     )
     check('evaluation 派生一致（§2.14.5）', inCand.evaluationAfterUserMove === inCand.scoreAfterUserMove?.comparableValue)
     check(
@@ -380,7 +380,7 @@ async function main(): Promise<void> {
       '支援 ScoreType 的 UCI 引擎使用 PawnValueNormalized（一兵 = 100）',
       analysis.scoreAfterBestMove?.type === 'cp' &&
         analysis.scoreAfterBestMove.cp === 100 &&
-        analysis.scoreAfterBestMove.displayText === '+1.00',
+        analysis.scoreAfterBestMove.displayText === '+100 cp',
       analysis.scoreAfterBestMove
     )
   }
