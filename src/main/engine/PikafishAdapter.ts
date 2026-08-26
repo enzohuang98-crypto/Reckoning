@@ -220,6 +220,9 @@ export interface EngineLiveAnalysisProgress {
   nodes?: number | null
   nps?: number | null
   score: EngineScore | null
+  candidateRank: number
+  move?: string
+  principalVariation: string[]
   displayMove?: string
   displayPrincipalVariation: string[]
 }
@@ -232,6 +235,7 @@ interface SearchProgress {
   nodes: number | null
   nps: number | null
   score: EngineScore | null
+  candidateRank: number
   move?: string
   principalVariation: string[]
 }
@@ -590,7 +594,7 @@ export class PikafishAdapter {
       options.multiPv
     )
     const rawLines: string[] = []
-    let lastProgressAt = 0
+    const lastProgressAtByRank = new Map<number, number>()
 
     const recordRawLine = (line: string): void => {
       if (rawLines.length >= MAX_RAW_ANALYSIS_LINES) return
@@ -671,11 +675,11 @@ export class PikafishAdapter {
           options.multiPv
         )
         const now = Date.now()
-        if (
-          parsed?.multipv === 1 &&
-          (lastProgressAt === 0 || now - lastProgressAt >= 80)
-        ) {
-          lastProgressAt = now
+        const lastProgressAt = parsed
+          ? lastProgressAtByRank.get(parsed.multipv) ?? 0
+          : 0
+        if (parsed && (lastProgressAt === 0 || now - lastProgressAt >= 80)) {
+          lastProgressAtByRank.set(parsed.multipv, now)
           options.onProgress?.({
             elapsedMs: now - searchStartedAt,
             targetMs: options.movetimeMs,
@@ -684,6 +688,7 @@ export class PikafishAdapter {
             nodes: parsed.nodes,
             nps: parsed.nps,
             score: parsed.score,
+            candidateRank: parsed.multipv,
             move: parsed.pv[0],
             principalVariation: parsed.pv
           })
@@ -829,6 +834,9 @@ export class PikafishAdapter {
             phase === 'user_move_analysis' && progress.score
               ? invertEngineScore(progress.score)
               : progress.score,
+          candidateRank: progress.candidateRank,
+          move: progress.move,
+          principalVariation: progress.principalVariation,
           displayMove: progress.move
             ? formatChineseMove(progressBoard, progress.move) ?? '無法辨識著法'
             : undefined,

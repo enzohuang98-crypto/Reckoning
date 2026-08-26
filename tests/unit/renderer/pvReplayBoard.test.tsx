@@ -76,6 +76,44 @@ try {
     renderer.root.findAllByType('span').map((node) => node.children.join('')).join(' '),
     /第 1 手：炮二平五/
   )
+  TestRenderer.act(() => {
+    renderer.update(
+      <BoardEditor
+        board={parsed.board}
+        onChange={() => undefined}
+        highlightedMove={null}
+        toolsOpen={false}
+        guessSelectionActive={false}
+        onGuessMoveSelected={() => undefined}
+        onGuessSelectionCancel={() => undefined}
+        savedPositions={[]}
+        onSavePosition={() => undefined}
+        onLoadSavedPosition={() => undefined}
+        onDeleteSavedPosition={() => undefined}
+        replayCandidates={[
+          {
+            move: 'h2e2',
+            displayMove: '炮二平五',
+            score: null,
+            evaluation: null,
+            depth: 22,
+            principalVariation: ['h2e2', 'h9g7', 'b0c2'],
+            displayPrincipalVariation: ['炮二平五', '馬8進7', '馬八進七']
+          }
+        ]}
+      />
+    )
+  })
+  assert.equal(
+    renderer.root.findAll((node) => node.props.role === 'dialog').length,
+    1,
+    '分析更新時右鍵重播視窗應保持開啟'
+  )
+  assert.match(
+    renderer.root.findAllByType('button').map((button) => button.children.join('')).join(' '),
+    /3\. 馬八進七/,
+    '右鍵重播視窗應即時顯示引擎新延伸的主線'
+  )
   console.log('棋盘右键 PV 重播 UI 测试：通过')
 } finally {
   Object.defineProperty(globalThis, 'window', {

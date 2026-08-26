@@ -302,6 +302,23 @@ async function main(): Promise<void> {
           progress.displayPrincipalVariation[1] === '馬8進7'
       )
     )
+    const liveCandidateRanks = progressEvents.map(
+      (progress) => (progress as EngineLiveAnalysisProgress & { candidateRank?: number }).candidateRank
+    )
+    check(
+      '搜尋期間持續回報 MultiPV 第一線與第二線供重播視窗更新',
+      liveCandidateRanks.includes(1) && liveCandidateRanks.includes(2),
+      liveCandidateRanks
+    )
+    check(
+      '即時 MultiPV 同時保留可重播的 UCI 主線',
+      progressEvents.some(
+        (progress) =>
+          (progress as EngineLiveAnalysisProgress & { candidateRank?: number }).candidateRank === 2 &&
+          (progress as EngineLiveAnalysisProgress & { principalVariation?: string[] })
+            .principalVariation?.[0] === 'b2e2'
+      )
+    )
     check('最佳著法 h2e2', root.bestMove === 'h2e2')
     check('最佳著法轉為中文炮二平五', root.displayBestMove === '炮二平五')
     check('MultiPV 兩條候選', root.candidateMoves.length === 2, root.candidateMoves.length)

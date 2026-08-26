@@ -16,6 +16,7 @@ import type {
 } from '@shared/types/AIExplanationTypes'
 import {
   CREDENTIAL_TEST_TIMEOUT_MS,
+  aiErrorStatus,
   describeCredentialTestError,
   extractApiErrorMessage,
   fetchAiResponseBounded,
@@ -30,6 +31,24 @@ const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const MAX_OUTPUT_TOKENS = 4096
 /** 首次 Gemini thinking 请求可能超过共用的快速健康检查期限。 */
 export const GEMINI_CREDENTIAL_TEST_TIMEOUT_MS = 30_000
+const GEMINI_SERVICE_RETRY_DELAYS_MS = [500, 1_000] as const
+
+function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.reject(new DOMException('Request cancelled', 'AbortError'))
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, delayMs)
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(new DOMException('Request cancelled', 'AbortError'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
 
 /** generateContent 回應中本實作會使用的欄位 */
 interface GeminiGenerateContentResponse {
@@ -211,33 +230,50 @@ export class GeminiProvider implements AIProvider {
     _baseUrlOverride?: string,
     timeoutMs = GEMINI_CREDENTIAL_TEST_TIMEOUT_MS
   ): Promise<AITestCredentialResult> {
-    const request = credentialTestRequest(this.id, model, apiKey)
+    let request = credentialTestRequest(this.id, model, apiKey)
     const signal = AbortSignal.timeout(timeoutMs)
-    try {
-      await this.generateExplanation(request, signal)
-      return credentialTestSucceeded(this.displayName, model)
-    } catch (error) {
-      if (
-        error instanceof GeminiEmptyResponseError &&
-        !error.blockReason &&
-        (error.finishReason === 'MAX_TOKENS' || error.thoughtsTokenCount > 0)
-      ) {
-        try {
-          await this.generateExplanation(
-            { ...request, maxOutputTokens: 256 },
-            signal
-          )
-          return credentialTestSucceeded(this.displayName, model)
-        } catch (retryError) {
-          return retryError instanceof GeminiEmptyResponseError
-            ? describeEmptyGeminiResponse(retryError)
-            : describeCredentialTestError(retryError, 'Gemini')
+    let thinkingRetried = false
+    let serviceRetryCount = 0
+    while (true) {
+      try {
+        await this.generateExplanation(request, signal)
+        return credentialTestSucceeded(this.displayName, model)
+      } catch (error) {
+        if (
+          error instanceof GeminiEmptyResponseError &&
+          !thinkingRetried &&
+          !error.blockReason &&
+          (error.finishReason === 'MAX_TOKENS' || error.thoughtsTokenCount > 0)
+        ) {
+          thinkingRetried = true
+          request = { ...request, maxOutputTokens: 256 }
+          continue
         }
+        if (
+          aiErrorStatus(error) === 503 &&
+          serviceRetryCount < GEMINI_SERVICE_RETRY_DELAYS_MS.length
+        ) {
+          const delayMs = GEMINI_SERVICE_RETRY_DELAYS_MS[serviceRetryCount]
+          serviceRetryCount += 1
+          try {
+            await waitForRetry(delayMs, signal)
+          } catch (retryWaitError) {
+            return describeCredentialTestError(retryWaitError, 'Gemini')
+          }
+          continue
+        }
+        if (error instanceof GeminiEmptyResponseError) {
+          return describeEmptyGeminiResponse(error)
+        }
+        if (aiErrorStatus(error) === 503) {
+          return {
+            ok: false,
+            message:
+              'Gemini 服務暫時過載或不可用 (503)；這不是金鑰認證失敗。已自動重試兩次，請稍後再試。'
+          }
+        }
+        return describeCredentialTestError(error, 'Gemini')
       }
-      if (error instanceof GeminiEmptyResponseError) {
-        return describeEmptyGeminiResponse(error)
-      }
-      return describeCredentialTestError(error, 'Gemini')
     }
   }
 }

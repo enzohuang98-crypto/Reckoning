@@ -575,6 +575,14 @@ async function main(): Promise<void> {
     )
   })
 
+  await check('局面切換開始新搜尋時保留既有分析列，直到新進度到達', () => {
+    const panel = readFileSync(
+      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
+      'utf8'
+    )
+    assert.doesNotMatch(panel, /setEngineThoughts\(\[\]\)/)
+  })
+
   await check('棋手預設 AI 畫面不呈現 token、證據編號或內部迴圈計數', () => {
     const coach = readFileSync(
       resolve('src/renderer/src/features/analysis/CoachView.tsx'),

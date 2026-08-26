@@ -140,6 +140,9 @@ export interface EngineAnalysisProgressPayload {
   nodes?: number | null
   nps?: number | null
   score: EngineScore | null
+  candidateRank?: number
+  move?: string
+  principalVariation?: string[]
   displayMove?: string
   displayPrincipalVariation: string[]
   engineRole?: 'primary' | 'verification'
