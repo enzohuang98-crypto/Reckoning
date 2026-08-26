@@ -10,8 +10,9 @@
 const SECRET_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   // Anthropic / OpenAI 形式金鑰：sk-ant-xxxx、sk-xxxx
   { pattern: /\bsk-[A-Za-z0-9_-]{8,}/g, replacement: 'sk-***' },
-  // Google API key：AIza 開頭
+  // Google API key：標準型 AIza 或授權型 AQ. 開頭
   { pattern: /\bAIza[A-Za-z0-9_-]{8,}/g, replacement: 'AIza***' },
+  { pattern: /\bAQ\.[A-Za-z0-9._-]{8,}/g, replacement: 'AQ.***' },
   // Authorization: Bearer <token> / 任意 Authorization header 值
   {
     pattern: /\b(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s,;"']+/gi,
