@@ -10,9 +10,11 @@ export interface DetectedApiKey {
  * （DeepSeek/Kimi/xAI/Ollama/LM Studio 等各自不同），故不設限制。
  * openai 用負向前瞻排除 sk-ant-，避免誤放行貼錯欄位的 Anthropic 金鑰。
  */
+const GEMINI_KEY_PATTERN = /^(?:AIza|AQ\.)/
+
 const PROVIDER_KEY_PATTERNS: Partial<Record<AIProviderId, RegExp>> = {
   anthropic: /^sk-ant-/,
-  gemini: /^AIza/,
+  gemini: GEMINI_KEY_PATTERN,
   openai: /^sk-(?!ant-)/
 }
 
@@ -34,7 +36,7 @@ export function detectApiKeyProvider(
   if (normalizedKey.startsWith('sk-ant-')) {
     return { provider: 'anthropic', normalizedKey }
   }
-  if (normalizedKey.startsWith('AIza')) {
+  if (GEMINI_KEY_PATTERN.test(normalizedKey)) {
     return { provider: 'gemini', normalizedKey }
   }
   if (normalizedKey.startsWith('sk-')) {

@@ -34,6 +34,10 @@ console.log('## maskSecrets（§2.11 Log 洩漏防護）')
   check('Google 金鑰被遮蔽', !masked.includes('SyD-1234567890'), masked)
 }
 {
+  const masked = maskSecrets('request with AQ.AbCdEf1234567890abcdefg denied')
+  check('Google 授權型金鑰被遮蔽', !masked.includes('AbCdEf1234567890'), masked)
+}
+{
   const masked = maskSecrets('headers: Authorization: Bearer secret-token-abc123, accept: json')
   check('Authorization header 被遮蔽', !masked.includes('secret-token-abc123'), masked)
 }

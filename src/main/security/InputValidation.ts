@@ -106,7 +106,7 @@ export function normalizeApiKey(
   const detected = detectApiKeyProvider(apiKey, preferredProvider)
   if (!detected) {
     throw new SecurityValidationError(
-      '無法辨識 API Key。支援 Claude（sk-ant-）、Gemini（AIza）與 OpenAI（sk-）。'
+      '無法辨識 API Key。支援 Claude（sk-ant-）、Gemini（AIza 或 AQ.）與 OpenAI（sk-）。'
     )
   }
   return { provider: detected.provider, apiKey: detected.normalizedKey }

@@ -37,10 +37,10 @@ async function main(): Promise<void> {
       ]
     }), { status: 200, headers: { 'content-type': 'application/json' } })
   }
-  assert.deepEqual(await new GeminiProvider().listModels('AIza-test'), ['models/gemini-3.7-flash'])
+  assert.deepEqual(await new GeminiProvider().listModels('AQ.test-auth-key'), ['models/gemini-3.7-flash'])
   assert.equal(request?.url, 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000')
-  assert.equal(request?.headers.get('x-goog-api-key'), 'AIza-test')
-  assert.equal(request?.url.includes('AIza-test'), false)
+  assert.equal(request?.headers.get('x-goog-api-key'), 'AQ.test-auth-key')
+  assert.equal(request?.url.includes('AQ.test-auth-key'), false)
 
     console.log('官方 Provider 模型清单测试：通过')
   } finally {

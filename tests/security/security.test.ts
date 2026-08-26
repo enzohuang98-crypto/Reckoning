@@ -175,6 +175,10 @@ check(
   normalizeApiKey('AIza-test-value').provider === 'gemini'
 )
 check(
+  '單一 API Key 欄位自動辨識 Gemini 授權型金鑰',
+  normalizeApiKey('AQ.test-auth-key').provider === 'gemini'
+)
+check(
   '單一 API Key 欄位自動辨識 OpenAI',
   normalizeApiKey('sk-test-value').provider === 'openai'
 )
@@ -202,6 +206,10 @@ check(
 check(
   '指定 preferredProvider 且格式正確時仍可通過',
   normalizeApiKey('sk-ant-real-anthropic-key', 'anthropic').provider === 'anthropic'
+)
+check(
+  '指定 Gemini preferredProvider 時授權型金鑰仍可通過',
+  normalizeApiKey('AQ.real-gemini-auth-key', 'gemini').provider === 'gemini'
 )
 check(
   '遠端相容服務只接受標準 HTTPS',
