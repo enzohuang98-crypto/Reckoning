@@ -5,6 +5,7 @@ import type { AIConversation, SavedPosition } from '@shared/types/AppData'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
+import type { EngineCandidateMove } from '@shared/types/EngineAnalysis'
 import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
 import {
   AnalysisPanel,
@@ -72,6 +73,7 @@ export function AnalysisWorkspace({
   const [actualMove, setActualMove] = useState<ActualMoveSelection | null>(null)
   const [guessSelectionActive, setGuessSelectionActive] = useState(false)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
+  const [replayCandidates, setReplayCandidates] = useState<EngineCandidateMove[]>([])
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [boardToolsOpen, setBoardToolsOpen] = useState(false)
@@ -87,6 +89,7 @@ export function AnalysisWorkspace({
 
   useEffect(() => {
     setResult(null)
+    setReplayCandidates([])
     setExplanation(null)
     setDraftMove('')
     setDraftReason('')
@@ -251,7 +254,7 @@ export function AnalysisWorkspace({
               onLoadSavedPosition(position)
             }}
         onDeleteSavedPosition={onDeleteSavedPosition}
-        replayCandidates={result?.engineAnalysis.candidateMoves ?? []}
+        replayCandidates={replayCandidates}
           />
 
           {importOpen && (
@@ -291,6 +294,7 @@ export function AnalysisWorkspace({
                   conversation={conversation}
                   onConversationChange={onConversationChange}
                   onResult={setResult}
+                  onReplayCandidates={setReplayCandidates}
                   onExplanation={setExplanation}
                   onStatusChange={setAnalysisStatus}
                 />

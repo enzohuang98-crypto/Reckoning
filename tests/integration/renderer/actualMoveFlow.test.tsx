@@ -17,7 +17,11 @@ import type { ActualMoveSelection } from '../../../src/renderer/src/features/ana
 import { compareMove } from '../../../src/shared/logic/analysis/MoveComparisonService'
 import { parseFen } from '../../../src/shared/logic/board/fen'
 import { START_FEN, type BoardState } from '../../../src/shared/types/BoardState'
-import type { EngineAnalysis, EngineScore } from '../../../src/shared/types/EngineAnalysis'
+import type {
+  EngineAnalysis,
+  EngineCandidateMove,
+  EngineScore
+} from '../../../src/shared/types/EngineAnalysis'
 import type {
   EngineInstallation,
   EngineRegistrySnapshot
@@ -164,6 +168,7 @@ async function main(): Promise<void> {
   const aiStarts: GenerateExplanationStartPayload[] = []
   const aiCancels: string[] = []
   const deliveredResults: EngineAnalysisResultPayload[] = []
+  const liveReplaySnapshots: EngineCandidateMove[][] = []
   let engineResultListener: ((payload: EngineAnalysisResultPayload) => void) | null = null
   let engineProgressListener: ((payload: EngineAnalysisProgressPayload) => void) | null = null
   let engineErrorListener: ((payload: EngineAnalysisErrorPayload) => void) | null = null
@@ -296,6 +301,9 @@ async function main(): Promise<void> {
     onResult: (payload: EngineAnalysisResultPayload | null) => {
       if (payload) deliveredResults.push(payload)
     },
+    onReplayCandidates: (candidates: EngineCandidateMove[]) => {
+      liveReplaySnapshots.push(candidates)
+    },
     onExplanation: () => undefined,
     onStatusChange: () => undefined
   }
@@ -332,6 +340,33 @@ async function main(): Promise<void> {
     assert.ok(
       [...timeouts.values()][0].delayMs > 0 &&
         [...timeouts.values()][0].delayMs <= ACTUAL_MOVE_ENGINE_DEADLINE_MS
+    )
+
+    assert.ok(engineProgressListener)
+    act(() => {
+      engineProgressListener?.({
+        requestId: firstRequestId,
+        phase: 'root_analysis',
+        elapsedMs: 120,
+        targetMs: AUTO_INITIAL_ANALYSIS_MAX_MS,
+        percent: 20,
+        depth: 8,
+        score: score(40, 'candidate_move'),
+        candidateRank: 2,
+        move: 'b2e2',
+        principalVariation: ['b2e2', 'b9c7'],
+        displayMove: '炮八平五',
+        displayPrincipalVariation: ['炮八平五', '馬2進3'],
+        engineRole: 'primary',
+        engineId: 'primary-engine',
+        engineName: 'Primary Engine'
+      } as EngineAnalysisProgressPayload)
+    })
+    assert.equal(liveReplaySnapshots.at(-1)?.[0]?.move, 'b2e2')
+    assert.equal(
+      liveReplaySnapshots.at(-1)?.[0]?.principalVariation[1],
+      'b9c7',
+      '分析尚未完成時就要把最新可重播主線送到右鍵視窗'
     )
 
     act(() => {

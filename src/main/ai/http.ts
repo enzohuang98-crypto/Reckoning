@@ -12,6 +12,17 @@ export const MAX_AI_HTTP_RESPONSE_BYTES = 5 * 1024 * 1024
 /** 指定模型低用量推論逾時；必須短於 renderer 的保險逾時。 */
 export const CREDENTIAL_TEST_TIMEOUT_MS = 8_000
 
+/** 從 SDK status 欄位或共用錯誤訊息格式取得 HTTP 狀態碼。 */
+export function aiErrorStatus(error: unknown): number | undefined {
+  const explicitStatus = (error as { status?: unknown } | null)?.status
+  if (typeof explicitStatus === 'number') return explicitStatus
+  const messageStatus =
+    error instanceof Error
+      ? /\((\d{3})\)/.exec(error.message)?.[1]
+      : undefined
+  return messageStatus ? Number(messageStatus) : undefined
+}
+
 /**
  * Anthropic SDK 使用的受限 transport。所有 AI 請求都拒絕重新導向，
  * 並在 SDK 解析 JSON／SSE 前限制實際收到的 bytes。
@@ -82,17 +93,7 @@ export function describeCredentialTestError(
   ) {
     return { ok: false, message: '測試逾時，請檢查網路連線或稍後重試。' }
   }
-  const explicitStatus = (error as { status?: unknown } | null)?.status
-  const messageStatus =
-    error instanceof Error
-      ? /\((\d{3})\)/.exec(error.message)?.[1]
-      : undefined
-  const status =
-    typeof explicitStatus === 'number'
-      ? explicitStatus
-      : messageStatus
-        ? Number(messageStatus)
-        : undefined
+  const status = aiErrorStatus(error)
   if (status === 401 || status === 403) {
     return {
       ok: false,
@@ -103,6 +104,12 @@ export function describeCredentialTestError(
     return {
       ok: false,
       message: `${providerLabel} 回報限流 (429)；金鑰可能有效，請稍後再試一次。`
+    }
+  }
+  if (status === 503) {
+    return {
+      ok: false,
+      message: `${providerLabel} 服務暫時過載或不可用 (503)；這不是金鑰認證失敗，請稍後再試。`
     }
   }
   if (typeof status === 'number') {

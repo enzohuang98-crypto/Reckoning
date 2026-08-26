@@ -63,6 +63,7 @@ interface Props {
   notice: string | null
   liveElapsedMs: number | null
   sinceLastThoughtMs: number | null
+  retainingPreviousAnalysis: boolean
 }
 
 export function LiveAnalysisTable({
@@ -74,7 +75,8 @@ export function LiveAnalysisTable({
   error,
   notice,
   liveElapsedMs,
-  sinceLastThoughtMs
+  sinceLastThoughtMs,
+  retainingPreviousAnalysis
 }: Props): JSX.Element {
   const rows = thoughts.slice().reverse()
   const resultWarning = resultNotice(result)
@@ -88,7 +90,9 @@ export function LiveAnalysisTable({
   const statusText = !status?.available
     ? '未就緒'
     : busy
-      ? `${currentPhase(progress)} ${formatElapsedMs(liveElapsedMs)}`
+      ? retainingPreviousAnalysis && rows.length > 0
+        ? `新局面分析中 · 暫時保留上一筆 ${formatElapsedMs(liveElapsedMs)}`
+        : `${currentPhase(progress)} ${formatElapsedMs(liveElapsedMs)}`
       : result
         ? '分析完成'
         : '等待分析'

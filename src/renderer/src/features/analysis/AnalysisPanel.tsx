@@ -16,6 +16,7 @@ import type {
   GenerateExplanationDonePayload
 } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
+import type { EngineCandidateMove } from '@shared/types/EngineAnalysis'
 import type {
   EngineRegistrySnapshot
 } from '@shared/types/EngineRegistry'
@@ -72,6 +73,7 @@ interface Props {
   conversation: AIConversation | null
   onConversationChange: (conversation: AIConversation | null) => void
   onResult: (payload: EngineAnalysisResultPayload | null) => void
+  onReplayCandidates: (candidates: EngineCandidateMove[]) => void
   onExplanation: (explanation: AIExplanationResponse | null) => void
   onStatusChange: (status: AnalysisPanelStatus) => void
 }
@@ -131,6 +133,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     conversation,
     onConversationChange,
     onResult,
+    onReplayCandidates,
     onExplanation,
     onStatusChange
   }: Props,
@@ -142,6 +145,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [livePaused, setLivePaused] = useState(false)
   const [progress, setProgress] = useState<EngineAnalysisProgressPayload | null>(null)
   const [engineThoughts, setEngineThoughts] = useState<EngineThoughtEntry[]>([])
+  const [retainingPreviousAnalysis, setRetainingPreviousAnalysis] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [engineDiagnostics, setEngineDiagnostics] = useState<string[]>([])
@@ -186,6 +190,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const explanationAnchorRef = useRef<HTMLDivElement>(null)
   const analysisStartedAtRef = useRef<number | null>(null)
   const lastThoughtAtRef = useRef<number | null>(null)
+  const pendingThoughtResetRequestId = useRef<string | null>(null)
+  const liveReplayCandidatesByRank = useRef<Map<number, EngineCandidateMove>>(new Map())
   const [liveNow, setLiveNow] = useState(() => Date.now())
   const [liveRetryCount, setLiveRetryCount] = useState(0)
   const analysisMove = actualMove?.move ?? submittedGuess?.move ?? ''
@@ -302,7 +308,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setRefining(false)
     setLivePaused(false)
     setProgress(null)
-    setEngineThoughts([])
+    pendingThoughtResetRequestId.current = null
+    liveReplayCandidatesByRank.current.clear()
+    onReplayCandidates([])
     setCancelling(false)
     setAiBusy(false)
     setAiCancelling(false)
@@ -323,7 +331,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setTeacherExecution(null)
     onResult(null)
     onExplanation(null)
-  }, [board.fen, analysisMove, actualMove?.selectionId])
+  }, [board.fen, analysisMove, actualMove?.selectionId, onReplayCandidates])
 
   useEffect(() => {
     const offProgress = window.api.engine.onAnalysisProgress((payload) => {
@@ -353,13 +361,42 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         engineRole: payload.engineRole,
         engineName: payload.engineName
       }
+      const replacePreviousRows =
+        pendingThoughtResetRequestId.current === payload.requestId
+      if (replacePreviousRows) {
+        pendingThoughtResetRequestId.current = null
+        setRetainingPreviousAnalysis(false)
+      }
       setEngineThoughts((previous) => {
-        const last = previous[previous.length - 1]
+        const rows = replacePreviousRows ? [] : previous
+        const last = rows[rows.length - 1]
         if (last && thoughtSignature(last) === thoughtSignature(entry)) {
-          return previous
+          return rows
         }
-        return [...previous, entry].slice(-MAX_ENGINE_THOUGHTS)
+        return [...rows, entry].slice(-MAX_ENGINE_THOUGHTS)
       })
+      if (
+        payload.phase === 'root_analysis' &&
+        payload.engineRole !== 'verification' &&
+        payload.candidateRank &&
+        payload.move &&
+        payload.principalVariation?.length
+      ) {
+        liveReplayCandidatesByRank.current.set(payload.candidateRank, {
+          move: payload.move,
+          displayMove: payload.displayMove,
+          score: payload.score,
+          evaluation: payload.score?.comparableValue ?? null,
+          depth: payload.depth,
+          principalVariation: payload.principalVariation,
+          displayPrincipalVariation: payload.displayPrincipalVariation
+        })
+        onReplayCandidates(
+          [...liveReplayCandidatesByRank.current.entries()]
+            .sort(([left], [right]) => left - right)
+            .map(([, candidate]) => candidate)
+        )
+      }
     })
     const offResult = window.api.engine.onAnalysisResult((payload) => {
       if (payload.requestId !== activeRequestId.current) return
@@ -376,9 +413,14 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setProgress(null)
       setCancelling(false)
       setLiveRetryCount(0)
+      setRetainingPreviousAnalysis(false)
       setResult(payload)
       resultRef.current = payload
       onResult(payload)
+      liveReplayCandidatesByRank.current = new Map(
+        payload.engineAnalysis.candidateMoves.map((candidate, index) => [index + 1, candidate])
+      )
+      onReplayCandidates(payload.engineAnalysis.candidateMoves)
     })
     const offError = window.api.engine.onAnalysisError((payload) => {
       if (payload.requestId !== activeRequestId.current) return
@@ -483,7 +525,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       offAiDone()
       offAiError()
     }
-  }, [onConversationChange, onExplanation, onResult])
+  }, [onConversationChange, onExplanation, onReplayCandidates, onResult])
 
   useEffect(() => {
     resultRef.current = result
@@ -578,7 +620,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       displayPrincipalVariation: []
     })
     if (!refinement) {
-      setEngineThoughts([])
+      pendingThoughtResetRequestId.current = requestId
+      setRetainingPreviousAnalysis(true)
       setResult(null)
       resultRef.current = null
       onResult(null)
@@ -986,6 +1029,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         notice={notice}
         liveElapsedMs={liveElapsedMs}
         sinceLastThoughtMs={sinceLastThoughtMs}
+        retainingPreviousAnalysis={retainingPreviousAnalysis}
       />
     </div>
   )

@@ -939,6 +939,59 @@ async function main(): Promise<void> {
     )
   }
   {
+    let attempt = 0
+    const { server, port, requests } = await startMockServer(() => {
+      attempt++
+      return attempt === 1
+        ? [
+            503,
+            {
+              error: {
+                code: 503,
+                status: 'UNAVAILABLE',
+                message: 'The model is overloaded. Please try again later.'
+              }
+            }
+          ]
+        : [
+            200,
+            {
+              candidates: [{ content: { parts: [{ text: 'OK' }] } }],
+              usageMetadata: {}
+            }
+          ]
+    })
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('AIza-overloaded', 'gemini-3.5-flash')
+    server.close()
+    check('Gemini 503 暫時過載會自動退避後重試成功', result.ok === true, result)
+    check('Gemini 503 成功後不再多送請求', requests.length === 2, requests.length)
+  }
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      503,
+      {
+        error: {
+          code: 503,
+          status: 'UNAVAILABLE',
+          message: 'The model is overloaded. Please try again later.'
+        }
+      }
+    ])
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('AIza-overloaded', 'gemini-3.5-flash')
+    server.close()
+    check(
+      'Gemini 持續 503 時說明是服務過載而非金鑰錯誤',
+      result.ok === false &&
+        result.message.includes('503') &&
+        result.message.includes('過載') &&
+        !result.message.includes('確認金鑰'),
+      result
+    )
+    check('Gemini 持續 503 最多重試兩次', requests.length === 3, requests.length)
+  }
+  {
     const { server, port } = await startMockServer(() => [
       401,
       { error: { message: 'API key not valid' } }
