@@ -424,7 +424,7 @@ async function main(): Promise<void> {
     timeouts.delete(deadlineId)
     act(() => deadline.callback())
     assert.deepEqual(aiCancels, [aiStarts[0].requestId])
-    assert.match(textContent(renderer.root), /AI 解說在點擊後 90 秒內未完成/)
+    assert.match(textContent(renderer.root), /AI 解說在點擊後 120 秒內未完成/)
 
     const timedMove: ActualMoveSelection = {
       ...firstMove,
