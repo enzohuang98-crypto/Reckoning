@@ -538,7 +538,7 @@ check(
     )
 )
 check(
-  '金鑰實際推論由 main process 限制並合併重複工作',
+  '金鑰官方驗證由 main process 限制並合併重複工作',
   aiHandlerSource.includes('new KeyedOperationGate(2)') &&
     aiHandlerSource.includes('credentialTestGate.run') &&
     aiHandlerSource.includes("createHash('sha256')")

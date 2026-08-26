@@ -40,8 +40,8 @@ let passed = 0
 let failed = 0
 
 check(
-  '官方金钥实际生成验证保留 30 秒合理回应时间',
-  GEMINI_CREDENTIAL_TEST_TIMEOUT_MS === 30_000,
+  'Gemini 金鑰驗證使用快速官方模型清單期限',
+  GEMINI_CREDENTIAL_TEST_TIMEOUT_MS === 8_000,
   GEMINI_CREDENTIAL_TEST_TIMEOUT_MS
 )
 check(
@@ -251,8 +251,10 @@ async function main(): Promise<void> {
     check('預設模型：anthropic → claude-sonnet-5', modelRegistry.getDefaultModel('anthropic').model === 'claude-sonnet-5')
     check('預設模型：openai → gpt-5.6-sol', modelRegistry.getDefaultModel('openai').model === 'gpt-5.6-sol')
     check('預設模型：gemini → gemini-3.5-flash', modelRegistry.getDefaultModel('gemini').model === 'gemini-3.5-flash')
-    check('listModels(provider) 過濾', modelRegistry.listModels('gemini').length === 9)
-    check('模型目錄共 38 個模型', modelRegistry.listModels().length === 38)
+    check('自動綁定優先模型 Gemini 3.7 可由 Registry 實際執行',
+      modelRegistry.hasModel('gemini', 'gemini-3.7-flash'))
+    check('listModels(provider) 過濾', modelRegistry.listModels('gemini').length === 10)
+    check('模型目錄共 39 個模型', modelRegistry.listModels().length === 39)
     const officialProviders = ['anthropic', 'openai', 'gemini'] as const
     const uiModels = officialProviders.flatMap((provider) =>
       PROVIDER_DEFAULT_MODELS[provider].map((model) => `${provider}/${model.id}`)
@@ -868,8 +870,10 @@ async function main(): Promise<void> {
     const { server, port, requests } = await startMockServer(() => [
       200,
       {
-        candidates: [{ content: { parts: [{ text: 'OK' }] } }],
-        usageMetadata: {}
+        models: [{
+          name: 'models/gemini-3.5-flash',
+          supportedGenerationMethods: ['generateContent']
+        }]
       }
     ])
     const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
@@ -879,62 +883,27 @@ async function main(): Promise<void> {
     check('x-goog-api-key header', requests[0].headers['x-goog-api-key'] === 'AIza-valid')
     check('金鑰不在 URL query（§2.11）', !requests[0].url.includes('AIza-valid'))
     check(
-      '實際呼叫 generateContent API',
-      requests[0].url.includes(':generateContent'),
+      '金鑰閘門呼叫官方 models.list，不等待完整文字生成',
+      requests[0].url === '/models?pageSize=1000',
       requests[0]
     )
-  }
-  {
-    let attempt = 0
-    const { server, port, requests } = await startMockServer(() => {
-      attempt++
-      return attempt === 1
-        ? [
-            200,
-            {
-              candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }],
-              usageMetadata: {
-                promptTokenCount: 5,
-                candidatesTokenCount: 0,
-                thoughtsTokenCount: 32
-              }
-            }
-          ]
-        : [
-            200,
-            {
-              candidates: [
-                { finishReason: 'STOP', content: { parts: [{ text: 'OK' }] } }
-              ],
-              usageMetadata: {}
-            }
-          ]
-    })
-    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const result = await provider.testCredential('AIza-thinking', 'gemini-3.7-flash')
-    server.close()
-    const budgets = requests.map((request) =>
-      (request.body as { generationConfig?: { maxOutputTokens?: number } })
-        .generationConfig?.maxOutputTokens
-    )
-    check('thinking 用完短輸出預算時，以有限的較大預算重試後成功', result.ok === true, result)
-    check('Gemini 金鑰測試最多重試一次', requests.length === 2, requests.length)
-    check('重試只把測試輸出預算從 32 提高到 256', budgets.join(',') === '32,256', budgets)
   }
   {
     const { server, port, requests } = await startMockServer(() => [
       200,
       {
-        promptFeedback: { blockReason: 'SAFETY' },
-        candidates: []
+        models: [{
+          name: 'models/gemini-2.5-flash',
+          supportedGenerationMethods: ['generateContent']
+        }]
       }
     ])
     const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
-    const result = await provider.testCredential('AIza-blocked', 'gemini-3.7-flash')
+    const result = await provider.testCredential('AIza-valid', 'gemini-3.5-flash')
     server.close()
     check(
-      '提示被阻擋時不重試，並顯示 Gemini 回傳的原因',
-      result.ok === false && result.message.includes('SAFETY') && requests.length === 1,
+      '金鑰有效但指定模型不可用時不會綁到錯誤模型',
+      result.ok === false && result.message.includes('不在這把金鑰可用') && requests.length === 1,
       { result, requestCount: requests.length }
     )
   }
@@ -956,8 +925,10 @@ async function main(): Promise<void> {
         : [
             200,
             {
-              candidates: [{ content: { parts: [{ text: 'OK' }] } }],
-              usageMetadata: {}
+              models: [{
+                name: 'models/gemini-3.5-flash',
+                supportedGenerationMethods: ['generateContent']
+              }]
             }
           ]
     })
@@ -1003,6 +974,42 @@ async function main(): Promise<void> {
       '401 時 ok=false 且訊息提及認證失敗',
       result.ok === false && result.message.includes('認證失敗'),
       result
+    )
+  }
+  {
+    const requests: string[] = []
+    const server = createServer((req, res) => {
+      requests.push(`${req.method ?? ''} ${req.url ?? ''}`)
+      if (req.method === 'GET' && req.url === '/models?pageSize=1000') {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({
+          models: [
+            {
+              name: 'models/gemini-3.5-flash',
+              supportedGenerationMethods: ['generateContent']
+            }
+          ]
+        }))
+      }
+      // generateContent 故意不回應：金鑰驗證不應依賴一次完整模型生成。
+    })
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', () => resolve())
+    )
+    const address = server.address()
+    const port = typeof address === 'object' && address ? address.port : 0
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential(
+      'AIza-valid-but-generation-stalled',
+      'gemini-3.5-flash',
+      undefined,
+      200
+    )
+    server.close()
+    check(
+      'Gemini 金鑰驗證不會因測試模型生成卡住而誤報逾時',
+      result.ok === true && requests.join(',') === 'GET /models?pageSize=1000',
+      { result, requests }
     )
   }
   {

@@ -11,9 +11,18 @@ interface Props {
 }
 
 export function PvReplayDialog({ initialBoard, candidates, onClose }: Props): JSX.Element {
-  const [candidateIndex, setCandidateIndex] = useState(0)
+  const [selectedMove, setSelectedMove] = useState<string | null>(
+    () => candidates[0]?.move ?? null
+  )
+  const [candidateSnapshot, setCandidateSnapshot] = useState<EngineCandidateMove | null>(
+    () => candidates[0] ?? null
+  )
   const [stepIndex, setStepIndex] = useState(0)
-  const candidate = candidates[candidateIndex] ?? candidates[0]
+  const selectedCandidateIndex = candidates.findIndex((item) => item.move === selectedMove)
+  const liveCandidate = selectedCandidateIndex >= 0
+    ? candidates[selectedCandidateIndex]
+    : null
+  const candidate = candidateSnapshot ?? liveCandidate ?? candidates[0]
   const replay = useMemo(
     () =>
       buildPvReplay(
@@ -34,8 +43,40 @@ export function PvReplayDialog({ initialBoard, candidates, onClose }: Props): JS
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [onClose])
 
+  useEffect(() => {
+    setSelectedMove(candidates[0]?.move ?? null)
+    setCandidateSnapshot(candidates[0] ?? null)
+    setStepIndex(0)
+    // candidates 會隨同一局面的搜尋持續變動；只有局面本身改變才重設重播。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialBoard.fen])
+
+  useEffect(() => {
+    if (!selectedMove && candidates[0]) {
+      setSelectedMove(candidates[0].move)
+      setCandidateSnapshot(candidates[0])
+    }
+  }, [candidates, selectedMove])
+
+  useEffect(() => {
+    if (!liveCandidate) return
+    setCandidateSnapshot((current) => {
+      if (!current || current.move !== liveCandidate.move || stepIndex === 0) {
+        return liveCandidate
+      }
+      const viewedPrefix = current.principalVariation.slice(0, stepIndex)
+      const sameViewedPosition = viewedPrefix.every(
+        (move, index) => liveCandidate.principalVariation[index] === move
+      )
+      return sameViewedPosition ? liveCandidate : current
+    })
+  }, [liveCandidate, stepIndex])
+
   const selectCandidate = (index: number): void => {
-    setCandidateIndex(index)
+    const selected = candidates[index]
+    if (!selected) return
+    setSelectedMove(selected.move)
+    setCandidateSnapshot(selected)
     setStepIndex(0)
   }
 
@@ -63,8 +104,8 @@ export function PvReplayDialog({ initialBoard, candidates, onClose }: Props): JS
                 key={`${item.move}-${index}`}
                 type="button"
                 role="tab"
-                aria-selected={candidateIndex === index}
-                className={candidateIndex === index ? 'active' : ''}
+                aria-selected={selectedCandidateIndex === index}
+                className={selectedCandidateIndex === index ? 'active' : ''}
                 onClick={() => selectCandidate(index)}
               >
                 第 {index + 1} 线 · {item.displayMove ?? item.move} · {item.score?.displayText ?? '—'}

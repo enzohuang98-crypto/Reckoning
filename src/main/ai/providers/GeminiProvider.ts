@@ -22,15 +22,11 @@ import {
   fetchAiResponseBounded,
   readJsonResponseBounded
 } from '../http'
-import {
-  credentialTestRequest,
-  credentialTestSucceeded
-} from '../credentialTest'
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const MAX_OUTPUT_TOKENS = 4096
-/** 首次 Gemini thinking 请求可能超过共用的快速健康检查期限。 */
-export const GEMINI_CREDENTIAL_TEST_TIMEOUT_MS = 30_000
+/** 模型清單只驗證認證與能力，不應等待一次完整文字生成。 */
+export const GEMINI_CREDENTIAL_TEST_TIMEOUT_MS = CREDENTIAL_TEST_TIMEOUT_MS
 const GEMINI_SERVICE_RETRY_DELAYS_MS = [500, 1_000] as const
 
 function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -72,22 +68,6 @@ class GeminiEmptyResponseError extends Error {
   ) {
     super('Gemini 回應中沒有文字內容。')
     this.name = 'GeminiEmptyResponseError'
-  }
-}
-
-function describeEmptyGeminiResponse(
-  error: GeminiEmptyResponseError
-): AITestCredentialResult {
-  const reason = error.blockReason ?? error.finishReason
-  if (reason) {
-    return {
-      ok: false,
-      message: `Gemini 金鑰可連線，但測試請求沒有返回文字（${reason}）。`
-    }
-  }
-  return {
-    ok: false,
-    message: 'Gemini 金鑰可連線，但測試模型沒有返回文字，請稍後重試。'
   }
 }
 
@@ -211,17 +191,38 @@ export class GeminiProvider implements AIProvider {
     timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
   ): Promise<string[]> {
     const baseUrl = (this.options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
-    const response = await fetchAiResponseBounded(`${baseUrl}/models?pageSize=1000`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: { 'x-goog-api-key': apiKey }
-    })
-    if (!response.ok) throw new Error(`Gemini models API 错误 (${response.status})`)
-    const body = await readJsonResponseBounded<GeminiModelsResponse>(response)
-    return (body.models ?? [])
-      .filter((model) => model.supportedGenerationMethods?.includes('generateContent'))
-      .map((model) => model.name?.trim() ?? '')
-      .filter(Boolean)
+    const signal = AbortSignal.timeout(timeoutMs)
+    let retryCount = 0
+    while (true) {
+      try {
+        const response = await fetchAiResponseBounded(`${baseUrl}/models?pageSize=1000`, {
+          method: 'GET',
+          signal,
+          headers: { 'x-goog-api-key': apiKey }
+        })
+        if (!response.ok) {
+          throw new Error(`Gemini models API 錯誤 (${response.status})`)
+        }
+        const body = await readJsonResponseBounded<GeminiModelsResponse>(response)
+        return (body.models ?? [])
+          .filter((model) => model.supportedGenerationMethods?.includes('generateContent'))
+          .map((model) => model.name?.trim() ?? '')
+          .filter(Boolean)
+      } catch (error) {
+        const status = aiErrorStatus(error)
+        const transient =
+          error instanceof TypeError ||
+          status === 408 ||
+          status === 429 ||
+          (typeof status === 'number' && status >= 500)
+        if (!transient || retryCount >= GEMINI_SERVICE_RETRY_DELAYS_MS.length) {
+          throw error
+        }
+        const delayMs = GEMINI_SERVICE_RETRY_DELAYS_MS[retryCount]
+        retryCount += 1
+        await waitForRetry(delayMs, signal)
+      }
+    }
   }
 
   async testCredential(
@@ -230,50 +231,24 @@ export class GeminiProvider implements AIProvider {
     _baseUrlOverride?: string,
     timeoutMs = GEMINI_CREDENTIAL_TEST_TIMEOUT_MS
   ): Promise<AITestCredentialResult> {
-    let request = credentialTestRequest(this.id, model, apiKey)
-    const signal = AbortSignal.timeout(timeoutMs)
-    let thinkingRetried = false
-    let serviceRetryCount = 0
-    while (true) {
-      try {
-        await this.generateExplanation(request, signal)
-        return credentialTestSucceeded(this.displayName, model)
-      } catch (error) {
-        if (
-          error instanceof GeminiEmptyResponseError &&
-          !thinkingRetried &&
-          !error.blockReason &&
-          (error.finishReason === 'MAX_TOKENS' || error.thoughtsTokenCount > 0)
-        ) {
-          thinkingRetried = true
-          request = { ...request, maxOutputTokens: 256 }
-          continue
+    try {
+      const availableModels = await this.listModels(apiKey, timeoutMs)
+      const normalizedModel = model.replace(/^models\//, '')
+      const modelAvailable = availableModels.some(
+        (available) => available.replace(/^models\//, '') === normalizedModel
+      )
+      if (!modelAvailable) {
+        return {
+          ok: false,
+          message: `Gemini 金鑰可連線，但模型 ${normalizedModel} 不在這把金鑰可用的文字生成模型清單中。`
         }
-        if (
-          aiErrorStatus(error) === 503 &&
-          serviceRetryCount < GEMINI_SERVICE_RETRY_DELAYS_MS.length
-        ) {
-          const delayMs = GEMINI_SERVICE_RETRY_DELAYS_MS[serviceRetryCount]
-          serviceRetryCount += 1
-          try {
-            await waitForRetry(delayMs, signal)
-          } catch (retryWaitError) {
-            return describeCredentialTestError(retryWaitError, 'Gemini')
-          }
-          continue
-        }
-        if (error instanceof GeminiEmptyResponseError) {
-          return describeEmptyGeminiResponse(error)
-        }
-        if (aiErrorStatus(error) === 503) {
-          return {
-            ok: false,
-            message:
-              'Gemini 服務暫時過載或不可用 (503)；這不是金鑰認證失敗。已自動重試兩次，請稍後再試。'
-          }
-        }
-        return describeCredentialTestError(error, 'Gemini')
       }
+      return {
+        ok: true,
+        message: `Google Gemini · ${normalizedModel} 已通過官方模型清單與 generateContent 能力驗證。`
+      }
+    } catch (error) {
+      return describeCredentialTestError(error, 'Gemini')
     }
   }
 }

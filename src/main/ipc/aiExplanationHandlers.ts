@@ -420,7 +420,7 @@ export function registerAiExplanationHandlers(
     }
   )
 
-  // ---- 单一金钥匙自动辨识、列出实际可用模型、验证并储存 ----
+  // ---- 單一金鑰自動辨識、列出實際可用模型、驗證並儲存 ----
   ipcMain.handle(
     IPC.AI_AUTO_CONFIGURE_CREDENTIAL,
     async (event, rawInput: unknown): Promise<AutoConfigureCredentialResult> => {
@@ -445,15 +445,19 @@ export function registerAiExplanationHandlers(
               message: '金钥匙可连线，但目前帐号没有本软体支援的稳定文字生成模型。'
             }
           }
-          const tested = await adapter.testCredential(apiKey, model)
-          if (!tested.ok) return { ok: false, message: tested.message }
+          // Gemini models.list 已同時證明金鑰可用、模型對此帳號可見，且模型
+          // 宣告支援 generateContent；不要再用一次可能壅塞的文字生成阻擋存檔。
+          if (provider !== 'gemini') {
+            const tested = await adapter.testCredential(apiKey, model)
+            if (!tested.ok) return { ok: false, message: tested.message }
+          }
           await secretStore.setCredential(provider, model, apiKey)
           const status = await secretStore.getStatus()
           return {
             ok: true,
             credential: { provider, model },
             status,
-            message: `${adapter.displayName} · ${model} 已通过实际生成验证并安全储存。`
+            message: `${adapter.displayName} · ${model} 已通過官方模型與能力驗證並安全儲存。`
           }
         })
       } catch (error) {
