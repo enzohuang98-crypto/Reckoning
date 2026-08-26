@@ -102,8 +102,8 @@ export interface AIProvider {
   /** 向 Provider 官方端点取得这把金钥匙当前可用的模型 ID。 */
   listModels(apiKey: string, timeoutMs?: number): Promise<string[]>
   /**
-   * 指定模型低用量推論：必須走與正式解說相同的生成 endpoint 與回應解析，
-   * 才能同時驗證金鑰、模型權限與實際推論能力。
+   * 驗證金鑰與指定模型。Provider 可使用低用量推論，或使用官方模型清單
+   * 確認認證、模型可見性與 generateContent 能力；不得只檢查字串格式。
    * baseUrl 只有 openai-compatible 會用到；timeoutMs 預設為
    * CREDENTIAL_TEST_TIMEOUT_MS，測試時可傳更短的值避免真的等待逾時。
    */
@@ -151,6 +151,7 @@ export const PROVIDER_DEFAULT_MODELS: Record<AIProviderId, AIModelInfo[]> = {
     { id: 'gpt-4o-mini', label: 'GPT-4o Mini' }
   ],
   gemini: [
+    { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
     { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', isDefault: true },
     { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
     { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite' },
