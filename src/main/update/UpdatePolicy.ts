@@ -4,10 +4,10 @@ export interface UpdatePolicyAdapter {
 }
 
 /**
- * 新版本自动下载，但永远不会因为一般关闭程式就静默安装。
- * 安装只允许由明确的「重新启动并安装」IPC 动作触发。
+ * 自动检查只负责发现新版本。下载与安装都必须由使用者明确同意，
+ * 避免在未询问时占用频宽或改变本机版本。
  */
 export function configureUpdatePolicy(updater: UpdatePolicyAdapter): void {
-  updater.autoDownload = true
+  updater.autoDownload = false
   updater.autoInstallOnAppQuit = false
 }

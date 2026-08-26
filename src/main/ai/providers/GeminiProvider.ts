@@ -28,6 +28,8 @@ import {
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const MAX_OUTPUT_TOKENS = 4096
+/** 首次 Gemini thinking 请求可能超过共用的快速健康检查期限。 */
+export const GEMINI_CREDENTIAL_TEST_TIMEOUT_MS = 30_000
 
 /** generateContent 回應中本實作會使用的欄位 */
 interface GeminiGenerateContentResponse {
@@ -173,7 +175,7 @@ export class GeminiProvider implements AIProvider {
     apiKey: string,
     model: string,
     _baseUrlOverride?: string,
-    timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
+    timeoutMs = GEMINI_CREDENTIAL_TEST_TIMEOUT_MS
   ): Promise<AITestCredentialResult> {
     try {
       await this.generateExplanation(

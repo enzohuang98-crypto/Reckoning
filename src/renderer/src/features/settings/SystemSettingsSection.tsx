@@ -9,6 +9,7 @@ interface Props {
   onExportBackup: () => void
   onImportBackup: () => void
   onCheckUpdate: () => void
+  onDownloadUpdate: () => void
   onInstallUpdate: () => void
   onDeactivateLicense: () => void
 }
@@ -21,6 +22,7 @@ export function SystemSettingsSection({
   onExportBackup,
   onImportBackup,
   onCheckUpdate,
+  onDownloadUpdate,
   onInstallUpdate,
   onDeactivateLicense
 }: Props): JSX.Element {
@@ -140,6 +142,15 @@ export function SystemSettingsSection({
               {updateStatus.phase === 'downloaded' && (
                 <button className="btn" disabled={updateBusy} onClick={installUpdate}>
                   重新啟動並安裝
+                </button>
+              )}
+              {updateStatus.phase === 'available' && (
+                <button
+                  className="btn"
+                  disabled={updateBusy}
+                  onClick={onDownloadUpdate}
+                >
+                  下載更新
                 </button>
               )}
             </div>

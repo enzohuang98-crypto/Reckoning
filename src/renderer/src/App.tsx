@@ -59,7 +59,7 @@ export function App(): JSX.Element {
   } = useBoardWorkspace()
 
   // 更新狀態：main 會在啟動後與每隔數小時自動檢查，並以事件廣播結果。
-  // 这里收下状态让 header 提示；下载由 main 自动进行，安装仍须在设定页明确确认。
+  // 这里收下状态让全域提示询问；下载与安装都必须由使用者明确确认。
   useEffect(() => {
     const unsubscribe = window.api.update.onChanged(setUpdateStatus)
     void window.api.update
@@ -67,6 +67,23 @@ export function App(): JSX.Element {
       .then(setUpdateStatus)
       .catch(() => setUpdateStatus(null))
     return unsubscribe
+  }, [])
+
+  const downloadUpdate = useCallback((): void => {
+    void window.api.update
+      .download()
+      .then(setUpdateStatus)
+      .catch(() => {
+        setUpdateStatus((current) =>
+          current
+            ? {
+                ...current,
+                phase: 'error',
+                message: '更新下載失敗，請確認網路後再試。'
+              }
+            : current
+        )
+      })
   }, [])
 
   useEffect(() => {
@@ -253,6 +270,7 @@ export function App(): JSX.Element {
       onRetryLoad={retryLoadData}
       onRetrySave={() => saveCurrentData(appData)}
       onAnalysisCommandMountChange={setAnalysisCommandMount}
+      onDownloadUpdate={downloadUpdate}
     >
       <AnalysisWorkspace
         hidden={activeTab !== 'analyze'}

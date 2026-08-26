@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import { Icon } from '../components/ui/Icon'
 
@@ -42,6 +42,8 @@ interface Props {
   onRetryLoad: () => void
   onRetrySave: () => void
   onAnalysisCommandMountChange: (element: HTMLDivElement | null) => void
+  onDownloadUpdate: () => void
+  confirmUpdate?: (message: string) => boolean
   children: ReactNode
 }
 
@@ -55,9 +57,26 @@ export function AppShell({
   onRetryLoad,
   onRetrySave,
   onAnalysisCommandMountChange,
+  onDownloadUpdate,
+  confirmUpdate = window.confirm,
   children
 }: Props): JSX.Element {
+  const promptedVersion = useRef<string | null>(null)
   const prompt = updatePrompt(updateStatus)
+
+  useEffect(() => {
+    const version = updateStatus?.availableVersion
+    if (
+      updateStatus?.phase !== 'available' ||
+      !version ||
+      promptedVersion.current === version
+    ) return
+    promptedVersion.current = version
+    if (confirmUpdate(`发现新版本 ${version}，要现在下载更新吗？`)) {
+      onDownloadUpdate()
+    }
+  }, [confirmUpdate, onDownloadUpdate, updateStatus])
+
   return (
     <div className="app">
       <header className="app-header">

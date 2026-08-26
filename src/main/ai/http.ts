@@ -111,6 +111,15 @@ export function describeCredentialTestError(
       message: `${providerLabel} 回報錯誤 (${status})，請確認金鑰與服務狀態。`
     }
   }
+  if (
+    error instanceof Error &&
+    error.message.includes('回應中沒有文字內容')
+  ) {
+    return {
+      ok: false,
+      message: `${providerLabel} 金鑰可連線，但測試模型沒有返回文字，請稍後重試。`
+    }
+  }
   if (error instanceof TypeError) {
     return { ok: false, message: '網路連線失敗，請檢查網路後重試。' }
   }
