@@ -46,7 +46,9 @@ function status(patch: Partial<AppUpdateStatus>): AppUpdateStatus {
 function render(
   updateStatus: AppUpdateStatus | null,
   activeTab: AppTab = 'analyze',
-  onTabChange: (tab: AppTab) => void = () => undefined
+  onTabChange: (tab: AppTab) => void = () => undefined,
+  onDownloadUpdate: () => void = () => undefined,
+  confirmUpdate: (message: string) => boolean = () => false
 ): TestRenderer.ReactTestRenderer {
   return TestRenderer.create(
     <AppShell
@@ -59,10 +61,81 @@ function render(
       onRetryLoad={() => undefined}
       onRetrySave={() => undefined}
       onAnalysisCommandMountChange={() => undefined}
+      onDownloadUpdate={onDownloadUpdate}
+      confirmUpdate={confirmUpdate}
     >
       <div />
     </AppShell>
   )
+}
+
+{
+  let prompts = 0
+  let downloads = 0
+  const available = status({
+    phase: 'available',
+    availableVersion: '0.4.2',
+    message: '发现新版本 0.4.2。'
+  })
+  let renderer: TestRenderer.ReactTestRenderer
+  TestRenderer.act(() => {
+    renderer = render(
+      available,
+      'analyze',
+      () => undefined,
+      () => {
+        downloads++
+      },
+      (message) => {
+        prompts++
+        return message.includes('0.4.2')
+      }
+    )
+  })
+  check('发现新版会主动询问一次', prompts === 1, prompts)
+  check('同意后才开始下载', downloads === 1, downloads)
+
+  TestRenderer.act(() => {
+    renderer!.update(
+      <AppShell
+        activeTab="analyze"
+        onTabChange={() => undefined}
+        updateStatus={available}
+        dataError={null}
+        dataRecoveryRequired={false}
+        dataRecoveryBusy={false}
+        onRetryLoad={() => undefined}
+        onRetrySave={() => undefined}
+        onAnalysisCommandMountChange={() => undefined}
+        onDownloadUpdate={() => {
+          downloads++
+        }}
+        confirmUpdate={() => {
+          prompts++
+          return true
+        }}
+      >
+        <div />
+      </AppShell>
+    )
+  })
+  check('同一版本在同次启动不重复询问', prompts === 1, prompts)
+}
+
+{
+  let downloads = 0
+  TestRenderer.act(() => {
+    render(
+      status({ phase: 'available', availableVersion: '0.4.2' }),
+      'analyze',
+      () => undefined,
+      () => {
+        downloads++
+      },
+      () => false
+    )
+  })
+  check('选择稍后不会下载', downloads === 0, downloads)
 }
 
 function chips(

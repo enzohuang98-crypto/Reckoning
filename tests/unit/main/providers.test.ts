@@ -16,10 +16,14 @@ import { AnthropicProvider } from '../../../src/main/ai/providers/AnthropicProvi
 import { OpenAIProvider } from '../../../src/main/ai/providers/OpenAIProvider'
 import { OpenAICompatibleProvider } from '../../../src/main/ai/providers/OpenAICompatibleProvider'
 import {
+  describeCredentialTestError,
   extractApiErrorMessage,
   readJsonResponseBounded
 } from '../../../src/main/ai/http'
-import { GeminiProvider } from '../../../src/main/ai/providers/GeminiProvider'
+import {
+  GEMINI_CREDENTIAL_TEST_TIMEOUT_MS,
+  GeminiProvider
+} from '../../../src/main/ai/providers/GeminiProvider'
 import { modelRegistry, UnsupportedModelError } from '../../../src/main/ai/ModelRegistry'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
 import {
@@ -34,6 +38,17 @@ import {
 
 let passed = 0
 let failed = 0
+
+check(
+  '官方金钥实际生成验证保留 30 秒合理回应时间',
+  GEMINI_CREDENTIAL_TEST_TIMEOUT_MS === 30_000,
+  GEMINI_CREDENTIAL_TEST_TIMEOUT_MS
+)
+check(
+  'Gemini 没有文字回应时提供可诊断讯息',
+  describeCredentialTestError(new Error('Gemini 回應中沒有文字內容。'), 'Gemini')
+    .message.includes('沒有返回文字')
+)
 
 function check(name: string, cond: boolean, detail?: unknown): void {
   if (cond) {

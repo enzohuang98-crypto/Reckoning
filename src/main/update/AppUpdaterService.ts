@@ -62,7 +62,7 @@ export class AppUpdaterService {
         phase: 'available',
         availableVersion: info.version,
         downloadPercent: undefined,
-        message: `發現新版本 ${info.version}，正在自动下载。`
+        message: `發現新版本 ${info.version}，是否要現在下載更新？`
       })
     })
     this.updater.on('update-not-available', () => {

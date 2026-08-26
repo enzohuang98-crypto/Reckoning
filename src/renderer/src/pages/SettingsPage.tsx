@@ -34,7 +34,7 @@ import { saveSettings } from '../storage/localSettings'
 import { withTimeout } from '../utils/withTimeout'
 
 const SECRET_OPERATION_TIMEOUT_MS = 10_000
-const AI_CONNECT_TIMEOUT_MS = 25_000
+const AI_CONNECT_TIMEOUT_MS = 45_000
 const SECRET_TIMEOUT_MESSAGE = '操作逾時，請確認磁碟權限或重試。'
 
 interface Props {
@@ -487,6 +487,9 @@ export function SettingsPage({
               onExportBackup={() => void exportBackup()}
               onImportBackup={() => void importBackup()}
               onCheckUpdate={() => void runUpdateAction(() => window.api.update.check())}
+              onDownloadUpdate={() =>
+                void runUpdateAction(() => window.api.update.download())
+              }
               onInstallUpdate={() =>
                 void runUpdateAction(() => window.api.update.install())
               }
