@@ -35,11 +35,40 @@ export const GEMINI_CREDENTIAL_TEST_TIMEOUT_MS = 30_000
 interface GeminiGenerateContentResponse {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string; thought?: boolean }> }
+    finishReason?: string
   }>
+  promptFeedback?: { blockReason?: string }
   usageMetadata?: {
     promptTokenCount?: number
     candidatesTokenCount?: number
     thoughtsTokenCount?: number
+  }
+}
+
+class GeminiEmptyResponseError extends Error {
+  constructor(
+    readonly finishReason: string | undefined,
+    readonly blockReason: string | undefined,
+    readonly thoughtsTokenCount: number
+  ) {
+    super('Gemini 回應中沒有文字內容。')
+    this.name = 'GeminiEmptyResponseError'
+  }
+}
+
+function describeEmptyGeminiResponse(
+  error: GeminiEmptyResponseError
+): AITestCredentialResult {
+  const reason = error.blockReason ?? error.finishReason
+  if (reason) {
+    return {
+      ok: false,
+      message: `Gemini 金鑰可連線，但測試請求沒有返回文字（${reason}）。`
+    }
+  }
+  return {
+    ok: false,
+    message: 'Gemini 金鑰可連線，但測試模型沒有返回文字，請稍後重試。'
   }
 }
 
@@ -114,13 +143,18 @@ export class GeminiProvider implements AIProvider {
     }
 
     const data = await readJsonResponseBounded<GeminiGenerateContentResponse>(res)
-    const text = data.candidates?.[0]?.content?.parts
+    const candidate = data.candidates?.[0]
+    const text = candidate?.content?.parts
       ?.filter((part) => !part.thought)
       ?.map((part) => part.text ?? '')
       .join('\n')
       .trim()
     if (!text) {
-      throw new Error('Gemini 回應中沒有文字內容。')
+      throw new GeminiEmptyResponseError(
+        candidate?.finishReason,
+        data.promptFeedback?.blockReason,
+        data.usageMetadata?.thoughtsTokenCount ?? 0
+      )
     }
 
     const usage = data.usageMetadata
@@ -177,13 +211,32 @@ export class GeminiProvider implements AIProvider {
     _baseUrlOverride?: string,
     timeoutMs = GEMINI_CREDENTIAL_TEST_TIMEOUT_MS
   ): Promise<AITestCredentialResult> {
+    const request = credentialTestRequest(this.id, model, apiKey)
+    const signal = AbortSignal.timeout(timeoutMs)
     try {
-      await this.generateExplanation(
-        credentialTestRequest(this.id, model, apiKey),
-        AbortSignal.timeout(timeoutMs)
-      )
+      await this.generateExplanation(request, signal)
       return credentialTestSucceeded(this.displayName, model)
     } catch (error) {
+      if (
+        error instanceof GeminiEmptyResponseError &&
+        !error.blockReason &&
+        (error.finishReason === 'MAX_TOKENS' || error.thoughtsTokenCount > 0)
+      ) {
+        try {
+          await this.generateExplanation(
+            { ...request, maxOutputTokens: 256 },
+            signal
+          )
+          return credentialTestSucceeded(this.displayName, model)
+        } catch (retryError) {
+          return retryError instanceof GeminiEmptyResponseError
+            ? describeEmptyGeminiResponse(retryError)
+            : describeCredentialTestError(retryError, 'Gemini')
+        }
+      }
+      if (error instanceof GeminiEmptyResponseError) {
+        return describeEmptyGeminiResponse(error)
+      }
       return describeCredentialTestError(error, 'Gemini')
     }
   }

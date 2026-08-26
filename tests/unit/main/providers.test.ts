@@ -885,6 +885,60 @@ async function main(): Promise<void> {
     )
   }
   {
+    let attempt = 0
+    const { server, port, requests } = await startMockServer(() => {
+      attempt++
+      return attempt === 1
+        ? [
+            200,
+            {
+              candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }],
+              usageMetadata: {
+                promptTokenCount: 5,
+                candidatesTokenCount: 0,
+                thoughtsTokenCount: 32
+              }
+            }
+          ]
+        : [
+            200,
+            {
+              candidates: [
+                { finishReason: 'STOP', content: { parts: [{ text: 'OK' }] } }
+              ],
+              usageMetadata: {}
+            }
+          ]
+    })
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('AIza-thinking', 'gemini-3.7-flash')
+    server.close()
+    const budgets = requests.map((request) =>
+      (request.body as { generationConfig?: { maxOutputTokens?: number } })
+        .generationConfig?.maxOutputTokens
+    )
+    check('thinking 用完短輸出預算時，以有限的較大預算重試後成功', result.ok === true, result)
+    check('Gemini 金鑰測試最多重試一次', requests.length === 2, requests.length)
+    check('重試只把測試輸出預算從 32 提高到 256', budgets.join(',') === '32,256', budgets)
+  }
+  {
+    const { server, port, requests } = await startMockServer(() => [
+      200,
+      {
+        promptFeedback: { blockReason: 'SAFETY' },
+        candidates: []
+      }
+    ])
+    const provider = new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+    const result = await provider.testCredential('AIza-blocked', 'gemini-3.7-flash')
+    server.close()
+    check(
+      '提示被阻擋時不重試，並顯示 Gemini 回傳的原因',
+      result.ok === false && result.message.includes('SAFETY') && requests.length === 1,
+      { result, requestCount: requests.length }
+    )
+  }
+  {
     const { server, port } = await startMockServer(() => [
       401,
       { error: { message: 'API key not valid' } }
