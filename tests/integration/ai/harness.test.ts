@@ -241,30 +241,15 @@ class TransientRetryProvider implements AIProvider {
   }
 }
 
-class StagnationProvider implements AIProvider {
+class LateTransientProvider implements AIProvider {
   readonly id = 'openai' as const
-  readonly displayName = 'Fake stagnation provider'
-  calls = 0
+  readonly displayName = 'Fake late transient provider'
+  attempts = 0
 
   async generateExplanation() {
-    this.calls++
-    const outputs = [
-      '{"bestMovePurpose":"炮二平五控制中路。","userMoveProblem":"馬八進七延後中路計畫。","consequences":[{"id":"K1","category":"initiative_loss","summary":"失去先手。","opponentUse":"黑方馬8進7出子。","boardImpact":"黑方先完成一步部署。","supportingMoves":["馬八進七","馬8進7"],"evidenceIds":["E2"],"verified":true}],"contradictions":[],"enoughEvidence":false}',
-      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過炮二平五立即控制中路的時機。","consequences":[{"id":"K1","category":"initiative_loss","summary":"馬八進七讓炮二平五延後到第三手才補，紅方中路先手被推遲。","opponentUse":"黑方在馬八進七後立即馬8進7，把本來要面對中炮壓力的時間拿去出子。","boardImpact":"紅方第三手才炮二平五，黑方已先完成馬8進7，紅方中路計畫慢一拍。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E3"],"verified":true},{"id":"K2","category":"opponent_development","summary":"炮二平五被延後後，黑方可以接馬2進3補齊另一翼馬。","opponentUse":"黑方先馬8進7，再在紅方炮二平五後馬2進3，兩翼馬都出動。","boardImpact":"到馬2進3時，黑方左右馬已連續完成部署，紅方只補回中炮，局面主動性下降。","supportingMoves":["馬8進7","炮二平五","馬2進3"],"evidenceIds":["E3"],"verified":true}],"contradictions":[],"enoughEvidence":true}',
-      '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，讓炮二平五延後；黑方可先馬8進7，等紅方補炮二平五後再馬2進3，左右馬都完成部署，紅方中路計畫慢一拍。","directAnswerEvidenceIds":["E3"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五要立即控制中路，避免黑方先從容出馬。","evidenceIds":["E3"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七把炮二平五延後，錯過第一時間建立中路壓力的機會。","evidenceIds":["E3"],"causal":{"cause":"因為先走馬八進七而非炮二平五","mechanism":"第一時間的中路壓制被推遲","affected":"紅方中炮與中路攻勢","opponentUse":"黑方趁機馬8進7先出子","consequence":"紅方要到第三手才補回中炮，先手節奏被拖慢"}}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方先用馬8進7出子，等紅方炮二平五後再馬2進3，兩翼馬都取得發展。","evidenceIds":["E3"],"causal":{"cause":"因為馬八進七沒有立即施壓","mechanism":"黑方獲得連續出子的節奏完成部署","affected":"黑方雙馬與整體陣形","opponentUse":"黑方接連走馬8進7與馬2進3","consequence":"黑方兩翼馬完成部署，紅方中路計畫慢一拍"}}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"主線是馬八進七、馬8進7、炮二平五、馬2進3；到馬2進3時，黑方左右馬已連續完成部署，紅方只補回中炮。","evidenceIds":["E3"],"causal":{"cause":"因為馬八進七後黑方馬8進7","mechanism":"紅方被迫第三手才炮二平五控制中路","affected":"紅方中路與先手節奏","opponentUse":"黑方再走馬2進3補齊另一翼","consequence":"黑方左右馬連續完成部署，紅方攻勢延後"}}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先走是先控中路；而馬八進七後黑方馬8進7，紅方再炮二平五，黑方還能馬2進3，紅方中路計畫慢一拍。","evidenceIds":["E3"],"causal":{"cause":"因為炮二平五與馬八進七的次序互換","mechanism":"中路控制與出子節奏易手","affected":"紅方先手與黑方陣形","opponentUse":"黑方按馬8進7、馬2進3從容應對","consequence":"紅方需要多花一手補回中炮，黑方部署領先"}}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問最佳著法是否在搶立即控制點，再檢查普通出子會不會讓對手連續完成部署。","evidenceIds":["E3"]}]}],"warnings":[]}',
-      '{"unsupportedClaimIds":[],"reasons":[]}'
-    ]
-    return {
-      text:
-        this.calls === 1
-          ? combineAuditAndAnswer(outputs[1], outputs[2])
-          : outputs[3] ?? '{}',
-      provider: this.id,
-      model: 'fake-model',
-      createdAt: Date.now(),
-      groundedOnEngineData: true as const,
-      usage: { inputTokens: 10, outputTokens: 20 }
-    }
+    this.attempts += 1
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    throw new Error('OpenAI-compatible API 錯誤 (503)：temporarily unavailable')
   }
 
   async *generateExplanationStream(): AsyncIterable<never> {
@@ -1397,18 +1382,38 @@ async function main(): Promise<void> {
     })
   )
 
-  const hangingProvider = new HangingInitialProvider()
-  const softTimeoutTraces: HarnessTrace[] = []
-  const softTimeoutStartedAt = Date.now()
-  const softTimeoutResult = await runExplanationHarness(
+  const shallowAnalysis: EngineAnalysis = {
+    ...engineAnalysis,
+    principalVariation: [engineAnalysis.bestMove],
+    displayPrincipalVariation: [engineAnalysis.displayBestMove],
+    userMovePrincipalVariation: [
+      engineAnalysis.userMove as string,
+      'h9g7'
+    ],
+    displayUserMovePrincipalVariation: [
+      engineAnalysis.displayUserMove as string,
+      '馬8進7'
+    ]
+  }
+  const shallowSession: AnalysisSession = {
+    ...session,
+    analysisId: 'analysis-shallow-initial-lines',
+    engineAnalysis: shallowAnalysis,
+    moveComparison: compareMove(shallowAnalysis)
+  }
+  const shallowEvidenceProvider = new FakeProvider()
+  const shallowEvidenceTraces: HarnessTrace[] = []
+  let shallowEvidenceResearchCalls = 0
+  await runExplanationHarness(
     {
-      requestId: 'ai-request-initial-soft-timeout',
-      analysisId: session.analysisId,
+      requestId: 'ai-request-shallow-initial-lines',
+      analysisId: shallowSession.analysisId,
       provider: 'openai',
       model: 'fake-model',
       userLevel: 'intermediate',
       explanationStyle: 'long_analytical',
       language: 'zh-TW',
+      attachedMove: shallowAnalysis.userMove,
       answerMode: 'research',
       budget: {
         engineTimeMs: 3000,
@@ -1418,97 +1423,151 @@ async function main(): Promise<void> {
       }
     },
     {
-      provider: hangingProvider,
+      provider: shallowEvidenceProvider,
       apiKey: 'secret',
       model: 'fake-model',
-      session,
+      session: shallowSession,
       registry: {
         list: () => ({
           installations: [],
           activeEngineId: 'engine-1',
           verificationEngineId: null
         }),
-        getAdapter: () => null
+        getAdapter: () => ({
+          analyzePosition: async () => {
+            shallowEvidenceResearchCalls += 1
+            return engineAnalysis
+          }
+        })
       } as never,
       traceStore: {
-        save: (trace: HarnessTrace) => softTimeoutTraces.push(trace)
+        save: (trace: HarnessTrace) => shallowEvidenceTraces.push(trace)
       } as never,
       signal: new AbortController().signal,
       onProgress: () => undefined,
-      timing: { initialMoveFirstCallTimeoutMs: 10 }
+      timing: { minResearchRoundMs: 1, maxResearchRoundMs: 1 }
     }
   )
   check(
-    '首輪服務卡住時在內部軟截止後保留引擎主線，不等外層 90 秒取消',
+    '首選線少於兩手或實戰線少於三手時，先做一次短引擎加深再送模型',
+    shallowEvidenceResearchCalls === 1 &&
+      shallowEvidenceTraces.at(-1)?.engineRounds === 1 &&
+      shallowEvidenceProvider.prompts[0]?.includes('馬2進3'),
+    JSON.stringify({
+      engineCalls: shallowEvidenceResearchCalls,
+      engineRounds: shallowEvidenceTraces.at(-1)?.engineRounds
+    })
+  )
+
+  const hangingProvider = new HangingInitialProvider()
+  const softTimeoutTraces: HarnessTrace[] = []
+  const softTimeoutStartedAt = Date.now()
+  let softTimeoutError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-initial-soft-timeout',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 4,
+          maxOutputTokens: 8000
+        }
+      },
+      {
+        provider: hangingProvider,
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: {
+          save: (trace: HarnessTrace) => softTimeoutTraces.push(trace)
+        } as never,
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+        timing: { initialMoveFirstCallTimeoutMs: 10 }
+      }
+    )
+  } catch (error) {
+    softTimeoutError = error
+  }
+  check(
+    '首輪服務卡住時在內部軟截止後明確失敗，不交付假解說',
     hangingProvider.calls === 1 &&
       Date.now() - softTimeoutStartedAt < 500 &&
-      softTimeoutResult.warnings.some((warning) =>
-        warning.includes('沒有誤報為引擎證據不足')
-      )
+      softTimeoutError instanceof Error &&
+      softTimeoutError.message.includes('AI 教練模型未在時限內完成')
   )
   check(
-    '首輪軟截止屬安全收尾，trace 為 completed 且正文仍有完整五段',
-    softTimeoutTraces.at(-1)?.status === 'completed' &&
-      INITIAL_MOVE_EXPLANATION_SECTION_IDS.every((id) =>
-        softTimeoutResult.finalText.includes(
-          `### ${
-            {
-              [HARNESS_SECTION_IDS.directConclusion]: '直接結論',
-              [HARNESS_SECTION_IDS.actualMoveProblem]: '實戰步問題',
-              [HARNESS_SECTION_IDS.bestMovePlan]: 'AI 首選',
-              [HARNESS_SECTION_IDS.opponentExploitation]: '對手利用與後果',
-              [HARNESS_SECTION_IDS.practicalPrinciple]: '實戰原則'
-            }[id]
-          }`
-        )
-      )
+    '首輪軟截止 trace 為 failed，且不保存五段模板正文',
+    softTimeoutTraces.at(-1)?.status === 'failed' &&
+      softTimeoutTraces.at(-1)?.finalText === undefined
   )
 
   const permanentErrorProvider = new PermanentProviderErrorProvider()
   const permanentErrorTraces: HarnessTrace[] = []
-  const permanentErrorResult = await runExplanationHarness(
-    {
-      requestId: 'ai-request-provider-error-fallback',
-      analysisId: session.analysisId,
-      provider: 'openai',
-      model: 'fake-model',
-      userLevel: 'intermediate',
-      explanationStyle: 'long_analytical',
-      language: 'zh-TW',
-      answerMode: 'research',
-      budget: {
-        engineTimeMs: 3000,
-        maxEngineRounds: 1,
-        maxModelCalls: 4,
-        maxOutputTokens: 8000
+  let permanentProviderError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-provider-error-fallback',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 4,
+          maxOutputTokens: 8000
+        }
+      },
+      {
+        provider: permanentErrorProvider,
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: {
+          save: (trace: HarnessTrace) => permanentErrorTraces.push(trace)
+        } as never,
+        signal: new AbortController().signal,
+        onProgress: () => undefined
       }
-    },
-    {
-      provider: permanentErrorProvider,
-      apiKey: 'secret',
-      model: 'fake-model',
-      session,
-      registry: {
-        list: () => ({
-          installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
-        }),
-        getAdapter: () => null
-      } as never,
-      traceStore: {
-        save: (trace: HarnessTrace) => permanentErrorTraces.push(trace)
-      } as never,
-      signal: new AbortController().signal,
-      onProgress: () => undefined
-    }
-  )
+    )
+  } catch (error) {
+    permanentProviderError = error
+  }
   check(
-    '模型服務錯誤會安全收尾但不再誤記成無效 JSON',
+    '模型服務錯誤會明確失敗且不再誤記成無效 JSON',
     permanentErrorProvider.calls === 1 &&
-      permanentErrorResult.warnings.some((warning) =>
-        warning.includes('已保留兩條引擎主線')
-      ) &&
+      permanentProviderError instanceof Error &&
+      permanentProviderError.message.includes('(401)') &&
+      permanentErrorTraces.at(-1)?.status === 'failed' &&
       permanentErrorTraces.at(-1)?.validationErrors.some((error) =>
         error.includes('AI 服務未完成')
       ) &&
@@ -1520,68 +1579,59 @@ async function main(): Promise<void> {
   const rateLimitedProvider = new RateLimitedProvider()
   const rateLimitedProgress: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
   const rateLimitedTraces: HarnessTrace[] = []
-  const rateLimitedResult = await runExplanationHarness(
-    {
-      requestId: 'ai-request-rate-limited-fallback',
-      analysisId: session.analysisId,
-      provider: 'gemini',
-      model: 'gemini-3.5-flash',
-      userLevel: 'intermediate',
-      explanationStyle: 'long_analytical',
-      language: 'zh-TW',
-      answerMode: 'research',
-      budget: {
-        engineTimeMs: 3000,
-        maxEngineRounds: 1,
-        maxModelCalls: 4,
-        maxOutputTokens: 8000
+  let rateLimitedError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-rate-limited-fallback',
+        analysisId: session.analysisId,
+        provider: 'gemini',
+        model: 'gemini-3.5-flash',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 4,
+          maxOutputTokens: 8000
+        }
+      },
+      {
+        provider: rateLimitedProvider,
+        apiKey: 'secret',
+        model: 'gemini-3.5-flash',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: {
+          save: (trace: HarnessTrace) => rateLimitedTraces.push(trace)
+        } as never,
+        signal: new AbortController().signal,
+        onProgress: (event) => rateLimitedProgress.push(event)
       }
-    },
-    {
-      provider: rateLimitedProvider,
-      apiKey: 'secret',
-      model: 'gemini-3.5-flash',
-      session,
-      registry: {
-        list: () => ({
-          installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
-        }),
-        getAdapter: () => null
-      } as never,
-      traceStore: {
-        save: (trace: HarnessTrace) => rateLimitedTraces.push(trace)
-      } as never,
-      signal: new AbortController().signal,
-      onProgress: (event) => rateLimitedProgress.push(event)
-    }
-  )
-  const rateLimitedFallbackHeadings = [
-    '### 直接結論',
-    '### 實戰步問題',
-    '### AI 首選',
-    '### 對手利用與後果',
-    '### 實戰原則'
-  ]
-  const rateLimitedFallbackBody = rateLimitedResult.finalText
-    .split('\n')
-    .filter((line) => !line.startsWith('#'))
-    .join('\n')
+    )
+  } catch (error) {
+    rateLimitedError = error
+  }
   check(
     '429 限流不會以 600ms 重試繼續撞額度',
     rateLimitedProvider.calls === 1 &&
       !rateLimitedProgress.some((event) => event.phase === 'provider_retry')
   )
   check(
-    '429 限流會安全交付完整五段引擎主線說明',
-    rateLimitedResult.warnings.some((warning) =>
-      warning.includes('已保留兩條引擎主線')
-    ) &&
-      rateLimitedFallbackHeadings.every((heading) =>
-        rateLimitedResult.finalText.includes(heading)
-      ) &&
-      countHanCharacters(rateLimitedFallbackBody) >= 400
+    '429 限流不交付五段替代模板，直接保留可重試錯誤',
+    rateLimitedError instanceof Error &&
+      rateLimitedError.message.includes('(429)') &&
+      rateLimitedTraces.at(-1)?.status === 'failed' &&
+      rateLimitedTraces.at(-1)?.finalText === undefined
   )
   check(
     '429 限流 trace 記錄服務未完成而非無效 JSON',
@@ -1635,8 +1685,66 @@ async function main(): Promise<void> {
     retryProvider.attempts === 2 && retryResult.warnings.length === 0
   )
   check(
-    '服務重試會在 UI 進度流顯示原因',
-    retryProgress.some((event) => event.phase === 'provider_retry')
+    '服務重試會在 UI 進度流顯示安全的 HTTP 原因',
+    retryProgress.some(
+      (event) =>
+        event.phase === 'provider_retry' && event.message.includes('HTTP 503')
+    )
+  )
+
+  const lateTransientProvider = new LateTransientProvider()
+  const lateTransientTraces: HarnessTrace[] = []
+  const lateTransientProgress: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
+  let lateTransientError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-late-transient',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 4,
+          maxOutputTokens: 8000
+        }
+      },
+      {
+        provider: lateTransientProvider,
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: {
+          save: (trace: HarnessTrace) => lateTransientTraces.push(trace)
+        } as never,
+        signal: new AbortController().signal,
+        onProgress: (event) => lateTransientProgress.push(event),
+        timing: { initialMoveFirstCallTimeoutMs: 50 }
+      }
+    )
+  } catch (error) {
+    lateTransientError = error
+  }
+  check(
+    '剩餘不到 30 秒時不啟動注定失敗的第二次模型請求',
+    lateTransientProvider.attempts === 1 &&
+      lateTransientError instanceof Error &&
+      lateTransientError.message.includes('(503)') &&
+      lateTransientTraces.at(-1)?.modelCalls === 1 &&
+      !lateTransientProgress.some((event) => event.phase === 'provider_retry')
   )
 
   const cancelledTraces: HarnessTrace[] = []
@@ -1683,7 +1791,7 @@ async function main(): Promise<void> {
   )
   check('取消的 Harness trace 標示 cancelled', cancelledTraces.at(-1)?.status === 'cancelled')
 
-  const stagnationProvider = new StagnationProvider()
+  const stagnationProvider = new FakeProvider()
   const progressEvents: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
   let continuationRequests = 0
   const stagnationResult = await runExplanationHarness(
@@ -1761,7 +1869,7 @@ async function main(): Promise<void> {
   )
   check('首次實戰步比較直接回報既有快照深度與主線', progressEvents.some((item) => item.depth === 12 && (item.displayPrincipalVariation?.length ?? 0) > 0))
   check('首次實戰步比較不要求使用者決定是否加深', continuationRequests === 0)
-  check('使用者選擇繼續後可完成兩項具體後果', stagnationResult.finalText.includes('黑方左右馬已連續完成部署'))
+  check('既有證據足夠時可直接完成兩項具體後果', stagnationResult.finalText.includes('黑方多完成一步部署'))
 
   const ambiguousProvider = new FakeProvider()
   const noMoveEngineAnalysis: EngineAnalysis = {
@@ -2882,13 +2990,12 @@ async function main(): Promise<void> {
     scoreSignatureResult.finalText.includes('AI 首選')
   )
 
-  // 具體後果審查成功，但預算只夠一次呼叫；寫作階段撞到上限時要走保守版問答，不能讓整個請求失敗。
+  // 具體後果存在，但單次合併回答不完整時不得用固定模板冒充完整解說。
   const writerBudgetProvider = new WriterBudgetProvider()
   const writerBudgetTraces: HarnessTrace[] = []
   let writerBudgetError: unknown = null
-  let writerBudgetResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
   try {
-    writerBudgetResult = await runExplanationHarness(
+    await runExplanationHarness(
       {
         requestId: 'ai-request-writer-budget',
         analysisId: session.analysisId,
@@ -2928,88 +3035,63 @@ async function main(): Promise<void> {
   } catch (error) {
     writerBudgetError = error
   }
-  check('寫作階段撞到模型呼叫上限時不會讓整個請求失敗', writerBudgetError === null, writerBudgetError)
   check(
-    '撞到上限前只呼叫具體後果審查器，沒有嘗試呼叫寫作模型',
+    '單次合併回答不完整時明確失敗，不交付固定模板',
+    writerBudgetError instanceof Error &&
+      writerBudgetError.message.includes('沒有通過棋理與證據檢查'),
+    writerBudgetError
+  )
+  check(
+    '不完整首答只呼叫一次模型，不進入無界修正迴圈',
     writerBudgetProvider.calls === 1
   )
   check(
-    '單次輸出未通過且無修正預算時改用引擎證據版',
-    Boolean(writerBudgetResult?.warnings.some((warning) => warning.includes('引擎證據版')))
+    '不完整首答 trace 標示 failed 且沒有玩家可見正文',
+    writerBudgetTraces[0]?.status === 'failed' &&
+      writerBudgetTraces[0]?.finalText === undefined
   )
-  check(
-    '保守版問答仍具體引用真實對手利用方式，不是空泛帶過',
-    Boolean(writerBudgetResult?.finalText.includes('黑方以馬8進7順利完成出子'))
-  )
-  check(
-    '保守版問答仍具體引用真實盤面後果',
-    Boolean(
-      writerBudgetResult?.finalText.includes(
-        '紅方補走炮二平五後中路計畫延後，黑方陣形更完整'
-      )
-    )
-  )
-  const fallbackHeadingIndexes = [
-    '### 直接結論',
-    '### 實戰步問題',
-    '### AI 首選',
-    '### 對手利用與後果',
-    '### 實戰原則'
-  ].map((heading) => writerBudgetResult?.finalText.indexOf(heading) ?? -1)
-  check(
-    '引擎證據版 fallback 仍維持五個區塊的固定顯示順序',
-    fallbackHeadingIndexes.every(
-      (index, position) => index >= 0 && (position === 0 || index > fallbackHeadingIndexes[position - 1])
-    ),
-    fallbackHeadingIndexes.join(',')
-  )
-  const fallbackBody = (writerBudgetResult?.finalText ?? '')
-    .split('\n')
-    .filter((line) => !line.startsWith('#'))
-    .join('\n')
-  check(
-    '引擎證據版 fallback 本身也維持至少 400 個漢字的完整正文',
-    countHanCharacters(fallbackBody) >= 400,
-    countHanCharacters(fallbackBody)
-  )
-  check('撞到上限後完成狀態仍寫入 completed', writerBudgetTraces[0]?.status === 'completed')
 
   const outputTokenBoundaryProvider = new OutputTokenBoundaryProvider()
-  const outputTokenBoundaryResult = await runExplanationHarness(
-    {
-      requestId: 'ai-request-output-token-boundary',
-      analysisId: session.analysisId,
-      provider: 'openai',
-      model: 'fake-model',
-      userLevel: 'intermediate',
-      explanationStyle: 'long_analytical',
-      language: 'zh-TW',
-      answerMode: 'research',
-      budget: {
-        engineTimeMs: 3000,
-        maxEngineRounds: 1,
-        maxModelCalls: 8,
-        maxOutputTokens: 25
+  let outputTokenBoundaryError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-output-token-boundary',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 8,
+          maxOutputTokens: 25
+        }
+      },
+      {
+        provider: outputTokenBoundaryProvider,
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: () => undefined } as never,
+        signal: new AbortController().signal,
+        onProgress: () => undefined
       }
-    },
-    {
-      provider: outputTokenBoundaryProvider,
-      apiKey: 'secret',
-      model: 'fake-model',
-      session,
-      registry: {
-        list: () => ({
-          installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
-        }),
-        getAdapter: () => null
-      } as never,
-      traceStore: { save: () => undefined } as never,
-      signal: new AbortController().signal,
-      onProgress: () => undefined
-    }
-  )
+    )
+  } catch (error) {
+    outputTokenBoundaryError = error
+  }
   check(
     '每次 provider 請求的 maxOutputTokens 不會高於整輪真正剩餘額度',
     outputTokenBoundaryProvider.requestedMaxTokens.length === 1 &&
@@ -3017,9 +3099,10 @@ async function main(): Promise<void> {
     outputTokenBoundaryProvider.requestedMaxTokens.join(',')
   )
   check(
-    '一鍵首輪不追加內容修正呼叫，並安全收斂到保守版',
+    '輸出額度不足時不追加內容修正呼叫，也不交付保守模板',
     outputTokenBoundaryProvider.calls === 1 &&
-      outputTokenBoundaryResult.warnings.some((warning) => warning.includes('引擎證據版'))
+      outputTokenBoundaryError instanceof Error &&
+      outputTokenBoundaryError.message.includes('沒有通過棋理與證據檢查')
   )
 
   console.log('\n## 一鍵品質收斂（loop engineering）')
@@ -3027,54 +3110,55 @@ async function main(): Promise<void> {
   // 一個區塊空泛：不得再花第二輪內容呼叫而撞上 30 秒硬截止。
   const rewriteProvider = new RewriteLoopProvider()
   const rewriteProgress: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
-  const rewriteResult = await runExplanationHarness(
-    {
-      requestId: 'ai-request-rewrite-loop',
-      analysisId: session.analysisId,
-      provider: 'openai',
-      model: 'fake-model',
-      userLevel: 'intermediate',
-      explanationStyle: 'long_analytical',
-      language: 'zh-TW',
-      answerMode: 'research',
-      budget: {
-        engineTimeMs: 3000,
-        maxEngineRounds: 1,
-        maxModelCalls: 8,
-        maxOutputTokens: 8000
+  let rewriteError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-rewrite-loop',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 8,
+          maxOutputTokens: 8000
+        }
+      },
+      {
+        provider: rewriteProvider,
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: () => undefined } as never,
+        signal: new AbortController().signal,
+        onProgress: (payload) => rewriteProgress.push(payload)
       }
-    },
-    {
-      provider: rewriteProvider,
-      apiKey: 'secret',
-      model: 'fake-model',
-      session,
-      registry: {
-        list: () => ({
-          installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
-        }),
-        getAdapter: () => null
-      } as never,
-      traceStore: { save: () => undefined } as never,
-      signal: new AbortController().signal,
-      onProgress: (payload) => rewriteProgress.push(payload)
-    }
-  )
+    )
+  } catch (error) {
+    rewriteError = error
+  }
   check(
     '空泛首答不啟動第二次內容呼叫',
     rewriteProvider.calls === 1,
     rewriteProvider.calls
   )
   check(
-    '一鍵首答失敗後直接使用引擎證據版，不把空泛文字交付棋手',
-    rewriteResult.warnings.some((warning) => warning.includes('引擎證據版')) &&
-      !rewriteResult.finalText.includes('黑方大致上可以獲得不錯的機會')
-  )
-  check(
-    '引擎證據版仍保留首輪已驗證的具體後果',
-    rewriteResult.finalText.includes('黑方以馬8進7順利完成出子')
+    '一鍵首答空泛時明確失敗，不把空泛文字或替代模板交付棋手',
+    rewriteError instanceof Error &&
+      rewriteError.message.includes('沒有通過棋理與證據檢查')
   )
   check(
     '一鍵首答失敗不回報虛假的局部重寫進度',
@@ -3084,58 +3168,61 @@ async function main(): Promise<void> {
   // 模型即使願意再回空泛內容，也不得進入內容重試迴圈。
   const stubbornProvider = new StubbornVagueProvider()
   const stubbornTraces: HarnessTrace[] = []
-  const stubbornResult = await runExplanationHarness(
-    {
-      requestId: 'ai-request-stubborn-vague',
-      analysisId: session.analysisId,
-      provider: 'openai',
-      model: 'fake-model',
-      userLevel: 'intermediate',
-      explanationStyle: 'long_analytical',
-      language: 'zh-TW',
-      answerMode: 'research',
-      budget: {
-        engineTimeMs: 3000,
-        maxEngineRounds: 1,
-        maxModelCalls: 8,
-        maxOutputTokens: 8000
+  let stubbornError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-stubborn-vague',
+        analysisId: session.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3000,
+          maxEngineRounds: 1,
+          maxModelCalls: 8,
+          maxOutputTokens: 8000
+        }
+      },
+      {
+        provider: stubbornProvider,
+        apiKey: 'secret',
+        model: 'fake-model',
+        session,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: (trace: HarnessTrace) => stubbornTraces.push(trace) } as never,
+        signal: new AbortController().signal,
+        onProgress: () => undefined
       }
-    },
-    {
-      provider: stubbornProvider,
-      apiKey: 'secret',
-      model: 'fake-model',
-      session,
-      registry: {
-        list: () => ({
-          installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
-        }),
-        getAdapter: () => null
-      } as never,
-      traceStore: { save: (trace: HarnessTrace) => stubbornTraces.push(trace) } as never,
-      signal: new AbortController().signal,
-      onProgress: () => undefined
-    }
-  )
+    )
+  } catch (error) {
+    stubbornError = error
+  }
   check(
     '初次內容不合格 → 恰好一次模型呼叫後停止',
     stubbornProvider.calls === 1,
     stubbornProvider.calls
   )
   check(
-    '首輪不合格後改用引擎證據版',
-    stubbornResult.warnings.some((warning) => warning.includes('引擎證據版'))
+    '首輪不合格後回傳可重試失敗，不交付引擎證據模板',
+    stubbornError instanceof Error &&
+      stubbornError.message.includes('沒有通過棋理與證據檢查')
   )
   check(
-    '保守版問答仍保留已驗證的具體後果',
-    stubbornResult.finalText.includes('黑方以馬8進7順利完成出子')
-  )
-  check(
-    'trace 記錄不追加模型呼叫的收斂原因',
+    'trace 記錄未交付模板的品質失敗原因',
+    stubbornTraces[0]?.status === 'failed' &&
     (stubbornTraces[0]?.validationErrors ?? []).some((error) =>
-      error.includes('不再追加模型呼叫')
+      error.includes('未交付五段模板')
     )
   )
 

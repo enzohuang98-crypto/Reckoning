@@ -45,6 +45,7 @@ import type { CausalChain } from '@shared/types/Harness'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../storage/HarnessTraceStore'
+import { aiErrorStatus } from './http'
 import type { PreparedExplanationExecution } from './prepareExplanationExecution'
 
 interface HarnessTask {
@@ -134,7 +135,7 @@ export interface HarnessRuntimeDependencies {
     minResearchRoundMs: number
     maxResearchRoundMs: number
     continuationTimeoutMs: number
-    /** 一鍵實戰解說首輪模型呼叫的內部軟截止；必須早於 renderer 的 90 秒硬截止。 */
+    /** 一鍵實戰解說首輪模型階段的內部軟截止；必須早於 renderer 的 120 秒硬截止。 */
     initialMoveFirstCallTimeoutMs: number
   }>
 }
@@ -146,7 +147,11 @@ const MIN_RESEARCH_ROUND_MS = 20_000
 const MAX_RESEARCH_ROUND_MS = 60_000
 /** 使用者未於此時限內回應「是否繼續」，自動改用目前證據收尾（不可直接失敗）。 */
 const CONTINUATION_TIMEOUT_MS = 120_000
-const INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS = 75_000
+const INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS = 100_000
+const INITIAL_MOVE_MIN_RETRY_WINDOW_MS = 30_000
+const INITIAL_MOVE_EVIDENCE_RESEARCH_MAX_MS = 5_000
+const INITIAL_MOVE_MIN_BEST_LINE_PLIES = 2
+const INITIAL_MOVE_MIN_USER_LINE_PLIES = 3
 const INITIAL_MOVE_TARGET_MIN_HAN_CHARACTERS = 500
 
 /** waitForUserContinuation 逾時的專屬訊號；外層 catch 會改用現有證據收尾，不視為失敗。 */
@@ -268,6 +273,38 @@ class HarnessModelPhaseTimeoutError extends Error {
     super('模型階段超過一鍵解說內部軟時限。')
     this.name = 'HarnessModelPhaseTimeoutError'
   }
+}
+
+export class HarnessExplanationUnavailableError extends Error {
+  constructor(
+    public readonly reason:
+      | 'model_timeout'
+      | 'invalid_model_response'
+      | 'model_budget'
+      | 'insufficient_engine_evidence'
+      | 'quality_validation_failed',
+    message: string
+  ) {
+    super(message)
+    this.name = 'HarnessExplanationUnavailableError'
+  }
+}
+
+function hasAdequateInitialMoveEvidence(
+  evidence: HarnessEvidence[],
+  attachedMove: string | undefined
+): boolean {
+  if (!attachedMove) return true
+  return evidence.some((item) => {
+    const analysis = item.analysis
+    return (
+      analysis.userMove === attachedMove &&
+      (analysis.displayPrincipalVariation?.length ?? 0) >=
+        INITIAL_MOVE_MIN_BEST_LINE_PLIES &&
+      (analysis.displayUserMovePrincipalVariation?.length ?? 0) >=
+        INITIAL_MOVE_MIN_USER_LINE_PLIES
+    )
+  })
 }
 
 function publicAnalysis(
@@ -1507,8 +1544,7 @@ function buildFallbackAnswer(
   evidence: HarnessEvidence[],
   audit?: ConsequenceAudit,
   hasUserMove = Boolean(session.userMove ?? session.engineAnalysis.userMove),
-  language: ExplanationLanguage = 'zh-TW',
-  context?: { modelFailureMessage?: string; userMoveReason?: string }
+  language: ExplanationLanguage = 'zh-TW'
 ): HarnessAnswer {
   const analysis = session.engineAnalysis
   const evidenceId = evidence[0]?.id
@@ -1546,8 +1582,6 @@ function buildFallbackAnswer(
   const firstOpponentUse = sentenceFragment(firstFinding?.opponentUse)
   const firstBoardImpact = sentenceFragment(firstFinding?.boardImpact)
   const secondBoardImpact = sentenceFragment(secondFinding?.boardImpact)
-  const modelFailureMessage = sentenceFragment(context?.modelFailureMessage)
-  const userMoveReason = sentenceFragment(context?.userMoveReason)
   const dualComparison =
     session.dualEngineComparison ??
     buildDualEngineComparison(
@@ -1648,9 +1682,7 @@ function buildFallbackAnswer(
           id: 'F1',
           text:
             bestMovePurpose ||
-            (modelFailureMessage
-              ? `引擎首選${bestMove}，完整主線為：${bestLineText}。${modelFailureMessage}，因此本次沒有把尚未完成的模型判讀冒充成戰略結論。`
-              : `引擎首選${bestMove}，但目前證據只能確認主線為：${bestLineText}，尚不能安全推定更具體的戰略目的。`),
+            `引擎首選${bestMove}，但目前證據只能確認主線為：${bestLineText}，尚不能安全推定更具體的戰略目的。`,
           evidenceIds
         }
       ]
@@ -1663,9 +1695,7 @@ function buildFallbackAnswer(
           id: 'F2',
           text:
             userMoveProblem ||
-            (modelFailureMessage
-              ? `${modelFailureMessage}；Pikafish 已取得${userMove}的後續主線，所以這不是「引擎證據不足」。${userMoveReason ? `你原本的想法是「${userMoveReason}」，本次不在模型未完成時擅自判定這個想法正確或錯誤。` : ''}`
-              : `目前引擎證據不足，無法確認${userMove}錯失的具體機會。`),
+            `目前引擎證據不足，無法確認${userMove}錯失的具體機會。`,
           evidenceIds,
           findingIds: findings.map((item) => item.id)
         },
@@ -1674,9 +1704,7 @@ function buildFallbackAnswer(
           text:
             firstFinding && secondFinding
               ? `AI 首選${bestMove}的目的，是${bestMovePurpose || sentenceFragment(firstFinding.summary)}。相較之下，${userMove}讓對手${firstOpponentUse}，並導致${secondBoardImpact}。`
-              : modelFailureMessage
-                ? `兩條引擎主線都已保留；${modelFailureMessage}，因此請重試 AI 解說取得完整因果比較。`
-                : '目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。',
+              : '目前主線不足以完成兩種著法的因果比較，不能只用原始分數下結論。',
           evidenceIds,
           findingIds: findings.map((item) => item.id)
         }
@@ -1690,9 +1718,7 @@ function buildFallbackAnswer(
           id: 'F3',
           text:
             (firstOpponentUse ? `${firstOpponentUse}。` : '') ||
-            (modelFailureMessage
-              ? `引擎已提供雙方後續走法，但${modelFailureMessage}，本次不自行補造對手的戰略目的。`
-              : '目前引擎證據不足，無法確認對手可利用的具體方式。'),
+            '目前引擎證據不足，無法確認對手可利用的具體方式。',
           evidenceIds,
           findingIds: firstFinding ? [firstFinding.id] : []
         },
@@ -1750,36 +1776,15 @@ function buildFallbackAnswer(
           bestMovePurpose ? `是為了${bestMovePurpose}` : '保留較完整的後續選擇'
         }。對手可以${firstOpponentUse}，後續又會造成${secondBoardImpact}。`
       : `目前引擎證據不足，主線還不能證明${userMove}錯失了哪兩項具體機會，因此不能只用分數高低代替解釋。`
-  const groundedDirectAnswer =
-    modelFailureMessage && !(firstFinding && secondFinding)
-      ? `${modelFailureMessage}。Pikafish 已取得 AI 首選${bestMove}與實戰步${userMove}的完整主線；這次沒有把模型逾時誤報成「引擎證據不足」。請重試以取得棋理與因果解說。`
-      : directAnswer
   const fallbackAnswer: HarnessAnswer = {
     mode,
     title: '實戰著法解析',
-    directAnswer: groundedDirectAnswer,
+    directAnswer,
     directAnswerEvidenceIds: evidenceIds,
-    sections: normalizeSections(sections, groundedDirectAnswer, evidenceIds),
+    sections: normalizeSections(sections, directAnswer, evidenceIds),
     generalNotes: [],
     evidence,
-    warnings: [
-      modelFailureMessage
-        ? `${modelFailureMessage}；已保留兩條引擎主線，沒有誤報為引擎證據不足。`
-        : 'AI 結構化回答未通過驗證，已改用引擎證據版說明。'
-    ]
-  }
-  if (
-    countHanCharacters(playerFacingAnswerText(fallbackAnswer)) <
-    INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS
-  ) {
-    const consequenceSection = fallbackAnswer.sections.find(
-      (section) => section.id === HARNESS_SECTION_IDS.opponentExploitation
-    )
-    const consequenceClaim = consequenceSection?.claims.at(-1)
-    if (consequenceClaim) {
-      consequenceClaim.text +=
-        `為了不把引擎尚未證明的戰術寫成事實，本次只比較已取得的兩條變化：AI 首選從${bestMove}開始，後續為${bestLineText}；實戰步${userMove}的可查證變化為${userLineText}。閱讀這兩條線時，先核對走子次序是否讓中路、車路、馬腿、炮架或王區產生立即變化，再看對手最強回應是否取得將軍、捉子、開線或完成部署的節奏。若主線沒有實際出現這些機制，就不能自行補成戰術；能安全帶走的結論，是每一個錯因都必須連回真實著法、受影響棋子或線路，以及對手下一步的具體利用。最後再比較${bestMove}與${userMove}各自留下的後續選擇，確認差別來自盤面控制和走子次序，而不是只因原始評估數字不同。這樣即使證據不足，也能清楚分開已被主線支持的結果、尚待加深的推論，以及下一次分析時應優先檢查的盤面機制。`
-    }
+    warnings: ['AI 結構化回答未通過驗證，已改用引擎證據版說明。']
   }
   return fallbackAnswer
 }
@@ -2136,7 +2141,7 @@ export async function runExplanationHarness(
     enoughEvidence: false
   }
   let combinedInitialWriterText: string | null = null
-  let initialModelFailureMessage: string | undefined
+  let initialModelError: unknown
   const traceId = randomUUID()
   const primaryEngineId =
     payload.engineId ??
@@ -2161,10 +2166,10 @@ export async function runExplanationHarness(
   if (isInitialMoveComparison) {
     // The combined response owns both its audit and answer. A later section-only
     // rewrite cannot repair immutable audit errors, and live evidence showed it
-    // could consume the whole 30-second UI deadline. Initial move comparisons
+    // could consume the whole one-click UI deadline. Initial move comparisons
     // therefore use one semantic model phase (with at most one provider-level
     // transient retry), followed only by deterministic validation, grounded
-    // completion for an otherwise-valid short answer, or safe fallback.
+    // completion for an otherwise-valid short answer, or an honest failure.
     modelCallLimit = Math.min(modelCallLimit, 2)
   }
   const validationLanguage: ExplanationLanguage = hasUserMove
@@ -2340,9 +2345,22 @@ export async function runExplanationHarness(
       } catch (error) {
         rethrowAbortLikeError(error)
         if (attempt > 0 || !isTransientModelError(error)) throw error
+        if (
+          phaseDeadlineAt !== null &&
+          phaseDeadlineAt - Date.now() < INITIAL_MOVE_MIN_RETRY_WINDOW_MS
+        ) {
+          throw error
+        }
+        const status = aiErrorStatus(error)
+        const failureKind =
+          typeof status === 'number'
+            ? `HTTP ${status}`
+            : error instanceof TypeError
+              ? '網路連線'
+              : '暫時性服務錯誤'
         progress(
           'provider_retry',
-          'AI 服務暫時沒有成功回應，正在自動重試一次。'
+          `AI 服務第一次回應失敗（${failureKind}），正在自動重試一次。`
         )
         await delayWithAbort(600, deps.signal)
       }
@@ -2528,10 +2546,15 @@ export async function runExplanationHarness(
     let previousSignature = evidenceSignature(evidence)
     let lastNovelEvidenceAt = Date.now()
     let lastContinuationSignature: string | null = null
-    // Initial move comparisons and current-position explanations consume the
-    // stable primary/verification snapshots already captured by the session.
-    // No extra 20-second research round may delay the first explanation.
-    let shouldResearch = false
+    // Keep the fast captured snapshot when it already contains an opponent
+    // reply for the best line and a three-ply continuation for the played
+    // move. Shorter snapshots cannot support the causal comparison promised
+    // by the one-click explanation, so run one bounded research round first.
+    let shouldResearch =
+      isInitialMoveComparison &&
+      hasUserMove &&
+      primaryAdapter !== null &&
+      !hasAdequateInitialMoveEvidence(evidence, canonicalMove)
 
     while (!isFollowUp) {
       if (shouldResearch && engineRounds >= budget.maxEngineRounds) {
@@ -2539,11 +2562,16 @@ export async function runExplanationHarness(
         validationErrors.push('已達引擎加深輪數上限，停止加深並使用目前證據。')
       }
       if (shouldResearch && primaryAdapter) {
-        const roundMs = Math.min(
-          timing.maxResearchRoundMs,
-          Math.max(timing.minResearchRoundMs, budget.engineTimeMs) +
-            engineRounds * 10_000
-        )
+        const roundMs = isInitialMoveComparison
+          ? Math.min(
+              INITIAL_MOVE_EVIDENCE_RESEARCH_MAX_MS,
+              Math.max(3_000, budget.engineTimeMs)
+            )
+          : Math.min(
+              timing.maxResearchRoundMs,
+              Math.max(timing.minResearchRoundMs, budget.engineTimeMs) +
+                engineRounds * 10_000
+            )
         progress(
           verificationAdapter ? 'cross_verification' : 'engine_research',
           hasUserMove
@@ -2696,6 +2724,15 @@ export async function runExplanationHarness(
       }
 
       if (isInitialMoveComparison) {
+        if (!hasAdequateInitialMoveEvidence(evidence, canonicalMove)) {
+          validationErrors.push(
+            `實戰步比較主線過短：AI 首選至少需要 ${INITIAL_MOVE_MIN_BEST_LINE_PLIES} 手，實戰步至少需要 ${INITIAL_MOVE_MIN_USER_LINE_PLIES} 手。`
+          )
+          throw new HarnessExplanationUnavailableError(
+            'insufficient_engine_evidence',
+            '引擎主線仍太短，無法可靠解釋這一步。請讓局面分析再運行幾秒後重試 AI 解說。'
+          )
+        }
         const existingSnapshotLabel = deps.session.verificationEngineAnalysis
           ? '主引擎與複核引擎'
           : '主引擎'
@@ -2801,7 +2838,7 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
     "warnings":[]
   }
 }
-`, 3_500, timing.initialMoveFirstCallTimeoutMs)
+`, 2_500, timing.initialMoveFirstCallTimeoutMs)
           )
           audit = normalizeConsequenceAudit(combined.audit)
           auditErrors = validateConsequenceAudit(
@@ -2814,26 +2851,39 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
           combinedInitialWriterText = JSON.stringify(combined.answer)
         } catch (error) {
           if (error instanceof HarnessModelPhaseTimeoutError) {
-            initialModelFailureMessage = 'AI 教練模型未在內部時限內完成'
             auditErrors = [
-              '一次性審查與寫作超過內部軟時限，已保留時間改用目前引擎證據完成說明。'
+              '一次性審查與寫作超過內部軟時限，未交付不可靠的替代解說。'
             ]
+            initialModelError = new HarnessExplanationUnavailableError(
+              'model_timeout',
+              'AI 教練模型未在時限內完成，未顯示不可靠的替代解說。請重試。'
+            )
           } else if (error instanceof HarnessModelBudgetExceededError) {
-            initialModelFailureMessage = 'AI 教練模型已達本次呼叫上限'
             auditErrors = [
-              '一次性審查與寫作已達模型呼叫上限，改用目前引擎證據完成說明。'
+              '一次性審查與寫作已達模型呼叫上限，未交付不完整解說。'
             ]
+            initialModelError = new HarnessExplanationUnavailableError(
+              'model_budget',
+              'AI 教練已達本次模型呼叫上限，沒有產生可驗證的完整解說。請重試。'
+            )
           } else if (error instanceof SyntaxError) {
-            initialModelFailureMessage = 'AI 教練模型回傳的結構無法解析'
             auditErrors = ['一次性審查與寫作回傳的內容不是有效 JSON。']
+            initialModelError = new HarnessExplanationUnavailableError(
+              'invalid_model_response',
+              'AI 教練回應格式無法驗證，未顯示不可靠的替代解說。請重試。'
+            )
           } else {
             rethrowAbortLikeError(error)
-            initialModelFailureMessage = 'AI 教練服務未完成本次解說'
             auditErrors = [
-              'AI 服務未完成一次性審查與寫作，已改用目前引擎證據完成說明。'
+              'AI 服務未完成一次性審查與寫作，未交付不完整解說。'
             ]
+            initialModelError = error
           }
           combinedInitialWriterText = null
+        }
+        if (initialModelError) {
+          validationErrors.push(...auditErrors)
+          throw initialModelError
         }
         verifiedConsequenceCount = concreteVerifiedConsequences(
           audit,
@@ -3175,11 +3225,7 @@ ${
             evidence,
             writerAudit,
             hasUserMove,
-            payload.language,
-            {
-              modelFailureMessage: initialModelFailureMessage,
-              userMoveReason: payload.userMoveReason
-            }
+            payload.language
           )
 
     let answer: HarnessAnswer
@@ -3497,11 +3543,18 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
       answer = removeUnsupportedClaims(answer, unsupported)
       const remainingErrors = validateCandidate(answer)
       if (remainingErrors.length > 0 || !scoreAnswer(answer).pass) {
+        if (isInitialMoveComparison) {
+          validationErrors.push(
+            '一鍵首輪回答未通過品質檢查，未交付五段模板或未驗證內容。'
+          )
+          throw new HarnessExplanationUnavailableError(
+            'quality_validation_failed',
+            'AI 教練回應沒有通過棋理與證據檢查，未顯示不可靠的替代解說。請重試。'
+          )
+        }
         validationErrors.push(
           isFollowUp
             ? '追問的結構化回答未通過證據或格式檢查，改用引擎快照直接回答。'
-            : isInitialMoveComparison
-              ? '一鍵首輪回答未通過品質檢查，已直接改用引擎證據版說明，不再追加模型呼叫。'
             : `已達 ${MAX_SECTION_REWRITES} 輪修正上限仍未通過品質檢查，改用引擎資料產生保守版問答。`
         )
         answer = buildSafeAnswer()
@@ -3542,8 +3595,7 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
         evidence,
         audit,
         hasUserMove,
-        payload.language,
-        { userMoveReason: payload.userMoveReason }
+        payload.language
       )
       const timeoutSeconds = Math.round(timing.continuationTimeoutMs / 1000)
       fallbackAnswer.warnings.push(

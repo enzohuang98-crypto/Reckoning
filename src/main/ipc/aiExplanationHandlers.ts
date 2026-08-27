@@ -38,7 +38,11 @@ import {
   type AnalysisSessionStore
 } from '../storage/AnalysisSessionStore'
 import { getAIProvider } from '../ai/AIProvider'
-import { runExplanationHarness } from '../ai/HarnessOrchestrator'
+import {
+  HarnessExplanationUnavailableError,
+  runExplanationHarness
+} from '../ai/HarnessOrchestrator'
+import { aiErrorStatus } from '../ai/http'
 import {
   prepareExplanationExecution,
   TeacherCaseBusyError,
@@ -220,6 +224,13 @@ export function mapStreamingErrorToPayload(
       message: error.message
     }
   }
+  if (error instanceof HarnessExplanationUnavailableError) {
+    return {
+      requestId,
+      code: 'provider_error',
+      message: error.message
+    }
+  }
   if (error instanceof SecurityValidationError) {
     return {
       requestId,
@@ -232,12 +243,26 @@ export function mapStreamingErrorToPayload(
     if (error.name === 'APIUserAbortError' || error.name === 'AbortError') {
       return { requestId, code: 'cancelled', message: '已取消生成。' }
     }
-    const status = (error as { status?: unknown }).status
-    if (status === 429 || /\(429\)/.test(error.message)) {
+    const status = aiErrorStatus(error)
+    if (status === 429) {
       return {
         requestId,
         code: 'rate_limited',
         message: '模型呼叫被限流 (rate limit)，請稍後重試。'
+      }
+    }
+    if (status === 503) {
+      return {
+        requestId,
+        code: 'provider_error',
+        message: 'AI 服務目前過載或暫時不可用 (503)，本次未顯示替代模板。請稍後重試。'
+      }
+    }
+    if (typeof status === 'number' && status >= 500) {
+      return {
+        requestId,
+        code: 'provider_error',
+        message: `AI 服務暫時無法完成請求 (${status})，本次未顯示替代模板。請重試。`
       }
     }
     // fetch 網路層失敗（DNS/連線中斷）為 TypeError；SDK 為 APIConnectionError
