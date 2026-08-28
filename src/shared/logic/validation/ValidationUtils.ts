@@ -58,19 +58,9 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
       typeof candidate.crossEngineEnabled === 'boolean'
         ? candidate.crossEngineEnabled
         : fallback.crossEngineEnabled,
-    harnessAnswerMode:
-      candidate.harnessAnswerMode === 'focused' ||
-      candidate.harnessAnswerMode === 'research'
-        ? candidate.harnessAnswerMode
-        : fallback.harnessAnswerMode,
-    harnessAutoRun:
-      typeof candidate.harnessAutoRun === 'boolean'
-        ? candidate.harnessAutoRun
-        : fallback.harnessAutoRun,
-    harnessReuseEvidence:
-      typeof candidate.harnessReuseEvidence === 'boolean'
-        ? candidate.harnessReuseEvidence
-        : fallback.harnessReuseEvidence,
+    harnessAnswerMode: 'research',
+    harnessAutoRun: true,
+    harnessReuseEvidence: true,
     harnessEngineTimeMs: clampInteger(
       candidate.harnessEngineTimeMs,
       20_000,

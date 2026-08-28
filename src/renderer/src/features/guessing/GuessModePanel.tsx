@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BoardState } from '@shared/types/BoardState'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
-import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { SubmittedGuess, UserGuess } from '@shared/types/UserGuess'
-import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
 import { validateMoveInput } from '@shared/logic/validation/ValidationUtils'
 import { formatChineseMove } from '@shared/logic/board/ChineseNotation'
 
@@ -20,9 +18,7 @@ interface Props {
   onBeginMoveSelection: () => void
   onCancelMoveSelection: () => void
   result: EngineAnalysisResultPayload | null
-  explanation: AIExplanationResponse | null
   onRecordGuess: (guess: UserGuess) => void
-  onRequestExplanation: () => void
 }
 
 export function GuessModePanel({
@@ -38,15 +34,12 @@ export function GuessModePanel({
   onBeginMoveSelection,
   onCancelMoveSelection,
   result,
-  explanation,
-  onRecordGuess,
-  onRequestExplanation
+  onRecordGuess
 }: Props): JSX.Element {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const recordedGuessKeys = useRef(new Set<string>())
 
   const comparison = result?.moveComparison ?? null
-  const ea = result?.engineAnalysis ?? null
   const hasGuessResult = comparison !== null && comparison.userMove.length > 0
   const isCorrect = hasGuessResult && comparison.userMove === comparison.engineBestMove
   const selectedMove = submittedGuess?.move ?? draftMove
@@ -112,7 +105,7 @@ export function GuessModePanel({
       <div className="guess-steps" aria-label="猜著流程">
         <span className={draftMove || submittedGuess ? 'done' : 'active'}>1 選著法</span>
         <span className={submittedGuess ? 'done' : draftMove ? 'active' : ''}>2 提交猜著</span>
-        <span className={hasGuessResult ? 'done' : submittedGuess ? 'active' : ''}>3 看比較</span>
+        <span className={submittedGuess ? 'active' : ''}>3 深度分析</span>
       </div>
       <div className="row gap">
         <input
@@ -149,11 +142,6 @@ export function GuessModePanel({
           </button>
         )}
       </div>
-      {submittedGuess !== null && result !== null && (
-        <div className="muted small guess-lock-note">
-          已完成本次比較；按「修改猜著」會清除目前比較並重新分析。
-        </div>
-      )}
       {selectionActive && (
         <div className="guess-selection-note">
           請到棋盤先點選要走的棋子，再點目的地；選擇過程不會改變棋盤。
@@ -164,56 +152,13 @@ export function GuessModePanel({
           className="text-input"
           value={submittedGuess?.reason ?? draftReason}
           placeholder="為什麼想走這步？（選填）"
-          disabled={submittedGuess !== null}
+          aria-label="為什麼想走這步"
+          readOnly={submittedGuess !== null}
           onChange={(event) => onDraftReasonChange(event.target.value)}
         />
       </div>
       {submitError && <div className="error-text">⚠ {submitError}</div>}
-      {submittedGuess && !result && <div className="success-text">✓ 猜著已鎖定，正在自動分析。</div>}
-
-      {hasGuessResult && (
-        <div className={`guess-result ${isCorrect ? 'correct' : 'wrong'}`}>
-          {isCorrect
-            ? '✓ 猜中引擎最佳著法！'
-            : `引擎最佳：${ea?.displayBestMove ?? '無法辨識著法'}　你的著法：${
-                formatChineseMove(board, comparison.userMove) ?? '無法辨識著法'
-              }`}
-          <div>
-            等級：<b>{MISTAKE_LEVEL_LABELS[comparison.mistakeLevel]}</b>
-          </div>
-          <div className="muted small guess-engine-line">
-            最佳主線｜分數：{ea?.scoreAfterBestMove?.displayText ?? '無'}｜
-            {ea?.displayPrincipalVariation?.slice(0, 8).join('、') || '無主線'}
-          </div>
-          {(ea?.displayUserMovePrincipalVariation ?? []).length > 1 && (
-            <div className="muted small guess-engine-line">
-              你的著法主線｜分數：{ea?.scoreAfterUserMove?.displayText ?? '無'}｜
-              {ea?.displayUserMovePrincipalVariation?.slice(0, 8).join('、')}
-            </div>
-          )}
-          {comparison.uncertaintyReasons.length > 0 && (
-            <div className="muted small">
-              不確定原因：{comparison.uncertaintyReasons.join('；')}
-            </div>
-          )}
-          {!isCorrect && (
-            <div className="guess-explain-hint">
-              {explanation ? (
-                <span className="success-text small">
-                  ✓ AI 已解釋原因，見上方「AI 解說」。
-                </span>
-              ) : (
-                <span className="muted small">
-                  想知道為什麼？
-                  <button type="button" className="text-link" onClick={onRequestExplanation}>
-                    請 AI 解說
-                  </button>
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {submittedGuess && <div className="success-text">✓ 已提交，正在進行完整 AI 深度分析。</div>}
     </div>
   )
 }

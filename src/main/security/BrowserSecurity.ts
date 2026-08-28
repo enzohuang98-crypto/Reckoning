@@ -1,8 +1,10 @@
 import {
+  Menu,
   protocol,
   session,
   type BrowserWindow,
-  type Event
+  type Event,
+  type MenuItemConstructorOptions
 } from 'electron'
 import { lstatSync, readFileSync } from 'node:fs'
 import { extname } from 'node:path'
@@ -117,6 +119,23 @@ export function lockDownWindow(
   window.webContents.on('will-navigate', guardNavigation)
   window.webContents.on('will-redirect', guardNavigation)
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
+  window.webContents.on('context-menu', (_event, params) => {
+    const template: MenuItemConstructorOptions[] = params.isEditable
+      ? [
+          { role: 'undo', enabled: params.editFlags.canUndo },
+          { role: 'redo', enabled: params.editFlags.canRedo },
+          { type: 'separator' },
+          { role: 'cut', enabled: params.editFlags.canCut },
+          { role: 'copy', enabled: params.editFlags.canCopy },
+          { role: 'paste', enabled: params.editFlags.canPaste },
+          { type: 'separator' },
+          { role: 'selectAll' }
+        ]
+      : params.selectionText.trim()
+        ? [{ role: 'copy', enabled: params.editFlags.canCopy }, { role: 'selectAll' }]
+        : []
+    if (template.length > 0) Menu.buildFromTemplate(template).popup({ window })
+  })
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) void openExternal(url)
     return { action: 'deny' }
