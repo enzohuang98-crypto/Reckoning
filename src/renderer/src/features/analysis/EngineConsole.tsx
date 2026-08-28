@@ -12,6 +12,7 @@ export interface EngineThoughtEntry {
   nodes?: number | null
   nps?: number | null
   scoreDisplay: string | null
+  candidateRank?: number
   displayMove?: string
   displayPrincipalVariation: string[]
   engineRole?: 'primary' | 'verification'
@@ -35,6 +36,7 @@ export function thoughtSignature(entry: EngineThoughtEntry): string {
     entry.depth ?? 'none',
     entry.selDepth ?? 'none',
     entry.scoreDisplay ?? 'none',
+    entry.candidateRank ?? 'unranked',
     entry.displayMove ?? 'none',
     entry.engineRole ?? 'primary',
     entry.engineName ?? 'unknown',

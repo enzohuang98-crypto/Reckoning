@@ -356,6 +356,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         nodes: payload.nodes,
         nps: payload.nps,
         scoreDisplay: payload.score?.displayText ?? null,
+        candidateRank: payload.candidateRank,
         displayMove: payload.displayMove,
         displayPrincipalVariation: payload.displayPrincipalVariation,
         engineRole: payload.engineRole,

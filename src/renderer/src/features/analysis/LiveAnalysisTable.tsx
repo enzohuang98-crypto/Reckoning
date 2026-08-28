@@ -53,6 +53,51 @@ function resultNotice(result: EngineAnalysisResultPayload | null): string | null
   return result.verificationWarning ?? null
 }
 
+const phaseOrder: Record<EngineThoughtEntry['phase'], number> = {
+  root_analysis: 0,
+  user_move_analysis: 1,
+  finalizing: 2,
+  preparing_engine: 3
+}
+
+/**
+ * Pikafish's MultiPV rank is authoritative. Scores are deliberately not used
+ * here because their sign depends on the evaluation perspective.
+ */
+export function rankedAnalysisRows(thoughts: EngineThoughtEntry[]): EngineThoughtEntry[] {
+  const latestRankedRow = new Map<string, EngineThoughtEntry>()
+  const unrankedRows: Array<{ item: EngineThoughtEntry; index: number }> = []
+
+  thoughts.forEach((item, index) => {
+    if (item.candidateRank === undefined) {
+      unrankedRows.push({ item, index })
+      return
+    }
+    latestRankedRow.set(
+      `${item.engineRole ?? 'primary'}::${item.phase}::${item.candidateRank}`,
+      item
+    )
+  })
+
+  const rankedRows = [...latestRankedRow.values()].sort((left, right) => {
+    const roleDifference =
+      (left.engineRole === 'verification' ? 1 : 0) -
+      (right.engineRole === 'verification' ? 1 : 0)
+    if (roleDifference !== 0) return roleDifference
+
+    const phaseDifference = phaseOrder[left.phase] - phaseOrder[right.phase]
+    if (phaseDifference !== 0) return phaseDifference
+
+    return (left.candidateRank ?? Number.MAX_SAFE_INTEGER) -
+      (right.candidateRank ?? Number.MAX_SAFE_INTEGER)
+  })
+
+  return [
+    ...rankedRows,
+    ...unrankedRows.sort((left, right) => right.index - left.index).map(({ item }) => item)
+  ]
+}
+
 interface Props {
   status: EngineStatus | null
   progress: EngineAnalysisProgressPayload | null
@@ -78,7 +123,7 @@ export function LiveAnalysisTable({
   sinceLastThoughtMs,
   retainingPreviousAnalysis
 }: Props): JSX.Element {
-  const rows = thoughts.slice().reverse()
+  const rows = rankedAnalysisRows(thoughts)
   const resultWarning = resultNotice(result)
   const stateClass = !status?.available
     ? 'is-unavailable'
