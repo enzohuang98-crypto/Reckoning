@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { AIConversation, SavedPosition } from '@shared/types/AppData'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
@@ -74,7 +73,6 @@ export function AnalysisWorkspace({
   const [guessSelectionActive, setGuessSelectionActive] = useState(false)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [replayCandidates, setReplayCandidates] = useState<EngineCandidateMove[]>([])
-  const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [boardToolsOpen, setBoardToolsOpen] = useState(false)
   const [boardExpanded, setBoardExpanded] = useState(false)
@@ -90,7 +88,6 @@ export function AnalysisWorkspace({
   useEffect(() => {
     setResult(null)
     setReplayCandidates([])
-    setExplanation(null)
     setDraftMove('')
     setDraftReason('')
     setSubmittedGuess(null)
@@ -104,7 +101,6 @@ export function AnalysisWorkspace({
 
   const selectImportedMove = (selection: ImportedMoveSelection): void => {
     setResult(null)
-    setExplanation(null)
     onConversationChange(null)
     setActualMove({
       selectionId: crypto.randomUUID(),
@@ -295,7 +291,7 @@ export function AnalysisWorkspace({
                   onConversationChange={onConversationChange}
                   onResult={setResult}
                   onReplayCandidates={setReplayCandidates}
-                  onExplanation={setExplanation}
+                  onExplanation={() => undefined}
                   onStatusChange={setAnalysisStatus}
                 />
               </div>
@@ -313,12 +309,15 @@ export function AnalysisWorkspace({
                   submittedGuess={submittedGuess}
                   onDraftMoveChange={setDraftMove}
                   onDraftReasonChange={setDraftReason}
-                  onSubmitGuess={setSubmittedGuess}
+                  onSubmitGuess={(guess) => {
+                    setSubmittedGuess(guess)
+                    setGuessSelectionActive(false)
+                    setActiveView('coach')
+                  }}
                   onUnlockGuess={() => {
                     setSubmittedGuess(null)
                     setGuessSelectionActive(false)
                     setResult(null)
-                    setExplanation(null)
                   }}
                   selectionActive={guessSelectionActive}
                   onBeginMoveSelection={() => {
@@ -327,9 +326,7 @@ export function AnalysisWorkspace({
                   }}
                   onCancelMoveSelection={() => setGuessSelectionActive(false)}
                   result={result}
-                  explanation={explanation}
                   onRecordGuess={onRecordGuess}
-                  onRequestExplanation={requestExplanation}
                 />
               </div>
             </div>

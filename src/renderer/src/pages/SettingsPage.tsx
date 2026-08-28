@@ -14,19 +14,14 @@ import {
 } from '@shared/types/EngineRegistry'
 import type { LicenseStatus } from '@shared/types/License'
 import type { AppSettings } from '@shared/types/Settings'
-import type { TeacherTestRunStatusV1 } from '@shared/types/Harness'
 import type {
   EngineTestResult,
   SecretCredentialRef,
-  SecretStatus,
-  TeacherTestActionResult,
-  TeacherTestStartInput
+  SecretStatus
 } from '@shared/types/ipc'
 import { LICENSE_GATE_DISABLED } from '../app/productFlags'
 import { AiSettingsSection } from '../features/settings/AiSettingsSection'
 import { EngineSettingsSection } from '../features/settings/EngineSettingsSection'
-import { HarnessSettingsSection } from '../features/settings/HarnessSettingsSection'
-import { TeacherTestRunSection } from '../features/settings/TeacherTestRunSection'
 import { SettingsNavigation } from '../features/settings/SettingsNavigation'
 import { SystemSettingsSection } from '../features/settings/SystemSettingsSection'
 import type { SettingsCategory } from '../features/settings/types'
@@ -56,12 +51,6 @@ const EMPTY_ENGINE_REGISTRY: EngineRegistrySnapshot = {
   verificationEngineId: null
 }
 
-const EMPTY_TEACHER_TEST_STATUS: TeacherTestRunStatusV1 = {
-  currentAppVersion: '',
-  active: false,
-  manifest: null
-}
-
 export function SettingsPage({
   settings,
   onSettingsChange,
@@ -84,12 +73,6 @@ export function SettingsPage({
   const [newEngineSelectionToken, setNewEngineSelectionToken] =
     useState<string | null>(null)
   const [testingEngineId, setTestingEngineId] = useState<string | null>(null)
-  const [traceCount, setTraceCount] = useState(0)
-  const [teacherTestStatus, setTeacherTestStatus] = useState<TeacherTestRunStatusV1>(
-    EMPTY_TEACHER_TEST_STATUS
-  )
-  const [teacherTestBusy, setTeacherTestBusy] = useState(false)
-  const [teacherTestMessage, setTeacherTestMessage] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
   const [license, setLicense] = useState<LicenseStatus | null>(null)
@@ -122,14 +105,6 @@ export function SettingsPage({
     void refreshEngine()
     window.api.license.status().then(setLicense).catch(() => setLicense(null))
     window.api.update.status().then(setUpdateStatus).catch(() => setUpdateStatus(null))
-    window.api.ai
-      .listHarnessTraces()
-      .then((traces) => setTraceCount(traces.length))
-      .catch(() => setTraceCount(0))
-    window.api.teacherTest
-      .status()
-      .then(setTeacherTestStatus)
-      .catch(() => setTeacherTestStatus(EMPTY_TEACHER_TEST_STATUS))
     return unsubscribeUpdate
   }, [])
 
@@ -296,58 +271,6 @@ export function SettingsPage({
     }
   }
 
-  const applyTeacherTestResult = (result: TeacherTestActionResult): void => {
-    if (result.ok) {
-      setTeacherTestStatus(result.status)
-      setTeacherTestMessage(null)
-      return
-    }
-    if (!result.cancelled) setTeacherTestMessage(result.message ?? '老師實測操作失敗。')
-  }
-
-  const startTeacherTest = async (input: TeacherTestStartInput): Promise<void> => {
-    setTeacherTestBusy(true)
-    setTeacherTestMessage(null)
-    try {
-      applyTeacherTestResult(await window.api.teacherTest.start(input))
-    } catch {
-      setTeacherTestMessage('無法開始老師實測，請確認安裝檔與版本身分。')
-    } finally {
-      setTeacherTestBusy(false)
-    }
-  }
-
-  const endTeacherTest = async (): Promise<void> => {
-    setTeacherTestBusy(true)
-    setTeacherTestMessage(null)
-    try {
-      applyTeacherTestResult(await window.api.teacherTest.end())
-    } catch {
-      setTeacherTestMessage('無法結束老師實測 run。')
-    } finally {
-      setTeacherTestBusy(false)
-    }
-  }
-
-  const clearHarnessTraces = async (): Promise<void> => {
-    try {
-      await window.api.ai.clearHarnessTraces()
-      setTraceCount(0)
-      setSavedMessage('Harness 診斷紀錄已清除。')
-    } catch {
-      setOperationError('無法清除 Harness 診斷紀錄。')
-    }
-  }
-
-  const exportHarnessTraces = async (): Promise<void> => {
-    try {
-      const result = await window.api.ai.exportHarnessTraces()
-      if (result.ok) setSavedMessage(`Harness 診斷紀錄已匯出：${result.filePath}`)
-    } catch {
-      setOperationError('Harness 診斷紀錄匯出失敗。')
-    }
-  }
-
   const exportBackup = async (): Promise<void> => {
     try {
       const result = await window.api.data.exportBackup()
@@ -456,26 +379,6 @@ export function SettingsPage({
                 void selectEngines(activeId, verificationId)
               }
             />
-          )}
-
-          {activeCategory === 'harness' && (
-            <>
-              <TeacherTestRunSection
-                status={teacherTestStatus}
-                busy={teacherTestBusy}
-                message={teacherTestMessage}
-                onStart={(input) => void startTeacherTest(input)}
-                onEnd={() => void endTeacherTest()}
-              />
-              <HarnessSettingsSection
-                settings={settings}
-                update={update}
-                canUseCrossEngine={engineRegistry.installations.length > 1}
-                traceCount={traceCount}
-                onExportTraces={() => void exportHarnessTraces()}
-                onClearTraces={() => void clearHarnessTraces()}
-              />
-            </>
           )}
 
           {activeCategory === 'system' && (

@@ -214,7 +214,7 @@ export function AppShell({
             className={'nav-btn' + (activeTab === 'settings' ? ' active' : '')}
             aria-label="設定"
             aria-current={activeTab === 'settings' ? 'page' : undefined}
-            title="AI、本機引擎、解說品質與系统設定"
+            title="AI、本機引擎與系统設定"
             onClick={() => onTabChange('settings')}
           >
             <Icon name="settings" size={16} />

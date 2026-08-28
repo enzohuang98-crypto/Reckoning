@@ -299,6 +299,8 @@
 
 .live-analysis-table th,
 .live-analysis-table td {
+  -webkit-user-select: text;
+  user-select: text;
   padding: 6px 8px;
   border-bottom: 1px solid #e7eee9;
   color: var(--color-text-soft);
@@ -977,16 +979,13 @@
   box-shadow: 0 0 0 3px rgba(47, 125, 92, 0.11);
 }
 
-.guess-selection-note,
-.guess-lock-note,
-.guess-explain-hint {
+.guess-selection-note {
   margin-top: 8px;
   font-size: 11px;
   line-height: 1.5;
 }
 
-.guess-reason-field,
-.guess-result-actions {
+.guess-reason-field {
   margin-top: 8px;
 }
 
@@ -996,24 +995,6 @@
   border-radius: 9px;
   color: #32684f;
   background: #eef7f1;
-}
-
-.guess-result {
-  margin-top: 14px;
-  padding: 13px;
-  border: 1px solid transparent;
-  border-radius: 11px;
-  line-height: 1.7;
-}
-
-.guess-result.correct {
-  border-color: #c9dfd1;
-  background: #edf7f0;
-}
-
-.guess-result.wrong {
-  border-color: #eed0cc;
-  background: var(--color-danger-soft);
 }
 
 @keyframes pulse {

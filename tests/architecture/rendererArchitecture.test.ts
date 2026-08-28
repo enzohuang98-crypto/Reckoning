@@ -571,7 +571,7 @@ async function main(): Promise<void> {
     assert.match(panel, /error=\{aiError \?\? \(actualMove \? error : null\)\}/)
     assert.match(
       workspace,
-      /const selectImportedMove[\s\S]*?setResult\(null\)[\s\S]*?setExplanation\(null\)[\s\S]*?onConversationChange\(null\)/
+      /const selectImportedMove[\s\S]*?setResult\(null\)[\s\S]*?onConversationChange\(null\)/
     )
   })
 
@@ -606,10 +606,6 @@ async function main(): Promise<void> {
   })
 
   await check('只有實際加入第二個產品引擎時才顯示複核引擎 UI', () => {
-    const harnessSettings = readFileSync(
-      resolve('src/renderer/src/features/settings/HarnessSettingsSection.tsx'),
-      'utf8'
-    )
     const engineSettings = readFileSync(
       resolve('src/renderer/src/features/settings/EngineSettingsSection.tsx'),
       'utf8'
@@ -618,21 +614,10 @@ async function main(): Promise<void> {
       resolve('src/renderer/src/features/analysis/DetailsView.tsx'),
       'utf8'
     )
-    const settingsPage = readFileSync(
-      resolve('src/renderer/src/pages/SettingsPage.tsx'),
-      'utf8'
-    )
-
-    assert.match(settingsPage, /canUseCrossEngine=\{engineRegistry\.installations\.length > 1\}/)
-    assert.match(harnessSettings, /\{canUseCrossEngine && \(/)
     assert.match(engineSettings, /\{registry\.installations\.length > 1 && \(/)
     assert.match(
       details,
       /settings\.crossEngineEnabled && registry\.installations\.length > 1/
-    )
-    assert.match(
-      harnessSettings,
-      /點棋譜著法仍只跑引擎，按一次「AI 解說」才產生完整說明/
     )
   })
 
