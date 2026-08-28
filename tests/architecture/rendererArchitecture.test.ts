@@ -258,7 +258,7 @@ async function main(): Promise<void> {
     assert.equal(remainingOneClickDeadlineMs(10_000, 140_000), 1)
   })
 
-  await check('首頁只在右上保留 AI 教練與猜著，局面分析固定在底部', () => {
+  await check('首頁右上只保留猜著按鈕，AI 教練內容與局面分析位置不變', () => {
     const tabs = readFileSync(
       resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
       'utf8'
@@ -269,6 +269,8 @@ async function main(): Promise<void> {
     )
     assert.doesNotMatch(tabs, /id: 'live'/)
     assert.doesNotMatch(tabs, /id: 'details'/)
+    assert.doesNotMatch(tabs, /AI 教練/)
+    assert.match(tabs, /猜著/)
     assert.match(workspace, /className="live-analysis-dock"/)
     assert.match(
       workspace,
@@ -283,7 +285,7 @@ async function main(): Promise<void> {
     assert.match(workspace, /<AnalysisPanel[\s\S]*?visible[\s\S]*?activeView="coach"/)
   })
 
-  await check('分析分頁與 Live 引擎訊息具備穩定的鍵盤及朗讀語意', () => {
+  await check('猜著切換與 Live 引擎訊息具備穩定的鍵盤及朗讀語意', () => {
     const tabs = readFileSync(
       resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
       'utf8'
@@ -297,10 +299,8 @@ async function main(): Promise<void> {
       'utf8'
     )
 
-    assert.match(tabs, /useRef<Array<HTMLButtonElement \| null>>/)
-    assert.match(tabs, /event\.key === 'Home'/)
-    assert.match(tabs, /event\.key === 'End'/)
-    assert.match(tabs, /tabRefs\.current\[nextIndex\]\?\.focus\(\)/)
+    assert.match(tabs, /aria-pressed=\{activeView === 'guess'\}/)
+    assert.match(tabs, /activeView === 'guess' \? 'coach' : 'guess'/)
     assert.doesNotMatch(console, /<section className="engine-console" aria-live=/)
     assert.match(console, /<span role="status" aria-atomic="true">/)
     assert.match(table, /<section className="live-analysis-table" aria-live="polite">/)

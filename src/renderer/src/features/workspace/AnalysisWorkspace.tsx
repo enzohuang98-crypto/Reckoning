@@ -270,8 +270,6 @@ export function AnalysisWorkspace({
             <AnalysisInspectorTabs
               activeView={activeView}
               onChange={changeView}
-              aiBusy={analysisStatus.aiBusy}
-              hasExplanation={analysisStatus.hasExplanation}
             />
 
             <div className="inspector-content">
