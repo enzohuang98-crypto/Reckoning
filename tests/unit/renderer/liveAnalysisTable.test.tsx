@@ -106,13 +106,15 @@ function rankedThought(
   candidateRank: number,
   scoreDisplay: string,
   displayMove: string,
-  depth = 18
-): EngineThoughtEntry & { candidateRank: number } {
+  depth = 18,
+  scoreComparableValue = Number(scoreDisplay)
+): EngineThoughtEntry & { candidateRank: number; scoreComparableValue: number } {
   return {
     ...thought,
     id,
     candidateRank,
     scoreDisplay,
+    scoreComparableValue,
     displayMove,
     displayPrincipalVariation: [displayMove],
     depth
@@ -157,15 +159,15 @@ const blackRows = renderRankedRows([
   rankedThought('black-rank-1', 1, '-109', '馬8進7'),
   rankedThought('black-rank-2', 2, '-65', '炮8平5')
 ])
-assert.match(blackRows[0], /-109.*馬8進7/, '黑方第 1 候選必須固定在第一列')
-assert.match(blackRows[1], /-65.*炮8平5/, '黑方第 2 候選必須固定在第二列')
+assert.match(blackRows[0], /-65.*炮8平5/, '黑方較高分 -65 必須排在 -109 前面')
+assert.match(blackRows[1], /-109.*馬8進7/, '黑方較低分 -109 必須排在下面')
 
 const redRows = renderRankedRows([
   rankedThought('red-rank-1', 1, '52', '炮二平五'),
   rankedThought('red-rank-2', 2, '62', '馬二進三')
 ])
-assert.match(redRows[0], /52.*炮二平五/, '紅方第 1 候選必須固定在第一列')
-assert.match(redRows[1], /62.*馬二進三/, '紅方第 2 候選必須固定在第二列')
+assert.match(redRows[0], /62.*馬二進三/, '紅方較高分 62 必須排在 52 前面')
+assert.match(redRows[1], /52.*炮二平五/, '紅方較低分 52 必須排在下面')
 
 const deepenedRows = renderRankedRows([
   rankedThought('rank-1-depth-17', 1, '48', '炮二平五', 17),

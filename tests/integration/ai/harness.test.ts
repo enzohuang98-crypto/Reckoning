@@ -1459,6 +1459,75 @@ async function main(): Promise<void> {
     })
   )
 
+  const delayedDeepEvidenceProvider = new FakeProvider()
+  const delayedDeepEvidenceTraces: HarnessTrace[] = []
+  const delayedDeepEvidenceProgress: HarnessProgressPayload[] = []
+  let delayedDeepEvidenceResearchCalls = 0
+  const delayedDeepEvidenceResult = await runExplanationHarness(
+    {
+      requestId: 'ai-request-wait-for-deeper-lines',
+      analysisId: shallowSession.analysisId,
+      provider: 'openai',
+      model: 'fake-model',
+      userLevel: 'intermediate',
+      explanationStyle: 'long_analytical',
+      language: 'zh-TW',
+      attachedMove: shallowAnalysis.userMove,
+      answerMode: 'research',
+      budget: {
+        engineTimeMs: 3000,
+        maxEngineRounds: 2,
+        maxModelCalls: 4,
+        maxOutputTokens: 8000
+      }
+    },
+    {
+      provider: delayedDeepEvidenceProvider,
+      apiKey: 'secret',
+      model: 'fake-model',
+      session: shallowSession,
+      registry: {
+        list: () => ({
+          installations: [],
+          activeEngineId: 'engine-1',
+          verificationEngineId: null
+        }),
+        getAdapter: () => ({
+          analyzePosition: async () => {
+            delayedDeepEvidenceResearchCalls += 1
+            return delayedDeepEvidenceResearchCalls === 1
+              ? shallowAnalysis
+              : engineAnalysis
+          }
+        })
+      } as never,
+      traceStore: {
+        save: (trace: HarnessTrace) => delayedDeepEvidenceTraces.push(trace)
+      } as never,
+      signal: new AbortController().signal,
+      onProgress: (payload) => delayedDeepEvidenceProgress.push(payload),
+      timing: { minResearchRoundMs: 1, maxResearchRoundMs: 1 }
+    }
+  )
+  check(
+    '第一次加深仍太淺時自動等待下一輪，不要求棋手重新提交想法',
+    delayedDeepEvidenceResearchCalls === 2 &&
+      delayedDeepEvidenceTraces.at(-1)?.engineRounds === 2 &&
+      delayedDeepEvidenceResult.finalText.length > 0 &&
+      delayedDeepEvidenceProvider.calls === 1 &&
+      delayedDeepEvidenceProvider.prompts[0]?.includes('馬2進3'),
+    JSON.stringify({
+      engineCalls: delayedDeepEvidenceResearchCalls,
+      engineRounds: delayedDeepEvidenceTraces.at(-1)?.engineRounds,
+      modelCalls: delayedDeepEvidenceProvider.calls
+    })
+  )
+  check(
+    '等待較深主線期間持續回報引擎研究進度供畫面顯示',
+    delayedDeepEvidenceProgress.filter((item) => item.phase === 'engine_research')
+      .length >= 2
+  )
+
   const hangingProvider = new HangingInitialProvider()
   const softTimeoutTraces: HarnessTrace[] = []
   const softTimeoutStartedAt = Date.now()
