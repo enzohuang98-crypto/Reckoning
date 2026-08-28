@@ -6,8 +6,8 @@
  * 背景：更新狀態先前只顯示在「設定 → 系統」，使用者不主動點進去就完全
  * 不會知道有新版，等同沒有自動更新。這裡鎖定三件事：
  *  1. 沒有新版時完全不渲染（版面零變化，不影響已驗收的分析頁比例）
- *  2. available / downloaded 才提示，且點擊會切到設定頁
- *  3. 已經在設定頁時不重複提示
+ *  2. available 提供立即更新／稍後提醒／跳過此版本三種選擇
+ *  3. 標題提示與設定頁的手動更新入口仍維持原行為
  */
 
 import assert from 'node:assert/strict'
@@ -16,7 +16,12 @@ import { resolve } from 'node:path'
 import React from 'react'
 import TestRenderer from 'react-test-renderer'
 import type { AppUpdateStatus } from '../../../src/shared/types/AppUpdate'
-import { AppShell, type AppTab } from '../../../src/renderer/src/app/AppShell'
+import {
+  AppShell,
+  UPDATE_REMINDER_DELAY_MS,
+  shouldShowUpdateDialog,
+  type AppTab
+} from '../../../src/renderer/src/app/AppShell'
 
 let passed = 0
 let failed = 0
@@ -47,8 +52,7 @@ function render(
   updateStatus: AppUpdateStatus | null,
   activeTab: AppTab = 'analyze',
   onTabChange: (tab: AppTab) => void = () => undefined,
-  onDownloadUpdate: () => void = () => undefined,
-  confirmUpdate: (message: string) => boolean = () => false
+  onDownloadUpdate: () => void = () => undefined
 ): TestRenderer.ReactTestRenderer {
   return TestRenderer.create(
     <AppShell
@@ -62,7 +66,6 @@ function render(
       onRetrySave={() => undefined}
       onAnalysisCommandMountChange={() => undefined}
       onDownloadUpdate={onDownloadUpdate}
-      confirmUpdate={confirmUpdate}
     >
       <div />
     </AppShell>
@@ -70,7 +73,6 @@ function render(
 }
 
 {
-  let prompts = 0
   let downloads = 0
   const available = status({
     phase: 'available',
@@ -85,15 +87,24 @@ function render(
       () => undefined,
       () => {
         downloads++
-      },
-      (message) => {
-        prompts++
-        return message.includes('0.4.2')
       }
     )
   })
-  check('发现新版会主动询问一次', prompts === 1, prompts)
-  check('同意后才开始下载', downloads === 1, downloads)
+  const dialog = renderer!.root.findByProps({ className: 'app-update-dialog' })
+  check('發現新版會顯示三選一視窗', dialog !== undefined)
+  check(
+    '更新視窗提供立即更新、稍後提醒與跳過版本',
+    dialog.findAll((node) => node.props['data-update-action']).length === 3
+  )
+
+  TestRenderer.act(() => {
+    dialog.findByProps({ 'data-update-action': 'now' }).props.onClick()
+  })
+  check('選擇立即更新才開始下載', downloads === 1, downloads)
+  check(
+    '選擇立即更新後關閉視窗',
+    renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 0
+  )
 
   TestRenderer.act(() => {
     renderer!.update(
@@ -110,32 +121,96 @@ function render(
         onDownloadUpdate={() => {
           downloads++
         }}
-        confirmUpdate={() => {
-          prompts++
-          return true
-        }}
       >
         <div />
       </AppShell>
     )
   })
-  check('同一版本在同次启动不重复询问', prompts === 1, prompts)
+  check(
+    '同一版本在開始更新後不重複詢問',
+    renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 0
+  )
 }
 
 {
   let downloads = 0
+  let renderer: TestRenderer.ReactTestRenderer
   TestRenderer.act(() => {
-    render(
+    renderer = render(
       status({ phase: 'available', availableVersion: '0.4.2' }),
       'analyze',
       () => undefined,
       () => {
         downloads++
-      },
-      () => false
+      }
     )
   })
-  check('选择稍后不会下载', downloads === 0, downloads)
+  TestRenderer.act(() => {
+    renderer!.root.findByProps({ 'data-update-action': 'later' }).props.onClick()
+  })
+  check('選擇稍後不會下載', downloads === 0, downloads)
+  check(
+    '選擇稍後會先關閉視窗',
+    renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 0
+  )
+  check(
+    '稍後提醒期間不顯示標題通知',
+    renderer!.root.findAllByProps({ className: 'app-update-chip' }).length === 0
+  )
+  renderer!.unmount()
+}
+
+{
+  const now = Date.now()
+  const reminder = { version: '0.4.2', remindAfter: now + UPDATE_REMINDER_DELAY_MS }
+  check(
+    '提醒時間到以前不顯示',
+    !shouldShowUpdateDialog('0.4.2', null, reminder, now)
+  )
+  check(
+    '四小時後會再次顯示',
+    shouldShowUpdateDialog('0.4.2', null, reminder, reminder.remindAfter)
+  )
+}
+
+{
+  let renderer: TestRenderer.ReactTestRenderer
+  TestRenderer.act(() => {
+    renderer = render(status({ phase: 'available', availableVersion: '0.4.2' }))
+  })
+  TestRenderer.act(() => {
+    renderer!.root.findByProps({ 'data-update-action': 'skip' }).props.onClick()
+  })
+  check(
+    '跳過後不再顯示同一版本',
+    renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 0
+  )
+  check(
+    '跳過後隱藏同版本標題通知',
+    renderer!.root.findAllByProps({ className: 'app-update-chip' }).length === 0
+  )
+  TestRenderer.act(() => {
+    renderer!.update(
+      <AppShell
+        activeTab="analyze"
+        onTabChange={() => undefined}
+        updateStatus={status({ phase: 'available', availableVersion: '0.4.3' })}
+        dataError={null}
+        dataRecoveryRequired={false}
+        dataRecoveryBusy={false}
+        onRetryLoad={() => undefined}
+        onRetrySave={() => undefined}
+        onAnalysisCommandMountChange={() => undefined}
+        onDownloadUpdate={() => undefined}
+      >
+        <div />
+      </AppShell>
+    )
+  })
+  check(
+    '跳過舊版不影響下一個新版本提醒',
+    renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 1
+  )
 }
 
 function chips(
