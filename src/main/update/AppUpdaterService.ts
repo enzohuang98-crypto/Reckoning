@@ -29,14 +29,22 @@ function hasPackagedUpdateConfiguration(): boolean {
   return app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml'))
 }
 
+interface AppUpdaterServiceOptions {
+  updater?: AppUpdater
+  supported?: boolean
+  configured?: boolean
+}
+
 export class AppUpdaterService {
-  private readonly updater = getAutoUpdater()
+  private readonly updater: AppUpdater
   private configured = false
   private status: AppUpdateStatus
+  private installAfterDownload = false
 
-  constructor() {
-    const supported = process.platform === 'win32' && app.isPackaged
-    this.configured = supported && hasPackagedUpdateConfiguration()
+  constructor(options: AppUpdaterServiceOptions = {}) {
+    this.updater = options.updater ?? getAutoUpdater()
+    const supported = options.supported ?? (process.platform === 'win32' && app.isPackaged)
+    this.configured = supported && (options.configured ?? hasPackagedUpdateConfiguration())
     this.status = {
       phase: supported ? (this.configured ? 'idle' : 'unconfigured') : 'unsupported',
       currentVersion: app.getVersion(),
@@ -62,7 +70,7 @@ export class AppUpdaterService {
         phase: 'available',
         availableVersion: info.version,
         downloadPercent: undefined,
-        message: `發現新版本 ${info.version}，是否要現在下載更新？`
+        message: `發現新版本 ${info.version}，可立即更新、稍後提醒或跳過此版本。`
       })
     })
     this.updater.on('update-not-available', () => {
@@ -81,14 +89,20 @@ export class AppUpdaterService {
       })
     })
     this.updater.on('update-downloaded', (info: UpdateInfo) => {
+      const restartAndInstall = this.installAfterDownload
+      this.installAfterDownload = false
       this.setStatus({
         phase: 'downloaded',
         availableVersion: info.version,
         downloadPercent: 100,
-        message: `版本 ${info.version} 已下载；请确认后重新启动并安装。`
+        message: restartAndInstall
+          ? `版本 ${info.version} 已下載，正在重新啟動並安裝。`
+          : `版本 ${info.version} 已下載；請確認後重新啟動並安裝。`
       })
+      if (restartAndInstall) this.restartAndInstall()
     })
     this.updater.on('error', (error: Error) => {
+      this.installAfterDownload = false
       logger.error('自動更新失敗', error)
       this.setStatus({
         phase: 'error',
@@ -110,13 +124,13 @@ export class AppUpdaterService {
     })
     ipcMain.handle(IPC.APP_UPDATE_DOWNLOAD, async (event): Promise<AppUpdateStatus> => {
       assertTrustedIpcSender(event)
-      await this.download()
+      await this.downloadApprovedUpdate()
       return this.status
     })
     ipcMain.handle(IPC.APP_UPDATE_INSTALL, (event): AppUpdateStatus => {
       assertTrustedIpcSender(event)
       if (this.status.phase === 'downloaded') {
-        setImmediate(() => this.updater.quitAndInstall(false, true))
+        this.restartAndInstall()
       }
       return this.status
     })
@@ -152,17 +166,23 @@ export class AppUpdaterService {
     }
   }
 
-  private async download(): Promise<void> {
+  async downloadApprovedUpdate(): Promise<void> {
     if (!this.configured || this.status.phase !== 'available') return
+    this.installAfterDownload = true
     try {
       await this.updater.downloadUpdate()
     } catch (error) {
+      this.installAfterDownload = false
       logger.error('下載更新失敗', error)
       this.setStatus({
         phase: 'error',
         message: '更新下載失敗，請確認網路後再試。'
       })
     }
+  }
+
+  private restartAndInstall(): void {
+    setImmediate(() => this.updater.quitAndInstall(false, true))
   }
 
   private setStatus(patch: Partial<AppUpdateStatus>): void {

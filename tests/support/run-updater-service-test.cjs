@@ -1,0 +1,11 @@
+const path = require('node:path')
+const { app } = require('electron')
+
+const repoRoot = path.resolve(__dirname, '..', '..')
+process.chdir(repoRoot)
+process.env.TSX_TSCONFIG_PATH = path.join(repoRoot, 'tsconfig.node.json')
+app.disableHardwareAcceleration()
+app.setName('xiangqi-updater-service-test')
+app.setPath('userData', path.join(app.getPath('temp'), 'xiangqi-updater-service-test'))
+require('tsx/cjs')
+require('../unit/main/appUpdaterService.electron.test.ts')
