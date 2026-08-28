@@ -60,17 +60,16 @@ const phaseOrder: Record<EngineThoughtEntry['phase'], number> = {
   preparing_engine: 3
 }
 
-/**
- * Pikafish's MultiPV rank is authoritative. Scores are deliberately not used
- * here because their sign depends on the evaluation perspective.
- */
+/** Keep the latest update for each MultiPV line, then show the highest current
+ * engine evaluation first. `comparableValue` also gives mate scores a stable
+ * numeric order; formatted display text is never parsed for sorting. */
 export function rankedAnalysisRows(thoughts: EngineThoughtEntry[]): EngineThoughtEntry[] {
   const latestRankedRow = new Map<string, EngineThoughtEntry>()
-  const unrankedRows: Array<{ item: EngineThoughtEntry; index: number }> = []
+  const unrankedRows: EngineThoughtEntry[] = []
 
-  thoughts.forEach((item, index) => {
+  thoughts.forEach((item) => {
     if (item.candidateRank === undefined) {
-      unrankedRows.push({ item, index })
+      unrankedRows.push(item)
       return
     }
     latestRankedRow.set(
@@ -79,7 +78,21 @@ export function rankedAnalysisRows(thoughts: EngineThoughtEntry[]): EngineThough
     )
   })
 
-  const rankedRows = [...latestRankedRow.values()].sort((left, right) => {
+  const rows = [
+    ...latestRankedRow.values(),
+    ...unrankedRows
+  ]
+
+  return rows.sort((left, right) => {
+    const leftScore = left.scoreComparableValue
+    const rightScore = right.scoreComparableValue
+    if (leftScore !== null && leftScore !== undefined) {
+      if (rightScore === null || rightScore === undefined) return -1
+      if (leftScore !== rightScore) return rightScore - leftScore
+    } else if (rightScore !== null && rightScore !== undefined) {
+      return 1
+    }
+
     const roleDifference =
       (left.engineRole === 'verification' ? 1 : 0) -
       (right.engineRole === 'verification' ? 1 : 0)
@@ -91,11 +104,6 @@ export function rankedAnalysisRows(thoughts: EngineThoughtEntry[]): EngineThough
     return (left.candidateRank ?? Number.MAX_SAFE_INTEGER) -
       (right.candidateRank ?? Number.MAX_SAFE_INTEGER)
   })
-
-  return [
-    ...rankedRows,
-    ...unrankedRows.sort((left, right) => right.index - left.index).map(({ item }) => item)
-  ]
 }
 
 interface Props {

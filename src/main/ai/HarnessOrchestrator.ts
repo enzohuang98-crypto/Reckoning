@@ -2728,11 +2728,20 @@ export async function runExplanationHarness(
           validationErrors.push(
             `實戰步比較主線過短：AI 首選至少需要 ${INITIAL_MOVE_MIN_BEST_LINE_PLIES} 手，實戰步至少需要 ${INITIAL_MOVE_MIN_USER_LINE_PLIES} 手。`
           )
+          if (primaryAdapter && engineRounds < budget.maxEngineRounds) {
+            shouldResearch = true
+            progress(
+              'engine_research',
+              `目前主線仍不足以拆解你的想法，正在自動繼續第 ${engineRounds + 1} 輪引擎研究。`
+            )
+            continue
+          }
           throw new HarnessExplanationUnavailableError(
             'insufficient_engine_evidence',
-            '引擎主線仍太短，無法可靠解釋這一步。請讓局面分析再運行幾秒後重試 AI 解說。'
+            '引擎已用完本次加深研究時間，但主線仍太短，暫時無法可靠解釋這一步。'
           )
         }
+        shouldResearch = false
         const existingSnapshotLabel = deps.session.verificationEngineAnalysis
           ? '主引擎與複核引擎'
           : '主引擎'
