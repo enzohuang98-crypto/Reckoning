@@ -71,13 +71,6 @@ export function CoachView({
 
   return (
     <div className="analysis-view-content coach-view">
-      <div className="view-heading">
-        <div>
-          <span className="eyebrow">AI 象棋教練</span>
-          <h3>實戰步與 AI 首選比較</h3>
-        </div>
-      </div>
-
       {error && <div className="error-text" role="alert">{error}</div>}
       {notice && <div className="notice-text" role="status">{notice}</div>}
       {teacherTestStatus?.active && (

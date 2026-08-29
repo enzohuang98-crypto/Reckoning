@@ -93,54 +93,44 @@ export function GuessModePanel({
 
   return (
     <div className="guess-panel">
-      <div className="panel-heading compact">
-        <div>
-          <span className="eyebrow">先想再看答案</span>
-          <h3>你的著法</h3>
-        </div>
-      </div>
-      <p className="muted small">
-        點「你的著法」後，直接在棋盤依序點選棋子與目的地，再提交鎖定答案。
-      </p>
-      <div className="guess-steps" aria-label="猜著流程">
-        <span className={draftMove || submittedGuess ? 'done' : 'active'}>1 選著法</span>
-        <span className={submittedGuess ? 'done' : draftMove ? 'active' : ''}>2 提交猜著</span>
-        <span className={submittedGuess ? 'active' : ''}>3 深度分析</span>
-      </div>
-      <div className="row gap">
-        <input
-          className={`text-input guess-move-picker ${selectionActive ? 'active' : ''}`}
-          value={selectedMoveText}
-          placeholder="你的著法：點此後到棋盤選擇"
-          disabled={submittedGuess !== null}
-          readOnly
-          aria-label="你的著法"
-          onClick={() => {
-            if (submittedGuess === null) onBeginMoveSelection()
-            setSubmitError(null)
-          }}
-        />
-        {submittedGuess === null && draftMove && (
-          <button
-            className="btn ghost"
+      <div className="field">
+        <label className="field-label" htmlFor="guess-move-input">你的走法</label>
+        <div className="row gap">
+          <input
+            id="guess-move-input"
+            className={`text-input guess-move-picker ${selectionActive ? 'active' : ''}`}
+            value={selectedMoveText}
+            placeholder="點此後到棋盤選擇"
+            disabled={submittedGuess !== null}
+            readOnly
+            aria-label="你的走法"
             onClick={() => {
-              onDraftMoveChange('')
-              onCancelMoveSelection()
+              if (submittedGuess === null) onBeginMoveSelection()
               setSubmitError(null)
             }}
-          >
-            清除
-          </button>
-        )}
-        {submittedGuess === null ? (
-          <button className="btn" onClick={submit}>
-            提交猜著
-          </button>
-        ) : (
-          <button className="btn ghost" onClick={onUnlockGuess}>
-            修改猜著
-          </button>
-        )}
+          />
+          {submittedGuess === null && draftMove && (
+            <button
+              className="btn ghost"
+              onClick={() => {
+                onDraftMoveChange('')
+                onCancelMoveSelection()
+                setSubmitError(null)
+              }}
+            >
+              清除
+            </button>
+          )}
+          {submittedGuess === null ? (
+            <button className="btn" onClick={submit}>
+              提交猜著
+            </button>
+          ) : (
+            <button className="btn ghost" onClick={onUnlockGuess}>
+              修改猜著
+            </button>
+          )}
+        </div>
       </div>
       {selectionActive && (
         <div className="guess-selection-note">
@@ -148,17 +138,21 @@ export function GuessModePanel({
         </div>
       )}
       <div className="field guess-reason-field">
+        <label className="field-label" htmlFor="guess-reason-input">
+          你選這一步的原因（選填）
+        </label>
         <input
+          id="guess-reason-input"
           className="text-input"
           value={submittedGuess?.reason ?? draftReason}
-          placeholder="為什麼想走這步？（選填）"
-          aria-label="為什麼想走這步"
+          placeholder="請輸入你的想法"
+          aria-label="你選這一步的原因"
           readOnly={submittedGuess !== null}
           onChange={(event) => onDraftReasonChange(event.target.value)}
         />
       </div>
       {submitError && <div className="error-text">⚠ {submitError}</div>}
-      {submittedGuess && <div className="success-text">✓ 已提交，正在進行完整 AI 深度分析。</div>}
+      {submittedGuess && <div className="success-text">✓ 已提交，正在產生 AI 解說。</div>}
     </div>
   )
 }

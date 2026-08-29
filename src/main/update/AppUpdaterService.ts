@@ -182,7 +182,7 @@ export class AppUpdaterService {
   }
 
   private restartAndInstall(): void {
-    setImmediate(() => this.updater.quitAndInstall(false, true))
+    setImmediate(() => this.updater.quitAndInstall(true, true))
   }
 
   private setStatus(patch: Partial<AppUpdateStatus>): void {

@@ -8,6 +8,7 @@ const read = (path: string): string => readFileSync(resolve(path), 'utf8')
 
 const browserSecurity = read('src/main/security/BrowserSecurity.ts')
 const analysisCss = read('src/renderer/src/styles/analysis.css')
+const coachView = read('src/renderer/src/features/analysis/CoachView.tsx')
 const guessPanel = read('src/renderer/src/features/guessing/GuessModePanel.tsx')
 const workspace = read('src/renderer/src/features/workspace/AnalysisWorkspace.tsx')
 const settingsNavigation = read('src/renderer/src/features/settings/SettingsNavigation.tsx')
@@ -25,6 +26,12 @@ assert.match(
 
 assert.doesNotMatch(guessPanel, /MISTAKE_LEVEL_LABELS/)
 assert.doesNotMatch(guessPanel, /className=\{`guess-result/)
+assert.doesNotMatch(coachView, /實戰步與 AI 首選比較/)
+assert.doesNotMatch(guessPanel, /先想再看答案/)
+assert.doesNotMatch(guessPanel, /guess-steps/)
+assert.doesNotMatch(guessPanel, /1 選著法|2 提交猜著|3 深度分析/)
+assert.match(guessPanel, /你的走法/)
+assert.match(guessPanel, /你選這一步的原因/)
 assert.doesNotMatch(guessPanel, /placeholder="為什麼想走這步？（選填）"[\s\S]{0,160}disabled=/)
 assert.match(
   workspace,
