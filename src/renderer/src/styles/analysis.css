@@ -939,37 +939,6 @@
   word-break: break-word;
 }
 
-.guess-steps {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  margin: 12px 0;
-}
-
-.guess-steps span {
-  min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid #dce6df;
-  border-radius: var(--radius-pill);
-  color: var(--color-muted);
-  background: #fff;
-  font-size: 10px;
-  font-weight: 750;
-  text-align: center;
-}
-
-.guess-steps span.active {
-  color: var(--color-warning);
-  border-color: #ead9bc;
-  background: var(--color-warning-soft);
-}
-
-.guess-steps span.done {
-  color: #2f7557;
-  border-color: #cce1d3;
-  background: #edf7f0;
-}
-
 .guess-move-picker {
   cursor: pointer;
 }

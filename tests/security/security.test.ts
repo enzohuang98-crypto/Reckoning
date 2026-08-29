@@ -30,6 +30,7 @@ import {
 import { PikafishAdapter } from '../../src/main/engine/PikafishAdapter'
 import {
   assertProviderEndpointBinding,
+  mapStreamingErrorToPayload,
   ProviderEndpointMismatchError
 } from '../../src/main/ipc/aiExplanationHandlers'
 import {
@@ -143,6 +144,27 @@ const aiPayload = validateGenerateExplanationPayload({
   conversationHistory: []
 })
 check('合法 AI payload 通過', aiPayload.provider === 'anthropic')
+const rateLimitError = Object.assign(new Error('RESOURCE_EXHAUSTED'), { status: 429 })
+const rateLimitPayload = mapStreamingErrorToPayload('ai-rate-limit', rateLimitError, {
+  provider: 'gemini',
+  model: 'gemini-3.7-flash'
+})
+check(
+  '429 訊息明確指出實際回報限流的 Provider 與模型',
+  rateLimitPayload.code === 'rate_limited' &&
+    rateLimitPayload.message.includes('gemini/gemini-3.7-flash') &&
+    rateLimitPayload.message.includes('HTTP 429')
+)
+const overloadedPayload = mapStreamingErrorToPayload(
+  'ai-overloaded',
+  Object.assign(new Error('service unavailable'), { status: 503 }),
+  { provider: 'gemini', model: 'gemini-3.7-flash' }
+)
+check(
+  '503 不得被誤報為限流',
+  overloadedPayload.code === 'provider_error' &&
+    !overloadedPayload.message.includes('限流')
+)
 check('棋手原始想法會被正規化保留', aiPayload.userMoveReason === '想先活通車路')
 check(
   '過長的棋手原始想法被拒絕',

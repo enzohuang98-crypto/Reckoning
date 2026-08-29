@@ -48,8 +48,8 @@ async function run(): Promise<void> {
   assert.equal(approvedUpdater.downloadCalls, 1)
   assert.deepEqual(
     approvedUpdater.installCalls,
-    [[false, true]],
-    '使用者同意下載後，下載完成必須直接安裝並重新啟動'
+    [[true, true]],
+    '使用者同意下載後，下載完成必須靜默安裝並重新啟動'
   )
 
   const unapprovedUpdater = new FakeUpdater()

@@ -175,7 +175,8 @@ export async function buildAIExplanationRequest(
 /** 錯誤分類（§2.17.6）。訊息不得含 API key。 */
 export function mapStreamingErrorToPayload(
   requestId: string,
-  error: unknown
+  error: unknown,
+  context?: { provider: AIProviderId; model: string }
 ): GenerateExplanationErrorPayload {
   if (error instanceof DOMException && error.name === 'AbortError') {
     return { requestId, code: 'cancelled', message: '已取消生成。' }
@@ -248,7 +249,7 @@ export function mapStreamingErrorToPayload(
       return {
         requestId,
         code: 'rate_limited',
-        message: '模型呼叫被限流 (rate limit)，請稍後重試。'
+        message: `${context ? `${context.provider}/${context.model}` : 'AI 模型'} 回報限流 (HTTP 429)，請稍後重試。`
       }
     }
     if (status === 503) {
@@ -693,7 +694,10 @@ export function registerAiExplanationHandlers(
         })
       } catch (error) {
         if (!completedNormally) {
-          const errorPayload = mapStreamingErrorToPayload(requestId, error)
+          const errorPayload = mapStreamingErrorToPayload(requestId, error, {
+            provider: payload.provider,
+            model: payload.model
+          })
           // 取消屬正常操作不記 error；其他失敗經 Logger（自動遮蔽 API key 等敏感字串）
           if (errorPayload.code !== 'cancelled') {
             logger.error('AI 解釋生成失敗', errorPayload.code, error)

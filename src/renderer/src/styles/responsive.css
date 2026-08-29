@@ -110,8 +110,7 @@
   .engine-add-box,
   .engine-selection-grid,
   .settings-number-grid,
-  .analysis-engine-selectors,
-  .guess-steps {
+  .analysis-engine-selectors {
     grid-template-columns: 1fr;
   }
 
