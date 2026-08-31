@@ -3,6 +3,7 @@ import React from 'react'
 import TestRenderer from 'react-test-renderer'
 import { DEFAULT_SETTINGS } from '../../../src/shared/types/Settings'
 import type { SecretStatus } from '../../../src/shared/types/ipc'
+import type { AIModelInfo } from '../../../src/shared/types/AIProviderTypes'
 import { AiSettingsSection } from '../../../src/renderer/src/features/settings/AiSettingsSection'
 import { SetupWizard } from '../../../src/renderer/src/pages/SetupWizard'
 
@@ -12,6 +13,9 @@ function render(options: {
   encryptionAvailable?: boolean
   onConnectKey?: () => void
   onDeleteKey?: () => void
+  openRouterModels?: AIModelInfo[]
+  selectedOpenRouterModel?: string
+  onOpenRouterModelChange?: (model: string) => void
 } = {}): TestRenderer.ReactTestRenderer {
   return TestRenderer.create(
     <AiSettingsSection
@@ -27,6 +31,9 @@ function render(options: {
       }}
       encryptionAvailable={options.encryptionAvailable ?? true}
       secretBusy={false}
+      openRouterModels={options.openRouterModels ?? []}
+      selectedOpenRouterModel={options.selectedOpenRouterModel ?? ''}
+      onOpenRouterModelChange={options.onOpenRouterModelChange ?? (() => undefined)}
       onConnectKey={options.onConnectKey ?? (() => undefined)}
       onDeleteKey={options.onDeleteKey ?? (() => undefined)}
     />
@@ -62,6 +69,29 @@ const connect = connectable.root.findAllByType('button').find(
 assert(connect)
 TestRenderer.act(() => connect.props.onClick())
 assert.equal(connectCalls, 1)
+
+let selectedOpenRouterModel = ''
+const openRouter = render({
+  apiKey: 'sk-or-v1-example',
+  openRouterModels: [
+    { id: 'vendor/model-a:free', label: 'Model A' },
+    { id: 'vendor/model-b:free', label: 'Model B' }
+  ],
+  selectedOpenRouterModel: 'vendor/model-a:free',
+  onOpenRouterModelChange: (model) => {
+    selectedOpenRouterModel = model
+  }
+})
+const openRouterSelect = openRouter.root.find(
+  (node) => node.type === 'select' && node.props['aria-label'] === 'OpenRouter 免费模型'
+)
+assert.deepEqual(
+  openRouterSelect.findAllByType('option').map((option) => option.props.value),
+  ['vendor/model-a:free', 'vendor/model-b:free'],
+  '下拉选项必须直接保存官方完整模型 ID'
+)
+TestRenderer.act(() => openRouterSelect.props.onChange({ target: { value: 'vendor/model-b:free' } }))
+assert.equal(selectedOpenRouterModel, 'vendor/model-b:free')
 
 const noEncryption = render({ apiKey: 'sk-example', encryptionAvailable: false })
 assert.equal(
@@ -127,7 +157,7 @@ assert.equal(
     (node) =>
       node.type === 'input' &&
       typeof node.props.placeholder === 'string' &&
-      node.props.placeholder.includes('OpenAI、Anthropic 或 Gemini')
+      node.props.placeholder.includes('OpenRouter')
   ).length,
   1
 )

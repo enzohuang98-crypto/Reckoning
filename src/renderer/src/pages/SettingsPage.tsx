@@ -14,6 +14,7 @@ import {
 } from '@shared/types/EngineRegistry'
 import type { LicenseStatus } from '@shared/types/License'
 import type { AppSettings } from '@shared/types/Settings'
+import type { AIModelInfo } from '@shared/types/AIProviderTypes'
 import type {
   EngineTestResult,
   SecretCredentialRef,
@@ -58,6 +59,8 @@ export function SettingsPage({
 }: Props): JSX.Element {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('ai')
   const [apiKey, setApiKey] = useState('')
+  const [openRouterModels, setOpenRouterModels] = useState<AIModelInfo[]>([])
+  const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState('')
   const [secretStatus, setSecretStatus] = useState<SecretStatus>(EMPTY_SECRET_STATUS)
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
@@ -144,16 +147,36 @@ export function SettingsPage({
     setSecretBusy(true)
     try {
       const result = await withTimeout(
-        window.api.ai.autoConfigureCredential(key),
+        window.api.ai.autoConfigureCredential(
+          key,
+          selectedOpenRouterModel || undefined
+        ),
         AI_CONNECT_TIMEOUT_MS,
         'AI 连线逾时，请检查网路后重试。'
       )
       if (!result.ok) {
+        if (selectedOpenRouterModel) {
+          setOpenRouterModels([])
+          setSelectedOpenRouterModel('')
+        }
         setOperationError(result.message)
+        return
+      }
+      if (!result.configured) {
+        setOpenRouterModels(result.models)
+        setSelectedOpenRouterModel((current) =>
+          result.models.some((model) => model.id === current)
+            ? current
+            : result.models[0]?.id ?? ''
+        )
+        setSavedMessage(result.message)
+        setOperationError(null)
         return
       }
       useCredential(result.credential)
       setApiKey('')
+      setOpenRouterModels([])
+      setSelectedOpenRouterModel('')
       setSecretStatus(result.status)
       setSavedMessage(result.message)
       setOperationError(null)
@@ -348,10 +371,17 @@ export function SettingsPage({
               settings={settings}
               update={update}
               apiKey={apiKey}
-              onApiKeyChange={setApiKey}
+              onApiKeyChange={(value) => {
+                setApiKey(value)
+                setOpenRouterModels([])
+                setSelectedOpenRouterModel('')
+              }}
               secretStatus={secretStatus}
               encryptionAvailable={encryptionAvailable}
               secretBusy={secretBusy}
+              openRouterModels={openRouterModels}
+              selectedOpenRouterModel={selectedOpenRouterModel}
+              onOpenRouterModelChange={setSelectedOpenRouterModel}
               onConnectKey={() => void connectKey()}
               onDeleteKey={() => void deleteKey()}
             />

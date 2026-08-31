@@ -11,7 +11,7 @@
     "build": "npm run typecheck && electron-vite build",
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
-    "pretest": "electron tests/support/run-updater-service-test.cjs && tsx --tsconfig tsconfig.node.json tests/architecture/simplifiedAnalysisExperience.test.ts",
+    "pretest": "electron tests/support/run-updater-service-test.cjs && tsx --tsconfig tsconfig.node.json tests/architecture/simplifiedAnalysisExperience.test.ts && tsx --tsconfig tsconfig.node.json tests/unit/main/openRouterProvider.test.ts",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",

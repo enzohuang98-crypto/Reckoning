@@ -162,6 +162,34 @@ async function main(): Promise<void> {
       '不同端點不得取得同一 key'
     )
 
+    const openRouterModel = 'meta-llama/llama-free:free'
+    await store.setCredential(
+      'openrouter',
+      openRouterModel,
+      'sk-or-v1-secret'
+    )
+    const openRouterExecution = prepareExplanationExecution(
+      {
+        ...requestPayload,
+        provider: 'openrouter',
+        model: openRouterModel
+      },
+      session,
+      openRouterModel,
+      teacherRun
+    )
+    const openRouterRequest = await buildAIExplanationRequest(
+      openRouterExecution,
+      { secretStore: store }
+    )
+    assert.equal(openRouterRequest.provider, 'openrouter')
+    assert.equal(
+      openRouterRequest.model,
+      openRouterModel,
+      'renderer 选择的 OpenRouter 完整模型 ID 必须原样进入后端请求'
+    )
+    assert.equal(openRouterRequest.apiKey, 'sk-or-v1-secret')
+
     assert.equal(
       await store.setActiveCredential('gemini', 'gemini-3.5-flash'),
       true
@@ -171,13 +199,14 @@ async function main(): Promise<void> {
       provider: 'gemini',
       model: 'gemini-3.5-flash'
     })
-    assert.equal(status.credentials.length, 4)
+    assert.equal(status.credentials.length, 5)
     const serializedStatus = JSON.stringify(status)
     for (const secret of [
       'gemini-flash-key',
       'gemini-pro-key',
       'claude-key',
       'local-token',
+      'sk-or-v1-secret',
       'encryptedKey'
     ]) {
       assert.equal(

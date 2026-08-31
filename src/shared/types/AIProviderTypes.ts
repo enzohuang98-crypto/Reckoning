@@ -15,6 +15,7 @@ export type AIProviderId =
   | 'anthropic'
   | 'openai'
   | 'gemini'
+  | 'openrouter'
   | 'openai-compatible'
 
 /** 所有 Provider 識別碼（UI 列舉用） */
@@ -22,6 +23,7 @@ export const ALL_PROVIDER_IDS: AIProviderId[] = [
   'anthropic',
   'openai',
   'gemini',
+  'openrouter',
   'openai-compatible'
 ]
 
@@ -30,6 +32,7 @@ export const PROVIDER_LABEL: Record<AIProviderId, string> = {
   anthropic: 'Anthropic Claude',
   openai: 'OpenAI',
   gemini: 'Google Gemini',
+  openrouter: 'OpenRouter',
   'openai-compatible': 'OpenAI 相容／本機模型'
 }
 
@@ -162,6 +165,7 @@ export const PROVIDER_DEFAULT_MODELS: Record<AIProviderId, AIModelInfo[]> = {
     { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' }
   ],
+  openrouter: [],
   'openai-compatible': [
     { id: 'custom-model', label: '自行輸入模型 ID', isDefault: true }
   ]

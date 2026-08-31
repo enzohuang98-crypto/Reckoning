@@ -51,7 +51,9 @@ const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/
 
 function defaultModel(provider: AIProviderId): string {
   const models = PROVIDER_DEFAULT_MODELS[provider]
-  return (models.find((model) => model.isDefault) ?? models[0]).id
+  const model = models.find((candidate) => candidate.isDefault) ?? models[0]
+  if (!model) throw new Error(`Provider ${provider} 沒有可安全遷移的預設模型。`)
+  return model.id
 }
 
 function normalizeCredentialRef(

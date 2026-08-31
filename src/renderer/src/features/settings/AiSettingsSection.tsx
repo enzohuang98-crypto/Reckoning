@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { PROVIDER_LABEL } from '@shared/types/AIProviderTypes'
+import {
+  PROVIDER_LABEL,
+  type AIModelInfo
+} from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type { SecretStatus } from '@shared/types/ipc'
 import type { SettingsUpdater } from './types'
@@ -12,6 +15,9 @@ interface Props {
   secretStatus: SecretStatus
   encryptionAvailable: boolean | null
   secretBusy: boolean
+  openRouterModels: AIModelInfo[]
+  selectedOpenRouterModel: string
+  onOpenRouterModelChange: (model: string) => void
   onConnectKey: () => void
   onDeleteKey: () => void
 }
@@ -24,6 +30,9 @@ export function AiSettingsSection({
   secretStatus,
   encryptionAvailable,
   secretBusy,
+  openRouterModels,
+  selectedOpenRouterModel,
+  onOpenRouterModelChange,
   onConnectKey,
   onDeleteKey
 }: Props): JSX.Element {
@@ -44,7 +53,7 @@ export function AiSettingsSection({
         </div>
 
         <p className="muted">
-          直接贴上 OpenAI、Anthropic Claude 或 Google Gemini 的官方 API Key。
+          直接贴上 OpenAI、Anthropic Claude、Google Gemini 或 OpenRouter 的官方 API Key。
           程式会自动辨识服务、读取这把钥匙实际可用的模型，并以真实生成验证；成功后才加密储存。
         </p>
 
@@ -74,9 +83,38 @@ export function AiSettingsSection({
             onClick={onConnectKey}
             disabled={!apiKey.trim() || secretBusy || encryptionAvailable === false}
           >
-            {secretBusy ? '辨识、验证与连线中…' : '自动连线'}
+            {secretBusy
+              ? '辨识、验证与连线中…'
+              : openRouterModels.length > 0
+                ? '验证并使用此模型'
+                : '自动连线'}
           </button>
         </div>
+
+        {openRouterModels.length > 0 && (
+          <div className="field">
+            <label className="field-label" htmlFor="openrouter-free-model">
+              OpenRouter 免费模型
+            </label>
+            <select
+              id="openrouter-free-model"
+              aria-label="OpenRouter 免费模型"
+              className="select"
+              value={selectedOpenRouterModel}
+              disabled={secretBusy}
+              onChange={(event) => onOpenRouterModelChange(event.target.value)}
+            >
+              {openRouterModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label} · {model.id}
+                </option>
+              ))}
+            </select>
+            <p className="muted small">
+              清单来自 OpenRouter 官方即时目录；只列具名的 :free 模型，不使用会随机换模型的自动路由。
+            </p>
+          </div>
+        )}
 
         {active && (
           <div className="key-row">
