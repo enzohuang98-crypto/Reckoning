@@ -17,7 +17,12 @@ import type {
   EngineScore
 } from './EngineAnalysis'
 import type { MoveComparisonResult } from './MoveComparisonResult'
-import type { AITestCredentialResult, AIProviderId, TokenUsage } from './AIProviderTypes'
+import type {
+  AIModelInfo,
+  AITestCredentialResult,
+  AIProviderId,
+  TokenUsage
+} from './AIProviderTypes'
 import type { ExplanationLanguage, ExplanationStyle } from './AIExplanationTypes'
 import type { UserLevel } from './Settings'
 import type { LicenseStatus } from './License'
@@ -325,8 +330,16 @@ export type TestCredentialResult = AITestCredentialResult
 export type AutoConfigureCredentialResult =
   | {
       ok: true
+      configured: true
       credential: SecretCredentialRef
       status: SecretStatus
+      message: string
+    }
+  | {
+      ok: true
+      configured: false
+      provider: 'openrouter'
+      models: AIModelInfo[]
       message: string
     }
   | { ok: false; message: string }
@@ -430,7 +443,10 @@ export interface RendererApi {
     /** 低用量實際推論測試；不落地任何草稿金鑰 */
     testCredential(input: TestCredentialInput): Promise<TestCredentialResult>
     /** 自动辨识官方 Provider、取得可用模型、实际生成验证后才安全储存。 */
-    autoConfigureCredential(apiKey: string): Promise<AutoConfigureCredentialResult>
+    autoConfigureCredential(
+      apiKey: string,
+      model?: string
+    ): Promise<AutoConfigureCredentialResult>
   }
   teacherTest: {
     status(): Promise<TeacherTestRunStatusV1>

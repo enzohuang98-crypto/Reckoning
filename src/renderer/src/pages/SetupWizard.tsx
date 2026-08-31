@@ -7,6 +7,7 @@
  */
 
 import { useState } from 'react'
+import type { AIModelInfo } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type { EngineTestResult } from '@shared/types/ipc'
 import { markSetupCompleted, saveSettings } from '../storage/localSettings'
@@ -25,6 +26,8 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<EngineTestResult | null>(null)
   const [apiKey, setApiKey] = useState('')
+  const [openRouterModels, setOpenRouterModels] = useState<AIModelInfo[]>([])
+  const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState('')
   const [finishing, setFinishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -68,13 +71,32 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
       }
       const key = apiKey.trim()
       const keyResult = key
-        ? await window.api.ai.autoConfigureCredential(key)
+        ? await window.api.ai.autoConfigureCredential(
+            key,
+            selectedOpenRouterModel || undefined
+          )
         : null
       if (keyResult && !keyResult.ok) {
+        if (selectedOpenRouterModel) {
+          setOpenRouterModels([])
+          setSelectedOpenRouterModel('')
+        }
         setError(keyResult.message)
         return
       }
-      const selectedCredential = keyResult?.credential
+      if (keyResult?.ok && !keyResult.configured) {
+        setOpenRouterModels(keyResult.models)
+        setSelectedOpenRouterModel((current) =>
+          keyResult.models.some((model) => model.id === current)
+            ? current
+            : keyResult.models[0]?.id ?? ''
+        )
+        setError(null)
+        return
+      }
+      const selectedCredential = keyResult?.ok && keyResult.configured
+        ? keyResult.credential
+        : undefined
       const next = {
         ...settings,
         aiProvider: selectedCredential?.provider ?? settings.aiProvider,
@@ -177,20 +199,47 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
             <input
               className="text-input"
               type="password"
-              placeholder="贴上 OpenAI、Anthropic 或 Gemini 官方 API Key"
+              placeholder="贴上 OpenAI、Anthropic、Gemini 或 OpenRouter 官方 API Key"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(event) => {
+                setApiKey(event.target.value)
+                setOpenRouterModels([])
+                setSelectedOpenRouterModel('')
+              }}
             />
             <p className="muted small">
               程式会自动辨识官方服务、读取实际可用模型并完成一次真实生成验证；
               成功后才以作业系统加密 (safeStorage) 储存于本机。
             </p>
           </div>
+          {openRouterModels.length > 0 && (
+            <div className="field">
+              <label className="field-label" htmlFor="setup-openrouter-free-model">
+                OpenRouter 免费模型
+              </label>
+              <select
+                id="setup-openrouter-free-model"
+                aria-label="OpenRouter 免费模型"
+                className="select"
+                value={selectedOpenRouterModel}
+                onChange={(event) => setSelectedOpenRouterModel(event.target.value)}
+              >
+                {openRouterModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label} · {model.id}
+                  </option>
+                ))}
+              </select>
+              <p className="muted small">
+                请选择具名 :free 模型；程式不会使用随机免费路由替换你的选择。
+              </p>
+            </div>
+          )}
         </section>
 
         <div className="setup-actions">
           <button className="btn" onClick={finish} disabled={finishing}>
-            完成設定 →
+            {openRouterModels.length > 0 ? '验证模型并完成設定 →' : '完成設定 →'}
           </button>
         </div>
       </div>

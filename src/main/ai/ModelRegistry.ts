@@ -30,10 +30,11 @@ export class UnsupportedModelError extends Error {
 }
 
 /** 各 Provider 預設模型。 */
-const DEFAULT_MODEL_BY_PROVIDER: Record<AIProviderId, string> = {
+const DEFAULT_MODEL_BY_PROVIDER: Record<AIProviderId, string | null> = {
   anthropic: 'claude-sonnet-5',
   openai: 'gpt-5.6-sol',
   gemini: 'gemini-3.5-flash',
+  openrouter: null,
   'openai-compatible': 'custom-model'
 }
 
@@ -77,7 +78,9 @@ class JsonModelRegistry implements ModelRegistry {
   }
 
   getDefaultModel(provider: AIProviderId): AIModelConfig {
-    return this.getModel(provider, DEFAULT_MODEL_BY_PROVIDER[provider])
+    const model = DEFAULT_MODEL_BY_PROVIDER[provider]
+    if (!model) throw new UnsupportedModelError(provider, '')
+    return this.getModel(provider, model)
   }
 }
 

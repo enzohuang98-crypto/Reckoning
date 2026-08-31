@@ -15,7 +15,8 @@ const GEMINI_KEY_PATTERN = /^(?:AIza|AQ\.)/
 const PROVIDER_KEY_PATTERNS: Partial<Record<AIProviderId, RegExp>> = {
   anthropic: /^sk-ant-/,
   gemini: GEMINI_KEY_PATTERN,
-  openai: /^sk-(?!ant-)/
+  openrouter: /^sk-or-v1-/,
+  openai: /^sk-(?!(?:ant-|or-v1-))/
 }
 
 /**
@@ -38,6 +39,9 @@ export function detectApiKeyProvider(
   }
   if (GEMINI_KEY_PATTERN.test(normalizedKey)) {
     return { provider: 'gemini', normalizedKey }
+  }
+  if (normalizedKey.startsWith('sk-or-v1-')) {
+    return { provider: 'openrouter', normalizedKey }
   }
   if (normalizedKey.startsWith('sk-')) {
     return { provider: 'openai', normalizedKey }

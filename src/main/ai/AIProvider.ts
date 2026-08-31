@@ -10,11 +10,13 @@ import type { AIProvider, AIProviderId } from '@shared/types/AIProviderTypes'
 import { AnthropicProvider } from './providers/AnthropicProvider'
 import { OpenAIProvider } from './providers/OpenAIProvider'
 import { GeminiProvider } from './providers/GeminiProvider'
+import { OpenRouterProvider } from './providers/OpenRouterProvider'
 import { OpenAICompatibleProvider } from './providers/OpenAICompatibleProvider'
 
 const anthropicProvider = new AnthropicProvider()
 const openAIProvider = new OpenAIProvider()
 const geminiProvider = new GeminiProvider()
+const openRouterProvider = new OpenRouterProvider()
 const openAICompatibleProvider = new OpenAICompatibleProvider()
 
 export function getAIProvider(providerName: AIProviderId): AIProvider {
@@ -25,6 +27,8 @@ export function getAIProvider(providerName: AIProviderId): AIProvider {
       return openAIProvider
     case 'gemini':
       return geminiProvider
+    case 'openrouter':
+      return openRouterProvider
     case 'openai-compatible':
       return openAICompatibleProvider
     default: {
@@ -38,5 +42,6 @@ export {
   AnthropicProvider,
   OpenAIProvider,
   GeminiProvider,
+  OpenRouterProvider,
   OpenAICompatibleProvider
 }

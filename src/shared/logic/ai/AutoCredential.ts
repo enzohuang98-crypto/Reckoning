@@ -1,6 +1,8 @@
 import type { AIProviderId } from '../../types/AIProviderTypes'
 
-export const AUTO_MODEL_PRIORITY: Record<Exclude<AIProviderId, 'openai-compatible'>, readonly string[]> = {
+type AutomaticProvider = Exclude<AIProviderId, 'openai-compatible' | 'openrouter'>
+
+export const AUTO_MODEL_PRIORITY: Record<AutomaticProvider, readonly string[]> = {
   openai: [
     'gpt-5.6-sol',
     'gpt-5.6-terra',
@@ -30,7 +32,7 @@ function normalizeListedModel(model: string): string {
 }
 
 export function selectAutomaticModel(
-  provider: Exclude<AIProviderId, 'openai-compatible'>,
+  provider: AutomaticProvider,
   availableModels: readonly string[]
 ): string | null {
   const available = new Set(availableModels.map(normalizeListedModel))

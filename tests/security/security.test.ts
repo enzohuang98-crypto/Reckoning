@@ -183,6 +183,10 @@ check(
   normalizeApiKey('sk-test-value').provider === 'openai'
 )
 check(
+  'OpenRouter 金鑰優先辨識為 OpenRouter 而不是 OpenAI',
+  normalizeApiKey('sk-or-v1-test-value').provider === 'openrouter'
+)
+check(
   '未知 API Key 格式被拒絕',
   rejects(() => normalizeApiKey('unknown-key'), SecurityValidationError)
 )
@@ -194,6 +198,10 @@ check(
 check(
   '即使指定 preferredProvider，貼錯欄位的 Anthropic 金鑰也會被 openai 拒絕',
   rejects(() => normalizeApiKey('sk-ant-real-anthropic-key', 'openai'), SecurityValidationError)
+)
+check(
+  '指定 OpenAI 時拒絕 OpenRouter 金鑰，避免把 Key 送到錯誤後端',
+  rejects(() => normalizeApiKey('sk-or-v1-real-openrouter-key', 'openai'), SecurityValidationError)
 )
 check(
   '即使指定 preferredProvider，貼錯欄位的 Gemini 金鑰也會被 anthropic 拒絕',

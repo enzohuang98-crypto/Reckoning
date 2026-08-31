@@ -8,6 +8,7 @@ import { detectApiKeyProvider } from '../../../src/shared/logic/validation/ApiKe
 assert.equal(detectApiKeyProvider(' sk-ant-example ')?.provider, 'anthropic')
 assert.equal(detectApiKeyProvider('AIza-example')?.provider, 'gemini')
 assert.equal(detectApiKeyProvider('AQ.example-auth-key')?.provider, 'gemini')
+assert.equal(detectApiKeyProvider('sk-or-v1-example')?.provider, 'openrouter')
 assert.equal(detectApiKeyProvider('sk-example')?.provider, 'openai')
 assert.equal(detectApiKeyProvider('deepseek-example'), null)
 
