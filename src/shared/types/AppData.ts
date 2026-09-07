@@ -191,6 +191,48 @@ export function sanitizeAppData(value: unknown): AppDataSnapshot {
   }
 }
 
+/**
+ * 建立供備份用的獨立快照，避免匯出期間的 UI 更新改動同一個物件。
+ * API key 不屬於 AppDataSnapshot，也不會由此函式加入備份。
+ */
+export function cloneAppDataSnapshot(snapshot: AppDataSnapshot): AppDataSnapshot {
+  return {
+    schemaVersion: snapshot.schemaVersion,
+    savedPositions: snapshot.savedPositions.map((position) => ({ ...position })),
+    conversations: snapshot.conversations.map((conversation) => ({
+      ...conversation,
+      messages: conversation.messages.map((message) => ({ ...message }))
+    })),
+    userGuesses: snapshot.userGuesses.map((guess) => ({ ...guess }))
+  }
+}
+
+/**
+ * 驗證 renderer 傳入的完整備份快照；不接受「sanitize 後變成空陣列」的假成功。
+ * 允許額外非敏感欄位存在，既有 sanitizer 仍負責移除敏感欄位。
+ */
+export function parseAppDataSnapshot(value: unknown): AppDataSnapshot | null {
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== APP_DATA_SCHEMA_VERSION ||
+    !Array.isArray(value.savedPositions) ||
+    !Array.isArray(value.conversations) ||
+    !Array.isArray(value.userGuesses)
+  ) {
+    return null
+  }
+
+  const snapshot = sanitizeAppData(value)
+  if (
+    snapshot.savedPositions.length !== value.savedPositions.length ||
+    snapshot.conversations.length !== value.conversations.length ||
+    snapshot.userGuesses.length !== value.userGuesses.length
+  ) {
+    return null
+  }
+  return snapshot
+}
+
 export function extractRetiredStudyData(
   value: unknown,
   retiredAt = new Date().toISOString()

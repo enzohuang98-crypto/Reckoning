@@ -6,7 +6,12 @@ import {
   type DataLoadResult,
   type DataSaveResult
 } from '@shared/types/ipc'
-import { mergeAppData, sanitizeAppData, type AppDataSnapshot } from '@shared/types/AppData'
+import {
+  mergeAppData,
+  sanitizeAppData,
+  type AppDataSnapshot
+} from '@shared/types/AppData'
+import { exportDataBackup } from './dataExport'
 import type { StorageService } from '../storage/StorageService'
 import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
@@ -48,25 +53,27 @@ export function registerDataHandlers(storage: StorageService): void {
     }
   )
 
-  ipcMain.handle(IPC.DATA_EXPORT, async (event): Promise<DataExportResult> => {
-    assertTrustedIpcSender(event)
-    const result = await dialog.showSaveDialog({
-      title: '匯出象棋分析資料',
-      defaultPath: `xiangqi-analyzer-backup-${new Date().toISOString().slice(0, 10)}.json`,
-      filters: [{ name: 'JSON 備份', extensions: ['json'] }]
-    })
-    if (result.canceled || !result.filePath) return { ok: false, cancelled: true }
-    try {
-      await storage.writeAbsoluteAsync(
+  ipcMain.handle(
+    IPC.DATA_EXPORT,
+    async (event, rawSnapshot: unknown): Promise<DataExportResult> => {
+      assertTrustedIpcSender(event)
+      const result = await dialog.showSaveDialog({
+        title: '匯出象棋分析資料',
+        defaultPath: `xiangqi-analyzer-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON 備份', extensions: ['json'] }]
+      })
+      if (result.canceled || !result.filePath) {
+        return { ok: false, cancelled: true }
+      }
+      const exportResult = await exportDataBackup(
+        storage,
         result.filePath,
-        await storage.readAppDataWithMigration()
+        rawSnapshot
       )
-      return { ok: true, filePath: result.filePath }
-    } catch (error) {
-      logger.error('匯出備份失敗', error)
-      return { ok: false, message: '匯出失敗，請確認目的地是否可寫入。' }
+      if (!exportResult.ok) logger.error('匯出備份失敗', exportResult.message)
+      return exportResult
     }
-  })
+  )
 
   ipcMain.handle(IPC.DATA_IMPORT, async (event): Promise<DataImportResult> => {
     assertTrustedIpcSender(event)

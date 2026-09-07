@@ -30,22 +30,21 @@ import {
   type TestCredentialResult
 } from '@shared/types/ipc'
 import {
-  isValidAIModelId,
   type AIProviderId
 } from '@shared/types/AIProviderTypes'
-import { selectAutomaticModel } from '@shared/logic/ai/AutoCredential'
 import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
 import { SecretStore } from '../storage/SecretStore'
 import {
   AnalysisSessionNotFoundError,
   type AnalysisSessionStore
 } from '../storage/AnalysisSessionStore'
-import { getAIProvider, OpenRouterProvider } from '../ai/AIProvider'
+import { getAIProvider } from '../ai/AIProvider'
+import { autoConfigureCredential } from '../ai/autoConfigureCredential'
 import {
   HarnessExplanationUnavailableError,
   runExplanationHarness
 } from '../ai/HarnessOrchestrator'
-import { aiErrorStatus } from '../ai/http'
+import { aiErrorStatus, describeCredentialTestError } from '../ai/http'
 import {
   prepareExplanationExecution,
   TeacherCaseBusyError,
@@ -457,96 +456,35 @@ export function registerAiExplanationHandlers(
         typeof rawInput === 'object' && rawInput !== null
           ? (rawInput as Record<string, unknown>)
           : {}
-      const { provider, apiKey } = normalizeApiKey(value.apiKey)
-      if (provider === 'openai-compatible') {
-        return {
-          ok: false,
-          message: '只支援 OpenAI、Anthropic、Google Gemini 与 OpenRouter 官方金钥匙。'
-        }
-      }
+      const apiKeyForGate =
+        typeof value.apiKey === 'string' ? value.apiKey.trim() : ''
       const requestedModel =
         typeof value.model === 'string' ? value.model.trim() : ''
-      if (requestedModel && !isValidAIModelId(requestedModel)) {
-        return { ok: false, message: 'OpenRouter 模型 ID 格式无效，请重新读取模型清单。' }
-      }
-      const digest = createHash('sha256').update(apiKey).digest('hex')
+      const digest = createHash('sha256').update(apiKeyForGate).digest('hex')
       try {
         return await credentialTestGate.run(
-          `auto\u001f${provider}\u001f${digest}\u001f${requestedModel}`,
-          async () => {
-            const adapter = getAIProvider(provider)
-            if (provider === 'openrouter') {
-              if (!(adapter instanceof OpenRouterProvider)) {
-                throw new Error('OpenRouter Provider 綁定錯誤。')
-              }
-              const models = await adapter.listFreeModels(apiKey)
-              if (models.length === 0) {
-                return {
-                  ok: false,
-                  message: 'OpenRouter 金鑰可連線，但官方目前沒有可用的具名免費文字模型。'
-                }
-              }
-              if (!requestedModel) {
-                return {
-                  ok: true,
-                  configured: false,
-                  provider,
-                  models,
-                  message: `OpenRouter 已连线；请选择要使用的免费模型（目前 ${models.length} 个）。`
-                }
-              }
-              if (!models.some((model) => model.id === requestedModel)) {
-                return {
-                  ok: false,
-                  message: '所选模型不在 OpenRouter 最新的具名免费模型清单中，请重新读取。'
-                }
-              }
-              const tested = await adapter.testCredential(apiKey, requestedModel)
-              if (!tested.ok) return { ok: false, message: tested.message }
-              await secretStore.setCredential(provider, requestedModel, apiKey)
-              const status = await secretStore.getStatus()
-              return {
-                ok: true,
-                configured: true,
-                credential: { provider, model: requestedModel },
-                status,
-                message: `OpenRouter · ${requestedModel} 已通过实际生成验证并安全储存。`
-              }
-            }
-            const availableModels = await adapter.listModels(apiKey)
-            const model = selectAutomaticModel(provider, availableModels)
-            if (!model) {
-              return {
-                ok: false,
-                message: '金钥匙可连线，但目前帐号没有本软体支援的稳定文字生成模型。'
-              }
-            }
-            // Gemini models.list 已同時證明金鑰可用、模型對此帳號可見，且模型
-            // 宣告支援 generateContent；不要再用一次可能壅塞的文字生成阻擋存檔。
-            if (provider !== 'gemini') {
-              const tested = await adapter.testCredential(apiKey, model)
-              if (!tested.ok) return { ok: false, message: tested.message }
-            }
-            await secretStore.setCredential(provider, model, apiKey)
-            const status = await secretStore.getStatus()
-            return {
-              ok: true,
-              configured: true,
-              credential: { provider, model },
-              status,
-              message: `${adapter.displayName} · ${model} 已通過官方模型與能力驗證並安全儲存。`
-            }
-          }
+          `auto\u001f${digest}\u001f${requestedModel}`,
+          () =>
+            autoConfigureCredential(rawInput, {
+              getProvider: getAIProvider,
+              secretStore
+            })
         )
       } catch (error) {
         if (error instanceof OperationBusyError) {
           return { ok: false, message: '已有金钥匙连线测试进行中，请稍后再试。' }
         }
         logger.warn('AI credential auto configuration failed', {
-          provider,
           error: error instanceof Error ? error.name : 'unknown'
         })
-        return { ok: false, message: '无法完成官方 API 连线，请检查金钥匙与网路后重试。' }
+        const classified = describeCredentialTestError(error, 'AI', 'key')
+        return {
+          ok: false,
+          message: classified.message,
+          ...(classified.diagnostic
+            ? { diagnostic: classified.diagnostic }
+            : {})
+        }
       }
     }
   )

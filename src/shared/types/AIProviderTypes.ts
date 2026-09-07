@@ -76,10 +76,41 @@ export type AIExplanationStreamChunk =
       usage?: TokenUsage
     }
 
+/** 憑證測試目前所處的階段；供 main 與 renderer 共同分類錯誤。 */
+export type AICredentialTestStage = 'key' | 'catalog' | 'generation' | 'storage'
+
+/** 憑證測試的可操作錯誤分類；不得把所有 HTTP 錯誤壓成同一個訊息。 */
+export type AICredentialErrorCategory =
+  | 'invalid_request'
+  | 'authentication'
+  | 'permission'
+  | 'billing'
+  | 'model_unavailable'
+  | 'rate_limited'
+  | 'provider_unavailable'
+  | 'timeout'
+  | 'network'
+  | 'response_format'
+  | 'model_mismatch'
+  | 'generation_incomplete'
+  | 'storage'
+  | 'unknown'
+
+/** 不含金鑰的結構化憑證測試診斷。 */
+export interface AICredentialDiagnostic {
+  stage: AICredentialTestStage
+  category: AICredentialErrorCategory
+  httpStatus?: number
+  retryable: boolean
+  retryAfterMs?: number
+  message: string
+}
+
 /** 指定模型的低用量推論測試結果。 */
 export interface AITestCredentialResult {
   ok: boolean
   message: string
+  diagnostic?: AICredentialDiagnostic
 }
 
 /**

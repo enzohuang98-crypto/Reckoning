@@ -7,13 +7,14 @@
  * 匯入後可用導覽按鈕或點擊著法逐步檢視，棋盤即時同步，可對任一步執行引擎分析。
  */
 
-import { useState } from 'react'
 import { parseFen } from '@shared/logic/board/fen'
 import { parseGameRecord } from '@shared/logic/board/PlayOkWxf'
 import { START_FEN, type BoardState } from '@shared/types/BoardState'
 
 interface Props {
   board: BoardState
+  state: GameImportState
+  onStateChange: (state: GameImportState) => void
   onBoardChange: (board: BoardState) => void
   onMoveSelect: (selection: ImportedMoveSelection) => void
 }
@@ -26,35 +27,50 @@ export interface ImportedMoveSelection {
   plyIndex: number
 }
 
-interface ImportedGame {
+export interface ImportedGame {
   /** positions[0] 為起始局面，positions[i] 為走完第 i 手後的局面 */
   positions: BoardState[]
   moves: string[]
   displayMoves: string[]
 }
 
+export interface GameImportState {
+  movesText: string
+  game: ImportedGame | null
+  /** 目前檢視位置：0 = 起始局面，i = 第 i 手之後。 */
+  cursor: number
+  selectedPly: number | null
+  error: string | null
+}
+
+export const EMPTY_GAME_IMPORT_STATE: GameImportState = {
+  movesText: '',
+  game: null,
+  cursor: 0,
+  selectedPly: null,
+  error: null
+}
+
 export function GameImportPanel({
   board,
+  state,
+  onStateChange,
   onBoardChange,
   onMoveSelect
 }: Props): JSX.Element {
-  const [movesText, setMovesText] = useState('')
-  const [game, setGame] = useState<ImportedGame | null>(null)
-  /** 目前檢視位置：0 = 起始局面，i = 第 i 手之後 */
-  const [cursor, setCursor] = useState(0)
-  const [selectedPly, setSelectedPly] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
   const importMoves = (start: BoardState): void => {
-    setError(null)
-    const parsed = parseGameRecord(movesText, start)
+    const parsed = parseGameRecord(state.movesText, start)
     if (!parsed.valid) {
-      setError(parsed.message)
+      onStateChange({ ...state, error: parsed.message })
       return
     }
-    setGame(parsed)
-    setCursor(parsed.positions.length - 1)
-    setSelectedPly(null)
+    onStateChange({
+      ...state,
+      error: null,
+      game: parsed,
+      cursor: parsed.positions.length - 1,
+      selectedPly: null
+    })
     onBoardChange(parsed.positions[parsed.positions.length - 1])
   }
 
@@ -64,17 +80,16 @@ export function GameImportPanel({
   }
 
   const goto = (index: number): void => {
-    if (!game) return
-    const clamped = Math.max(0, Math.min(game.positions.length - 1, index))
-    setCursor(clamped)
-    setSelectedPly(null)
-    onBoardChange(game.positions[clamped])
+    if (!state.game) return
+    const clamped = Math.max(0, Math.min(state.game.positions.length - 1, index))
+    onStateChange({ ...state, cursor: clamped, selectedPly: null, error: null })
+    onBoardChange(state.game.positions[clamped])
   }
 
   const selectMove = (index: number): void => {
+    const game = state.game
     if (!game) return
-    setCursor(index)
-    setSelectedPly(index)
+    onStateChange({ ...state, cursor: index, selectedPly: index, error: null })
     onMoveSelect({
       position: game.positions[index],
       move: game.moves[index],
@@ -84,23 +99,22 @@ export function GameImportPanel({
   }
 
   const clear = (): void => {
-    setGame(null)
-    setCursor(0)
-    setSelectedPly(null)
-    setError(null)
+    onStateChange({ ...EMPTY_GAME_IMPORT_STATE })
     // 清除棋譜時也清除上一次實戰步選取，避免舊分析繼續顯示。
     onBoardChange(board)
   }
+
+  const game = state.game
 
   return (
     <div className="import-panel">
       <label className="field-label">棋譜匯入（PlayOK WXF 或 UCI）</label>
       <textarea
         className="fen-textarea"
-        value={movesText}
+        value={state.movesText}
         spellCheck={false}
         rows={5}
-        onChange={(e) => setMovesText(e.target.value)}
+        onChange={(e) => onStateChange({ ...state, movesText: e.target.value, error: null })}
         placeholder={'貼上 FORMAT WXF … START{…}END，或 h2e2 h9g7 b2e2'}
       />
       <div className="row gap">
@@ -110,44 +124,44 @@ export function GameImportPanel({
         <button className="btn ghost" onClick={() => importMoves(board)}>
           從目前局面匯入
         </button>
-        {game && (
+        {(game || state.movesText) && (
           <button className="btn ghost" onClick={clear}>
             清除
           </button>
         )}
       </div>
-      {error && <div className="error-text">⚠ {error}</div>}
+      {state.error && <div className="error-text">⚠ {state.error}</div>}
       {game && (
         <div className="game-nav">
           <div className="row gap">
-            <button className="btn ghost small" onClick={() => goto(0)} disabled={cursor === 0}>
+              <button className="btn ghost small" onClick={() => goto(0)} disabled={state.cursor === 0}>
               ⏮ 開頭
             </button>
             <button
               className="btn ghost small"
-              onClick={() => goto(cursor - 1)}
-              disabled={cursor === 0}
+              onClick={() => goto(state.cursor - 1)}
+              disabled={state.cursor === 0}
             >
               ◀ 上一手
             </button>
             <span className="muted small">
-              {selectedPly !== null
-                ? `第 ${selectedPly + 1}/${game.moves.length} 手走前`
-                : cursor === 0
+              {state.selectedPly !== null
+                ? `第 ${state.selectedPly + 1}/${game.moves.length} 手走前`
+                : state.cursor === 0
                   ? '起始局面'
-                  : `第 ${cursor}/${game.moves.length} 手走後`}
+                  : `第 ${state.cursor}/${game.moves.length} 手走後`}
             </span>
             <button
               className="btn ghost small"
-              onClick={() => goto(cursor + 1)}
-              disabled={cursor === game.moves.length}
+              onClick={() => goto(state.cursor + 1)}
+              disabled={state.cursor === game.moves.length}
             >
               下一手 ▶
             </button>
             <button
               className="btn ghost small"
               onClick={() => goto(game.moves.length)}
-              disabled={cursor === game.moves.length}
+              disabled={state.cursor === game.moves.length}
             >
               結尾 ⏭
             </button>
@@ -156,7 +170,7 @@ export function GameImportPanel({
             {game.moves.map((m, i) => (
               <button
                 key={`${i}-${m}`}
-                className={`move-chip ${selectedPly === i ? 'current' : ''}`}
+                className={`move-chip ${state.selectedPly === i ? 'current' : ''}`}
                 title={`分析第 ${i + 1} 手（顯示走前局面）`}
                 onClick={() => selectMove(i)}
               >
@@ -164,9 +178,9 @@ export function GameImportPanel({
               </button>
             ))}
           </div>
-          {selectedPly !== null && (
+          {state.selectedPly !== null && (
             <div className="notice-text small" role="status">
-              已選第 {selectedPly + 1} 手 {game.displayMoves[selectedPly]}，正在比較實戰步與 AI 首選。
+              已選第 {state.selectedPly + 1} 手 {game.displayMoves[state.selectedPly]}，正在比較實戰步與 AI 首選。
             </div>
           )}
         </div>

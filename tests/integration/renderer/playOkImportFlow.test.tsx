@@ -8,11 +8,13 @@ import {
   type ReactTestRenderer
 } from 'react-test-renderer'
 import {
+  EMPTY_GAME_IMPORT_STATE,
   GameImportPanel,
+  type GameImportState,
   type ImportedMoveSelection
 } from '../../../src/renderer/src/features/board/GameImportPanel'
 import { parseFen } from '../../../src/shared/logic/board/fen'
-import { START_FEN } from '../../../src/shared/types/BoardState'
+import { START_FEN, type BoardState } from '../../../src/shared/types/BoardState'
 
 const WXF = `FORMAT  WXF
 RED test
@@ -36,6 +38,33 @@ function buttonByText(root: ReactTestInstance, label: string): ReactTestInstance
   return button
 }
 
+function StatefulImportHarness({
+  board,
+  onBoardChange,
+  onMoveSelect
+}: {
+  board: BoardState
+  onBoardChange: (board: BoardState) => void
+  onMoveSelect: (selection: ImportedMoveSelection) => void
+}): React.ReactElement {
+  const [state, setState] = React.useState<GameImportState>(EMPTY_GAME_IMPORT_STATE)
+  const [open, setOpen] = React.useState(true)
+  return (
+    <>
+      <button onClick={() => setOpen((current) => !current)}>切換匯入面板</button>
+      <div hidden={!open}>
+        <GameImportPanel
+          board={board}
+          state={state}
+          onStateChange={setState}
+          onBoardChange={onBoardChange}
+          onMoveSelect={onMoveSelect}
+        />
+      </div>
+    </>
+  )
+}
+
 function main(): void {
   const start = parseFen(START_FEN)
   assert.equal(start.valid, true)
@@ -47,7 +76,7 @@ function main(): void {
   try {
     act(() => {
       renderer = create(
-        <GameImportPanel
+        <StatefulImportHarness
           board={start.board}
           onBoardChange={(board) => boardChanges.push(board.fen)}
           onMoveSelect={(selection) => selections.push(selection)}
@@ -79,6 +108,24 @@ function main(): void {
 
     act(() => buttonByText(renderer.root, '1.C8.5').props.onClick())
     assert.equal(selections.length, 2, '重按同一手也必須產生新的明確選取事件')
+
+    act(() => buttonByText(renderer.root, '切換匯入面板').props.onClick())
+    assert.equal(
+      renderer.root.findAll((node) => node.type === 'div' && node.props.hidden === true).length,
+      1,
+      '關閉匯入面板只應切換可見性，不應卸載匯入狀態'
+    )
+    act(() => buttonByText(renderer.root, '切換匯入面板').props.onClick())
+    assert.equal(renderer.root.findByType('textarea').props.value, WXF)
+    assert.match(textContent(renderer.root), /已選第 1 手 C8\.5/)
+
+    act(() => buttonByText(renderer.root, '清除').props.onClick())
+    assert.equal(renderer.root.findByType('textarea').props.value, '')
+    assert.equal(
+      renderer.root.findAll((node) => node.props.className === 'move-chip').length,
+      0,
+      '明確清除後不得殘留舊棋譜與著法選取'
+    )
     console.log('PlayOK renderer import flow tests passed')
   } finally {
     if (renderer) act(() => renderer?.unmount())

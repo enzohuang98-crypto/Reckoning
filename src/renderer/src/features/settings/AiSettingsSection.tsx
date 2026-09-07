@@ -5,6 +5,10 @@ import {
 } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type { SecretStatus } from '@shared/types/ipc'
+import {
+  AiConnectionStatus,
+  type AiConnectionStage
+} from './AiConnectionStatus'
 import type { SettingsUpdater } from './types'
 
 interface Props {
@@ -19,7 +23,9 @@ interface Props {
   selectedOpenRouterModel: string
   onOpenRouterModelChange: (model: string) => void
   onConnectKey: () => void
+  onRefreshOpenRouterModels?: () => void
   onDeleteKey: () => void
+  connectionStage?: AiConnectionStage
 }
 
 export function AiSettingsSection({
@@ -34,7 +40,9 @@ export function AiSettingsSection({
   selectedOpenRouterModel,
   onOpenRouterModelChange,
   onConnectKey,
-  onDeleteKey
+  onRefreshOpenRouterModels,
+  onDeleteKey,
+  connectionStage = 'idle'
 }: Props): JSX.Element {
   const [deleteConfirmation, setDeleteConfirmation] = useState(false)
   const active = secretStatus.activeCredential
@@ -56,6 +64,11 @@ export function AiSettingsSection({
           直接贴上 OpenAI、Anthropic Claude、Google Gemini 或 OpenRouter 的官方 API Key。
           程式会自动辨识服务、读取这把钥匙实际可用的模型，并以真实生成验证；成功后才加密储存。
         </p>
+
+        <AiConnectionStatus
+          stage={connectionStage}
+          configured={secretStatus.configured}
+        />
 
         {encryptionAvailable === false && (
           <div className="error-text">
@@ -113,6 +126,15 @@ export function AiSettingsSection({
             <p className="muted small">
               清单来自 OpenRouter 官方即时目录；只列具名的 :free 模型，不使用会随机换模型的自动路由。
             </p>
+            {onRefreshOpenRouterModels && (
+              <button
+                className="btn ghost small"
+                disabled={secretBusy}
+                onClick={onRefreshOpenRouterModels}
+              >
+                重新讀取免費模型
+              </button>
+            )}
           </div>
         )}
 

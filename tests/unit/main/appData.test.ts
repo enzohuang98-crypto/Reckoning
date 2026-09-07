@@ -10,11 +10,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   APP_DATA_SCHEMA_VERSION,
+  cloneAppDataSnapshot,
   EMPTY_APP_DATA,
   extractRetiredStudyData,
   mergeAppData,
+  parseAppDataSnapshot,
   sanitizeAppData
 } from '../../../src/shared/types/AppData'
+import { exportDataBackup } from '../../../src/main/ipc/dataExport'
 import {
   APP_DATA_FILE,
   StorageService
@@ -138,6 +141,116 @@ const merged = mergeAppData(
 check('duplicate saved positions are not imported twice', merged.summary.savedPositions === 1)
 check('merge keeps old data and adds new data', merged.snapshot.savedPositions.length === 2)
 check('backup snapshot does not contain API Key field names', !JSON.stringify(merged.snapshot).includes('apiKey'))
+const cloned = cloneAppDataSnapshot(merged.snapshot)
+cloned.savedPositions[0]!.name = 'mutated clone'
+cloned.conversations[0]!.messages[0]!.text = 'mutated clone message'
+check(
+  'current data snapshot is deeply cloned before export',
+  merged.snapshot.savedPositions[0]?.name !== 'mutated clone' &&
+    merged.snapshot.conversations[0]?.messages[0]?.text !== 'mutated clone message'
+)
+check(
+  'complete current snapshot passes strict export validation',
+  parseAppDataSnapshot(merged.snapshot)?.savedPositions.length === 2
+)
+check(
+  'malformed export snapshot is rejected instead of sanitized to empty data',
+  parseAppDataSnapshot({
+    ...merged.snapshot,
+    savedPositions: [{ invalid: true }]
+  }) === null
+)
+
+async function runBackupChecks(): Promise<void> {
+let backupWriteCount = 0
+let writtenBackup: unknown = null
+const liveSnapshot = {
+  ...merged.snapshot,
+  savedPositions: [
+    ...merged.snapshot.savedPositions,
+    {
+      id: 'live-position',
+      name: 'Live position',
+      fen: '9/9/9/9/9/9/9/9/9/9 w - - 0 1',
+      createdAt: '2026-08-25T00:00:00.000Z',
+      updatedAt: '2026-08-25T00:00:00.000Z'
+    }
+  ],
+  conversations: [
+    ...merged.snapshot.conversations,
+    {
+      id: 'live-conversation',
+      analysisId: 'live-analysis',
+      positionFen: '9/9/9/9/9/9/9/9/9/9 w - - 0 1',
+      createdAt: '2026-08-25T00:00:00.000Z',
+      updatedAt: '2026-08-25T00:00:00.000Z',
+      messages: []
+    }
+  ]
+}
+const backupStorage = {
+  async readAppDataWithMigration() {
+    return merged.snapshot
+  },
+  async writeAbsoluteAsync(_path: string, data: unknown) {
+    backupWriteCount++
+    writtenBackup = data
+  }
+}
+const liveExport = await exportDataBackup(
+  backupStorage,
+  'C:\\backup\\live.json',
+  liveSnapshot
+)
+check(
+  'backup includes unsaved in-memory position and conversation',
+  liveExport.ok &&
+    (writtenBackup as typeof liveSnapshot).savedPositions.some((item) => item.id === 'live-position') &&
+    (writtenBackup as typeof liveSnapshot).conversations.some((item) => item.id === 'live-conversation')
+)
+const writesBeforeCancel = backupWriteCount
+const cancelledExport = await exportDataBackup(backupStorage, null, liveSnapshot)
+check(
+  'cancelled backup does not mutate source or write a file',
+  cancelledExport.ok === false && cancelledExport.cancelled === true &&
+    backupWriteCount === writesBeforeCancel
+)
+const failingExport = await exportDataBackup(
+  {
+    ...backupStorage,
+    async writeAbsoluteAsync() {
+      throw new Error('synthetic destination failure')
+    }
+  },
+  'C:\\backup\\failed.json',
+  liveSnapshot
+)
+check('synthetic backup write failure returns failure', failingExport.ok === false)
+const oversizedSnapshot = {
+  ...EMPTY_APP_DATA,
+  savedPositions: [
+    {
+      id: 'oversized',
+      name: 'x'.repeat(MAX_APP_DATA_BYTES),
+      fen: '9/9/9/9/9/9/9/9/9/9 w - - 0 1',
+      createdAt: '2026-08-25T00:00:00.000Z',
+      updatedAt: '2026-08-25T00:00:00.000Z'
+    }
+  ]
+}
+const invalidExport = await exportDataBackup(
+  backupStorage,
+  'C:\\backup\\invalid.json',
+  { ...liveSnapshot, savedPositions: [{ invalid: true }] }
+)
+const oversizedExport = await exportDataBackup(
+  backupStorage,
+  'C:\\backup\\oversized.json',
+  oversizedSnapshot
+)
+check('invalid backup snapshot is rejected', invalidExport.ok === false)
+check('oversized backup snapshot is rejected', oversizedExport.ok === false)
+}
 
 const storageDir = mkdtempSync(join(tmpdir(), 'xiangqi-app-data-'))
 const appDataPath = join(storageDir, APP_DATA_FILE)
@@ -241,5 +354,12 @@ try {
   rmSync(storageDir, { recursive: true, force: true })
 }
 
-console.log(`Result: ${passed} passed, ${failed} failed`)
-if (failed > 0) process.exit(1)
+void runBackupChecks()
+  .then(() => {
+    console.log(`Result: ${passed} passed, ${failed} failed`)
+    if (failed > 0) process.exit(1)
+  })
+  .catch((error) => {
+    console.error(error)
+    process.exit(1)
+  })

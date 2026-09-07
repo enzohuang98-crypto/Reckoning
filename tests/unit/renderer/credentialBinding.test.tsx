@@ -13,6 +13,7 @@ function render(options: {
   encryptionAvailable?: boolean
   onConnectKey?: () => void
   onDeleteKey?: () => void
+  onRefreshOpenRouterModels?: () => void
   openRouterModels?: AIModelInfo[]
   selectedOpenRouterModel?: string
   onOpenRouterModelChange?: (model: string) => void
@@ -35,6 +36,7 @@ function render(options: {
       selectedOpenRouterModel={options.selectedOpenRouterModel ?? ''}
       onOpenRouterModelChange={options.onOpenRouterModelChange ?? (() => undefined)}
       onConnectKey={options.onConnectKey ?? (() => undefined)}
+      onRefreshOpenRouterModels={options.onRefreshOpenRouterModels}
       onDeleteKey={options.onDeleteKey ?? (() => undefined)}
     />
   )
@@ -92,6 +94,25 @@ assert.deepEqual(
 )
 TestRenderer.act(() => openRouterSelect.props.onChange({ target: { value: 'vendor/model-b:free' } }))
 assert.equal(selectedOpenRouterModel, 'vendor/model-b:free')
+let refreshCalls = 0
+const refreshable = render({
+  apiKey: 'sk-or-v1-example',
+  openRouterModels: [{ id: 'vendor/model-a:free', label: 'Model A' }],
+  selectedOpenRouterModel: 'vendor/model-a:free',
+  onRefreshOpenRouterModels: () => {
+    refreshCalls++
+  }
+})
+const refresh = refreshable.root.findAllByType('button').find(
+  (button) => button.children.join('') === '重新讀取免費模型'
+)
+assert(refresh)
+TestRenderer.act(() => refresh.props.onClick())
+assert.equal(refreshCalls, 1)
+assert.match(
+  refreshable.root.findAll((node) => node.props.role === 'status')[0]?.children.join('') ?? '',
+  /AI 連線狀態：尚未連線/
+)
 
 const noEncryption = render({ apiKey: 'sk-example', encryptionAvailable: false })
 assert.equal(

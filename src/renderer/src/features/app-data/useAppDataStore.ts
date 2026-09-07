@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  cloneAppDataSnapshot,
   EMPTY_APP_DATA,
   type AppDataSnapshot
 } from '@shared/types/AppData'
@@ -12,6 +13,7 @@ interface AppDataStore {
   dataRecoveryRequired: boolean
   dataRecoveryBusy: boolean
   setDataError: (message: string | null) => void
+  getCurrentDataSnapshot: () => AppDataSnapshot
   saveCurrentData: (snapshot?: AppDataSnapshot) => void
   retryLoadData: () => void
   updateAppData: (updater: (current: AppDataSnapshot) => AppDataSnapshot) => void
@@ -47,6 +49,11 @@ export function useAppDataStore(): AppDataStore {
   const setDataError = useCallback((message: string | null): void => {
     setOperationError(message)
   }, [])
+
+  const getCurrentDataSnapshot = useCallback(
+    (): AppDataSnapshot => cloneAppDataSnapshot(appDataRef.current),
+    []
+  )
 
   useEffect(() => {
     appDataRef.current = appData
@@ -157,6 +164,7 @@ export function useAppDataStore(): AppDataStore {
     dataRecoveryRequired,
     dataRecoveryBusy,
     setDataError,
+    getCurrentDataSnapshot,
     saveCurrentData,
     retryLoadData,
     updateAppData,

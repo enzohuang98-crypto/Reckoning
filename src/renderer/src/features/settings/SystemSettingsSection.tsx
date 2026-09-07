@@ -7,6 +7,7 @@ interface Props {
   license: LicenseStatus | null
   licenseGateDisabled: boolean
   onExportBackup: () => void
+  canExportBackup: boolean
   onImportBackup: () => void
   onCheckUpdate: () => void
   onDownloadUpdate: () => void
@@ -20,6 +21,7 @@ export function SystemSettingsSection({
   license,
   licenseGateDisabled,
   onExportBackup,
+  canExportBackup,
   onImportBackup,
   onCheckUpdate,
   onDownloadUpdate,
@@ -50,9 +52,20 @@ export function SystemSettingsSection({
             备份包含保存局面、猜着纪录与 AI 对话；不包含 API Key。
           </p>
           <div className="row gap">
-            <button className="btn" onClick={onExportBackup}>匯出 JSON 備份</button>
+            <button
+              className="btn"
+              disabled={!canExportBackup}
+              onClick={onExportBackup}
+            >
+              匯出 JSON 備份
+            </button>
             <button className="btn ghost" onClick={onImportBackup}>匯入並合併</button>
           </div>
+          {!canExportBackup && (
+            <p className="muted small">
+              目前資料讀取失敗；先完成重新讀取，避免把保護用的空白資料誤當成備份。
+            </p>
+          )}
         </section>
 
         <section className="card">
