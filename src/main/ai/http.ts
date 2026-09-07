@@ -5,12 +5,74 @@
  * 統一在此萃取人類可讀的錯誤訊息。
  */
 
-import type { AITestCredentialResult } from '@shared/types/AIProviderTypes'
+import type {
+  AICredentialDiagnostic,
+  AICredentialErrorCategory,
+  AICredentialTestStage,
+  AITestCredentialResult
+} from '@shared/types/AIProviderTypes'
 
 export const MAX_AI_HTTP_RESPONSE_BYTES = 5 * 1024 * 1024
 
 /** 指定模型低用量推論逾時；必須短於 renderer 的保險逾時。 */
 export const CREDENTIAL_TEST_TIMEOUT_MS = 8_000
+
+const MAX_RETRY_AFTER_MS = 60 * 60 * 1000
+
+/** 可安全傳給憑證測試分類器的 HTTP 錯誤；message 不包含回應本文。 */
+export class AIHttpError extends Error {
+  readonly name = 'AIHttpError'
+
+  constructor(
+    readonly status: number,
+    readonly stage: AICredentialTestStage,
+    message: string,
+    readonly retryAfterMs?: number
+  ) {
+    super(message)
+  }
+}
+
+/** Provider 回應已收到，但不符合正式文字答案契約。 */
+export class AIResponseValidationError extends Error {
+  readonly name = 'AIResponseValidationError'
+
+  constructor(
+    readonly stage: AICredentialTestStage,
+    readonly category: Extract<
+      AICredentialErrorCategory,
+      'response_format' | 'model_mismatch' | 'generation_incomplete'
+    >,
+    message: string
+  ) {
+    super(message)
+  }
+}
+
+/** 將 Retry-After 轉成有限的毫秒數，避免把服務端資料直接帶進 UI。 */
+export function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined
+  const seconds = Number(value.trim())
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(Math.round(seconds * 1000), MAX_RETRY_AFTER_MS)
+  }
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return undefined
+  return Math.min(Math.max(timestamp - Date.now(), 0), MAX_RETRY_AFTER_MS)
+}
+
+export function createAIHttpError(
+  response: Response,
+  stage: AICredentialTestStage,
+  message: string
+): AIHttpError {
+  return new AIHttpError(
+    response.status,
+    stage,
+    message,
+    parseRetryAfterMs(response.headers.get('retry-after'))
+  )
+}
 
 /** 從 SDK status 欄位或共用錯誤訊息格式取得 HTTP 狀態碼。 */
 export function aiErrorStatus(error: unknown): number | undefined {
@@ -80,8 +142,41 @@ export async function fetchAiResponseBounded(
  */
 export function describeCredentialTestError(
   error: unknown,
-  providerLabel: string
+  providerLabel: string,
+  fallbackStage: AICredentialTestStage = 'generation'
 ): AITestCredentialResult {
+  const candidateStage = (error as { stage?: unknown } | null)?.stage
+  const resolvedStage: AICredentialTestStage =
+    candidateStage === 'key' ||
+    candidateStage === 'catalog' ||
+    candidateStage === 'generation' ||
+    candidateStage === 'storage'
+      ? candidateStage
+      : fallbackStage
+  const diagnostic = (
+    category: AICredentialErrorCategory,
+    message: string,
+    options: Partial<
+      Pick<AICredentialDiagnostic, 'retryable' | 'httpStatus' | 'retryAfterMs'>
+    > = {},
+    stage: AICredentialTestStage = resolvedStage
+  ): AITestCredentialResult => ({
+    ok: false,
+    message,
+    diagnostic: {
+      stage,
+      category,
+      retryable: options.retryable ?? false,
+      ...(options.httpStatus === undefined
+        ? {}
+        : { httpStatus: options.httpStatus }),
+      ...(options.retryAfterMs === undefined
+        ? {}
+        : { retryAfterMs: options.retryAfterMs }),
+      message
+    }
+  })
+
   const errorClassName =
     error instanceof Error ? error.constructor.name : undefined
   if (
@@ -91,46 +186,102 @@ export function describeCredentialTestError(
     (errorClassName !== undefined &&
       /Abort|Timeout/.test(errorClassName))
   ) {
-    return { ok: false, message: '測試逾時，請檢查網路連線或稍後重試。' }
+    return diagnostic('timeout', '測試逾時，請檢查網路連線或稍後重試。', {
+      retryable: true
+    })
   }
   const status = aiErrorStatus(error)
-  if (status === 401 || status === 403) {
-    return {
-      ok: false,
-      message: `${providerLabel} 回報認證失敗，請確認金鑰是否正確、是否貼對服務。`
-    }
+  const retryAfterMs = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs
+  const safeRetryAfterMs =
+    typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)
+      ? retryAfterMs
+      : undefined
+  if (status === 401) {
+    return diagnostic(
+      'authentication',
+      `${providerLabel} 回報認證失敗，請確認金鑰是否正確、是否貼對服務。`,
+      { httpStatus: status, retryable: false, retryAfterMs: safeRetryAfterMs }
+    )
+  }
+  if (status === 403) {
+    return diagnostic(
+      'permission',
+      `${providerLabel} 回報沒有使用此服務的權限，請確認帳戶與金鑰權限。`,
+      { httpStatus: status, retryable: false, retryAfterMs: safeRetryAfterMs }
+    )
+  }
+  if (status === 402) {
+    return diagnostic(
+      'billing',
+      `${providerLabel} 回報帳務或額度不足 (402)；請確認帳戶方案後再試。`,
+      { httpStatus: status, retryable: false, retryAfterMs: safeRetryAfterMs }
+    )
   }
   if (status === 429) {
-    return {
-      ok: false,
-      message: `${providerLabel} 回報限流 (429)；金鑰可能有效，請稍後再試一次。`
-    }
+    return diagnostic(
+      'rate_limited',
+      `${providerLabel} 回報限流 (429)；金鑰可能有效，請稍後再試一次。`,
+      { httpStatus: status, retryable: true, retryAfterMs: safeRetryAfterMs }
+    )
+  }
+  if (status === 404) {
+    return diagnostic(
+      'model_unavailable',
+      `${providerLabel} 找不到要求的模型或端點 (404)，請重新讀取模型清單。`,
+      { httpStatus: status, retryable: resolvedStage !== 'generation' }
+    )
   }
   if (status === 503) {
-    return {
-      ok: false,
-      message: `${providerLabel} 服務暫時過載或不可用 (503)；這不是金鑰認證失敗，請稍後再試。`
-    }
+    return diagnostic(
+      'provider_unavailable',
+      `${providerLabel} 服務暫時過載或不可用 (503)；這不是金鑰認證失敗，請稍後再試。`,
+      { httpStatus: status, retryable: true, retryAfterMs: safeRetryAfterMs }
+    )
+  }
+  if (typeof status === 'number' && status >= 500 && status <= 599) {
+    return diagnostic(
+      'provider_unavailable',
+      `${providerLabel} 服務暫時不可用 (${status})；請稍後再試。`,
+      { httpStatus: status, retryable: true, retryAfterMs: safeRetryAfterMs }
+    )
+  }
+  if (status === 400 || status === 422) {
+    return diagnostic(
+      'invalid_request',
+      `${providerLabel} 拒絕了這個測試請求 (${status})，請確認模型與設定。`,
+      { httpStatus: status, retryable: false, retryAfterMs: safeRetryAfterMs }
+    )
   }
   if (typeof status === 'number') {
-    return {
-      ok: false,
-      message: `${providerLabel} 回報錯誤 (${status})，請確認金鑰與服務狀態。`
+    return diagnostic(
+      'unknown',
+      `${providerLabel} 回報錯誤 (${status})，請確認金鑰與服務狀態。`,
+      { httpStatus: status, retryable: false, retryAfterMs: safeRetryAfterMs }
+    )
+  }
+  if (error instanceof AIResponseValidationError) {
+    const messages: Record<typeof error.category, string> = {
+      response_format: `${providerLabel} 回應格式無效，沒有可用的正式文字答案。`,
+      model_mismatch: `${providerLabel} 回傳的模型與選擇不一致，請重新讀取模型清單。`,
+      generation_incomplete: `${providerLabel} 測試未完成正式文字答案，請稍後重試。`
     }
+    return diagnostic(error.category, messages[error.category], {}, error.stage)
   }
   if (
     error instanceof Error &&
     error.message.includes('回應中沒有文字內容')
   ) {
-    return {
-      ok: false,
-      message: `${providerLabel} 金鑰可連線，但測試模型沒有返回文字，請稍後重試。`
-    }
+    return diagnostic(
+      'generation_incomplete',
+      `${providerLabel} 金鑰可連線，但測試模型沒有返回文字，請稍後重試。`
+    )
   }
-  if (error instanceof TypeError) {
-    return { ok: false, message: '網路連線失敗，請檢查網路後重試。' }
+  if (error instanceof TypeError || error instanceof RangeError) {
+    return diagnostic('network', '網路連線失敗，請檢查網路後重試。', {
+      retryable: true
+    })
   }
-  return { ok: false, message: `${providerLabel} 金鑰測試發生未知錯誤。` }
+  return diagnostic('unknown', `${providerLabel} 金鑰測試發生未知錯誤。`)
 }
 
 export async function readJsonResponseBounded<T>(

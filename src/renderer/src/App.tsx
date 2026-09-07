@@ -43,6 +43,7 @@ export function App(): JSX.Element {
     dataRecoveryRequired,
     dataRecoveryBusy,
     setDataError,
+    getCurrentDataSnapshot,
     saveCurrentData,
     retryLoadData,
     updateAppData,
@@ -302,6 +303,8 @@ export function App(): JSX.Element {
           settings={settings}
           onSettingsChange={setSettings}
           onDataImported={importData}
+          getCurrentDataSnapshot={getCurrentDataSnapshot}
+          dataRecoveryRequired={dataRecoveryRequired}
         />
       )}
 

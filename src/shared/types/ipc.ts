@@ -18,6 +18,7 @@ import type {
 } from './EngineAnalysis'
 import type { MoveComparisonResult } from './MoveComparisonResult'
 import type {
+  AICredentialDiagnostic,
   AIModelInfo,
   AITestCredentialResult,
   AIProviderId,
@@ -342,7 +343,7 @@ export type AutoConfigureCredentialResult =
       models: AIModelInfo[]
       message: string
     }
-  | { ok: false; message: string }
+  | { ok: false; message: string; diagnostic?: AICredentialDiagnostic }
 
 /* ---------- 永久資料與備份 ---------- */
 
@@ -456,7 +457,7 @@ export interface RendererApi {
   data: {
     load(): Promise<DataLoadResult>
     save(snapshot: AppDataSnapshot): Promise<DataSaveResult>
-    exportBackup(): Promise<DataExportResult>
+    exportBackup(snapshot?: AppDataSnapshot): Promise<DataExportResult>
     importBackup(): Promise<DataImportResult>
   }
   secret: {

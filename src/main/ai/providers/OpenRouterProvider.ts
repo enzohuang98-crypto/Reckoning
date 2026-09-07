@@ -10,9 +10,10 @@ import type {
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
 import {
+  AIResponseValidationError,
   CREDENTIAL_TEST_TIMEOUT_MS,
+  createAIHttpError,
   describeCredentialTestError,
-  extractApiErrorMessage,
   fetchAiResponseBounded,
   readJsonResponseBounded
 } from '../http'
@@ -22,6 +23,10 @@ import {
 } from '../credentialTest'
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+
+/** OpenRouter 首輪驗收的生成階段必須比舊的 8 秒上限寬鬆。 */
+export const OPENROUTER_CREDENTIAL_TEST_GENERATION_TIMEOUT_MS = 25_000
+export const OPENROUTER_CREDENTIAL_TEST_MAX_OUTPUT_TOKENS = 512
 
 interface OpenRouterOptions {
   baseUrl?: string
@@ -50,6 +55,7 @@ interface OpenRouterChatResponse {
       reasoning?: string | null
       reasoning_content?: string | null
     }
+    finish_reason?: string | null
   }>
   usage?: {
     prompt_tokens?: number
@@ -75,8 +81,13 @@ function isConcreteFreeTextModel(model: OpenRouterModel): model is OpenRouterMod
   )
 }
 
-function redactExactSecret(value: string, secret: string): string {
-  return secret ? value.replaceAll(secret, '[REDACTED]') : value
+function isErrorEnvelope(value: unknown): boolean {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      'error' in value &&
+      (value as { error?: unknown }).error !== undefined
+  )
 }
 
 export class OpenRouterProvider implements AIProvider {
@@ -113,26 +124,52 @@ export class OpenRouterProvider implements AIProvider {
       })
     })
     if (!response.ok) {
-      const detail = redactExactSecret(
-        await extractApiErrorMessage(response),
-        request.apiKey
+      throw createAIHttpError(
+        response,
+        'generation',
+        `OpenRouter 生成服務回報錯誤 (${response.status})。`
       )
-      throw new Error(`OpenRouter API 錯誤 (${response.status})：${detail}`)
     }
-    const data = await readJsonResponseBounded<OpenRouterChatResponse>(response)
+    let data: OpenRouterChatResponse
+    try {
+      data = await readJsonResponseBounded<OpenRouterChatResponse>(response)
+    } catch {
+      throw new AIResponseValidationError(
+        'generation',
+        'response_format',
+        'OpenRouter 回應不是有效的 JSON。'
+      )
+    }
+    if (!data || typeof data !== 'object' || isErrorEnvelope(data)) {
+      throw new AIResponseValidationError(
+        'generation',
+        'response_format',
+        'OpenRouter 回應格式無效。'
+      )
+    }
     if (data.model !== request.model) {
-      throw new Error(
+      throw new AIResponseValidationError(
+        'generation',
+        'model_mismatch',
         `OpenRouter 模型路由不一致：要求 ${request.model}，實際回報 ${data.model ?? '未知模型'}。`
       )
     }
     const message = data.choices?.[0]?.message
-    const text = (
-      message?.content ??
-      message?.reasoning_content ??
-      message?.reasoning ??
-      ''
-    ).trim()
-    if (!text) throw new Error('OpenRouter 回應中沒有文字內容。')
+    const text = typeof message?.content === 'string' ? message.content.trim() : ''
+    if (!text) {
+      throw new AIResponseValidationError(
+        'generation',
+        'generation_incomplete',
+        'OpenRouter 回應中沒有正式文字答案。'
+      )
+    }
+    if (data.choices?.[0]?.finish_reason === 'length') {
+      throw new AIResponseValidationError(
+        'generation',
+        'generation_incomplete',
+        'OpenRouter 憑證測試因輸出長度限制而未完成。'
+      )
+    }
     return {
       text,
       provider: this.id,
@@ -168,19 +205,59 @@ export class OpenRouterProvider implements AIProvider {
       headers: this.headers(apiKey)
     })
     if (!keyResponse.ok) {
-      throw new Error(`OpenRouter key API 錯誤 (${keyResponse.status})`)
+      throw createAIHttpError(
+        keyResponse,
+        'key',
+        `OpenRouter 金鑰驗證端點回報錯誤 (${keyResponse.status})。`
+      )
     }
-    await readJsonResponseBounded(keyResponse)
+    let keyBody: unknown
+    try {
+      keyBody = await readJsonResponseBounded(keyResponse)
+    } catch {
+      throw new AIResponseValidationError(
+        'key',
+        'response_format',
+        'OpenRouter 金鑰驗證端點回應格式無效。'
+      )
+    }
+    if (isErrorEnvelope(keyBody)) {
+      throw new AIResponseValidationError(
+        'key',
+        'response_format',
+        'OpenRouter 金鑰驗證端點回應格式無效。'
+      )
+    }
 
     const modelsResponse = await fetchAiResponseBounded(
       `${this.baseUrl}/models?output_modalities=text`,
       { signal, headers: this.headers(apiKey) }
     )
     if (!modelsResponse.ok) {
-      throw new Error(`OpenRouter models API 錯誤 (${modelsResponse.status})`)
+      throw createAIHttpError(
+        modelsResponse,
+        'catalog',
+        `OpenRouter 模型清單端點回報錯誤 (${modelsResponse.status})。`
+      )
     }
-    const body = await readJsonResponseBounded<OpenRouterModelsResponse>(modelsResponse)
-    return (body.data ?? [])
+    let body: OpenRouterModelsResponse
+    try {
+      body = await readJsonResponseBounded<OpenRouterModelsResponse>(modelsResponse)
+    } catch {
+      throw new AIResponseValidationError(
+        'catalog',
+        'response_format',
+        'OpenRouter 模型清單回應不是有效的 JSON。'
+      )
+    }
+    if (!body || typeof body !== 'object' || isErrorEnvelope(body) || !Array.isArray(body.data)) {
+      throw new AIResponseValidationError(
+        'catalog',
+        'response_format',
+        'OpenRouter 模型清單回應格式無效。'
+      )
+    }
+    return body.data
       .filter(isConcreteFreeTextModel)
       .map((model) => ({ id: model.id, label: model.name?.trim() || model.id }))
       .sort((left, right) => left.label.localeCompare(right.label))
@@ -194,18 +271,43 @@ export class OpenRouterProvider implements AIProvider {
     apiKey: string,
     model: string,
     _baseUrl?: string,
-    timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
+    timeoutMs = OPENROUTER_CREDENTIAL_TEST_GENERATION_TIMEOUT_MS
   ): Promise<AITestCredentialResult> {
     try {
-      const availableModels = await this.listModels(apiKey, timeoutMs)
-      if (!availableModels.includes(model)) {
+      const catalogTimeoutMs = Math.min(timeoutMs, CREDENTIAL_TEST_TIMEOUT_MS)
+      const availableModels = await this.listFreeModels(apiKey, catalogTimeoutMs)
+      return this.testCredentialWithModels(apiKey, model, availableModels, timeoutMs)
+    } catch (error) {
+      return describeCredentialTestError(error, this.displayName)
+    }
+  }
+
+  /**
+   * 使用已取得的模型清單完成生成驗證，避免自動連線重複呼叫 /key 與 /models。
+   */
+  async testCredentialWithModels(
+    apiKey: string,
+    model: string,
+    availableModels: readonly AIModelInfo[],
+    timeoutMs = OPENROUTER_CREDENTIAL_TEST_GENERATION_TIMEOUT_MS
+  ): Promise<AITestCredentialResult> {
+    try {
+      if (!availableModels.some((availableModel) => availableModel.id === model)) {
         return {
           ok: false,
-          message: `OpenRouter 模型 ${model} 目前不在官方免費模型清單中。`
+          message: `OpenRouter 模型 ${model} 目前不在官方免費模型清單中。`,
+          diagnostic: {
+            stage: 'catalog',
+            category: 'model_unavailable',
+            retryable: true,
+            message: `OpenRouter 模型 ${model} 目前不在官方免費模型清單中。`
+          }
         }
       }
       await this.generateExplanation(
-        credentialTestRequest(this.id, model, apiKey),
+        credentialTestRequest(this.id, model, apiKey, undefined, {
+          maxOutputTokens: OPENROUTER_CREDENTIAL_TEST_MAX_OUTPUT_TOKENS
+        }),
         AbortSignal.timeout(timeoutMs)
       )
       return credentialTestSucceeded(this.displayName, model)

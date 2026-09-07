@@ -20,6 +20,7 @@ import {
   type RendererApi,
   type TeacherTestStartInput
 } from '@shared/types/ipc'
+import type { AppDataSnapshot } from '@shared/types/AppData'
 import type { HarnessProgressPayload } from '@shared/types/Harness'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 
@@ -91,7 +92,8 @@ const api: RendererApi = {
   data: {
     load: () => ipcRenderer.invoke(IPC.DATA_LOAD),
     save: (snapshot) => ipcRenderer.invoke(IPC.DATA_SAVE, snapshot),
-    exportBackup: () => ipcRenderer.invoke(IPC.DATA_EXPORT),
+    exportBackup: (snapshot?: AppDataSnapshot) =>
+      ipcRenderer.invoke(IPC.DATA_EXPORT, snapshot),
     importBackup: () => ipcRenderer.invoke(IPC.DATA_IMPORT)
   },
   secret: {

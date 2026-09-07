@@ -6,10 +6,14 @@
  * 金鑰一律走 window.api.secret（safeStorage），絕不寫入 localStorage。
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AIModelInfo } from '@shared/types/AIProviderTypes'
 import type { AppSettings } from '@shared/types/Settings'
 import type { EngineTestResult } from '@shared/types/ipc'
+import {
+  AiConnectionStatus,
+  type AiConnectionStage
+} from '../features/settings/AiConnectionStatus'
 import { markSetupCompleted, saveSettings } from '../storage/localSettings'
 
 interface Props {
@@ -30,6 +34,16 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState('')
   const [finishing, setFinishing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [connectionStage, setConnectionStage] = useState<AiConnectionStage>('idle')
+  const finishAttemptRef = useRef(0)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      finishAttemptRef.current += 1
+    }
+  }, [])
 
   const browse = async (): Promise<void> => {
     try {
@@ -61,9 +75,11 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
     }
   }
 
-  const finish = async (): Promise<void> => {
+  const finish = async (refreshModels = false): Promise<void> => {
+    const attempt = ++finishAttemptRef.current
     setFinishing(true)
     setError(null)
+    setConnectionStage(refreshModels || !selectedOpenRouterModel ? 'catalog' : 'generation')
     try {
       if (engineSelectionToken) {
         await window.api.engine.setPath(engineSelectionToken)
@@ -73,14 +89,12 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
       const keyResult = key
         ? await window.api.ai.autoConfigureCredential(
             key,
-            selectedOpenRouterModel || undefined
+            refreshModels ? undefined : selectedOpenRouterModel || undefined
           )
         : null
+      if (!mountedRef.current || finishAttemptRef.current !== attempt) return
       if (keyResult && !keyResult.ok) {
-        if (selectedOpenRouterModel) {
-          setOpenRouterModels([])
-          setSelectedOpenRouterModel('')
-        }
+        setConnectionStage(openRouterModels.length > 0 ? 'awaiting-model' : 'idle')
         setError(keyResult.message)
         return
       }
@@ -91,6 +105,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
             ? current
             : keyResult.models[0]?.id ?? ''
         )
+        setConnectionStage('awaiting-model')
         setError(null)
         return
       }
@@ -105,20 +120,27 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
       }
       const saved = saveSettings(next)
       if (!saved.ok) {
+        setConnectionStage('storage')
         setError(saved.message ?? '設定儲存失敗。')
         return
       }
+      setConnectionStage('storage')
       onSettingsChange(next)
       const marked = markSetupCompleted()
       if (!marked.ok) {
         setError(marked.message ?? '無法保存初始設定狀態。')
         return
       }
+      setConnectionStage('enabled')
       onComplete()
     } catch {
+      if (!mountedRef.current || finishAttemptRef.current !== attempt) return
+      setConnectionStage(openRouterModels.length > 0 ? 'awaiting-model' : 'idle')
       setError('無法安全儲存設定或 API Key；系統不會以明文保存金鑰。')
     } finally {
-      setFinishing(false)
+      if (mountedRef.current && finishAttemptRef.current === attempt) {
+        setFinishing(false)
+      }
     }
   }
 
@@ -143,6 +165,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
               <p>選擇本機 Pikafish 或相容的 UCI／UCCI 引擎。</p>
             </div>
           </div>
+          <AiConnectionStatus stage={connectionStage} />
           <div className="field">
             <label className="field-label">引擎路徑</label>
             <div className="row gap">
@@ -201,10 +224,14 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
               type="password"
               placeholder="贴上 OpenAI、Anthropic、Gemini 或 OpenRouter 官方 API Key"
               value={apiKey}
+              disabled={finishing}
               onChange={(event) => {
+                finishAttemptRef.current += 1
+                setFinishing(false)
                 setApiKey(event.target.value)
                 setOpenRouterModels([])
                 setSelectedOpenRouterModel('')
+                setConnectionStage('idle')
               }}
             />
             <p className="muted small">
@@ -233,12 +260,19 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
               <p className="muted small">
                 请选择具名 :free 模型；程式不会使用随机免费路由替换你的选择。
               </p>
+              <button
+                className="btn ghost small"
+                disabled={finishing}
+                onClick={() => void finish(true)}
+              >
+                重新讀取免費模型
+              </button>
             </div>
           )}
         </section>
 
         <div className="setup-actions">
-          <button className="btn" onClick={finish} disabled={finishing}>
+          <button className="btn" onClick={() => void finish()} disabled={finishing}>
             {openRouterModels.length > 0 ? '验证模型并完成設定 →' : '完成設定 →'}
           </button>
         </div>

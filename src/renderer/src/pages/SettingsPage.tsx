@@ -5,7 +5,7 @@
  * API Key 永遠走 SecretStore，絕不寫入 renderer 的 localStorage。
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AppDataSnapshot } from '@shared/types/AppData'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import {
@@ -22,6 +22,7 @@ import type {
 } from '@shared/types/ipc'
 import { LICENSE_GATE_DISABLED } from '../app/productFlags'
 import { AiSettingsSection } from '../features/settings/AiSettingsSection'
+import type { AiConnectionStage } from '../features/settings/AiConnectionStatus'
 import { EngineSettingsSection } from '../features/settings/EngineSettingsSection'
 import { SettingsNavigation } from '../features/settings/SettingsNavigation'
 import { SystemSettingsSection } from '../features/settings/SystemSettingsSection'
@@ -37,6 +38,8 @@ interface Props {
   settings: AppSettings
   onSettingsChange: (settings: AppSettings) => void
   onDataImported: (snapshot: AppDataSnapshot) => void
+  getCurrentDataSnapshot: () => AppDataSnapshot
+  dataRecoveryRequired: boolean
 }
 
 const EMPTY_SECRET_STATUS: SecretStatus = {
@@ -55,12 +58,15 @@ const EMPTY_ENGINE_REGISTRY: EngineRegistrySnapshot = {
 export function SettingsPage({
   settings,
   onSettingsChange,
-  onDataImported
+  onDataImported,
+  getCurrentDataSnapshot,
+  dataRecoveryRequired
 }: Props): JSX.Element {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('ai')
   const [apiKey, setApiKey] = useState('')
   const [openRouterModels, setOpenRouterModels] = useState<AIModelInfo[]>([])
   const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState('')
+  const [connectionStage, setConnectionStage] = useState<AiConnectionStage>('idle')
   const [secretStatus, setSecretStatus] = useState<SecretStatus>(EMPTY_SECRET_STATUS)
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
@@ -79,6 +85,15 @@ export function SettingsPage({
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
   const [license, setLicense] = useState<LicenseStatus | null>(null)
+  const connectAttemptRef = useRef(0)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+      connectAttemptRef.current += 1
+    }
+  }, [])
 
   const refreshEngine = async (): Promise<void> => {
     try {
@@ -141,24 +156,27 @@ export function SettingsPage({
     })
   }
 
-  const connectKey = async (): Promise<void> => {
+  const connectionStageForFailure = (): AiConnectionStage =>
+    openRouterModels.length > 0 ? 'awaiting-model' : 'idle'
+
+  const connectKey = async (refreshModels = false): Promise<void> => {
     const key = apiKey.trim()
     if (!key) return
+    const attempt = ++connectAttemptRef.current
+    const requestedModel = refreshModels
+      ? undefined
+      : selectedOpenRouterModel || undefined
     setSecretBusy(true)
+    setConnectionStage(requestedModel ? 'generation' : 'catalog')
     try {
       const result = await withTimeout(
-        window.api.ai.autoConfigureCredential(
-          key,
-          selectedOpenRouterModel || undefined
-        ),
+        window.api.ai.autoConfigureCredential(key, requestedModel),
         AI_CONNECT_TIMEOUT_MS,
         'AI 连线逾时，请检查网路后重试。'
       )
+      if (!mountedRef.current || connectAttemptRef.current !== attempt) return
       if (!result.ok) {
-        if (selectedOpenRouterModel) {
-          setOpenRouterModels([])
-          setSelectedOpenRouterModel('')
-        }
+        setConnectionStage(connectionStageForFailure())
         setOperationError(result.message)
         return
       }
@@ -169,25 +187,32 @@ export function SettingsPage({
             ? current
             : result.models[0]?.id ?? ''
         )
+        setConnectionStage('awaiting-model')
         setSavedMessage(result.message)
         setOperationError(null)
         return
       }
+      setConnectionStage('storage')
       useCredential(result.credential)
       setApiKey('')
       setOpenRouterModels([])
       setSelectedOpenRouterModel('')
       setSecretStatus(result.status)
+      setConnectionStage('enabled')
       setSavedMessage(result.message)
       setOperationError(null)
     } catch (error) {
+      if (!mountedRef.current || connectAttemptRef.current !== attempt) return
+      setConnectionStage(connectionStageForFailure())
       setOperationError(
         error instanceof Error
           ? error.message
           : '无法完成 AI 连线。'
       )
     } finally {
-      setSecretBusy(false)
+      if (mountedRef.current && connectAttemptRef.current === attempt) {
+        setSecretBusy(false)
+      }
     }
   }
 
@@ -295,11 +320,16 @@ export function SettingsPage({
   }
 
   const exportBackup = async (): Promise<void> => {
+    if (dataRecoveryRequired) {
+      setOperationError(
+        '目前資料尚未成功讀取，不能把空白保護資料當作完整備份；請先重新讀取資料。'
+      )
+      return
+    }
     try {
-      const result = await window.api.data.exportBackup()
+      const result = await window.api.data.exportBackup(getCurrentDataSnapshot())
       if (result.ok) {
         setSavedMessage(`資料已匯出：${result.filePath}`)
-        setOperationError(null)
       } else if (!result.cancelled) {
         setOperationError(result.message ?? '資料匯出失敗。')
       }
@@ -372,9 +402,11 @@ export function SettingsPage({
               update={update}
               apiKey={apiKey}
               onApiKeyChange={(value) => {
+                connectAttemptRef.current += 1
                 setApiKey(value)
                 setOpenRouterModels([])
                 setSelectedOpenRouterModel('')
+                setConnectionStage('idle')
               }}
               secretStatus={secretStatus}
               encryptionAvailable={encryptionAvailable}
@@ -383,7 +415,9 @@ export function SettingsPage({
               selectedOpenRouterModel={selectedOpenRouterModel}
               onOpenRouterModelChange={setSelectedOpenRouterModel}
               onConnectKey={() => void connectKey()}
+              onRefreshOpenRouterModels={() => void connectKey(true)}
               onDeleteKey={() => void deleteKey()}
+              connectionStage={connectionStage}
             />
           )}
 
@@ -418,6 +452,7 @@ export function SettingsPage({
               license={license}
               licenseGateDisabled={LICENSE_GATE_DISABLED}
               onExportBackup={() => void exportBackup()}
+              canExportBackup={!dataRecoveryRequired}
               onImportBackup={() => void importBackup()}
               onCheckUpdate={() => void runUpdateAction(() => window.api.update.check())}
               onDownloadUpdate={() =>

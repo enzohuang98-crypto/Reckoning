@@ -14,7 +14,9 @@ import { AnalysisToolbar } from './AnalysisToolbar'
 import { BoardEditor } from '../board/BoardEditor'
 import { FenInput } from '../board/FenInput'
 import {
+  EMPTY_GAME_IMPORT_STATE,
   GameImportPanel,
+  type GameImportState,
   type ImportedMoveSelection
 } from '../board/GameImportPanel'
 import { GuessModePanel } from '../guessing/GuessModePanel'
@@ -70,6 +72,9 @@ export function AnalysisWorkspace({
   const [draftReason, setDraftReason] = useState('')
   const [submittedGuess, setSubmittedGuess] = useState<SubmittedGuess | null>(null)
   const [actualMove, setActualMove] = useState<ActualMoveSelection | null>(null)
+  const [gameImportState, setGameImportState] = useState<GameImportState>(
+    EMPTY_GAME_IMPORT_STATE
+  )
   const [guessSelectionActive, setGuessSelectionActive] = useState(false)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [replayCandidates, setReplayCandidates] = useState<EngineCandidateMove[]>([])
@@ -253,16 +258,21 @@ export function AnalysisWorkspace({
         replayCandidates={replayCandidates}
           />
 
-          {importOpen && (
-            <div className="utility-drawer-body" aria-label="匯入棋局工具">
-              <FenInput initialFen={board.fen} onValidBoard={changeBoard} />
-              <GameImportPanel
-                board={board}
-                onBoardChange={changeBoard}
-                onMoveSelect={selectImportedMove}
-              />
-            </div>
-          )}
+          <div
+            className="utility-drawer-body"
+            hidden={!importOpen}
+            aria-hidden={!importOpen}
+            aria-label="匯入棋局工具"
+          >
+            <FenInput initialFen={board.fen} onValidBoard={changeBoard} />
+            <GameImportPanel
+              board={board}
+              state={gameImportState}
+              onStateChange={setGameImportState}
+              onBoardChange={changeBoard}
+              onMoveSelect={selectImportedMove}
+            />
+          </div>
         </div>
 
         <aside className="right-col" aria-label="分析檢視">
