@@ -13,7 +13,8 @@ import type {
   EngineAnalysisProgressPayload,
   EngineAnalysisResultPayload,
   EngineStatus,
-  GenerateExplanationDonePayload
+  GenerateExplanationDonePayload,
+  GenerateExplanationStartPayload
 } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { EngineCandidateMove } from '@shared/types/EngineAnalysis'
@@ -79,6 +80,7 @@ interface Props {
 }
 
 interface PendingAiRequest {
+  target: AiRequestTarget
   question: string | null
   conversationId: string
   conversationCreatedAt: string | null
@@ -88,6 +90,18 @@ interface PendingAiRequest {
   resultSnapshot: EngineAnalysisResultPayload
   provider: AIExplanationResponse['provider']
   model: string
+}
+
+interface AiRequestTarget {
+  boardFen: string
+  analysisMove: string
+  actualMoveSelectionId: string | null
+}
+
+interface RetryableAiRequest {
+  target: AiRequestTarget
+  pending: PendingAiRequest
+  start: Omit<GenerateExplanationStartPayload, 'requestId'>
 }
 
 const MAX_ENGINE_THOUGHTS = 80
@@ -116,6 +130,36 @@ function newMessage(
     text,
     createdAt: new Date().toISOString(),
     ...(role === 'assistant' && provenance ? provenance : {})
+  }
+}
+
+function isSameAiRequestTarget(
+  left: AiRequestTarget,
+  right: AiRequestTarget | null
+): boolean {
+  return Boolean(
+    right &&
+      left.boardFen === right.boardFen &&
+      left.analysisMove === right.analysisMove &&
+      left.actualMoveSelectionId === right.actualMoveSelectionId
+  )
+}
+
+function cloneExplanationStart(
+  start: Omit<GenerateExplanationStartPayload, 'requestId'>
+): Omit<GenerateExplanationStartPayload, 'requestId'> {
+  return {
+    ...start,
+    conversationHistory: start.conversationHistory?.map((message) => ({ ...message })),
+    budget: start.budget ? { ...start.budget } : undefined
+  }
+}
+
+function clonePendingAiRequest(pending: PendingAiRequest): PendingAiRequest {
+  return {
+    ...pending,
+    target: { ...pending.target },
+    conversationMessages: pending.conversationMessages.map((message) => ({ ...message }))
   }
 }
 
@@ -183,6 +227,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const activeAiRequestId = useRef<string | null>(null)
   const aiDeadlineTimer = useRef<number | null>(null)
   const pendingAiRequest = useRef<PendingAiRequest | null>(null)
+  const retryableAiRequest = useRef<RetryableAiRequest | null>(null)
   const autoRunAttemptTarget = useRef<string | null>(null)
   const settingsRef = useRef(settings)
   const conversationRef = useRef(conversation)
@@ -195,6 +240,12 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [liveNow, setLiveNow] = useState(() => Date.now())
   const [liveRetryCount, setLiveRetryCount] = useState(0)
   const analysisMove = actualMove?.move ?? submittedGuess?.move ?? ''
+  const currentAiTargetRef = useRef<AiRequestTarget | null>(null)
+  currentAiTargetRef.current = {
+    boardFen: board.fen,
+    analysisMove,
+    actualMoveSelectionId: actualMove?.selectionId ?? null
+  }
 
   useEffect(() => {
     settingsRef.current = settings
@@ -301,6 +352,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     explicitAnalysisTarget.current = null
     activeAiRequestId.current = null
     pendingAiRequest.current = null
+    retryableAiRequest.current = null
     autoRunAttemptTarget.current = null
     analysisStartedAtRef.current = null
     lastThoughtAtRef.current = null
@@ -334,6 +386,15 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }, [board.fen, analysisMove, actualMove?.selectionId, onReplayCandidates])
 
   useEffect(() => {
+    const isActiveAiRequest = (requestId: string): boolean => {
+      const pending = pendingAiRequest.current
+      return Boolean(
+        requestId === activeAiRequestId.current &&
+          pending &&
+          isSameAiRequestTarget(pending.target, currentAiTargetRef.current)
+      )
+    }
+
     const offProgress = window.api.engine.onAnalysisProgress((payload) => {
       if (payload.requestId !== activeRequestId.current) return
       lastThoughtAtRef.current = Date.now()
@@ -447,14 +508,17 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     })
     const offAiChunk = window.api.ai.onExplanationChunk((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
+      if (!isActiveAiRequest(payload.requestId)) return
       setStreamingText((previous) => previous + payload.deltaText)
     })
     const offHarnessProgress = window.api.ai.onHarnessProgress((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
+      if (!isActiveAiRequest(payload.requestId)) return
       setHarnessProgress(payload)
     })
     const offAiDone = window.api.ai.onExplanationDone((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
+      if (!isActiveAiRequest(payload.requestId)) return
       if (aiDeadlineTimer.current !== null) {
         window.clearTimeout(aiDeadlineTimer.current)
         aiDeadlineTimer.current = null
@@ -505,6 +569,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     })
     const offAiError = window.api.ai.onExplanationError((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
+      if (!isActiveAiRequest(payload.requestId)) return
       if (aiDeadlineTimer.current !== null) {
         window.clearTimeout(aiDeadlineTimer.current)
         aiDeadlineTimer.current = null
@@ -759,88 +824,99 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
   const generateExplanation = (question: string | null, regenerate = false): void => {
     if (!result || activeAiRequestId.current) return
+    if (!isSameAnalysisTarget(result.engineAnalysis, board.fen, analysisMove)) return
     const cleanedQuestion = question?.trim() || null
-    const currentConversation = regenerate ? null : conversationRef.current
-    const conversationId = currentConversation?.id ?? crypto.randomUUID()
-    // Analysis sessions live in main-process memory and may expire while a saved
-    // conversation remains. Bind each new question to the latest completed
-    // result for this board, while preserving the conversation messages.
+    const target = currentAiTargetRef.current
+    if (!target) return
+    const retained = regenerate ? retryableAiRequest.current : null
+    if (retained && !isSameAiRequestTarget(retained.target, target)) return
     const resultSnapshot = result
-    const analysisId = resultSnapshot.analysisId
-    const positionFen = resultSnapshot.engineAnalysis.positionFen
     const requestId = crypto.randomUUID()
     const aiRequestedAt = Date.now()
+    const currentConversation = regenerate ? null : conversationRef.current
+    const start = retained
+      ? cloneExplanationStart(retained.start)
+      : {
+          analysisId: resultSnapshot.analysisId,
+          provider: settings.aiProvider,
+          model: settings.aiModel,
+          baseUrl:
+            settings.aiProvider === 'openai-compatible'
+              ? settings.aiBaseUrl
+              : undefined,
+          userLevel: settings.userLevel,
+          explanationStyle: 'long_analytical' as const,
+          language: settings.language,
+          conversationHistory: currentConversation?.messages.slice(),
+          followUpQuestion: cleanedQuestion ?? undefined,
+          attachedMove: analysisMove || undefined,
+          userMoveReason: submittedGuess?.reason,
+          answerMode: settings.harnessAnswerMode,
+          budget: {
+            engineTimeMs: settings.harnessEngineTimeMs,
+            maxEngineRounds: settings.harnessMaxEngineRounds,
+            maxModelCalls:
+              settings.harnessAnswerMode === 'research'
+                ? settings.harnessResearchMaxModelCalls
+                : settings.harnessFocusedMaxModelCalls,
+            maxOutputTokens:
+              settings.harnessAnswerMode === 'research'
+                ? settings.harnessResearchMaxOutputTokens
+                : settings.harnessFocusedMaxOutputTokens
+          },
+          engineId: primaryEngineId ?? undefined,
+          verificationEngineId:
+            settings.crossEngineEnabled && verificationEngineId
+              ? verificationEngineId
+              : undefined,
+          reuseEvidence: settings.harnessReuseEvidence
+        }
+    const pending = retained
+      ? {
+          ...clonePendingAiRequest(retained.pending),
+          target: { ...target }
+        }
+      : {
+          target: { ...target },
+          question: cleanedQuestion,
+          conversationId: currentConversation?.id ?? crypto.randomUUID(),
+          conversationCreatedAt: currentConversation?.createdAt ?? null,
+          conversationMessages: currentConversation?.messages.slice() ?? [],
+          analysisId: resultSnapshot.analysisId,
+          positionFen: resultSnapshot.engineAnalysis.positionFen,
+          resultSnapshot,
+          provider: settings.aiProvider,
+          model: settings.aiModel
+        }
     activeAiRequestId.current = requestId
-    pendingAiRequest.current = {
-      question: cleanedQuestion,
-      conversationId,
-      conversationCreatedAt: currentConversation?.createdAt ?? null,
-      conversationMessages: currentConversation?.messages.slice() ?? [],
-      analysisId,
-      positionFen,
-      resultSnapshot,
-      provider: settings.aiProvider,
-      model: settings.aiModel
+    pendingAiRequest.current = pending
+    retryableAiRequest.current = {
+      target: { ...target },
+      pending: clonePendingAiRequest(pending),
+      start: cloneExplanationStart(start)
     }
-    setExplainedResult(resultSnapshot)
+    setExplainedResult(pending.resultSnapshot)
     setAiBusy(true)
     setAiCancelling(false)
     setAiError(null)
     setAiNotice(null)
     setStreamingText('')
     setHarnessProgress(null)
-    setTraceId(null)
-    setTeacherExecution(null)
-    if (regenerate || cleanedQuestion === null) {
-      setExplanation(null)
-      onExplanation(null)
-      if (regenerate) {
-        conversationRef.current = null
-        onConversationChange(null)
-      }
-    }
     window.api.ai.startExplanation({
       requestId,
-      analysisId,
-      provider: settings.aiProvider,
-      model: settings.aiModel,
-      baseUrl:
-        settings.aiProvider === 'openai-compatible'
-          ? settings.aiBaseUrl
-          : undefined,
-      userLevel: settings.userLevel,
-      explanationStyle: 'long_analytical',
-      language: settings.language,
-      conversationHistory: currentConversation?.messages,
-      followUpQuestion: cleanedQuestion ?? undefined,
-      attachedMove: analysisMove || undefined,
-      userMoveReason: submittedGuess?.reason,
-      answerMode: settings.harnessAnswerMode,
-      budget: {
-        engineTimeMs: settings.harnessEngineTimeMs,
-        maxEngineRounds: settings.harnessMaxEngineRounds,
-        maxModelCalls:
-          settings.harnessAnswerMode === 'research'
-            ? settings.harnessResearchMaxModelCalls
-            : settings.harnessFocusedMaxModelCalls,
-        maxOutputTokens:
-          settings.harnessAnswerMode === 'research'
-            ? settings.harnessResearchMaxOutputTokens
-            : settings.harnessFocusedMaxOutputTokens
-      },
-      engineId: primaryEngineId ?? undefined,
-      verificationEngineId:
-        settings.crossEngineEnabled && verificationEngineId
-          ? verificationEngineId
-          : undefined,
-      reuseEvidence: settings.harnessReuseEvidence
+      ...start
     })
     if (actualMove) {
       if (aiDeadlineTimer.current !== null) {
         window.clearTimeout(aiDeadlineTimer.current)
       }
       aiDeadlineTimer.current = window.setTimeout(() => {
-        if (activeAiRequestId.current !== requestId) return
+        if (
+          activeAiRequestId.current !== requestId ||
+          !isSameAiRequestTarget(target, currentAiTargetRef.current)
+        ) {
+          return
+        }
         activeAiRequestId.current = null
         pendingAiRequest.current = null
         aiDeadlineTimer.current = null
@@ -908,8 +984,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }
 
   const copyExplanation = async (): Promise<void> => {
-    const text = conversation?.messages.length
-      ? conversation.messages
+    const currentConversation = conversationRef.current
+    const text = currentConversation?.messages.length
+      ? currentConversation.messages
           .map((message) => `${message.role === 'user' ? '問' : '答'}：${message.text}`)
           .join('\n\n')
       : explanation?.text
@@ -966,7 +1043,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       analysisCancelling: cancelling,
       aiBusy,
       aiCancelling,
-      hasExplanation: explanation !== null,
+      hasExplanation: explanation !== null || conversation !== null,
       hasResult: result !== null,
       analysisBlockedReason,
       aiBlockedReason
@@ -978,6 +1055,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     aiBusy,
     aiCancelling,
     explanation,
+    conversation,
     result,
     analysisBlockedReason,
     aiBlockedReason,
