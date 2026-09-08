@@ -10,6 +10,7 @@ import type {
   SecretStatus
 } from '../../../src/shared/types/ipc'
 import { SettingsPage } from '../../../src/renderer/src/pages/SettingsPage'
+import { AiConnectionStatus } from '../../../src/renderer/src/features/settings/AiConnectionStatus'
 
 const models: AIModelInfo[] = [
   { id: 'vendor/model-a:free', label: 'Model A' },
@@ -126,6 +127,12 @@ async function main(): Promise<void> {
     assert.ok(renderer)
     await flush()
 
+    const statusRenderer = TestRenderer.create(
+      <AiConnectionStatus stage="catalog" configured />
+    )
+    assert.match(textContent(statusRenderer.root.findByProps({ role: 'status' })), /驗證金鑰／讀取免費模型/)
+    statusRenderer.unmount()
+
     const input = (): TestRenderer.ReactTestInstance =>
       renderer!.root.findByProps({ 'aria-label': 'AI API Key' })
     TestRenderer.act(() => input().props.onChange({ target: { value: 'sk-or-v1-test' } }))
@@ -178,6 +185,62 @@ async function main(): Promise<void> {
       '暫時性生成失敗不得清空模型清單或目前選擇'
     )
     assert.match(textContent(renderer.root), /生成階段逾時/)
+
+    TestRenderer.act(() => buttonByText(renderer!.root, '重新讀取免費模型').props.onClick())
+    assert.equal(requests.length, 3)
+    TestRenderer.act(() => {
+      requests[2]!.deferred.resolve({
+        ok: true,
+        configured: false,
+        provider: 'openrouter',
+        models: [models[1]!],
+        message: 'catalog refreshed'
+      })
+    })
+    await flush()
+    const modelSelect = renderer.root.findByProps({ id: 'openrouter-free-model' })
+    assert.equal(
+      modelSelect.props.value,
+      models[0]!.id,
+      '模型從目錄消失時必須保留原 ID，不能靜默換成第一個模型'
+    )
+    assert.match(textContent(renderer.root), /已不在最新清單，請重新選擇模型/)
+    assert.equal(
+      buttonByText(renderer!.root, '验证并使用此模型').props.disabled,
+      true,
+      '失效模型必須先由使用者重新選擇'
+    )
+    TestRenderer.act(() => modelSelect.props.onChange({ target: { value: models[1]!.id } }))
+    assert.equal(buttonByText(renderer!.root, '验证并使用此模型').props.disabled, false)
+    TestRenderer.act(() => buttonByText(renderer!.root, '验证并使用此模型').props.onClick())
+    assert.equal(requests.length, 4)
+    TestRenderer.act(() => {
+      requests[3]!.deferred.resolve({
+        ok: true,
+        configured: true,
+        credential: { provider: 'openrouter', model: models[1]!.id },
+        status: {
+          configured: true,
+          needsReentry: false,
+          activeCredential: { provider: 'openrouter', model: models[1]!.id },
+          credentials: []
+        },
+        message: 'AI 已啟用'
+      })
+    })
+    await flush()
+    assert.equal(input().props.value, 'sk-or-v1-test', '設定儲存失敗時保留可重試的金鑰草稿')
+    assert.equal(
+      renderer.root.findByProps({ id: 'openrouter-free-model' }).props.value,
+      models[1]!.id,
+      '設定儲存失敗時保留模型選擇'
+    )
+    assert.match(textContent(renderer.root), /設定儲存失敗|保存/)
+    assert.doesNotMatch(textContent(renderer.root), /AI 已啟用/)
+    assert.match(
+      textContent(renderer.root.findAll((node) => node.props.role === 'status')[0]!),
+      /安全儲存中/
+    )
     console.log('AI 連線狀態與失敗保留 UI 測試：通過')
   } finally {
     if (renderer) TestRenderer.act(() => renderer?.unmount())

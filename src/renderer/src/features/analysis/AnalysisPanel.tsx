@@ -524,6 +524,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         aiDeadlineTimer.current = null
       }
       const pending = pendingAiRequest.current
+      retryableAiRequest.current = null
       activeAiRequestId.current = null
       pendingAiRequest.current = null
       setAiBusy(false)
@@ -895,7 +896,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       pending: clonePendingAiRequest(pending),
       start: cloneExplanationStart(start)
     }
-    setExplainedResult(pending.resultSnapshot)
+    if (explainedResult === null && conversationRef.current === null) {
+      setExplainedResult(pending.resultSnapshot)
+    }
     setAiBusy(true)
     setAiCancelling(false)
     setAiError(null)

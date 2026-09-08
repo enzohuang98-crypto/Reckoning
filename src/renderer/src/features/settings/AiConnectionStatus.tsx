@@ -21,7 +21,7 @@ const LABELS: Record<AiConnectionStage, string> = {
 }
 
 export function AiConnectionStatus({ stage, configured = false }: Props): JSX.Element {
-  const effectiveStage = configured ? 'enabled' : stage
+  const effectiveStage = stage === 'idle' && configured ? 'enabled' : stage
   return (
     <div className="muted small" role="status" aria-live="polite">
       AI 連線狀態：{LABELS[effectiveStage]}
