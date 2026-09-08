@@ -89,6 +89,7 @@ export function SettingsPage({
   const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
       mountedRef.current = false
       connectAttemptRef.current += 1
@@ -137,16 +138,20 @@ export function SettingsPage({
     return () => window.clearTimeout(timer)
   }, [savedMessage])
 
-  const update = (patch: Partial<AppSettings>): void => {
+  const update = (patch: Partial<AppSettings>): boolean => {
     const next = { ...settings, ...patch }
     onSettingsChange(next)
     const saved = saveSettings(next)
-    if (!saved.ok) setOperationError(saved.message ?? '設定儲存失敗。')
-    else setOperationError(null)
+    if (!saved.ok) {
+      setOperationError(saved.message ?? '設定儲存失敗。')
+      return false
+    }
+    setOperationError(null)
+    return true
   }
 
-  const useCredential = (credential: SecretCredentialRef): void => {
-    update({
+  const useCredential = (credential: SecretCredentialRef): boolean => {
+    return update({
       aiProvider: credential.provider,
       aiModel: credential.model,
       aiBaseUrl:
@@ -181,26 +186,32 @@ export function SettingsPage({
         return
       }
       if (!result.configured) {
+        const previousModel = selectedOpenRouterModel
+        const previousModelUnavailable =
+          previousModel !== '' && !result.models.some((model) => model.id === previousModel)
         setOpenRouterModels(result.models)
-        setSelectedOpenRouterModel((current) =>
-          result.models.some((model) => model.id === current)
-            ? current
-            : result.models[0]?.id ?? ''
-        )
+        if (!previousModel) setSelectedOpenRouterModel(result.models[0]?.id ?? '')
         setConnectionStage('awaiting-model')
         setSavedMessage(result.message)
-        setOperationError(null)
+        setOperationError(
+          previousModelUnavailable
+            ? '目前選擇的模型已不在最新清單，請重新選擇模型。'
+            : null
+        )
         return
       }
       setConnectionStage('storage')
-      useCredential(result.credential)
+      const settingsSaved = useCredential(result.credential)
+      setSecretStatus(result.status)
+      if (!settingsSaved) {
+        setSavedMessage(null)
+        return
+      }
       setApiKey('')
       setOpenRouterModels([])
       setSelectedOpenRouterModel('')
-      setSecretStatus(result.status)
       setConnectionStage('enabled')
       setSavedMessage(result.message)
-      setOperationError(null)
     } catch (error) {
       if (!mountedRef.current || connectAttemptRef.current !== attempt) return
       setConnectionStage(connectionStageForFailure())
@@ -413,7 +424,10 @@ export function SettingsPage({
               secretBusy={secretBusy}
               openRouterModels={openRouterModels}
               selectedOpenRouterModel={selectedOpenRouterModel}
-              onOpenRouterModelChange={setSelectedOpenRouterModel}
+              onOpenRouterModelChange={(model) => {
+                setSelectedOpenRouterModel(model)
+                setOperationError(null)
+              }}
               onConnectKey={() => void connectKey()}
               onRefreshOpenRouterModels={() => void connectKey(true)}
               onDeleteKey={() => void deleteKey()}

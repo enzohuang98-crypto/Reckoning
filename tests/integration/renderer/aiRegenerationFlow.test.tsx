@@ -363,11 +363,30 @@ async function main(): Promise<void> {
     assert.equal(conversationChanges.at(-1)?.messages.at(-1)?.text, 'OLD_ANSWER_MUST_REMAIN_VISIBLE')
     conversationChanges.length = 0
 
+    const followUpInput = renderer.root.findByProps({ placeholder: '針對這個局面繼續追問…' })
+    act(() => followUpInput.props.onChange({ target: { value: 'WHY_FOLLOW_UP' } }))
+    act(() => findButton(renderer!, '追問').props.onClick())
+    assert.equal(aiStarts.length, 2, '追問應建立一個新請求')
+    const followUpRequest = aiStarts[1]
+    assert.equal(followUpRequest.followUpQuestion, 'WHY_FOLLOW_UP')
+    act(() => {
+      aiDoneListener?.({
+        requestId: followUpRequest.requestId,
+        finalText: 'FOLLOW_UP_ANSWER'
+      })
+    })
+    await act(async () => {
+      renderer?.update(panel(originalSettings))
+      await flushMicrotasks()
+    })
+    conversationChanges.length = 0
+
     act(() => {
       panelRef.current?.requestExplanation()
     })
-    assert.equal(aiStarts.length, 2, '重新解說應建立一個新請求')
-    const failedRegeneration = aiStarts[1]
+    assert.equal(aiStarts.length, 3, '成功追問後重新解說應建立一個新請求')
+    const failedRegeneration = aiStarts[2]
+    assert.equal(failedRegeneration.followUpQuestion, undefined)
     assert.match(
       textContent(renderer.root),
       /OLD_ANSWER_MUST_REMAIN_VISIBLE/,
@@ -401,8 +420,8 @@ async function main(): Promise<void> {
     act(() => {
       panelRef.current?.requestExplanation()
     })
-    assert.equal(aiStarts.length, 3, '503 後可以針對同一局面重試')
-    const successfulRegeneration = aiStarts[2]
+    assert.equal(aiStarts.length, 4, '503 後可以針對同一局面重試')
+    const successfulRegeneration = aiStarts[3]
     assert.notEqual(successfulRegeneration.requestId, failedRegeneration.requestId)
     assert.equal(successfulRegeneration.analysisId, firstAiRequest.analysisId)
     assert.equal(successfulRegeneration.model, firstAiRequest.model)
@@ -425,8 +444,13 @@ async function main(): Promise<void> {
     act(() => {
       panelRef.current?.requestExplanation()
     })
-    assert.equal(aiStarts.length, 4)
-    const timedOutRegeneration = aiStarts[3]
+    assert.equal(aiStarts.length, 5)
+    const timedOutRegeneration = aiStarts[4]
+    assert.equal(
+      timedOutRegeneration.model,
+      changedSettings.aiModel,
+      '成功完成上一個再生成後，新的再生成應使用目前設定模型'
+    )
     const timeout = [...timers.entries()].find(([, timer]) =>
       timer.delayMs >= ONE_CLICK_EXPLANATION_DEADLINE_MS - 1_000
     )
@@ -441,8 +465,11 @@ async function main(): Promise<void> {
     act(() => {
       panelRef.current?.requestExplanation()
     })
-    assert.equal(aiStarts.length, 5)
-    const cancelledRegeneration = aiStarts[4]
+    assert.equal(aiStarts.length, 6)
+    const cancelledRegeneration = aiStarts[5]
+    assert.equal(cancelledRegeneration.model, timedOutRegeneration.model)
+    assert.equal(cancelledRegeneration.analysisId, timedOutRegeneration.analysisId)
+    assert.deepEqual(cancelledRegeneration.budget, timedOutRegeneration.budget)
     act(() => {
       aiErrorListener?.({
         requestId: cancelledRegeneration.requestId,
@@ -457,8 +484,8 @@ async function main(): Promise<void> {
     act(() => {
       panelRef.current?.requestExplanation()
     })
-    assert.equal(aiStarts.length, 6)
-    const staleRegeneration = aiStarts[5]
+    assert.equal(aiStarts.length, 7)
+    const staleRegeneration = aiStarts[6]
     const switchedMove: ActualMoveSelection = {
       ...actualMove,
       selectionId: 'selection-switched-target',
