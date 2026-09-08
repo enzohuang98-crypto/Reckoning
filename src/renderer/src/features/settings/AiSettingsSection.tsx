@@ -46,6 +46,9 @@ export function AiSettingsSection({
 }: Props): JSX.Element {
   const [deleteConfirmation, setDeleteConfirmation] = useState(false)
   const active = secretStatus.activeCredential
+  const selectedModelUnavailable =
+    selectedOpenRouterModel !== '' &&
+    !openRouterModels.some((model) => model.id === selectedOpenRouterModel)
 
   return (
     <div className="settings-section-grid">
@@ -88,13 +91,25 @@ export function AiSettingsSection({
             disabled={secretBusy || encryptionAvailable === false}
             onChange={(event) => onApiKeyChange(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && apiKey.trim() && !secretBusy) onConnectKey()
+              if (
+                event.key === 'Enter' &&
+                apiKey.trim() &&
+                !secretBusy &&
+                !selectedModelUnavailable
+              ) {
+                onConnectKey()
+              }
             }}
           />
           <button
             className="btn"
             onClick={onConnectKey}
-            disabled={!apiKey.trim() || secretBusy || encryptionAvailable === false}
+            disabled={
+              !apiKey.trim() ||
+              secretBusy ||
+              encryptionAvailable === false ||
+              selectedModelUnavailable
+            }
           >
             {secretBusy
               ? '辨识、验证与连线中…'
@@ -117,6 +132,11 @@ export function AiSettingsSection({
               disabled={secretBusy}
               onChange={(event) => onOpenRouterModelChange(event.target.value)}
             >
+              {selectedModelUnavailable && (
+                <option value={selectedOpenRouterModel} disabled>
+                  {selectedOpenRouterModel} · 已不可用，請重新選擇
+                </option>
+              )}
               {openRouterModels.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.label} · {model.id}
@@ -126,6 +146,11 @@ export function AiSettingsSection({
             <p className="muted small">
               清单来自 OpenRouter 官方即时目录；只列具名的 :free 模型，不使用会随机换模型的自动路由。
             </p>
+            {selectedModelUnavailable && (
+              <p className="error-text">
+                目前選擇的模型已不在最新清單，請重新選擇模型。
+              </p>
+            )}
             {onRefreshOpenRouterModels && (
               <button
                 className="btn ghost small"

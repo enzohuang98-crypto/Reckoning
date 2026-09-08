@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net'
 import {
   autoConfigureCredential
 } from '../../../src/main/ai/autoConfigureCredential'
+import { mapStreamingErrorToPayload } from '../../../src/main/ipc/aiExplanationHandlers'
 import {
   AIHttpError,
   AIResponseValidationError,
@@ -33,6 +34,8 @@ interface MockResponse {
   body?: unknown
   rawBody?: string
   headers?: Record<string, string>
+  delayMs?: number
+  destroy?: boolean
 }
 
 async function withServer(
@@ -61,11 +64,20 @@ async function withServer(
       }
       requests.push(recorded)
       const result = handler(recorded)
+      if (result.destroy) {
+        response.destroy()
+        return
+      }
       response.writeHead(result.status ?? 200, {
         'content-type': 'application/json',
         ...result.headers
       })
-      response.end(result.rawBody ?? JSON.stringify(result.body ?? {}))
+      const responseBody = result.rawBody ?? JSON.stringify(result.body ?? {})
+      if (result.delayMs && result.delayMs > 0) {
+        setTimeout(() => response.end(responseBody), result.delayMs)
+      } else {
+        response.end(responseBody)
+      }
     })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -250,6 +262,73 @@ async function main(): Promise<void> {
     }
   )
 
+
+  await withServer(
+    () => ({
+      delayMs: 250,
+      body: {
+        model: 'vendor/model-a:free',
+        choices: [{ message: { content: 'OK' } }]
+      }
+    }),
+    async (baseUrl) => {
+      const result = await new OpenRouterProvider({ baseUrl }).testCredentialWithModels(
+        'sk-or-v1-test',
+        'vendor/model-a:free',
+        [{ id: 'vendor/model-a:free', label: 'Model A' } satisfies AIModelInfo],
+        100
+      )
+      assert.equal(result.ok, false)
+      assertDiagnostic(result, {
+        stage: 'generation',
+        category: 'timeout',
+        retryable: true
+      })
+    }
+  )
+
+
+  await withServer(
+    () => ({
+      delayMs: 250,
+      body: {
+        model: 'vendor/model-a:free',
+        choices: [{ message: { content: 'OK' } }]
+      }
+    }),
+    async (baseUrl) => {
+      const controller = new AbortController()
+      const pending = new OpenRouterProvider({ baseUrl }).generateExplanation(
+        requestFor('vendor/model-a:free'),
+        controller.signal
+      )
+      setTimeout(() => controller.abort(), 25)
+      await assert.rejects(pending, (error: unknown) => {
+        const payload = mapStreamingErrorToPayload('production-cancel', error)
+        return (
+          error instanceof DOMException &&
+          error.name === 'AbortError' &&
+          payload.code === 'cancelled'
+        )
+      })
+    }
+  )
+
+  await withServer(
+    () => ({ destroy: true }),
+    async (baseUrl) => {
+      await assert.rejects(
+        new OpenRouterProvider({ baseUrl }).generateExplanation(
+          requestFor('vendor/model-a:free')
+        ),
+        (error: unknown) => {
+          const payload = mapStreamingErrorToPayload('production-network', error)
+          return error instanceof TypeError && payload.code === 'network_error'
+        }
+      )
+    }
+  )
+
   await withServer(
     () => ({ rawBody: '{not-json' }),
     async (baseUrl) => {
@@ -417,6 +496,92 @@ async function main(): Promise<void> {
       assert.equal(requests.length, 3, '自動連線不得重複列模型或偷偷改用其他模型')
     }
   )
+
+
+  await withServer(
+    () => ({
+      delayMs: 250,
+      body: { data: {} }
+    }),
+    async (baseUrl) => {
+      const result = await new OpenRouterProvider({ baseUrl }).testCredential(
+        'sk-or-v1-test',
+        'vendor/model-a:free',
+        undefined,
+        100
+      )
+      assert.equal(result.ok, false)
+      assertDiagnostic(result, {
+        stage: 'key',
+        category: 'timeout',
+        retryable: true
+      })
+    }
+  )
+
+  await withServer(
+    (request) =>
+      request.url === '/api/v1/key'
+        ? { destroy: true }
+        : { body: freeModels() },
+    async (baseUrl) => {
+      const result = await new OpenRouterProvider({ baseUrl }).testCredential(
+        'sk-or-v1-test',
+        'vendor/model-a:free'
+      )
+      assert.equal(result.ok, false)
+      assertDiagnostic(result, {
+        stage: 'key',
+        category: 'network',
+        retryable: true
+      })
+    }
+  )
+
+
+  await withServer(
+    (request) =>
+      request.url === '/api/v1/key'
+        ? { body: { data: {} } }
+        : { destroy: true },
+    async (baseUrl) => {
+      const result = await new (OpenRouterProvider)({ baseUrl }).testCredential(
+        'sk-or-v1-test',
+        'vendor/model-a:free'
+      )
+      assert.equal(result.ok, false)
+      assertDiagnostic(result, {
+        stage: 'catalog',
+        category: 'network',
+        retryable: true
+      })
+    }
+  )
+
+  await withServer(
+    (request) =>
+      request.url === '/api/v1/key'
+        ? { destroy: true }
+        : { body: freeModels() },
+    async (baseUrl) => {
+      const fake = createFakeSecretStore()
+      const result = await autoConfigureCredential(
+        { apiKey: 'sk-or-v1-test', model: 'vendor/model-a:free' },
+        {
+          getProvider: () => new OpenRouterProvider({ baseUrl }),
+          secretStore: fake.secretStore
+        }
+      )
+      assert.equal(result.ok, false)
+      assertDiagnostic(result, {
+        stage: 'key',
+        category: 'network',
+        retryable: true
+      })
+      assert.equal(fake.writes.length, 0)
+    }
+  )
+
 
   await withServer(
     (request) =>
