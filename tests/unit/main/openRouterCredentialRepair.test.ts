@@ -194,9 +194,163 @@ function assertDiagnostic(
   assert.equal(typeof diagnostic?.message, 'string')
 }
 
+
+interface VirtualTimer {
+  at: number
+  order: number
+  callback: () => void
+  done: boolean
+}
+
+function createVirtualClock(): {
+  schedule: (delayMs: number, callback: () => void) => void
+  advance: (deltaMs: number) => Promise<void>
+} {
+  let now = 0
+  let order = 0
+  const timers: VirtualTimer[] = []
+  return {
+    schedule(delayMs, callback) {
+      timers.push({ at: now + delayMs, order: order++, callback, done: false })
+    },
+    async advance(deltaMs) {
+      const target = now + deltaMs
+      while (true) {
+        const next = timers
+          .filter((timer) => !timer.done && timer.at <= target)
+          .sort((left, right) => left.at - right.at || left.order - right.order)[0]
+        if (!next) break
+        next.done = true
+        now = next.at
+        next.callback()
+        await Promise.resolve()
+      }
+      now = target
+      await Promise.resolve()
+    }
+  }
+}
+
+async function runVirtualCredentialProbe(
+  generationDelayMs: number,
+  advanceBeforeResultMs: number
+): Promise<{
+  result: Awaited<ReturnType<typeof autoConfigureCredential>>
+  writes: Array<{ provider: string; model: string; apiKey: string }>
+  requests: string[]
+  timeoutDelays: number[]
+  generationAbortObserved: boolean
+}> {
+  const baseUrl = 'https://openrouter.test/api/v1'
+  const clock = createVirtualClock()
+  const originalFetch = globalThis.fetch
+  const signalConstructor = AbortSignal as typeof AbortSignal & {
+    timeout: (milliseconds: number) => AbortSignal
+  }
+  const originalTimeout = signalConstructor.timeout
+  const timeoutDelays: number[] = []
+  const requests: string[] = []
+  let generationAbortObserved = false
+  let generationStartedResolve!: () => void
+  const generationStarted = new Promise<void>((resolve) => {
+    generationStartedResolve = resolve
+  })
+  signalConstructor.timeout = (milliseconds) => {
+    timeoutDelays.push(milliseconds)
+    const controller = new AbortController()
+    clock.schedule(milliseconds, () => {
+      controller.abort(new DOMException('virtual timeout', 'TimeoutError'))
+    })
+    return controller.signal
+  }
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input)
+    requests.push(url)
+    if (url.endsWith('/key')) return new Response(JSON.stringify({ data: {} }), {
+      status: 200, headers: { 'content-type': 'application/json' }
+    })
+    if (url.includes('/models?')) return new Response(JSON.stringify(freeModels()), {
+      status: 200, headers: { 'content-type': 'application/json' }
+    })
+    if (!url.endsWith('/chat/completions')) throw new Error('unexpected virtual URL')
+    generationStartedResolve()
+    const signal = init?.signal
+    return new Promise<Response>((resolve, reject) => {
+      let settled = false
+      const abort = () => {
+        if (settled) return
+        settled = true
+        generationAbortObserved = true
+        reject(signal?.reason ?? new DOMException('virtual abort', 'AbortError'))
+      }
+      if (signal?.aborted) {
+        abort()
+        return
+      }
+      signal?.addEventListener('abort', abort, { once: true })
+      clock.schedule(generationDelayMs, () => {
+        if (settled) return
+        settled = true
+        signal?.removeEventListener('abort', abort)
+        resolve(new Response(JSON.stringify({ model: 'vendor/model-a:free', choices: [{ message: { content: 'OK' } }] }), {
+          status: 200, headers: { 'content-type': 'application/json' }
+        }))
+      })
+    })
+  }) as typeof fetch
+  try {
+    const fake = createFakeSecretStore()
+    const resultPromise = autoConfigureCredential(
+      { apiKey: 'sk-or-v1-test', model: 'vendor/model-a:free' },
+      {
+        getProvider: () => new OpenRouterProvider({ baseUrl }),
+        secretStore: fake.secretStore
+      }
+    )
+    await generationStarted
+    await clock.advance(advanceBeforeResultMs)
+    const result = await resultPromise
+    if (generationDelayMs > advanceBeforeResultMs) {
+      await clock.advance(generationDelayMs - advanceBeforeResultMs)
+    }
+    return {
+      result,
+      writes: fake.writes,
+      requests,
+      timeoutDelays,
+      generationAbortObserved
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+    signalConstructor.timeout = originalTimeout
+  }
+}
 async function main(): Promise<void> {
   assert.equal(OPENROUTER_CREDENTIAL_TEST_GENERATION_TIMEOUT_MS, 25_000)
   assert.equal(OPENROUTER_CREDENTIAL_TEST_MAX_OUTPUT_TOKENS, 512)
+
+  const virtualSuccess = await runVirtualCredentialProbe(10_000, 10_000)
+  assert.equal(virtualSuccess.result.ok, true)
+  if (virtualSuccess.result.ok) assert.equal(virtualSuccess.result.configured, true)
+  assert.equal(virtualSuccess.writes.length, 1)
+  assert.deepEqual(virtualSuccess.timeoutDelays, [8_000, 25_000])
+  assert.equal(virtualSuccess.generationAbortObserved, false)
+  assert.deepEqual(virtualSuccess.requests.map((url) => new URL(url).pathname), [
+    '/api/v1/key',
+    '/api/v1/models',
+    '/api/v1/chat/completions'
+  ])
+
+  const virtualTimeout = await runVirtualCredentialProbe(26_000, 25_000)
+  assert.equal(virtualTimeout.result.ok, false)
+  assertDiagnostic(virtualTimeout.result, {
+    stage: 'generation',
+    category: 'timeout',
+    retryable: true
+  })
+  assert.equal(virtualTimeout.generationAbortObserved, true)
+  assert.deepEqual(virtualTimeout.timeoutDelays, [8_000, 25_000])
+  assert.equal(virtualTimeout.writes.length, 0, 'timeout must not write credentials')
   const statusCases = [
     { status: 401, category: 'authentication' as const, retryable: false },
     { status: 403, category: 'permission' as const, retryable: false },
