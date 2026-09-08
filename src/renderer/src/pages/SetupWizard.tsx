@@ -39,6 +39,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
       mountedRef.current = false
       finishAttemptRef.current += 1
@@ -76,6 +77,15 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
   }
 
   const finish = async (refreshModels = false): Promise<void> => {
+    if (
+      !refreshModels &&
+      openRouterModels.length > 0 &&
+      !openRouterModels.some((model) => model.id === selectedOpenRouterModel)
+    ) {
+      setConnectionStage('awaiting-model')
+      setError('目前選擇的模型已不在最新清單，請重新選擇模型。')
+      return
+    }
     const attempt = ++finishAttemptRef.current
     setFinishing(true)
     setError(null)
@@ -99,14 +109,17 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
         return
       }
       if (keyResult?.ok && !keyResult.configured) {
+        const previousModel = selectedOpenRouterModel
+        const previousModelUnavailable =
+          previousModel !== '' && !keyResult.models.some((model) => model.id === previousModel)
         setOpenRouterModels(keyResult.models)
-        setSelectedOpenRouterModel((current) =>
-          keyResult.models.some((model) => model.id === current)
-            ? current
-            : keyResult.models[0]?.id ?? ''
-        )
+        if (!previousModel) setSelectedOpenRouterModel(keyResult.models[0]?.id ?? '')
         setConnectionStage('awaiting-model')
-        setError(null)
+        setError(
+          previousModelUnavailable
+            ? '目前選擇的模型已不在最新清單，請重新選擇模型。'
+            : null
+        )
         return
       }
       const selectedCredential = keyResult?.ok && keyResult.configured
@@ -251,6 +264,12 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
                 value={selectedOpenRouterModel}
                 onChange={(event) => setSelectedOpenRouterModel(event.target.value)}
               >
+                {selectedOpenRouterModel &&
+                  !openRouterModels.some((model) => model.id === selectedOpenRouterModel) && (
+                    <option value={selectedOpenRouterModel} disabled>
+                      {selectedOpenRouterModel} · 已不可用，請重新選擇
+                    </option>
+                  )}
                 {openRouterModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.label} · {model.id}
@@ -260,6 +279,12 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
               <p className="muted small">
                 请选择具名 :free 模型；程式不会使用随机免费路由替换你的选择。
               </p>
+              {selectedOpenRouterModel &&
+                !openRouterModels.some((model) => model.id === selectedOpenRouterModel) && (
+                  <p className="error-text">
+                    目前選擇的模型已不在最新清單，請重新選擇模型。
+                  </p>
+                )}
               <button
                 className="btn ghost small"
                 disabled={finishing}
@@ -272,7 +297,15 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
         </section>
 
         <div className="setup-actions">
-          <button className="btn" onClick={() => void finish()} disabled={finishing}>
+          <button
+            className="btn"
+            onClick={() => void finish()}
+            disabled={
+              finishing ||
+              (openRouterModels.length > 0 &&
+                !openRouterModels.some((model) => model.id === selectedOpenRouterModel))
+            }
+          >
             {openRouterModels.length > 0 ? '验证模型并完成設定 →' : '完成設定 →'}
           </button>
         </div>

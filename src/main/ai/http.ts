@@ -49,6 +49,33 @@ export class AIResponseValidationError extends Error {
   }
 }
 
+const AI_TRANSPORT_STAGES = new WeakMap<object, AICredentialTestStage>()
+
+/** Record a safe stage while preserving the original AbortError/TypeError identity. */
+export function toAITransportError(
+  error: unknown,
+  stage: AICredentialTestStage
+): Error | undefined {
+  const errorClassName = error instanceof Error ? error.constructor.name : undefined
+  const isAbort =
+    (error instanceof DOMException &&
+      (error.name === 'AbortError' || error.name === 'TimeoutError')) ||
+    (error instanceof Error &&
+      (error.name === 'AbortError' || error.name === 'TimeoutError')) ||
+    (errorClassName !== undefined && /Abort|Timeout/.test(errorClassName))
+  const isNetwork = error instanceof TypeError || error instanceof RangeError
+  if (!isAbort && !isNetwork) return undefined
+  if (typeof error !== 'object' || error === null) return undefined
+  AI_TRANSPORT_STAGES.set(error, stage)
+  return error as Error
+}
+
+function getAITransportStage(error: unknown): AICredentialTestStage | undefined {
+  return typeof error === 'object' && error !== null
+    ? AI_TRANSPORT_STAGES.get(error)
+    : undefined
+}
+
 /** 將 Retry-After 轉成有限的毫秒數，避免把服務端資料直接帶進 UI。 */
 export function parseRetryAfterMs(value: string | null): number | undefined {
   if (!value) return undefined
@@ -145,7 +172,8 @@ export function describeCredentialTestError(
   providerLabel: string,
   fallbackStage: AICredentialTestStage = 'generation'
 ): AITestCredentialResult {
-  const candidateStage = (error as { stage?: unknown } | null)?.stage
+  const candidateStage =
+    (error as { stage?: unknown } | null)?.stage ?? getAITransportStage(error)
   const resolvedStage: AICredentialTestStage =
     candidateStage === 'key' ||
     candidateStage === 'catalog' ||

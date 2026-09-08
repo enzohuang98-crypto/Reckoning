@@ -2,7 +2,8 @@ import type {
   AIExplanationStreamChunk,
   AIModelInfo,
   AIProvider,
-  AITestCredentialResult
+  AITestCredentialResult,
+  AICredentialTestStage
 } from '@shared/types/AIProviderTypes'
 import { isValidAIModelId } from '@shared/types/AIProviderTypes'
 import type {
@@ -15,7 +16,8 @@ import {
   createAIHttpError,
   describeCredentialTestError,
   fetchAiResponseBounded,
-  readJsonResponseBounded
+  readJsonResponseBounded,
+  toAITransportError
 } from '../http'
 import {
   credentialTestRequest,
@@ -90,6 +92,20 @@ function isErrorEnvelope(value: unknown): boolean {
   )
 }
 
+async function fetchOpenRouterResponse(
+  input: string | URL | Request,
+  init: RequestInit,
+  stage: AICredentialTestStage
+): Promise<Response> {
+  try {
+    return await fetchAiResponseBounded(input, init)
+  } catch (error) {
+    const transportError = toAITransportError(error, stage)
+    if (transportError) throw transportError
+    throw error
+  }
+}
+
 export class OpenRouterProvider implements AIProvider {
   readonly id = 'openrouter' as const
   readonly displayName = 'OpenRouter'
@@ -111,7 +127,7 @@ export class OpenRouterProvider implements AIProvider {
     request: AIExplanationRequest,
     signal?: AbortSignal
   ): Promise<AIExplanationResponse> {
-    const response = await fetchAiResponseBounded(`${this.baseUrl}/chat/completions`, {
+    const response = await fetchOpenRouterResponse(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       signal,
       headers: this.headers(request.apiKey),
@@ -122,7 +138,7 @@ export class OpenRouterProvider implements AIProvider {
         stream: false,
         messages: [{ role: 'user', content: request.prompt }]
       })
-    })
+    }, 'generation')
     if (!response.ok) {
       throw createAIHttpError(
         response,
@@ -133,7 +149,9 @@ export class OpenRouterProvider implements AIProvider {
     let data: OpenRouterChatResponse
     try {
       data = await readJsonResponseBounded<OpenRouterChatResponse>(response)
-    } catch {
+    } catch (error) {
+      const transportError = toAITransportError(error, 'generation')
+      if (transportError) throw transportError
       throw new AIResponseValidationError(
         'generation',
         'response_format',
@@ -200,10 +218,10 @@ export class OpenRouterProvider implements AIProvider {
     timeoutMs = CREDENTIAL_TEST_TIMEOUT_MS
   ): Promise<AIModelInfo[]> {
     const signal = AbortSignal.timeout(timeoutMs)
-    const keyResponse = await fetchAiResponseBounded(`${this.baseUrl}/key`, {
+    const keyResponse = await fetchOpenRouterResponse(`${this.baseUrl}/key`, {
       signal,
       headers: this.headers(apiKey)
-    })
+    }, 'key')
     if (!keyResponse.ok) {
       throw createAIHttpError(
         keyResponse,
@@ -214,7 +232,9 @@ export class OpenRouterProvider implements AIProvider {
     let keyBody: unknown
     try {
       keyBody = await readJsonResponseBounded(keyResponse)
-    } catch {
+    } catch (error) {
+      const transportError = toAITransportError(error, 'key')
+      if (transportError) throw transportError
       throw new AIResponseValidationError(
         'key',
         'response_format',
@@ -229,9 +249,10 @@ export class OpenRouterProvider implements AIProvider {
       )
     }
 
-    const modelsResponse = await fetchAiResponseBounded(
+    const modelsResponse = await fetchOpenRouterResponse(
       `${this.baseUrl}/models?output_modalities=text`,
-      { signal, headers: this.headers(apiKey) }
+      { signal, headers: this.headers(apiKey) },
+      'catalog'
     )
     if (!modelsResponse.ok) {
       throw createAIHttpError(
@@ -243,7 +264,9 @@ export class OpenRouterProvider implements AIProvider {
     let body: OpenRouterModelsResponse
     try {
       body = await readJsonResponseBounded<OpenRouterModelsResponse>(modelsResponse)
-    } catch {
+    } catch (error) {
+      const transportError = toAITransportError(error, 'catalog')
+      if (transportError) throw transportError
       throw new AIResponseValidationError(
         'catalog',
         'response_format',
@@ -278,7 +301,7 @@ export class OpenRouterProvider implements AIProvider {
       const availableModels = await this.listFreeModels(apiKey, catalogTimeoutMs)
       return this.testCredentialWithModels(apiKey, model, availableModels, timeoutMs)
     } catch (error) {
-      return describeCredentialTestError(error, this.displayName)
+      return describeCredentialTestError(error, this.displayName, 'catalog')
     }
   }
 
