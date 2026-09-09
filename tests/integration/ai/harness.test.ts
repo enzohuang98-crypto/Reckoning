@@ -1988,6 +1988,28 @@ async function main(): Promise<void> {
   check('模糊問題先要求使用者指出著法', ambiguous.clarificationRequired)
   check('模糊問題不浪費模型呼叫', ambiguousProvider.calls === 0)
 
+  for (const question of [
+    '紅方三路兵現在過河了嗎？它現在能橫走嗎？請依目前棋盤回答，並區分棋規與引擎建議。',
+    '黑方三路卒還沒過河，它可以橫走嗎？'
+  ]) {
+    const boardQuestionProvider = new FollowUpProvider()
+    const boardQuestion = await runExplanationHarness(
+      { requestId: 'board-rules-follow-up', analysisId: noMoveSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW',
+        followUpQuestion: question, reuseEvidence: true,
+        budget: { engineTimeMs: 100, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 4000 } },
+      { provider: boardQuestionProvider, apiKey: 'synthetic-test-key', model: 'fake-model',
+        session: noMoveSession,
+        registry: { list: () => ({ installations: [], activeEngineId: null, verificationEngineId: null }), getAdapter: () => null } as never,
+        traceStore: { save: () => undefined } as never,
+        signal: new AbortController().signal, onProgress: () => undefined }
+    )
+    check('具名棋子的棋規追問不要求指定著法', !boardQuestion.clarificationRequired, question)
+    check('具名棋子的棋規追問確實交給回答流程', boardQuestionProvider.calls > 0, question)
+    check('回答提示保留完整棋規問題', boardQuestionProvider.prompts.some(p => p.includes(question)))
+  }
+
   console.log('\n## 未提供使用者著法：目前局面解說')
   const noUserMoveProvider = new NoUserMoveProvider()
   const noUserMoveProgress: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
