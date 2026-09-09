@@ -89,6 +89,7 @@ export interface ParsedInfoLine {
   /** 解析失敗或缺失為 null（§2.14.6「無效 score」） */
   score: EngineScore | null
   pv: string[]
+  scoreBound?: 'lower' | 'upper'
 }
 
 /**
@@ -112,6 +113,7 @@ export function parseInfoLine(
   let multipv = 1
   let score: EngineScore | null = null
   let pv: string[] = []
+  let scoreBound: 'lower' | 'upper' | undefined
 
   for (let i = 1; i < tokens.length; i++) {
     const token = tokens[i]
@@ -176,6 +178,12 @@ export function parseInfoLine(
         }
         break
       }
+      case 'lowerbound':
+        scoreBound = 'lower'
+        break
+      case 'upperbound':
+        scoreBound = 'upper'
+        break
       case 'pv':
         pv = tokens.slice(i + 1, i + 1 + MAX_PV_MOVES)
         i = tokens.length
@@ -187,7 +195,7 @@ export function parseInfoLine(
   }
 
   if (score === null && pv.length === 0) return null
-  return { multipv, depth, selDepth, timeMs, nodes, nps, score, pv }
+  return { multipv, depth, selDepth, timeMs, nodes, nps, score, pv, ...(scoreBound ? { scoreBound } : {}) }
 }
 
 /** 從 `bestmove xxxx [ponder yyyy]` 取出最佳著法；(none)/nobestmove 回 null */
@@ -222,6 +230,12 @@ export class MultiPvAccumulator {
     if (!parsed) return
     const existing = this.byMultiPv.get(parsed.multipv)
     if (!existing && this.byMultiPv.size >= this.maxMultiPv) return
+    // Aspiration-search bounds at timeout may contain only the root move.
+    // Retain the complete exact observation as a unit (including depth/score),
+    // only for the same move and this search's accumulator; never splice PVs.
+    if (parsed.scoreBound && existing && !existing.scoreBound &&
+        existing.pv.length > parsed.pv.length && parsed.pv.length > 0 &&
+        existing.pv[0] === parsed.pv[0]) return
     if (!existing || (parsed.depth ?? 0) >= (existing.depth ?? 0)) {
       this.byMultiPv.set(parsed.multipv, parsed)
     }

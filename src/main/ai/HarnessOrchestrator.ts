@@ -379,9 +379,11 @@ function makeEvidence(
 
 function isAmbiguousQuestion(question: string | undefined, attachedMove?: string): boolean {
   if (!question?.trim() || attachedMove) return false
-  return /(這步|這一手|那步|那一手|這裡|那裡|它|this move|that move)/i.test(
-    question
-  )
+  // A named piece can be the antecedent of 它; it does not require a move.
+  // Keep genuine deictic move references gated even when a piece is mentioned.
+  if (/(這步|這一手|那步|那一手|this move|that move)/i.test(question)) return true
+  const namedPiece = /(?:紅方|红方|黑方|紅|红|黑)?[一二三四五六七八九1-9]路[兵卒馬马傌車车俥炮砲相象士仕將将帥帅]|(?:紅方|红方|黑方|紅|红|黑)[兵卒馬马傌車车俥炮砲相象士仕將将帥帅]/.test(question)
+  return !namedPiece && /(這裡|那裡|它)/.test(question)
 }
 
 function validateTask(
