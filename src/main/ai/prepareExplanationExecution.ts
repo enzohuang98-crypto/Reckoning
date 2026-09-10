@@ -99,7 +99,12 @@ function ordinaryStrategy(
   history: readonly ConversationMessage[],
   attachedMove: string | undefined
 ): ExplanationAnswerStrategy {
-  if (question && history.length > 0) return 'conversation-follow-up'
+  const focusedQuestion = question?.trim() ?? ''
+  const asksOverview = /完整|全面|整體|整体|full|complete|overview/i.test(focusedQuestion)
+  const asksSpecific = /[?？]|嗎|吗|能否|是否|為何|为何|為什麼|为什么|how|why|whether|explain why/i.test(focusedQuestion)
+  if (question && (history.length > 0 || (!attachedMove && asksSpecific && !asksOverview))) {
+    return 'conversation-follow-up'
+  }
   return attachedMove ? 'move-comparison' : 'position-explanation'
 }
 

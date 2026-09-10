@@ -710,6 +710,7 @@ const EN_FOLLOW_UP_WRITER_JSON = JSON.stringify({
 class FollowUpProvider implements AIProvider {
   readonly id = 'openai' as const
   readonly displayName = 'Fake follow-up provider'
+  constructor(private readonly output = JSON.stringify(FOLLOW_UP_WRITER_JSON)) {}
   calls = 0
   prompts: string[] = []
   requestedMaxTokens: number[] = []
@@ -723,7 +724,7 @@ class FollowUpProvider implements AIProvider {
     this.requestedMaxTokens.push(request.maxOutputTokens ?? -1)
     return {
       // JSON-mode services sometimes double-encode the requested object.
-      text: JSON.stringify(FOLLOW_UP_WRITER_JSON),
+      text: this.output,
       provider: this.id,
       model: 'fake-model',
       createdAt: Date.now(),
@@ -1992,7 +1993,7 @@ async function main(): Promise<void> {
     '紅方三路兵現在過河了嗎？它現在能橫走嗎？請依目前棋盤回答，並區分棋規與引擎建議。',
     '黑方三路卒還沒過河，它可以橫走嗎？'
   ]) {
-    const boardQuestionProvider = new FollowUpProvider()
+    const boardQuestionProvider = new FollowUpProvider('紅方三路兵是否過河要看目前位置；過河前不能橫走，過河後可橫走一格。引擎建議炮二平五，這是選擇著法的建議，兵的走法仍依棋規判斷。')
     const boardQuestion = await runExplanationHarness(
       { requestId: 'board-rules-follow-up', analysisId: noMoveSession.analysisId,
         provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
@@ -2006,8 +2007,13 @@ async function main(): Promise<void> {
         signal: new AbortController().signal, onProgress: () => undefined }
     )
     check('具名棋子的棋規追問不要求指定著法', !boardQuestion.clarificationRequired, question)
-    check('具名棋子的棋規追問確實交給回答流程', boardQuestionProvider.calls > 0, question)
-    check('回答提示保留完整棋規問題', boardQuestionProvider.prompts.some(p => p.includes(question)))
+    if (question.includes('引擎建議')) {
+      check('混合棋規與引擎建議問題交給回答流程', boardQuestionProvider.calls > 0, question)
+      check('回答提示保留完整棋規問題', boardQuestionProvider.prompts.some(p => p.includes(question)))
+    } else {
+      check('純棋規不浪費模型呼叫', boardQuestionProvider.calls === 0)
+      check('回答包含未過河與不能橫走', /未過河/.test(boardQuestion.finalText) && /不能橫走/.test(boardQuestion.finalText))
+    }
   }
 
   console.log('\n## 未提供使用者著法：目前局面解說')
@@ -2181,7 +2187,7 @@ async function main(): Promise<void> {
       !followUpResult.finalText.includes('保守版問答')
   )
 
-  const invalidFollowUpProvider = new LocalizedNoUserMoveProvider(['not-json'])
+  const invalidFollowUpProvider = new LocalizedNoUserMoveProvider(['not-json', '目前最需要注意中路的控制，炮二平五把炮移到中路。接下來出子前先檢查對手能否直接將軍或吃掉無根子。不要只顧進攻而讓自己的將帥失去保護。'])
   const invalidFollowUpResult = await runExplanationHarness(
     {
       requestId: 'ai-request-follow-up-invalid-json',
@@ -2226,14 +2232,45 @@ async function main(): Promise<void> {
       onProgress: () => undefined
     }
   )
-  const invalidFollowUpDirect = invalidFollowUpResult.finalText.split('\n\n')[2] ?? ''
+  const invalidFollowUpDirect = invalidFollowUpResult.finalText
   check(
-    '追問 JSON 無效時仍只呼叫一次，並以引擎快照精確輸出三句話',
-    invalidFollowUpProvider.calls === 1 &&
+    '追問 JSON 無效時改用一次短文重試，回答本次問題並遵守三句話',
+    invalidFollowUpProvider.calls === 2 &&
       (invalidFollowUpDirect.match(/。/g)?.length ?? 0) === 3 &&
-      invalidFollowUpResult.finalText.includes('直接使用引擎證據產生精簡回答') &&
+      invalidFollowUpResult.finalText.includes('目前最需要注意中路的控制') &&
       !invalidFollowUpResult.finalText.includes('下次遇到類似局面')
   )
+
+  for (const scenario of [
+    { name: 'malformed', outputs: ['{broken', '炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 2 },
+    { name: 'plain', outputs: ['炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 1 },
+    { name: 'unrelated', outputs: [JSON.stringify({directAnswer: '先看引擎首選炮二平五。'}), '開局中路需要注意中兵的保護，出馬前也要檢查對手是否有直接將軍或吃子。'], calls: 2 }
+  ]) {
+    const requests: Array<Parameters<AIProvider['generateExplanation']>[0]> = []
+    const provider = new LocalizedNoUserMoveProvider(scenario.outputs)
+    const generate = provider.generateExplanation.bind(provider)
+    const instrumented: AIProvider = {
+      id: provider.id, displayName: provider.displayName,
+      generateExplanation: async (request) => { requests.push(request); return generate() },
+      generateExplanationStream: provider.generateExplanationStream.bind(provider)
+    }
+    const result = await runExplanationHarness({
+      requestId: 'focused-' + scenario.name, analysisId: noMoveSession.analysisId,
+      provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW', answerMode: 'research',
+      followUpQuestion: '開局中路需要注意什麼？',
+      budget: {engineTimeMs:100,maxEngineRounds:1,maxModelCalls:2,maxOutputTokens:3000}
+    }, {
+      provider: instrumented, apiKey: 'synthetic-test-key', model: 'fake-model', session: noMoveSession,
+      registry: {list:()=>({installations:[],activeEngineId:null,verificationEngineId:null}),getAdapter:()=>null} as never,
+      traceStore: {save:()=>undefined} as never, signal:new AbortController().signal,onProgress:()=>undefined
+    })
+    check('首次具體問題可恢復短文回答 ' + scenario.name, result.finalText.includes('中') && provider.calls === scenario.calls)
+    if (scenario.calls === 2) {
+      check('恢復請求使用純文字且保留原問題 ' + scenario.name,
+        requests[1].responseFormat === undefined && requests[1].prompt.includes('開局中路需要注意什麼？') && requests[1].maxOutputTokens === 1200)
+    }
+  }
 
   const englishFollowUpProvider = new LocalizedNoUserMoveProvider([
     EN_FOLLOW_UP_WRITER_JSON

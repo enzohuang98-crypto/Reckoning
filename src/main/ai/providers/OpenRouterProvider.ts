@@ -136,6 +136,9 @@ export class OpenRouterProvider implements AIProvider {
         max_tokens: request.maxOutputTokens ?? 4096,
         temperature: 0.2,
         stream: false,
+        ...(request.responseFormat === 'json'
+          ? { response_format: { type: 'json_object' } }
+          : {}),
         messages: [{ role: 'user', content: request.prompt }]
       })
     }, 'generation')
