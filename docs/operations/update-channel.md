@@ -45,3 +45,11 @@ GitHub Release 是安裝下載與自動更新的同一個權威來源，不再�
 - `latest.yml` 的版本、檔名、大小與 SHA-512 必須和安裝檔一致。
 - 單一 GitHub Release asset 必須小於 2 GiB；驗證腳本會拒絕超限檔案。
 - 正式公開版應使用受信任 CA 的 Windows 程式碼簽章；明確允許的未簽章過渡版仍可能觸發 SmartScreen。
+
+## GitHub 與桌面版同步條件
+
+桌面 App 追蹤的是 GitHub **Latest stable Release**，不是只有 tag 或 `main` 裡的 `package.json`。因此新版本若只有 tag、失敗的正式 workflow，或未升 Latest 的 prerelease，已安裝 App 都不會誤報已同步。
+
+缺少公開信任簽章憑證而由擁有者明確要求維持桌面同步時，可使用 `unsigned-release` 過渡模式。呼叫者必須輸入精確確認字串 `PUBLISH UNSIGNED LATEST`；workflow 會保留原始碼 `forceCodeSigning: true`，只在隔離 runner 的該次 build 關閉強制簽章，並在同次執行中完成測試、依賴稽核、更新資產驗證、SHA-256、安裝／解除安裝與兩個匿名公開網址重新下載檢查。完成後才把該 Release 設成 stable Latest。發布說明與標題必須明確標示未簽章及 SmartScreen 風險。
+
+既有安裝版會在啟動後五秒檢查這個 stable Latest。偵測到較新版本後，使用者在 App 內按「立即更新」，App 便下載該 Release 的 `latest.yml`、blockmap 與安裝檔，安裝並重新啟動；不需要人工替換 `Program Files` 檔案。這證明更新來源與桌面流程接通，但未簽章產物仍不等於通過 Authenticode 或乾淨 Windows 10／11 正式發布門檻。

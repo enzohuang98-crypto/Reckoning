@@ -8,13 +8,19 @@ on:
         required: true
         type: string
       mode:
-        description: Release semantics; teacher candidates never promote to Latest
+        description: Release semantics; unsigned stable sync requires an explicit acknowledgement
         required: true
         default: teacher-candidate
         type: choice
         options:
           - teacher-candidate
+          - unsigned-release
           - formal-release
+      unsigned_release_acknowledgement:
+        description: Type PUBLISH UNSIGNED LATEST only when explicitly accepting an unsigned stable update
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -26,6 +32,7 @@ concurrency:
 env:
   REQUESTED_TAG: ${{ inputs.tag }}
   REQUESTED_MODE: ${{ inputs.mode }}
+  UNSIGNED_RELEASE_ACKNOWLEDGEMENT: ${{ inputs.unsigned_release_acknowledgement }}
   RELEASE_ARTIFACT_NAME: windows-x64-release-${{ github.run_id }}
 
 jobs:
@@ -54,8 +61,14 @@ jobs:
           if ($env:REQUESTED_TAG -notmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
             throw 'Requested tag must be a stable semantic version such as v0.3.8.'
           }
-          if ($env:REQUESTED_MODE -notin @('teacher-candidate', 'formal-release')) {
+          if ($env:REQUESTED_MODE -notin @('teacher-candidate', 'unsigned-release', 'formal-release')) {
             throw "Unsupported release mode: $env:REQUESTED_MODE"
+          }
+          if (
+            $env:REQUESTED_MODE -eq 'unsigned-release' -and
+            $env:UNSIGNED_RELEASE_ACKNOWLEDGEMENT -cne 'PUBLISH UNSIGNED LATEST'
+          ) {
+            throw 'unsigned-release requires the exact acknowledgement: PUBLISH UNSIGNED LATEST'
           }
           if ($env:REQUESTED_TAG -eq 'v0.3.7') {
             throw 'v0.3.7 is preserved as a historical release; use a new version tag.'
@@ -110,7 +123,7 @@ jobs:
         run: npm run security:audit
 
       - name: Build explicitly unsigned teacher candidate
-        if: ${{ inputs.mode == 'teacher-candidate' }}
+        if: ${{ inputs.mode == 'teacher-candidate' || inputs.mode == 'unsigned-release' }}
         shell: pwsh
         run: |
           $builderConfig = 'electron-builder.yml'
@@ -140,9 +153,9 @@ jobs:
           $setup = "release/xiangqi-analyzer-$version-setup.exe"
           $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash
           $signature = Get-AuthenticodeSignature -LiteralPath $setup
-          if ($env:REQUESTED_MODE -eq 'teacher-candidate') {
+          if ($env:REQUESTED_MODE -in @('teacher-candidate', 'unsigned-release')) {
             if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned) {
-              throw "Teacher candidate must be explicitly unsigned; installer signature status was $($signature.Status)."
+              throw "Unsigned build must have NotSigned status; installer signature status was $($signature.Status)."
             }
           } else {
             pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/verify-signature.ps1 -ExpectedVersion $version
@@ -157,7 +170,7 @@ jobs:
           "setup_size=$((Get-Item -LiteralPath $setup).Length)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
 
       - name: Install and uninstall the exact unsigned teacher candidate
-        if: ${{ inputs.mode == 'teacher-candidate' }}
+        if: ${{ inputs.mode == 'teacher-candidate' || inputs.mode == 'unsigned-release' }}
         shell: pwsh
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass `
@@ -206,7 +219,7 @@ jobs:
           name: ${{ env.RELEASE_ARTIFACT_NAME }}
           path: release
 
-      - name: Create a versioned candidate without changing Latest
+      - name: Create a verified candidate before any Latest promotion
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -218,7 +231,7 @@ jobs:
           tag="$RELEASE_TAG"
           setup="release/xiangqi-analyzer-$version-setup.exe"
           : > release-notes.md
-          if [[ "$RELEASE_MODE" == "teacher-candidate" ]]; then
+          if [[ "$RELEASE_MODE" == "teacher-candidate" || "$RELEASE_MODE" == "unsigned-release" ]]; then
             cat >> release-notes.md <<'EOF'
           > [!WARNING]
           > **Windows installer is intentionally unsigned.** Windows SmartScreen may warn or block it because it has no trusted Authenticode publisher. Download only from this GitHub Release, verify `SHA256SUMS.txt`, and continue only if you accept that warning.
@@ -234,6 +247,14 @@ jobs:
           本次 $tag 是**刻意未簽章**的公開 teacher-test prerelease：沒有受信任的 Authenticode 發行者與時間戳，Windows SmartScreen 可能警告或封鎖。請只從此 GitHub Release 下載，先驗證 \`SHA256SUMS.txt\`，並且僅在了解及接受這項風險後才繼續。此 workflow 永遠不會把 teacher candidate 升為 Latest。
           EOF
             title="象棋 AI 分析講解 $tag（未簽章 teacher-test candidate）"
+          elif [[ "$RELEASE_MODE" == "unsigned-release" ]]; then
+            cat >> release-notes.md <<EOF
+
+          ## 本次 Windows 發布狀態
+
+          本次 $tag 是經擁有者明確允許的**未簽章過渡更新**。同一次 workflow 會核對版本、SHA-256、latest.yml、安裝與解除安裝，並從匿名公開網址重新下載驗證；全部通過後才升為 Latest，供既有桌面 App 同步。沒有受信任的 Authenticode 發行者與時間戳，Windows SmartScreen 仍可能警告或封鎖。
+          EOF
+            title="象棋 AI 分析講解 $tag（未簽章過渡更新）"
           else
             cat >> release-notes.md <<EOF
 
@@ -282,7 +303,7 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile "release/$setupName" -MaximumRedirection 5
 
       - name: Verify, install, and uninstall unsigned public bytes
-        if: ${{ inputs.mode == 'teacher-candidate' }}
+        if: ${{ inputs.mode == 'teacher-candidate' || inputs.mode == 'unsigned-release' }}
         shell: pwsh
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass `
@@ -301,6 +322,33 @@ jobs:
             -ExpectedSha256 '${{ needs.build.outputs.setup_sha256 }}'
           "This runner is a ${{ matrix.label }}. It is not Windows 10 or Windows 11 consumer-client evidence." |
             Out-File -Append -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+
+  promote-unsigned-release:
+    name: Promote explicitly approved unsigned update to Latest
+    needs: [build, publish-release, server-proxy-acceptance]
+    if: ${{ inputs.mode == 'unsigned-release' && needs.server-proxy-acceptance.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Reconfirm approval and publish the verified public bytes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UNSIGNED_ACK: ${{ inputs.unsigned_release_acknowledgement }}
+        run: |
+          set -euo pipefail
+          if [[ "$UNSIGNED_ACK" != 'PUBLISH UNSIGNED LATEST' ]]; then
+            echo 'Unsigned Latest acknowledgement is missing or changed.' >&2
+            exit 1
+          fi
+          gh release edit "${{ inputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --prerelease=false \
+            --latest \
+            --title "象棋 AI 分析講解 ${{ inputs.tag }}（未簽章過渡更新）"
 
   windows-client-evidence:
     name: Require clean Windows 10 22H2 and Windows 11 client evidence
