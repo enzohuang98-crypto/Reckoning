@@ -2244,14 +2244,22 @@ async function main(): Promise<void> {
   for (const scenario of [
     { name: 'malformed', outputs: ['{broken', '炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 2 },
     { name: 'plain', outputs: ['炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 1 },
-    { name: 'unrelated', outputs: [JSON.stringify({directAnswer: '先看引擎首選炮二平五。'}), '皮卡魚主線炮二平五把炮移到中路，這段開局變化顯示了中路子力的調動。'], calls: 2 }
+    { name: 'unrelated', outputs: [JSON.stringify({directAnswer: '先看引擎首選炮二平五。'}), '皮卡魚主線炮二平五把炮移到中路，這段開局變化顯示了中路子力的調動。'], calls: 2 },
+    { name: 'unsupported-json', outputs: ['', '皮卡魚主線炮二平五把炮移到中路，這段開局變化顯示了中路子力的調動。'], calls: 2 }
   ]) {
     const requests: Array<Parameters<AIProvider['generateExplanation']>[0]> = []
     const provider = new LocalizedNoUserMoveProvider(scenario.outputs)
     const generate = provider.generateExplanation.bind(provider)
     const instrumented: AIProvider = {
       id: provider.id, displayName: provider.displayName,
-      generateExplanation: async (request) => { requests.push(request); return generate() },
+      generateExplanation: async (request) => {
+        requests.push(request)
+        if (scenario.name === 'unsupported-json' && requests.length === 1) {
+          provider.calls += 1
+          throw Object.assign(new Error('response format unsupported'), {status:400})
+        }
+        return generate()
+      },
       generateExplanationStream: provider.generateExplanationStream.bind(provider)
     }
     const result = await runExplanationHarness({
