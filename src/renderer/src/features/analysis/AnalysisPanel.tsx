@@ -844,7 +844,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setAiNotice('正在等待皮卡魚完成這輪分析，完成後會依結果回答。')
       return
     }
-    if (!result) return
+    if (!result || activeAiRequestId.current) return
     if (!isSameAnalysisTarget(result.engineAnalysis, board.fen, analysisMove)) return
     const cleanedQuestion = question?.trim() || null
     const target = currentAiTargetRef.current
