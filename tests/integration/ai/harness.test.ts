@@ -2244,7 +2244,7 @@ async function main(): Promise<void> {
   for (const scenario of [
     { name: 'malformed', outputs: ['{broken', '炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 2 },
     { name: 'plain', outputs: ['炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 1 },
-    { name: 'unrelated', outputs: [JSON.stringify({directAnswer: '先看引擎首選炮二平五。'}), '開局中路需要注意中兵的保護，出馬前也要檢查對手是否有直接將軍或吃子。'], calls: 2 }
+    { name: 'unrelated', outputs: [JSON.stringify({directAnswer: '先看引擎首選炮二平五。'}), '皮卡魚主線炮二平五把炮移到中路，這段開局變化顯示了中路子力的調動。'], calls: 2 }
   ]) {
     const requests: Array<Parameters<AIProvider['generateExplanation']>[0]> = []
     const provider = new LocalizedNoUserMoveProvider(scenario.outputs)
@@ -2270,6 +2270,28 @@ async function main(): Promise<void> {
       check('恢復請求使用純文字且保留原問題 ' + scenario.name,
         requests[1].responseFormat === undefined && requests[1].prompt.includes('開局中路需要注意什麼？') && requests[1].maxOutputTokens === 1200)
     }
+  }
+
+  {
+    let finishEngine!: (analysis: EngineAnalysis) => void
+    const pendingEngine = new Promise<EngineAnalysis>(resolve => { finishEngine = resolve })
+    const provider = new FollowUpProvider('皮卡魚主線炮二平五將炮移到中路，這段開局主線呈現了中路子力的調動。')
+    const waitingSession = {...noMoveSession, engineAnalysis: {...noMoveSession.engineAnalysis,
+      principalVariation:[noMoveSession.engineAnalysis.bestMove],
+      displayPrincipalVariation:[noMoveSession.engineAnalysis.displayBestMove ?? '炮二平五']}}
+    const resultPromise=runExplanationHarness({
+      requestId:'wait-for-finished-pv',analysisId:waitingSession.analysisId,
+      provider:'openai',model:'fake-model',userLevel:'intermediate',explanationStyle:'long_analytical',language:'zh-TW',
+      followUpQuestion:'開局中路需要注意什麼？',
+      budget:{engineTimeMs:100,maxEngineRounds:1,maxModelCalls:2,maxOutputTokens:3000}
+    },{provider,apiKey:'synthetic-test-key',model:'fake-model',session:waitingSession,
+      registry:{list:()=>({installations:[],activeEngineId:'engine-1',verificationEngineId:null}),getAdapter:()=>({analyzePosition:()=>pendingEngine})} as never,
+      traceStore:{save:()=>undefined} as never,signal:new AbortController().signal,onProgress:()=>undefined})
+    await Promise.resolve()
+    check('皮卡魚尚未完成主線時不呼叫模型',provider.calls === 0)
+    finishEngine(noMoveSession.engineAnalysis)
+    const result=await resultPromise
+    check('皮卡魚完成後依主線回答',provider.calls === 1 && result.finalText.includes('炮二平五'))
   }
 
   const englishFollowUpProvider = new LocalizedNoUserMoveProvider([

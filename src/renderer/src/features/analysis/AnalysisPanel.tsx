@@ -224,6 +224,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const activeAnalysisKey = useRef<string | null>(null)
   const engineDeadlineTimer = useRef<number | null>(null)
   const explicitAnalysisTarget = useRef<string | null>(null)
+  const queuedExplanation = useRef<{question: string | null; regenerate: boolean; target: AiRequestTarget} | null>(null)
   const activeAiRequestId = useRef<string | null>(null)
   const aiDeadlineTimer = useRef<number | null>(null)
   const pendingAiRequest = useRef<PendingAiRequest | null>(null)
@@ -351,6 +352,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     activeAnalysisKey.current = null
     explicitAnalysisTarget.current = null
     activeAiRequestId.current = null
+    queuedExplanation.current = null
     pendingAiRequest.current = null
     retryableAiRequest.current = null
     autoRunAttemptTarget.current = null
@@ -499,6 +501,12 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setRefining(false)
       setProgress(null)
       setCancelling(false)
+      if (queuedExplanation.current) {
+        queuedExplanation.current = null
+        setAiBusy(false)
+        setAiNotice(null)
+        setAiError(payload.code === 'cancelled' ? '已取消等待皮卡魚分析，問題仍保留。' : '皮卡魚分析未完成，請重試分析後再回答。')
+      }
       if (payload.code === 'cancelled') setNotice('已取消分析。')
       else {
         setLiveRetryCount((current) => current + 1)
@@ -769,6 +777,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     }
     if (actualMove && liveRetryCount > 0) return
     if (
+      aiBusy || queuedExplanation.current ||
       !canScheduleLiveAnalysis({
         livePaused,
         visible,
@@ -789,6 +798,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     livePaused,
     liveRetryCount,
     result?.analysisId,
+    aiBusy,
     startAnalysis,
     status?.available,
     analysisMove,
@@ -808,6 +818,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }
 
   const stopAll = (): void => {
+    queuedExplanation.current = null
+    if (!activeAiRequestId.current) setAiBusy(false)
     setLivePaused(true)
     if (activeRequestId.current) {
       setCancelling(true)
@@ -824,7 +836,15 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }
 
   const generateExplanation = (question: string | null, regenerate = false): void => {
-    if (!result || activeAiRequestId.current) return
+    if (activeAiRequestId.current || queuedExplanation.current) return
+    if (activeRequestId.current && currentAiTargetRef.current) {
+      queuedExplanation.current = {question, regenerate, target: {...currentAiTargetRef.current}}
+      setAiBusy(true)
+      setAiError(null)
+      setAiNotice('正在等待皮卡魚完成這輪分析，完成後會依結果回答。')
+      return
+    }
+    if (!result) return
     if (!isSameAnalysisTarget(result.engineAnalysis, board.fen, analysisMove)) return
     const cleanedQuestion = question?.trim() || null
     const target = currentAiTargetRef.current
@@ -936,6 +956,15 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }
 
   useEffect(() => {
+    const queued = queuedExplanation.current
+    if (!queued || busy || activeRequestId.current || !result) return
+    queuedExplanation.current = null
+    setAiBusy(false)
+    if (!isSameAiRequestTarget(queued.target, currentAiTargetRef.current)) return
+    generateExplanation(queued.question, queued.regenerate)
+  }, [busy, result?.analysisId])
+
+  useEffect(() => {
     const move = analysisMove
     const target = `${board.fen}|${move}`
     if (
@@ -966,7 +995,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   // 每次 render 都重建這個 handle 才能避免呼叫到過期的閉包。
   useImperativeHandle(ref, () => ({
     requestExplanation: () => {
-      if (!result || aiBusy) return
+      if ((!result && !busy) || aiBusy) return
       onActiveViewChange('coach')
       generateExplanation(
         null,
@@ -1007,6 +1036,12 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const coachResult = explainedResult ?? result
 
   const cancelExplain = (): void => {
+    if (queuedExplanation.current) {
+      queuedExplanation.current = null
+      setAiBusy(false)
+      setAiNotice('已取消等待皮卡魚分析，問題仍保留。')
+      return
+    }
     if (!activeAiRequestId.current) return
     setAiCancelling(true)
     window.api.ai.cancelExplanation(activeAiRequestId.current)
