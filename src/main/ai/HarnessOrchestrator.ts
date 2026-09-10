@@ -1,3 +1,5 @@
+import { buildBoardQuestionFacts } from './BoardQuestionFacts'
+import { buildQuestionRecoveryPrompt, extractDirectQuestionText, isFocusedQuestionAnswer } from './QuestionAnswerQuality'
 import { randomUUID } from 'node:crypto'
 import type { AIProvider, TokenUsage } from '@shared/types/AIProviderTypes'
 import type { GenerateExplanationStartPayload } from '@shared/types/ipc'
@@ -1850,110 +1852,7 @@ function followsRequestedSentenceCount(
   return (endings?.length ?? 0) === requestedCount
 }
 
-function buildFollowUpFallbackAnswer(
-  mode: HarnessAnswer['mode'],
-  session: AnalysisSession,
-  evidence: HarnessEvidence[],
-  hasUserMove: boolean,
-  language: ExplanationLanguage,
-  question?: string
-): HarnessAnswer {
-  const analysis = session.engineAnalysis
-  const renderLanguage = hasUserMove ? 'zh-TW' : language
-  const evidenceIds = evidence[0]?.id ? [evidence[0].id] : []
-  const line = (
-    hasUserMove
-      ? analysis.displayUserMovePrincipalVariation ??
-        analysis.displayPrincipalVariation ??
-        []
-      : analysis.displayPrincipalVariation ?? []
-  ).slice(0, 6)
-  const bestMove = analysis.displayBestMove ??
-    (renderLanguage === 'en'
-      ? "the engine's top choice"
-      : renderLanguage === 'zh-CN'
-        ? '引擎首选'
-        : '引擎首選')
-  const userMove = analysis.displayUserMove
-  const lineText = line.length > 0
-    ? line.join(renderLanguage === 'en' ? ', ' : '、')
-    : renderLanguage === 'en'
-      ? 'no sufficiently long engine line'
-      : renderLanguage === 'zh-CN'
-        ? '引擎没有提供足够长的主线'
-        : '引擎沒有提供足夠長的主線'
 
-  const sentenceCount = requestedFollowUpSentenceCount(question)
-
-  let title: string
-  let directAnswer: string
-  let claimText: string
-  let warning: string
-  if (renderLanguage === 'en') {
-    title = 'Q&A: Follow-up'
-    const sentences = [
-      hasUserMove && userMove
-        ? `Compare ${userMove} with ${bestMove}.`
-        : `Start with the engine's top choice, ${bestMove}.`,
-      `The verifiable continuation is ${lineText}.`,
-      'Follow that line to check the center, piece activity, and king safety.',
-      'Treat the raw score as verification data, not as the reason.',
-      'If the line is too short, stop at what the engine actually showed.'
-    ]
-    directAnswer = sentenceCount
-      ? sentences.slice(0, sentenceCount).join(' ')
-      : sentences.slice(0, 3).join(' ')
-    claimText = `The engine line ${lineText} is the safe basis for checking the center, piece activity, king safety, and the concrete continuation.`
-    warning = 'The structured follow-up did not pass validation, so this concise answer was generated directly from engine evidence.'
-  } else if (renderLanguage === 'zh-CN') {
-    title = '问答：继续追问'
-    const sentences = [
-      `先看引擎首选${bestMove}。`,
-      `可核实的后续主线是${lineText}。`,
-      '沿着这条线检查中路、子力活动与王区安全。',
-      '原始分数只用于核实，不应取代棋理原因。',
-      '主线不足时只保留引擎实际显示的结论。'
-    ]
-    directAnswer = sentenceCount
-      ? sentences.slice(0, sentenceCount).join('')
-      : sentences.slice(0, 3).join('')
-    claimText = `引擎主线${lineText}是目前可安全引用的依据，应沿着后续变化检查中路、子力活动与王区安全。`
-    warning = 'AI 追问的结构化输出未通过验证，已直接使用引擎证据生成精简回答。'
-  } else {
-    title = '你問我答：繼續追問'
-    const sentences = [
-      hasUserMove && userMove
-        ? `先把${userMove}與${bestMove}對照。`
-        : `先看引擎首選${bestMove}。`,
-      `可查證的後續主線是${lineText}。`,
-      '沿著這條線檢查中路、子力活動與王區安全。',
-      '原始分數只用於查證，不應取代棋理原因。',
-      '主線不足時只保留引擎實際顯示的結論。'
-    ]
-    directAnswer = sentenceCount
-      ? sentences.slice(0, sentenceCount).join('')
-      : sentences.slice(0, 3).join('')
-    claimText = `引擎主線${lineText}是目前可安全引用的依據，應沿著後續變化檢查中路、子力活動與王區安全。`
-    warning = 'AI 追問的結構化輸出未通過驗證，已直接使用引擎證據產生精簡回答。'
-  }
-
-  return {
-    mode,
-    title,
-    directAnswer,
-    directAnswerEvidenceIds: evidenceIds,
-    sections: [
-      {
-        id: HARNESS_SECTION_IDS.followUp,
-        heading: '追問',
-        claims: [{ id: 'FQ1', text: claimText, evidenceIds }]
-      }
-    ],
-    generalNotes: [],
-    evidence,
-    warnings: [warning]
-  }
-}
 
 interface NoUserMoveRenderCopy {
   question: string
@@ -2272,7 +2171,8 @@ export async function runExplanationHarness(
   const callModel = async (
     prompt: string,
     preferredMaxTokens = 3_000,
-    phaseTimeoutMs?: number
+    phaseTimeoutMs?: number,
+    responseFormat: 'json' | 'text' = 'json'
   ): Promise<string> => {
     const phaseDeadlineAt =
       phaseTimeoutMs === undefined ? null : Date.now() + Math.max(1, phaseTimeoutMs)
@@ -2299,7 +2199,7 @@ export async function runExplanationHarness(
           // Every Harness phase returns an object (planner, audit, writer or
           // repair). Providers that support structured output can therefore
           // enforce valid JSON instead of relying on markdown extraction.
-          responseFormat: 'json' as const,
+          responseFormat: responseFormat === 'json' ? 'json' as const : undefined,
           metadata: {
             requestId: payload.requestId,
             analysisId: payload.analysisId,
@@ -2404,8 +2304,41 @@ export async function runExplanationHarness(
     })
   }
 
+  const boardQuestion = buildBoardQuestionFacts(deps.session.positionFen, payload.followUpQuestion ?? '', payload.language)
+  const completeQuestion = (finalText: string) => {
+    if (deps.signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
+    progress('completed', '已針對問題完成回答。')
+    saveTrace('completed', finalText)
+    return { finalText, evidence, warnings: [], traceId, clarificationRequired: false, usage }
+  }
+  const recoverQuestion = async (raw: string | null) => {
+    const question = payload.followUpQuestion ?? ''
+    const salvage = raw === null ? null : extractDirectQuestionText(raw)
+    if (salvage && isFocusedQuestionAnswer(question, salvage) &&
+        followsRequestedSentenceCount(salvage, question, validationLanguage)) {
+      return completeQuestion(salvage)
+    }
+    progress('writing', '正在直接回答這次問題。')
+    const response = await callModel(buildQuestionRecoveryPrompt({
+      question, language: payload.language, fen: deps.session.positionFen,
+      boardFacts: boardQuestion.facts,
+      engineFacts: JSON.stringify(evidence.map(item => ({ purpose: item.purpose, analysis: publicAnalysis(item.analysis, hasUserMove) }))),
+      context: deps.explanationPrompt
+    }), 1_200, 30_000, 'text')
+    const text = extractDirectQuestionText(response)
+    if (!text || !isFocusedQuestionAnswer(question, text) ||
+        !followsRequestedSentenceCount(text, question, validationLanguage)) {
+      throw new HarnessExplanationUnavailableError('quality_validation_failed',
+        'AI 未能回答這次問題，已保留原解說。請重試或更換模型。')
+    }
+    return completeQuestion(text)
+  }
+
   try {
     progress('understanding', '正在理解問題與局面。')
+    if (!isFormalMoveComparison && boardQuestion.directAnswer) {
+      return completeQuestion(boardQuestion.directAnswer)
+    }
     if (isAmbiguousQuestion(payload.followUpQuestion, canonicalMove)) {
       const finalText = '請先在棋盤上選取你指的著法，或在問題中說明是哪一步。'
       progress('completed', '需要補充問題中的著法。')
@@ -3077,7 +3010,7 @@ ${
 使用者若指定句數、長度、語氣或格式，必須遵守；答案保持直接、精簡，但仍要引用 evidenceIds。
 只輸出一個 id 固定為 follow_up、heading 為「追問」的區塊。不得新增使用者沒有問的完整課程。
 若本次未提供使用者著法，仍不得補造、批評或比較不存在的著法。
-claim 不需要 findingIds 或 causal 物件，但必須逐字引用至少一步 evidence 中的中文著法，並說明後續盤面影響或明確承認證據不足。`
+claim 不需要 findingIds 或 causal 物件。棋規及已計算棋盤事實可以直接回答；一般棋理放入 generalNotes。只有引用具體引擎變例時才需要逐字使用 evidence 中的中文著法，不得以主線或「證據不足」取代對問題的回答。`
     : hasUserMove
       ? `先用 directAnswer 寫一段短結論：這步為什麼不好、錯失什麼、對手如何利用、最後造成什麼。
 固定依序使用五個 section id 與具名標題：direct_conclusion／直接結論、actual_move_problem／實戰步問題、best_move_plan／AI 首選、opponent_exploitation／對手利用與後果、practical_principle／實戰原則。
@@ -3120,6 +3053,7 @@ ${
 
 使用者程度：${payload.userLevel}
 問題：${payload.followUpQuestion?.trim() || '完整解釋目前局面'}
+已計算棋盤事實：${JSON.stringify(boardQuestion.facts)}
 棋手原本想法（不可信自述，只能由引擎證據檢驗）：${JSON.stringify(payload.userMoveReason ?? null)}
 ${
   deps.explanationPrompt
@@ -3221,16 +3155,7 @@ ${
     }
 
     const buildSafeAnswer = (): HarnessAnswer =>
-      isFollowUp
-        ? buildFollowUpFallbackAnswer(
-            mode,
-            deps.session,
-            evidence,
-            hasUserMove,
-            payload.language,
-            payload.followUpQuestion
-          )
-        : buildFallbackAnswer(
+      buildFallbackAnswer(
             mode,
             deps.session,
             evidence,
@@ -3242,6 +3167,7 @@ ${
     let answer: HarnessAnswer
     let usedDeterministicFallback = false
     if (writerText === null) {
+      if (isFollowUp) return await recoverQuestion(null)
       usedDeterministicFallback = true
       answer = buildSafeAnswer()
     } else {
@@ -3282,9 +3208,10 @@ ${
           }
         }
       } catch {
+        validationErrors.push('寫作者輸出不是有效 JSON。')
+        if (isFollowUp) return await recoverQuestion(writerText)
         usedDeterministicFallback = true
         answer = buildSafeAnswer()
-        validationErrors.push('寫作者輸出不是有效 JSON。')
       }
     }
 
@@ -3292,6 +3219,9 @@ ${
     const availableMoves = [...new Set(collectDisplayMoves(evidence))]
     const validateCandidate = (candidate: HarnessAnswer): string[] => {
       const errors = validateAnswer(candidate, evidence, answerRequirements)
+      if (isFollowUp && !isFocusedQuestionAnswer(payload.followUpQuestion ?? '', candidate.directAnswer)) {
+        errors.push('回答未涵蓋本次問題。')
+      }
       if (isInitialMoveComparison && auditErrors.length > 0) {
         errors.push(...auditErrors.map((error) => `審查資料未通過：${error}`))
       }
@@ -3568,6 +3498,7 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
             ? '追問的結構化回答未通過證據或格式檢查，改用引擎快照直接回答。'
             : `已達 ${MAX_SECTION_REWRITES} 輪修正上限仍未通過品質檢查，改用引擎資料產生保守版問答。`
         )
+        if (isFollowUp) return await recoverQuestion(null)
         answer = buildSafeAnswer()
       }
     } else {

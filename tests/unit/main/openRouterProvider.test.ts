@@ -144,7 +144,20 @@ await withServer(
   }
 )
 
-console.log('OpenRouter 免费模型与精确模型绑定测试：通过')
+for (const format of ['json', 'text', undefined] as const) {
+  await withServer(() => ({ model: 'test/model:free', choices: [{message: {content: '{"ok":true}'}}] }), async (baseUrl, requests) => {
+    const request: AIExplanationRequest = {
+      provider: 'openrouter', model: 'test/model:free', apiKey: 'synthetic-test-key',
+      prompt: 'Return JSON', responseFormat: format,
+      metadata: {requestId:'response-format',analysisId:'response-format',userLevel:'intermediate',explanationStyle:'long_analytical'}
+    }
+    await new OpenRouterProvider({baseUrl}).generateExplanation(request)
+    const body=requests[0].body as Record<string,unknown>
+    assert.deepEqual(body.response_format, format === 'json' ? {type:'json_object'} : undefined)
+    assert.equal(body.model, request.model)
+  })
+}
+console.log('OpenRouter free-model binding and response-format tests passed')
 }
 
 void main().catch((error) => {
