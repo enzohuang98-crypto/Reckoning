@@ -3166,6 +3166,9 @@ ${
 }
 `, isFollowUp ? 1_200 : 3_000)
     } catch (error) {
+      if (isFollowUp && (aiErrorStatus(error) === 400 || aiErrorStatus(error) === 422)) {
+        return await recoverQuestion(null)
+      }
       if (error instanceof HarnessModelBudgetExceededError) {
         validationErrors.push('已達模型呼叫上限，改用引擎資料產生保守版問答。')
       } else {
