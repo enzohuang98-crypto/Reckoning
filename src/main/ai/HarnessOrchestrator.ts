@@ -2313,8 +2313,9 @@ export async function runExplanationHarness(
   }
   const recoverQuestion = async (raw: string | null) => {
     const question = payload.followUpQuestion ?? ''
+    const hasEngineAnchor = (text: string): boolean => collectDisplayMoves(evidence).some(move => text.includes(move))
     const salvage = raw === null ? null : extractDirectQuestionText(raw)
-    if (salvage && isFocusedQuestionAnswer(question, salvage) &&
+    if (salvage && hasEngineAnchor(salvage) && isFocusedQuestionAnswer(question, salvage) &&
         followsRequestedSentenceCount(salvage, question, validationLanguage)) {
       return completeQuestion(salvage)
     }
@@ -2326,7 +2327,7 @@ export async function runExplanationHarness(
       context: deps.explanationPrompt
     }), 1_200, 30_000, 'text')
     const text = extractDirectQuestionText(response)
-    if (!text || !isFocusedQuestionAnswer(question, text) ||
+    if (!text || !hasEngineAnchor(text) || !isFocusedQuestionAnswer(question, text) ||
         !followsRequestedSentenceCount(text, question, validationLanguage)) {
       throw new HarnessExplanationUnavailableError('quality_validation_failed',
         'AI 未能回答這次問題，已保留原解說。請重試或更換模型。')
@@ -2474,6 +2475,26 @@ export async function runExplanationHarness(
     )
 
     const primaryAdapter = deps.registry.getAdapter(primaryEngineId)
+    if (isFollowUp && (deps.session.engineAnalysis.principalVariation?.length ?? 0) < 2) {
+      if (!primaryAdapter || budget.maxEngineRounds < 1) {
+        throw new HarnessExplanationUnavailableError('quality_validation_failed',
+          '皮卡魚尚未完成可解說的主線，請先完成引擎分析後再試。')
+      }
+      progress('engine_research', '正在等待皮卡魚完成主線分析，再依結果回答。')
+      const completed = await primaryAdapter.analyzePosition({ positionFen: deps.session.positionFen }, {
+        rootAnalysisMovetimeMs: Math.max(3_000, budget.engineTimeMs),
+        userMoveEvalMovetimeMs: Math.max(3_000, budget.engineTimeMs), multiPv: 3
+      }, {signal: deps.signal})
+      if (deps.signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
+      engineRounds += 1
+      if ((completed.principalVariation?.length ?? 0) < 2) {
+        throw new HarnessExplanationUnavailableError('quality_validation_failed',
+          '皮卡魚本輪尚未回傳完整主線，請繼續引擎分析後重試。')
+      }
+      evidence.splice(0, evidence.length, makeEvidence('E1', completed, '皮卡魚完成後的主線分析'))
+      latestDepth = completed.depth
+      latestVariation = completed.displayPrincipalVariation ?? []
+    }
     const verificationAdapter = verificationEngineId
       ? deps.registry.getAdapter(verificationEngineId)
       : null
@@ -3010,7 +3031,7 @@ ${
 使用者若指定句數、長度、語氣或格式，必須遵守；答案保持直接、精簡，但仍要引用 evidenceIds。
 只輸出一個 id 固定為 follow_up、heading 為「追問」的區塊。不得新增使用者沒有問的完整課程。
 若本次未提供使用者著法，仍不得補造、批評或比較不存在的著法。
-claim 不需要 findingIds 或 causal 物件。棋規及已計算棋盤事實可以直接回答；一般棋理放入 generalNotes。只有引用具體引擎變例時才需要逐字使用 evidence 中的中文著法，不得以主線或「證據不足」取代對問題的回答。`
+claim 不需要 findingIds 或 causal 物件。棋規及已計算棋盤事實可以直接回答；不得以模型自行推論的一般棋理替代皮卡魚結果，generalNotes 保持空陣列。只有引用具體引擎變例時才需要逐字使用 evidence 中的中文著法，不得以主線或「證據不足」取代對問題的回答。`
     : hasUserMove
       ? `先用 directAnswer 寫一段短結論：這步為什麼不好、錯失什麼、對手如何利用、最後造成什麼。
 固定依序使用五個 section id 與具名標題：direct_conclusion／直接結論、actual_move_problem／實戰步問題、best_move_plan／AI 首選、opponent_exploitation／對手利用與後果、practical_principle／實戰原則。
@@ -3037,9 +3058,7 @@ opponent_exploitation 要按最佳著法的引擎主線順序，盡可能逐手�
 opponent_exploitation 每個非「證據不足」的 claim 必須用 findingIds 連到已驗證具體後果的 K 編號，並附完整 "causal" 因果鏈；其中 opponentUse 代表對手對最佳著法的最強回應。
 每個關鍵 claim 至少要包含一個 evidence 主線中的中文著法，並用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）說明盤面後果。`
 }
-若想補充引擎主線之外的一般棋理原則（例如「無根子容易被捉」），寫進頂層 "generalNotes" 陣列：
-每條一句話、最多 3 條、以一般原則的語氣書寫；不得寫進 claims、不得引用證據編號、
-也不得寫成這盤棋已被引擎證實的結論。沒有需要就給空陣列。
+頂層 "generalNotes" 保持空陣列。解說只能依據已完成的皮卡魚主線及棋盤事實，不得自行補算、改判最佳著法或編造引擎未顯示的後續。
 
 以下是本機術語知識，只用來正確使用詞義，不能取代引擎 evidence 或 K 編號：
 ${knowledgeContext}
