@@ -621,6 +621,11 @@ check(
     releaseWorkflow.includes('SignatureStatus]::NotSigned') &&
     releaseWorkflow.includes('-AllowUnsigned') &&
     releaseWorkflow.includes('Windows SmartScreen may warn or block it') &&
+    releaseWorkflow.includes('unsigned-release') &&
+    releaseWorkflow.includes('PUBLISH UNSIGNED LATEST') &&
+    releaseWorkflow.includes('Promote explicitly approved unsigned update to Latest') &&
+    releaseWorkflow.indexOf('Promote explicitly approved unsigned update to Latest') >
+      releaseWorkflow.indexOf('Public installer check') &&
     installerSmokeScript.includes('[switch]$AllowUnsigned') &&
     installerSmokeScript.includes('SignatureStatus]::NotSigned') &&
     verifySignatureScript.includes('SignatureStatus]::Valid') &&
