@@ -39,6 +39,6 @@ export function credentialTestSucceeded(
 ): AITestCredentialResult {
   return {
     ok: true,
-    message: `${providerLabel} · ${model} 已完成一次低用量推論，金鑰與模型可正常運作。`
+    message: `${providerLabel} · ${model} 已完成一次短回覆測試，金鑰與模型可連線；完整解說仍需另行驗證。`
   }
 }

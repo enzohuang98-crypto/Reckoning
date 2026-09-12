@@ -56,7 +56,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   language: 'zh-TW',
   crossEngineEnabled: false,
   harnessAnswerMode: 'research',
-  harnessAutoRun: true,
+  harnessAutoRun: false,
   harnessReuseEvidence: true,
   harnessEngineTimeMs: 20_000,
   harnessMaxEngineRounds: 3,

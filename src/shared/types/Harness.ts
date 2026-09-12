@@ -1,5 +1,9 @@
 import type { EngineAnalysis, EngineScore } from './EngineAnalysis'
-import type { AIProviderId, TokenUsage } from './AIProviderTypes'
+import type {
+  AICredentialDiagnostic,
+  AIProviderId,
+  TokenUsage
+} from './AIProviderTypes'
 import type { ExplanationLanguage } from './AIExplanationTypes'
 
 export type HarnessAnswerMode = 'focused' | 'research'
@@ -212,6 +216,7 @@ export interface HarnessTrace {
   modelCalls: number
   engineRounds: number
   usage?: TokenUsage
+  providerDiagnostic?: AICredentialDiagnostic
   feedback?: 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
   /** 正式 teacher run 才會存在；舊 trace 保持相容。 */
   evaluation?: HarnessEvaluationLinkV1

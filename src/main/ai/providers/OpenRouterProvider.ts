@@ -176,19 +176,23 @@ export class OpenRouterProvider implements AIProvider {
       )
     }
     const message = data.choices?.[0]?.message
+    const finishReason = data.choices?.[0]?.finish_reason ?? undefined
+    const outputTokens = data.usage?.completion_tokens
     const text = typeof message?.content === 'string' ? message.content.trim() : ''
     if (!text) {
       throw new AIResponseValidationError(
         'generation',
         'generation_incomplete',
-        'OpenRouter 回應中沒有正式文字答案。'
+        'OpenRouter 回應中沒有正式文字答案。',
+        { reason: 'empty_content', finishReason, outputTokens }
       )
     }
-    if (data.choices?.[0]?.finish_reason === 'length') {
+    if (finishReason === 'length') {
       throw new AIResponseValidationError(
         'generation',
         'generation_incomplete',
-        'OpenRouter 憑證測試因輸出長度限制而未完成。'
+        'OpenRouter 解說因輸出長度限制而未完成。',
+        { reason: 'output_truncated', finishReason, outputTokens }
       )
     }
     return {

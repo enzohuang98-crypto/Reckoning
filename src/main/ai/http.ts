@@ -8,6 +8,7 @@
 import type {
   AICredentialDiagnostic,
   AICredentialErrorCategory,
+  AIGenerationIncompleteReason,
   AICredentialTestStage,
   AITestCredentialResult
 } from '@shared/types/AIProviderTypes'
@@ -43,9 +44,32 @@ export class AIResponseValidationError extends Error {
       AICredentialErrorCategory,
       'response_format' | 'model_mismatch' | 'generation_incomplete'
     >,
-    message: string
+    message: string,
+    readonly details: {
+      reason?: AIGenerationIncompleteReason
+      finishReason?: string
+      outputTokens?: number
+    } = {}
   ) {
     super(message)
+  }
+}
+
+export function describeAIExecutionError(
+  error: unknown,
+  providerLabel = 'AI 服務'
+): AICredentialDiagnostic {
+  const result = describeCredentialTestError(error, providerLabel)
+  const diagnostic = result.diagnostic ?? {
+    stage: 'generation' as const,
+    category: 'unknown' as const,
+    retryable: false,
+    message: `${providerLabel} 發生未知錯誤。`
+  }
+  if (!(error instanceof AIResponseValidationError)) return diagnostic
+  return {
+    ...diagnostic,
+    ...error.details
   }
 }
 

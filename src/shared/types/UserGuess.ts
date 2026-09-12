@@ -7,6 +7,7 @@
 import type { MistakeLevel } from './MoveComparisonResult'
 
 export interface SubmittedGuess {
+  submissionId: string
   move: string
   reason?: string
   submittedAt: number

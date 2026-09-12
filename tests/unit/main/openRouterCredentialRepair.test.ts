@@ -389,7 +389,8 @@ async function main(): Promise<void> {
         ),
         (error: unknown) =>
           error instanceof AIResponseValidationError &&
-          error.category === 'generation_incomplete'
+          error.category === 'generation_incomplete' &&
+          error.details.reason === 'empty_content'
       )
     }
   )
@@ -398,6 +399,7 @@ async function main(): Promise<void> {
     () => ({
       body: {
         model: 'vendor/model-a:free',
+        usage: { completion_tokens: 2500 },
         choices: [{
           message: { content: 'OK', reasoning_content: 'not answer' },
           finish_reason: 'length'
@@ -411,7 +413,10 @@ async function main(): Promise<void> {
         ),
         (error: unknown) =>
           error instanceof AIResponseValidationError &&
-          error.category === 'generation_incomplete'
+          error.category === 'generation_incomplete' &&
+          error.details.reason === 'output_truncated' &&
+          error.details.finishReason === 'length' &&
+          error.details.outputTokens === 2500
       )
     }
   )
@@ -791,6 +796,49 @@ async function main(): Promise<void> {
       assert.equal(fake.writes.length, 1)
     }
   )
+
+  const validationCases = [
+    {
+      error: new AIResponseValidationError(
+        'generation',
+        'response_format',
+        'synthetic format failure'
+      ),
+      category: 'response_format',
+      message: /格式無法驗證/
+    },
+    {
+      error: new AIResponseValidationError(
+        'generation',
+        'model_mismatch',
+        'synthetic model mismatch'
+      ),
+      category: 'model_mismatch',
+      message: /模型與所選模型不一致/
+    },
+    {
+      error: new AIResponseValidationError(
+        'generation',
+        'generation_incomplete',
+        'synthetic truncation',
+        { reason: 'output_truncated', finishReason: 'length', outputTokens: 2500 }
+      ),
+      category: 'generation_incomplete',
+      message: /輸出長度限制/
+    }
+  ] as const
+  for (const validationCase of validationCases) {
+    const payload = mapStreamingErrorToPayload('validation-case', validationCase.error)
+    assert.equal(payload.code, 'provider_error')
+    assert.equal(payload.diagnostic?.stage, 'generation')
+    assert.equal(payload.diagnostic?.category, validationCase.category)
+    assert.match(payload.message, validationCase.message)
+  }
+  assert.deepEqual(validationCases[2].error.details, {
+    reason: 'output_truncated',
+    finishReason: 'length',
+    outputTokens: 2500
+  })
 
   console.log('OpenRouter M1/M2 credential repair tests passed')
 }

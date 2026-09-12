@@ -8,6 +8,12 @@ import type {
   EngineCandidateMove,
   EngineScore
 } from '@shared/types/EngineAnalysis'
+import type {
+  AICredentialDiagnostic,
+  AICredentialErrorCategory,
+  AICredentialTestStage,
+  AIGenerationIncompleteReason
+} from '@shared/types/AIProviderTypes'
 import type { StorageService } from './StorageService'
 import { MAX_APP_DATA_BYTES } from '../security/InputValidation'
 
@@ -236,6 +242,38 @@ function sanitizeEvaluation(value: unknown): HarnessTrace['evaluation'] | undefi
   }
 }
 
+function sanitizeProviderDiagnostic(value: unknown): AICredentialDiagnostic | undefined {
+  if (!isRecord(value)) return undefined
+  const stages: AICredentialTestStage[] = ['key', 'catalog', 'generation', 'storage']
+  const categories: AICredentialErrorCategory[] = [
+    'invalid_request', 'authentication', 'permission', 'billing', 'model_unavailable',
+    'rate_limited', 'provider_unavailable', 'timeout', 'network', 'response_format',
+    'model_mismatch', 'generation_incomplete', 'storage', 'unknown'
+  ]
+  const reasons: AIGenerationIncompleteReason[] = ['empty_content', 'output_truncated']
+  if (
+    !stages.includes(value.stage as AICredentialTestStage) ||
+    !categories.includes(value.category as AICredentialErrorCategory) ||
+    typeof value.retryable !== 'boolean' ||
+    typeof value.message !== 'string'
+  ) return undefined
+  return {
+    stage: value.stage as AICredentialTestStage,
+    category: value.category as AICredentialErrorCategory,
+    ...(reasons.includes(value.reason as AIGenerationIncompleteReason)
+      ? { reason: value.reason as AIGenerationIncompleteReason }
+      : {}),
+    ...(typeof value.httpStatus === 'number' ? { httpStatus: value.httpStatus } : {}),
+    retryable: value.retryable,
+    ...(typeof value.retryAfterMs === 'number' ? { retryAfterMs: value.retryAfterMs } : {}),
+    ...(typeof value.finishReason === 'string'
+      ? { finishReason: value.finishReason.slice(0, 64) }
+      : {}),
+    ...(typeof value.outputTokens === 'number' ? { outputTokens: value.outputTokens } : {}),
+    message: value.message.slice(0, 500)
+  }
+}
+
 function sanitizeTrace(value: unknown): HarnessTrace | null {
   if (typeof value !== 'object' || value === null) return null
   const trace = value as HarnessTrace
@@ -307,6 +345,9 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
     typeof trace.usage.inputTokens === 'number' &&
     typeof trace.usage.outputTokens === 'number'
       ? { usage: { ...trace.usage } }
+      : {}),
+    ...(sanitizeProviderDiagnostic(trace.providerDiagnostic)
+      ? { providerDiagnostic: sanitizeProviderDiagnostic(trace.providerDiagnostic) }
       : {}),
     ...(feedback ? { feedback } : {}),
     ...(sanitizeEvaluation(trace.evaluation)

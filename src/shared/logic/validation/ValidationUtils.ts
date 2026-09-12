@@ -59,7 +59,7 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
         ? candidate.crossEngineEnabled
         : fallback.crossEngineEnabled,
     harnessAnswerMode: 'research',
-    harnessAutoRun: true,
+    harnessAutoRun: false,
     harnessReuseEvidence: true,
     harnessEngineTimeMs: clampInteger(
       candidate.harnessEngineTimeMs,
