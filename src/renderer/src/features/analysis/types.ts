@@ -19,6 +19,7 @@ export interface AnalysisPanelStatus {
   analysisCancelling: boolean
   aiBusy: boolean
   aiCancelling: boolean
+  aiError: string | null
   hasExplanation: boolean
   hasResult: boolean
   analysisBlockedReason: string | null
@@ -31,6 +32,7 @@ export const EMPTY_ANALYSIS_STATUS: AnalysisPanelStatus = {
   analysisCancelling: false,
   aiBusy: false,
   aiCancelling: false,
+  aiError: null,
   hasExplanation: false,
   hasResult: false,
   analysisBlockedReason: null,

@@ -10,7 +10,7 @@ import {
   AnalysisPanel,
   type AnalysisPanelHandle
 } from '../../../src/renderer/src/features/analysis/AnalysisPanel'
-import type { ActualMoveSelection } from '../../../src/renderer/src/features/analysis/types'
+import type { SubmittedGuess } from '../../../src/shared/types/UserGuess'
 import { compareMove } from '../../../src/shared/logic/analysis/MoveComparisonService'
 import { parseFen } from '../../../src/shared/logic/board/fen'
 import { START_FEN, type BoardState } from '../../../src/shared/types/BoardState'
@@ -285,26 +285,19 @@ async function main(): Promise<void> {
   })
 
   const board = startingBoard()
-  const actualMove: ActualMoveSelection = {
-    selectionId: 'selection-original',
-    positionFen: START_FEN,
+  const firstSubmission: SubmittedGuess = {
+    submissionId: 'submission-first',
     move: 'h2e2',
-    displayMove: '炮二平五',
-    plyIndex: 0,
-    selectedAt: Date.now()
+    reason: '我要控制中路',
+    submittedAt: Date.now()
   }
   const originalSettings: AppSettings = {
     ...DEFAULT_SETTINGS,
     harnessAutoRun: false,
     aiModel: 'original-model'
   }
-  const changedSettings: AppSettings = {
-    ...originalSettings,
-    aiModel: 'changed-after-failure-model'
-  }
   const panelRef = React.createRef<AnalysisPanelHandle>()
   const callbacks = {
-    onActiveViewChange: () => undefined,
     onConversationChange: (next: AIConversation | null) => {
       conversation = next
       conversationChanges.push(next)
@@ -314,7 +307,7 @@ async function main(): Promise<void> {
     onExplanation: () => undefined,
     onStatusChange: () => undefined
   }
-  const panel = (settings: AppSettings, selection = actualMove) => (
+  const panel = (submission: SubmittedGuess | null) => (
     <AnalysisPanel
       ref={panelRef}
       visible
@@ -322,9 +315,9 @@ async function main(): Promise<void> {
       liveDockElement={null}
       detailsDockElement={null}
       board={board}
-      settings={settings}
-      submittedGuess={null}
-      actualMove={selection}
+      settings={originalSettings}
+      submittedGuess={submission}
+      actualMove={null}
       conversation={conversation}
       {...callbacks}
     />
@@ -333,30 +326,61 @@ async function main(): Promise<void> {
   let renderer: ReactTestRenderer | null = null
   try {
     await act(async () => {
-      renderer = create(panel(originalSettings))
+      renderer = create(panel(null))
       await flushMicrotasks()
     })
     assert.ok(renderer)
-    assert.equal(engineStarts.length,1)
-    act(()=>panelRef.current?.requestExplanation())
-    assert.equal(aiStarts.length,0,'皮卡魚還在分析時不得先呼叫模型')
-    assert.match(textContent(renderer.root),/等待皮卡魚/)
+    assert.equal(aiStarts.length, 0, '初始畫面不得自動呼叫 AI')
+    await act(async () => {
+      renderer?.update(panel(firstSubmission))
+      await flushMicrotasks()
+    })
+    assert.equal(engineStarts.length, 1, '提交後應先取得相同走法的引擎快照')
+    assert.equal(aiStarts.length, 0, '皮卡魚還在分析時不得先呼叫模型')
+    assert.match(textContent(renderer.root), /等待皮卡魚/)
     act(()=>engineResultListener?.(analysisResult(engineStarts[0].requestId)))
-    assert.equal(aiStarts.length,1,'皮卡魚完成後才回答')
+    assert.equal(aiStarts.length, 1, '皮卡魚完成後只回答一次')
     assert.equal(aiStarts[0].analysisId,analysisResult(engineStarts[0].requestId).analysisId)
-    act(()=>aiDoneListener?.({requestId:aiStarts[0].requestId,finalText:'完成皮卡魚解說'}))
-    act(()=>panelRef.current?.startAnalysis())
-    act(()=>panelRef.current?.requestExplanation())
-    assert.equal(aiStarts.length,1)
-    act(()=>panelRef.current?.cancelExplain())
-    act(()=>engineResultListener?.(analysisResult(engineStarts.at(-1)!.requestId)))
-    assert.equal(aiStarts.length,1,'取消等待後，遲到的引擎結果不能啟動模型')
-    act(()=>panelRef.current?.startAnalysis())
-    act(()=>panelRef.current?.requestExplanation())
-    act(()=>engineErrorListener?.({requestId:engineStarts.at(-1)!.requestId,code:'engine_error',message:'engine failed'}))
-    assert.equal(aiStarts.length,1,'引擎失敗不使用舊快照代答')
-    assert.match(textContent(renderer.root),/皮卡魚分析未完成/)
-    console.log('Wait for engine before model renderer flow: passed')
+    assert.equal(aiStarts[0].userMoveReason, firstSubmission.reason)
+
+    act(() => aiErrorListener?.({
+      requestId: aiStarts[0].requestId,
+      code: 'provider_error',
+      message: 'AI 回應格式無法驗證'
+    }))
+    assert.match(textContent(renderer.root), /AI 回應格式無法驗證/)
+    act(() => panelRef.current?.requestExplanation())
+    assert.equal(aiStarts.length, 2, '失敗後可用原輸入重試一次')
+    assert.equal(aiStarts[1].userMoveReason, firstSubmission.reason)
+    act(() => aiDoneListener?.({
+      requestId: aiStarts[1].requestId,
+      finalText: '完成皮卡魚解說'
+    }))
+
+    const secondSubmission: SubmittedGuess = {
+      ...firstSubmission,
+      submissionId: 'submission-second',
+      reason: '我改成想壓制右馬',
+      submittedAt: firstSubmission.submittedAt + 1
+    }
+    await act(async () => {
+      renderer?.update(panel(secondSubmission))
+      await flushMicrotasks()
+    })
+    assert.equal(aiStarts.length, 3, '同走法改原因後的新提交應再生成一次')
+    assert.equal(aiStarts[2].userMoveReason, secondSubmission.reason)
+    assert.notEqual(aiStarts[2].requestId, aiStarts[1].requestId)
+    await act(async () => {
+      renderer?.update(panel(secondSubmission))
+      await flushMicrotasks()
+    })
+    assert.equal(aiStarts.length, 3, '相同 submissionId 重新渲染不得重送')
+
+    act(() => aiDoneListener?.({ requestId: aiStarts[2].requestId, finalText: '第二次完成' }))
+    act(() => engineResultListener?.(analysisResult('late-engine-refresh')))
+    assert.equal(aiStarts.length, 3, '引擎後續刷新不得再次呼叫 AI')
+    assert.equal(engineErrorListener !== null, true)
+    console.log('Submit once, wait for engine, retry and reason snapshot flow: passed')
 
   } finally {
     if (renderer) act(() => renderer?.unmount())

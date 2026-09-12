@@ -19,6 +19,10 @@ interface Props {
   onCancelMoveSelection: () => void
   result: EngineAnalysisResultPayload | null
   onRecordGuess: (guess: UserGuess) => void
+  aiBusy: boolean
+  aiError: string | null
+  hasExplanation: boolean
+  onRetryExplanation: () => void
 }
 
 export function GuessModePanel({
@@ -34,7 +38,11 @@ export function GuessModePanel({
   onBeginMoveSelection,
   onCancelMoveSelection,
   result,
-  onRecordGuess
+  onRecordGuess,
+  aiBusy,
+  aiError,
+  hasExplanation,
+  onRetryExplanation
 }: Props): JSX.Element {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const recordedGuessKeys = useRef(new Set<string>())
@@ -85,6 +93,7 @@ export function GuessModePanel({
     }
     setSubmitError(null)
     onSubmitGuess({
+      submissionId: crypto.randomUUID(),
       move,
       reason: draftReason.trim() || undefined,
       submittedAt: Date.now()
@@ -152,7 +161,17 @@ export function GuessModePanel({
         />
       </div>
       {submitError && <div className="error-text">⚠ {submitError}</div>}
-      {submittedGuess && <div className="success-text">✓ 已提交，正在產生 AI 解說。</div>}
+      {submittedGuess && aiBusy && (
+        <div className="success-text">✓ 已提交，正在產生 AI 解說。</div>
+      )}
+      {submittedGuess && hasExplanation && !aiBusy && (
+        <div className="success-text">✓ AI 解說已完成。</div>
+      )}
+      {submittedGuess && aiError && !aiBusy && (
+        <button className="btn" onClick={onRetryExplanation}>
+          重試 AI 解說
+        </button>
+      )}
     </div>
   )
 }

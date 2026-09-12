@@ -31,7 +31,6 @@ interface Props {
   teacherExecution: GenerateExplanationDonePayload['teacherExecution'] | null
   followUp: string
   onFollowUpChange: (value: string) => void
-  onGenerate: () => void
   onContinue: () => void
   onCancel: () => void
   onSubmitFollowUp: () => void
@@ -57,7 +56,6 @@ export function CoachView({
   teacherExecution,
   followUp,
   onFollowUpChange,
-  onGenerate,
   onContinue,
   onCancel,
   onSubmitFollowUp,
@@ -132,7 +130,7 @@ export function CoachView({
           </div>
         )}
 
-      {!result && (
+      {!result && (submittedGuess || actualMove) && (
         <div className="panel-empty-state">
           <span className="empty-state-mark">AI</span>
           <h3>
@@ -151,22 +149,6 @@ export function CoachView({
               ? `正在比較實戰著法 ${actualMove.displayMove} 與 AI 首選；完成後按一次「AI 解說」即可取得完整說明。`
               : aiBlockedReason ?? '引擎結果完成後，才能建立有證據的 AI 解說。')}
           </p>
-        </div>
-      )}
-
-      {result && !aiBusy && !streamingText && !conversation && !explanation && (
-        <div className="coach-ready-card">
-          <div>
-            <b>{actualMove ? '引擎比較完成' : '引擎證據已準備完成'}</b>
-            {actualMove && (
-              <span>
-                實戰 {engineAnalysis?.displayUserMove ?? actualMove.displayMove} → AI 首選{' '}
-                {engineAnalysis?.displayBestMove ?? '尚無可辨識著法'}
-              </span>
-            )}
-            <span>AI 會直接說明錯因、對手利用、後果與可帶走的原則。</span>
-          </div>
-          <button className="btn" onClick={onGenerate}>產生完整 AI 解說</button>
         </div>
       )}
 

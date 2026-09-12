@@ -47,7 +47,7 @@ import type { CausalChain } from '@shared/types/Harness'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../storage/HarnessTraceStore'
-import { aiErrorStatus } from './http'
+import { aiErrorStatus, describeAIExecutionError } from './http'
 import type { PreparedExplanationExecution } from './prepareExplanationExecution'
 
 interface HarnessTask {
@@ -2135,7 +2135,11 @@ export async function runExplanationHarness(
     })
   }
 
-  const saveTrace = (status: HarnessTrace['status'], finalText?: string): void => {
+  const saveTrace = (
+    status: HarnessTrace['status'],
+    finalText?: string,
+    error?: unknown
+  ): void => {
     deps.traceStore.save({
       id: traceId,
       createdAt: new Date().toISOString(),
@@ -2158,6 +2162,9 @@ export async function runExplanationHarness(
       modelCalls,
       engineRounds,
       usage,
+      ...(status === 'failed'
+        ? { providerDiagnostic: describeAIExecutionError(error, 'AI 服務') }
+        : {}),
       evaluation: deps.evaluation,
       interactionKind: execution.interactionKind,
       executionSemanticsVersion: execution.executionSemanticsVersion,
@@ -3588,9 +3595,9 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
       }
     }
     saveTrace(
-      isAbortLikeError(error)
-        ? 'cancelled'
-        : 'failed'
+      isAbortLikeError(error) ? 'cancelled' : 'failed',
+      undefined,
+      error
     )
     throw error
   }

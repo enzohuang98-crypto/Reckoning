@@ -507,19 +507,16 @@ async function main(): Promise<void> {
     assert.match(panel, /if \(!result \|\| activeAiRequestId\.current\) return/)
   })
 
-  await check('自動 AI 每個局面只嘗試一次，取消或失敗不會隨持續分析重跑', () => {
+  await check('AI 只由一次性 submissionId 觸發，持續分析不會自行重跑', () => {
     const panel = readFileSync(
       resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
       'utf8'
     )
-    assert.match(panel, /const autoRunAttemptTarget = useRef<string \| null>\(null\)/)
-    assert.match(panel, /isSameAnalysisTarget\(result\.engineAnalysis, board\.fen, move\)/)
-    assert.match(panel, /autoRunAttemptTarget\.current !== target/)
-    assert.match(panel, /autoRunAttemptTarget\.current = target[\s\S]*?generateExplanation\(null\)/)
-    assert.match(
-      panel,
-      /pendingAiRequest\.current = null[\s\S]*?autoRunAttemptTarget\.current = null/
-    )
+    assert.match(panel, /const lastSubmittedExplanationId = useRef<string \| null>\(null\)/)
+    assert.match(panel, /submittedGuess\?\.submissionId/)
+    assert.match(panel, /lastSubmittedExplanationId\.current === submissionId/)
+    assert.match(panel, /lastSubmittedExplanationId\.current = submissionId/)
+    assert.doesNotMatch(panel, /settings\.harnessAutoRun[\s\S]{0,300}generateExplanation\(null\)/)
   })
 
   await check('棋譜點擊只自動比較引擎；明確按一次 AI 解說才產生完整內容', () => {
@@ -546,7 +543,7 @@ async function main(): Promise<void> {
     assert.match(panel, /const analysisMove = actualMove\?\.move \?\? submittedGuess\?\.move \?\? ''/)
     assert.match(panel, /positionFen: board\.fen,[\s\S]*?userMove: move \|\| undefined/)
     assert.match(panel, /explicitAnalysisTarget\.current = target[\s\S]*?startAnalysis\(true\)/)
-    assert.match(panel, /!actualMove &&[\s\S]*?settings\.harnessAutoRun/)
+    assert.match(panel, /submissionId:\s*submittedGuess\?\.submissionId \?\? null/)
     assert.doesNotMatch(panel, /forcedByGameMove/)
     assert.match(panel, /payload\.requestId !== activeRequestId\.current/)
     assert.match(panel, /payload\.requestId !== activeAiRequestId\.current/)
@@ -640,9 +637,7 @@ async function main(): Promise<void> {
     assert.match(coach, /role="alert"/)
     assert.match(coach, /role="status"/)
     assert.doesNotMatch(coach, /整輪模型輸出總預算|tokens/)
-    assert.match(coach, /引擎比較完成/)
-    assert.match(coach, /產生完整 AI 解說/)
-    assert.match(coach, /完成後按一次「AI 解說」即可取得完整說明/)
+    assert.doesNotMatch(coach, /coach-ready-card|引擎證據已準備完成|產生完整 AI 解說/)
   })
 
   await check('AI IPC 透過單一 PromptBuilder 入口把多輪上下文交給 Harness', () => {

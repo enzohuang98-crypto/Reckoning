@@ -96,13 +96,20 @@ export type AICredentialErrorCategory =
   | 'storage'
   | 'unknown'
 
+export type AIGenerationIncompleteReason =
+  | 'empty_content'
+  | 'output_truncated'
+
 /** 不含金鑰的結構化憑證測試診斷。 */
 export interface AICredentialDiagnostic {
   stage: AICredentialTestStage
   category: AICredentialErrorCategory
+  reason?: AIGenerationIncompleteReason
   httpStatus?: number
   retryable: boolean
   retryAfterMs?: number
+  finishReason?: string
+  outputTokens?: number
   message: string
 }
 

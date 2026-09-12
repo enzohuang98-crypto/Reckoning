@@ -14,6 +14,15 @@ const trace = {
   modelCalls: 1,
   engineRounds: 1,
   status: 'completed',
+  providerDiagnostic: {
+    stage: 'generation',
+    category: 'generation_incomplete',
+    reason: 'output_truncated',
+    retryable: true,
+    finishReason: 'length',
+    outputTokens: 2500,
+    message: 'safe diagnostic'
+  },
   finalText: 'safe text',
   apiKey: 'should-never-export',
   authorization: 'Bearer should-never-export',
@@ -33,6 +42,15 @@ assert.equal(exported.length, 1)
 assert.equal(JSON.stringify(exported).includes('should-never-export'), false)
 assert.equal(JSON.stringify(exported).includes('secrets.json'), false)
 assert.equal(Object.prototype.hasOwnProperty.call(exported[0], 'apiKey'), false)
+assert.deepEqual(exported[0].providerDiagnostic, {
+  stage: 'generation',
+  category: 'generation_incomplete',
+  reason: 'output_truncated',
+  retryable: true,
+  finishReason: 'length',
+  outputTokens: 2500,
+  message: 'safe diagnostic'
+})
 
 const teacherRunId = 'teacher-run-a'
 const teacherTrace = {

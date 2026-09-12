@@ -44,7 +44,12 @@ import {
   HarnessExplanationUnavailableError,
   runExplanationHarness
 } from '../ai/HarnessOrchestrator'
-import { aiErrorStatus, describeCredentialTestError } from '../ai/http'
+import {
+  AIResponseValidationError,
+  aiErrorStatus,
+  describeAIExecutionError,
+  describeCredentialTestError
+} from '../ai/http'
 import {
   prepareExplanationExecution,
   TeacherCaseBusyError,
@@ -239,6 +244,18 @@ export function mapStreamingErrorToPayload(
       code: 'invalid_request',
       message: error.message
     }
+  }
+  if (error instanceof AIResponseValidationError) {
+    const diagnostic = describeAIExecutionError(error, 'AI 服務')
+    const message =
+      error.category === 'response_format'
+        ? 'AI 回應格式無法驗證，請重試；若持續發生，請改用支援 JSON 的模型。'
+        : error.category === 'model_mismatch'
+          ? 'AI 實際回報的模型與所選模型不一致，請重新讀取模型清單後再試。'
+          : error.details.reason === 'output_truncated'
+            ? 'AI 解說因輸出長度限制而未完成，請重試或改用輸出上限較高的模型。'
+            : 'AI 模型沒有交付正式文字答案，請重試或改用其他模型。'
+    return { requestId, code: 'provider_error', message, diagnostic }
   }
   if (error instanceof Error) {
     // Anthropic SDK 取消時丟 APIUserAbortError（非 DOMException）
