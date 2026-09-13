@@ -151,6 +151,8 @@ const MAX_RESEARCH_ROUND_MS = 60_000
 const CONTINUATION_TIMEOUT_MS = 120_000
 const INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS = 100_000
 const INITIAL_MOVE_MIN_RETRY_WINDOW_MS = 30_000
+/** Combined audit + five-section answer needs JSON overhead beyond the visible 500-900 characters. */
+const INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS = 4_000
 const INITIAL_MOVE_EVIDENCE_RESEARCH_MAX_MS = 5_000
 const INITIAL_MOVE_MIN_BEST_LINE_PLIES = 2
 const INITIAL_MOVE_MIN_USER_LINE_PLIES = 3
@@ -2810,7 +2812,7 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
     "warnings":[]
   }
 }
-`, 2_500, timing.initialMoveFirstCallTimeoutMs)
+`, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS, timing.initialMoveFirstCallTimeoutMs)
           )
           audit = normalizeConsequenceAudit(combined.audit)
           auditErrors = validateConsequenceAudit(

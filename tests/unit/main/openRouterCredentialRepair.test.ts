@@ -504,6 +504,38 @@ async function main(): Promise<void> {
 
   await withServer(
     () => ({
+      body: {
+        error: {
+          code: '502',
+          message: 'upstream detail must stay out of the application diagnostic'
+        }
+      }
+    }),
+    async (baseUrl) => {
+      await assert.rejects(
+        new OpenRouterProvider({ baseUrl }).generateExplanation(
+          requestFor('vendor/model-a:free')
+        ),
+        (error: unknown) => {
+          const payload = mapStreamingErrorToPayload('upstream-envelope', error)
+          return (
+            error instanceof AIHttpError &&
+            error.status === 502 &&
+            error.stage === 'generation' &&
+            !error.message.includes('upstream detail') &&
+            payload.code === 'provider_error' &&
+            payload.message.includes('(502)') &&
+            payload.diagnostic?.category === 'provider_unavailable' &&
+            payload.diagnostic.httpStatus === 502 &&
+            payload.diagnostic.retryable
+          )
+        }
+      )
+    }
+  )
+
+  await withServer(
+    () => ({
       status: 401,
       body: { error: { message: 'provider detail must stay out of the result' } }
     }),

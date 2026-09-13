@@ -267,21 +267,24 @@ export function mapStreamingErrorToPayload(
       return {
         requestId,
         code: 'rate_limited',
-        message: '模型呼叫被限流 (rate limit)，請稍後重試。'
+        message: '模型呼叫被限流 (rate limit)，請稍後重試。',
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     if (status === 503) {
       return {
         requestId,
         code: 'provider_error',
-        message: 'AI 服務目前過載或暫時不可用 (503)，本次未顯示替代模板。請稍後重試。'
+        message: 'AI 服務目前過載或暫時不可用 (503)，本次未顯示替代模板。請稍後重試。',
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     if (typeof status === 'number' && status >= 500) {
       return {
         requestId,
         code: 'provider_error',
-        message: `AI 服務暫時無法完成請求 (${status})，本次未顯示替代模板。請重試。`
+        message: `AI 服務暫時無法完成請求 (${status})，本次未顯示替代模板。請重試。`,
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     // fetch 網路層失敗（DNS/連線中斷）為 TypeError；SDK 為 APIConnectionError
@@ -289,14 +292,16 @@ export function mapStreamingErrorToPayload(
       return {
         requestId,
         code: 'network_error',
-        message: '網路連線失敗，請檢查網路後重試。'
+        message: '網路連線失敗，請檢查網路後重試。',
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     if (typeof status === 'number' || /API 錯誤/.test(error.message)) {
       return {
         requestId,
         code: 'provider_error',
-        message: 'AI 服務回報錯誤，請檢查模型與金鑰設定後重試。'
+        message: 'AI 服務回報錯誤，請檢查模型與金鑰設定後重試。',
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     return {
