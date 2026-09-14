@@ -14,7 +14,8 @@ import type {
   EngineAnalysisResultPayload,
   EngineStatus,
   GenerateExplanationDonePayload,
-  GenerateExplanationStartPayload
+  GenerateExplanationStartPayload,
+  GenerateExplanationErrorPayload
 } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { EngineCandidateMove } from '@shared/types/EngineAnalysis'
@@ -76,6 +77,7 @@ interface Props {
   onReplayCandidates: (candidates: EngineCandidateMove[]) => void
   onExplanation: (explanation: AIExplanationResponse | null) => void
   onStatusChange: (status: AnalysisPanelStatus) => void
+  onOpenAiSettings?: () => void
 }
 
 interface PendingAiRequest {
@@ -179,7 +181,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     onResult,
     onReplayCandidates,
     onExplanation,
-    onStatusChange
+    onStatusChange,
+    onOpenAiSettings
   }: Props,
   ref
 ): JSX.Element {
@@ -195,6 +198,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [engineDiagnostics, setEngineDiagnostics] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [aiDiagnostic, setAiDiagnostic] =
+    useState<GenerateExplanationErrorPayload['diagnostic']>(undefined)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
@@ -543,8 +548,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setTeacherExecution(payload.teacherExecution ?? null)
       const response: AIExplanationResponse = {
         text: payload.finalText,
-        provider: pending?.provider ?? settingsRef.current.aiProvider,
-        model: pending?.model ?? settingsRef.current.aiModel,
+        provider: payload.provider ?? pending?.provider ?? settingsRef.current.aiProvider,
+        model: payload.model ?? pending?.model ?? settingsRef.current.aiModel,
         usage: payload.usage,
         createdAt: Date.now(),
         groundedOnEngineData: true
@@ -556,11 +561,17 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         const now = new Date().toISOString()
         const messages =
           pending.question === null
-            ? [newMessage('assistant', payload.finalText, pending)]
+            ? [newMessage('assistant', payload.finalText, {
+                provider: payload.provider ?? pending.provider,
+                model: payload.model ?? pending.model
+              })]
             : [
                 ...pending.conversationMessages,
                 newMessage('user', pending.question),
-                newMessage('assistant', payload.finalText, pending)
+                newMessage('assistant', payload.finalText, {
+                  provider: payload.provider ?? pending.provider,
+                  model: payload.model ?? pending.model
+                })
               ]
         const next: AIConversation = {
           id: pending.conversationId,
@@ -590,7 +601,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setHarnessProgress(null)
       setStreamingText('')
       if (payload.code === 'cancelled') setAiNotice('已取消生成；追問內容仍保留。')
-      else setAiError(payload.message)
+      else {
+        setAiError(payload.message)
+        setAiDiagnostic(payload.diagnostic)
+      }
     })
     return () => {
       offProgress()
@@ -841,6 +855,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       queuedExplanation.current = {question, regenerate, target: {...currentAiTargetRef.current}}
       setAiBusy(true)
       setAiError(null)
+      setAiDiagnostic(undefined)
       setAiNotice('正在等待皮卡魚完成這輪分析，完成後會依結果回答。')
       return
     }
@@ -922,6 +937,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setAiBusy(true)
     setAiCancelling(false)
     setAiError(null)
+    setAiDiagnostic(undefined)
     setAiNotice(null)
     setStreamingText('')
     setHarnessProgress(null)
@@ -1218,6 +1234,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
                   : aiBlockedReason
               }
               error={aiError ?? (actualMove ? error : null)}
+              canChangeModel={
+                aiDiagnostic?.category === 'provider_unavailable' &&
+                aiDiagnostic.httpStatus === 502
+              }
+              onChangeModel={onOpenAiSettings}
               notice={aiNotice}
               teacherTestStatus={teacherTestStatus}
               teacherExecution={teacherExecution}

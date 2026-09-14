@@ -81,7 +81,11 @@ const api: RendererApi = {
       ipcRenderer.send(IPC.AI_HARNESS_CONTINUE, { requestId }),
     testCredential: (input) => ipcRenderer.invoke(IPC.AI_TEST_CREDENTIAL, input),
     autoConfigureCredential: (apiKey, model) =>
-      ipcRenderer.invoke(IPC.AI_AUTO_CONFIGURE_CREDENTIAL, { apiKey, model })
+      ipcRenderer.invoke(IPC.AI_AUTO_CONFIGURE_CREDENTIAL, { apiKey, model }),
+    listSavedOpenRouterModels: (input) =>
+      ipcRenderer.invoke(IPC.AI_OPENROUTER_SAVED_MODELS, input),
+    switchSavedOpenRouterModel: (input) =>
+      ipcRenderer.invoke(IPC.AI_OPENROUTER_SWITCH_MODEL, input)
   },
   teacherTest: {
     status: () => ipcRenderer.invoke(IPC.TEACHER_TEST_STATUS),

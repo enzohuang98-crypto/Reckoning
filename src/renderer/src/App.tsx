@@ -123,7 +123,6 @@ export function App(): JSX.Element {
         const saved = saveSettings(next)
         if (!saved.ok) {
           setDataError(saved.message ?? '無法同步 API Key 的 Provider 設定。')
-          return
         }
         setSettings(next)
       })
@@ -296,6 +295,7 @@ export function App(): JSX.Element {
         conversation={activeConversation}
         onConversationChange={changeConversation}
         onRecordGuess={recordGuess}
+        onOpenAiSettings={() => setActiveTab('settings')}
       />
 
       {activeTab === 'settings' && (
