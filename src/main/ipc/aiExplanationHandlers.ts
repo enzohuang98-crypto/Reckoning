@@ -44,7 +44,12 @@ import {
   HarnessExplanationUnavailableError,
   runExplanationHarness
 } from '../ai/HarnessOrchestrator'
-import { aiErrorStatus, describeCredentialTestError } from '../ai/http'
+import {
+  AIResponseValidationError,
+  aiErrorStatus,
+  describeAIExecutionError,
+  describeCredentialTestError
+} from '../ai/http'
 import {
   prepareExplanationExecution,
   TeacherCaseBusyError,
@@ -240,6 +245,18 @@ export function mapStreamingErrorToPayload(
       message: error.message
     }
   }
+  if (error instanceof AIResponseValidationError) {
+    const diagnostic = describeAIExecutionError(error, 'AI 服務')
+    const message =
+      error.category === 'response_format'
+        ? 'AI 回應格式無法驗證，請重試；若持續發生，請改用支援 JSON 的模型。'
+        : error.category === 'model_mismatch'
+          ? 'AI 實際回報的模型與所選模型不一致，請重新讀取模型清單後再試。'
+          : error.details.reason === 'output_truncated'
+            ? 'AI 解說因輸出長度限制而未完成，請重試或改用輸出上限較高的模型。'
+            : 'AI 模型沒有交付正式文字答案，請重試或改用其他模型。'
+    return { requestId, code: 'provider_error', message, diagnostic }
+  }
   if (error instanceof Error) {
     // Anthropic SDK 取消時丟 APIUserAbortError（非 DOMException）
     if (error.name === 'APIUserAbortError' || error.name === 'AbortError') {
@@ -250,21 +267,24 @@ export function mapStreamingErrorToPayload(
       return {
         requestId,
         code: 'rate_limited',
-        message: '模型呼叫被限流 (rate limit)，請稍後重試。'
+        message: '模型呼叫被限流 (rate limit)，請稍後重試。',
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     if (status === 503) {
       return {
         requestId,
         code: 'provider_error',
-        message: 'AI 服務目前過載或暫時不可用 (503)，本次未顯示替代模板。請稍後重試。'
+        message: 'AI 服務目前過載或暫時不可用 (503)，本次未顯示替代模板。請稍後重試。',
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     if (typeof status === 'number' && status >= 500) {
       return {
         requestId,
         code: 'provider_error',
-        message: `AI 服務暫時無法完成請求 (${status})，本次未顯示替代模板。請重試。`
+        message: `AI 服務暫時無法完成請求 (${status})，本次未顯示替代模板。請重試。`,
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     // fetch 網路層失敗（DNS/連線中斷）為 TypeError；SDK 為 APIConnectionError
@@ -272,14 +292,16 @@ export function mapStreamingErrorToPayload(
       return {
         requestId,
         code: 'network_error',
-        message: '網路連線失敗，請檢查網路後重試。'
+        message: '網路連線失敗，請檢查網路後重試。',
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     if (typeof status === 'number' || /API 錯誤/.test(error.message)) {
       return {
         requestId,
         code: 'provider_error',
-        message: 'AI 服務回報錯誤，請檢查模型與金鑰設定後重試。'
+        message: 'AI 服務回報錯誤，請檢查模型與金鑰設定後重試。',
+        diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
     return {

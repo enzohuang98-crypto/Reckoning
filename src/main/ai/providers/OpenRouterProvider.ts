@@ -11,6 +11,7 @@ import type {
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
 import {
+  AIHttpError,
   AIResponseValidationError,
   CREDENTIAL_TEST_TIMEOUT_MS,
   createAIHttpError,
@@ -25,6 +26,7 @@ import {
 } from '../credentialTest'
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+const NEMOTRON_ULTRA_FREE_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free'
 
 /** OpenRouter 首輪驗收的生成階段必須比舊的 8 秒上限寬鬆。 */
 export const OPENROUTER_CREDENTIAL_TEST_GENERATION_TIMEOUT_MS = 25_000
@@ -92,6 +94,31 @@ function isErrorEnvelope(value: unknown): boolean {
   )
 }
 
+function throwOpenRouterErrorEnvelope(
+  value: unknown,
+  stage: AICredentialTestStage
+): void {
+  if (!isErrorEnvelope(value)) return
+  const code = (value as { error?: { code?: unknown } }).error?.code
+  const status = typeof code === 'number'
+    ? code
+    : typeof code === 'string' && /^\d{3}$/.test(code)
+      ? Number(code)
+      : undefined
+  if (status !== undefined && status >= 400 && status <= 599) {
+    throw new AIHttpError(
+      status,
+      stage,
+      `OpenRouter 上游服務回報錯誤 (${status})。`
+    )
+  }
+  throw new AIResponseValidationError(
+    stage,
+    'response_format',
+    'OpenRouter 回應包含無法分類的錯誤資料。'
+  )
+}
+
 async function fetchOpenRouterResponse(
   input: string | URL | Request,
   init: RequestInit,
@@ -139,6 +166,9 @@ export class OpenRouterProvider implements AIProvider {
         ...(request.responseFormat === 'json'
           ? { response_format: { type: 'json_object' } }
           : {}),
+        ...(request.model === NEMOTRON_ULTRA_FREE_MODEL && request.responseFormat === 'json'
+          ? { reasoning: { max_tokens: 1_000, exclude: true } }
+          : {}),
         messages: [{ role: 'user', content: request.prompt }]
       })
     }, 'generation')
@@ -161,7 +191,8 @@ export class OpenRouterProvider implements AIProvider {
         'OpenRouter 回應不是有效的 JSON。'
       )
     }
-    if (!data || typeof data !== 'object' || isErrorEnvelope(data)) {
+    throwOpenRouterErrorEnvelope(data, 'generation')
+    if (!data || typeof data !== 'object') {
       throw new AIResponseValidationError(
         'generation',
         'response_format',
@@ -176,19 +207,23 @@ export class OpenRouterProvider implements AIProvider {
       )
     }
     const message = data.choices?.[0]?.message
+    const finishReason = data.choices?.[0]?.finish_reason ?? undefined
+    const outputTokens = data.usage?.completion_tokens
     const text = typeof message?.content === 'string' ? message.content.trim() : ''
     if (!text) {
       throw new AIResponseValidationError(
         'generation',
         'generation_incomplete',
-        'OpenRouter 回應中沒有正式文字答案。'
+        'OpenRouter 回應中沒有正式文字答案。',
+        { reason: 'empty_content', finishReason, outputTokens }
       )
     }
-    if (data.choices?.[0]?.finish_reason === 'length') {
+    if (finishReason === 'length') {
       throw new AIResponseValidationError(
         'generation',
         'generation_incomplete',
-        'OpenRouter 憑證測試因輸出長度限制而未完成。'
+        'OpenRouter 解說因輸出長度限制而未完成。',
+        { reason: 'output_truncated', finishReason, outputTokens }
       )
     }
     return {
@@ -244,13 +279,7 @@ export class OpenRouterProvider implements AIProvider {
         'OpenRouter 金鑰驗證端點回應格式無效。'
       )
     }
-    if (isErrorEnvelope(keyBody)) {
-      throw new AIResponseValidationError(
-        'key',
-        'response_format',
-        'OpenRouter 金鑰驗證端點回應格式無效。'
-      )
-    }
+    throwOpenRouterErrorEnvelope(keyBody, 'key')
 
     const modelsResponse = await fetchOpenRouterResponse(
       `${this.baseUrl}/models?output_modalities=text`,
@@ -276,7 +305,8 @@ export class OpenRouterProvider implements AIProvider {
         'OpenRouter 模型清單回應不是有效的 JSON。'
       )
     }
-    if (!body || typeof body !== 'object' || isErrorEnvelope(body) || !Array.isArray(body.data)) {
+    throwOpenRouterErrorEnvelope(body, 'catalog')
+    if (!body || typeof body !== 'object' || !Array.isArray(body.data)) {
       throw new AIResponseValidationError(
         'catalog',
         'response_format',

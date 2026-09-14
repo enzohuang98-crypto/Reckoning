@@ -720,25 +720,6 @@
   line-height: 1.5;
 }
 
-.coach-ready-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 13px;
-  border: 1px solid #cfe3d6;
-  border-radius: var(--radius-md);
-  background: var(--color-primary-soft);
-}
-
-.coach-ready-card > div {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.coach-ready-card span,
 .coach-cost-note {
   color: var(--color-muted);
   font-size: 11px;

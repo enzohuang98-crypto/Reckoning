@@ -47,7 +47,7 @@ import type { CausalChain } from '@shared/types/Harness'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../storage/HarnessTraceStore'
-import { aiErrorStatus } from './http'
+import { aiErrorStatus, describeAIExecutionError } from './http'
 import type { PreparedExplanationExecution } from './prepareExplanationExecution'
 
 interface HarnessTask {
@@ -151,6 +151,8 @@ const MAX_RESEARCH_ROUND_MS = 60_000
 const CONTINUATION_TIMEOUT_MS = 120_000
 const INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS = 100_000
 const INITIAL_MOVE_MIN_RETRY_WINDOW_MS = 30_000
+/** Combined audit + five-section answer needs JSON overhead beyond the visible 500-900 characters. */
+const INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS = 4_000
 const INITIAL_MOVE_EVIDENCE_RESEARCH_MAX_MS = 5_000
 const INITIAL_MOVE_MIN_BEST_LINE_PLIES = 2
 const INITIAL_MOVE_MIN_USER_LINE_PLIES = 3
@@ -2135,7 +2137,11 @@ export async function runExplanationHarness(
     })
   }
 
-  const saveTrace = (status: HarnessTrace['status'], finalText?: string): void => {
+  const saveTrace = (
+    status: HarnessTrace['status'],
+    finalText?: string,
+    error?: unknown
+  ): void => {
     deps.traceStore.save({
       id: traceId,
       createdAt: new Date().toISOString(),
@@ -2158,6 +2164,9 @@ export async function runExplanationHarness(
       modelCalls,
       engineRounds,
       usage,
+      ...(status === 'failed'
+        ? { providerDiagnostic: describeAIExecutionError(error, 'AI 服務') }
+        : {}),
       evaluation: deps.evaluation,
       interactionKind: execution.interactionKind,
       executionSemanticsVersion: execution.executionSemanticsVersion,
@@ -2803,7 +2812,7 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
     "warnings":[]
   }
 }
-`, 2_500, timing.initialMoveFirstCallTimeoutMs)
+`, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS, timing.initialMoveFirstCallTimeoutMs)
           )
           audit = normalizeConsequenceAudit(combined.audit)
           auditErrors = validateConsequenceAudit(
@@ -3588,9 +3597,9 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
       }
     }
     saveTrace(
-      isAbortLikeError(error)
-        ? 'cancelled'
-        : 'failed'
+      isAbortLikeError(error) ? 'cancelled' : 'failed',
+      undefined,
+      error
     )
     throw error
   }

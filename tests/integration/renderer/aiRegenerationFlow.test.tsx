@@ -343,9 +343,7 @@ async function main(): Promise<void> {
       engineResultListener?.(analysisResult(engineStarts[0].requestId))
     })
 
-    act(() => {
-      findButton(renderer!, '產生完整 AI 解說').props.onClick()
-    })
+    act(() => panelRef.current?.requestExplanation())
     assert.equal(aiStarts.length, 1)
     const firstAiRequest = aiStarts[0]
     assert.ok(aiDoneListener)

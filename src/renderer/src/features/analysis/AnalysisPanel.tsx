@@ -66,7 +66,6 @@ interface Props {
   activeView: Exclude<AnalysisView, 'guess'>
   liveDockElement: HTMLElement | null
   detailsDockElement: HTMLElement | null
-  onActiveViewChange: (view: AnalysisView) => void
   board: BoardState
   settings: AppSettings
   submittedGuess: SubmittedGuess | null
@@ -96,6 +95,7 @@ interface AiRequestTarget {
   boardFen: string
   analysisMove: string
   actualMoveSelectionId: string | null
+  submissionId: string | null
 }
 
 interface RetryableAiRequest {
@@ -141,7 +141,8 @@ function isSameAiRequestTarget(
     right &&
       left.boardFen === right.boardFen &&
       left.analysisMove === right.analysisMove &&
-      left.actualMoveSelectionId === right.actualMoveSelectionId
+      left.actualMoveSelectionId === right.actualMoveSelectionId &&
+      left.submissionId === right.submissionId
   )
 }
 
@@ -169,7 +170,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     activeView,
     liveDockElement,
     detailsDockElement,
-    onActiveViewChange,
     board,
     settings,
     submittedGuess,
@@ -229,7 +229,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const aiDeadlineTimer = useRef<number | null>(null)
   const pendingAiRequest = useRef<PendingAiRequest | null>(null)
   const retryableAiRequest = useRef<RetryableAiRequest | null>(null)
-  const autoRunAttemptTarget = useRef<string | null>(null)
+  const lastSubmittedExplanationId = useRef<string | null>(null)
   const settingsRef = useRef(settings)
   const conversationRef = useRef(conversation)
   const resultRef = useRef(result)
@@ -245,7 +245,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   currentAiTargetRef.current = {
     boardFen: board.fen,
     analysisMove,
-    actualMoveSelectionId: actualMove?.selectionId ?? null
+    actualMoveSelectionId: actualMove?.selectionId ?? null,
+    submissionId: submittedGuess?.submissionId ?? null
   }
 
   useEffect(() => {
@@ -355,7 +356,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     queuedExplanation.current = null
     pendingAiRequest.current = null
     retryableAiRequest.current = null
-    autoRunAttemptTarget.current = null
     analysisStartedAtRef.current = null
     lastThoughtAtRef.current = null
     setBusy(false)
@@ -929,7 +929,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       requestId,
       ...start
     })
-    if (actualMove) {
+    if (analysisMove) {
       if (aiDeadlineTimer.current !== null) {
         window.clearTimeout(aiDeadlineTimer.current)
       }
@@ -965,38 +965,57 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }, [busy, result?.analysisId])
 
   useEffect(() => {
-    const move = analysisMove
-    const target = `${board.fen}|${move}`
-    if (
-      !actualMove &&
-      settings.harnessAutoRun &&
-      result &&
-      isSameAnalysisTarget(result.engineAnalysis, board.fen, move) &&
-      !aiBusy &&
-      !explanation &&
-      !conversationRef.current &&
-      autoRunAttemptTarget.current !== target
-    ) {
-      // A continuous engine produces a new analysisId every refinement round.
-      // Record the board target before starting so a failed or cancelled AI
-      // request cannot silently restart on the next engine result.
-      autoRunAttemptTarget.current = target
-      generateExplanation(null)
+    const submissionId = submittedGuess?.submissionId
+    if (!submissionId || lastSubmittedExplanationId.current === submissionId) return
+    lastSubmittedExplanationId.current = submissionId
+    const target = currentAiTargetRef.current
+    if (!target) return
+
+    if (activeAiRequestId.current) {
+      window.api.ai.cancelExplanation(activeAiRequestId.current)
     }
-  }, [
-    actualMove,
-    analysisMove,
-    board.fen,
-    result?.analysisId,
-    settings.harnessAutoRun
-  ])
+    if (aiDeadlineTimer.current !== null) {
+      window.clearTimeout(aiDeadlineTimer.current)
+      aiDeadlineTimer.current = null
+    }
+    activeAiRequestId.current = null
+    pendingAiRequest.current = null
+    retryableAiRequest.current = null
+    queuedExplanation.current = null
+    conversationRef.current = null
+    onConversationChange(null)
+    setExplanation(null)
+    setExplainedResult(null)
+    setStreamingText('')
+    setHarnessProgress(null)
+    setAiError(null)
+    setAiNotice(null)
+
+    if (
+      result &&
+      !busy &&
+      !activeRequestId.current &&
+      isSameAnalysisTarget(result.engineAnalysis, board.fen, analysisMove)
+    ) {
+      generateExplanation(null)
+      return
+    }
+
+    queuedExplanation.current = {
+      question: null,
+      regenerate: false,
+      target: { ...target }
+    }
+    setAiBusy(true)
+    setAiNotice('正在等待皮卡魚完成這輪分析，完成後會依結果回答。')
+    if (!activeRequestId.current) startAnalysis(true)
+  }, [submittedGuess?.submissionId])
 
   // 不傳 deps：generateExplanation/startAnalysis 等閉包捕捉了 settings/引擎選擇等會變動的值，
   // 每次 render 都重建這個 handle 才能避免呼叫到過期的閉包。
   useImperativeHandle(ref, () => ({
     requestExplanation: () => {
       if ((!result && !busy) || aiBusy) return
-      onActiveViewChange('coach')
       generateExplanation(
         null,
         explanation !== null || conversationRef.current !== null
@@ -1081,6 +1100,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       analysisCancelling: cancelling,
       aiBusy,
       aiCancelling,
+      aiError,
       hasExplanation: explanation !== null || conversation !== null,
       hasResult: result !== null,
       analysisBlockedReason,
@@ -1092,6 +1112,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     cancelling,
     aiBusy,
     aiCancelling,
+    aiError,
     explanation,
     conversation,
     result,
@@ -1202,7 +1223,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               teacherExecution={teacherExecution}
               followUp={followUp}
               onFollowUpChange={setFollowUp}
-              onGenerate={() => generateExplanation(null)}
               onContinue={continueExplain}
               onCancel={cancelExplain}
               onSubmitFollowUp={submitFollowUp}

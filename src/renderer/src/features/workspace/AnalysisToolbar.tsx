@@ -162,17 +162,19 @@ export function AnalysisToolbar({
           disabled={!analysisRunning || stopCancelling}
           onClick={onStopAnalysis}
         />
-        <ToolbarButton
-          icon="sparkles"
-          label={status.aiBusy ? '解說中' : status.hasExplanation ? '重新解說' : 'AI 解說'}
-          title={status.aiBlockedReason ?? '請 AI 依照設定語言解說目前局面'}
-          active={activeView === 'coach'}
-          disabled={Boolean(status.aiBlockedReason)}
-          onClick={() => {
-            onViewChange('coach')
-            onRequestExplanation()
-          }}
-        />
+        {activeView !== 'guess' && (
+          <ToolbarButton
+            icon="sparkles"
+            label={status.aiBusy ? '解說中' : status.hasExplanation ? '重新解說' : 'AI 解說'}
+            title={status.aiBlockedReason ?? '請 AI 依照設定語言解說目前局面'}
+            active={activeView === 'coach'}
+            disabled={Boolean(status.aiBlockedReason)}
+            onClick={() => {
+              onViewChange('coach')
+              onRequestExplanation()
+            }}
+          />
+        )}
       </div>
 
       <div className="toolbar-spacer" />

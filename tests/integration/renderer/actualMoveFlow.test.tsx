@@ -6,7 +6,10 @@ import {
   type ReactTestInstance,
   type ReactTestRenderer
 } from 'react-test-renderer'
-import { AnalysisPanel } from '../../../src/renderer/src/features/analysis/AnalysisPanel'
+import {
+  AnalysisPanel,
+  type AnalysisPanelHandle
+} from '../../../src/renderer/src/features/analysis/AnalysisPanel'
 import {
   ACTUAL_MOVE_ENGINE_DEADLINE_MS,
   AUTO_INITIAL_ANALYSIS_MAX_MS,
@@ -307,6 +310,7 @@ async function main(): Promise<void> {
     onExplanation: () => undefined,
     onStatusChange: () => undefined
   }
+  const panelRef = React.createRef<AnalysisPanelHandle>()
   const props = (actualMove: ActualMoveSelection) => ({
     visible: true,
     activeView: 'coach' as const,
@@ -323,7 +327,7 @@ async function main(): Promise<void> {
   let renderer: ReactTestRenderer | null = null
   try {
     await act(async () => {
-      renderer = create(<AnalysisPanel {...props(firstMove)} />)
+      renderer = create(<AnalysisPanel ref={panelRef} {...props(firstMove)} />)
       await flushMicrotasks()
     })
     assert.ok(renderer)
@@ -370,7 +374,7 @@ async function main(): Promise<void> {
     )
 
     act(() => {
-      renderer?.update(<AnalysisPanel {...props(secondMove)} />)
+      renderer?.update(<AnalysisPanel ref={panelRef} {...props(secondMove)} />)
     })
     assert.equal(engineStarts.length, 2, '快速切換著法應啟動新分析')
     assert.deepEqual(engineCancels, [firstRequestId], '快速切換著法應取消舊分析')
@@ -400,13 +404,9 @@ async function main(): Promise<void> {
       /複核引擎|降級/
     )
 
-    const generateButton = renderer.root
-      .findAllByType('button')
-      .find((button) => textContent(button).includes('產生完整 AI 解說'))
-    assert.ok(generateButton, '引擎結果後應提供一次產生完整解說的按鈕')
     act(() => {
-      generateButton.props.onClick()
-      generateButton.props.onClick()
+      panelRef.current?.requestExplanation()
+      panelRef.current?.requestExplanation()
     })
     assert.equal(aiStarts.length, 1, '連續點擊也只能啟動一個完整 AI 請求')
     assert.equal(aiStarts[0].analysisId, 'analysis-2')
@@ -432,7 +432,7 @@ async function main(): Promise<void> {
       selectedAt: Date.now()
     }
     act(() => {
-      renderer?.update(<AnalysisPanel {...props(timedMove)} />)
+      renderer?.update(<AnalysisPanel ref={panelRef} {...props(timedMove)} />)
     })
     assert.equal(engineStarts.length, 3)
     const timedEngineRequestId = engineStarts[2].requestId
@@ -450,7 +450,7 @@ async function main(): Promise<void> {
       selectedAt: Date.now()
     }
     act(() => {
-      renderer?.update(<AnalysisPanel {...props(aiSwitchMove)} />)
+      renderer?.update(<AnalysisPanel ref={panelRef} {...props(aiSwitchMove)} />)
     })
     assert.equal(engineStarts.length, 4)
     const aiSwitchEngineRequestId = engineStarts[3].requestId
@@ -459,11 +459,7 @@ async function main(): Promise<void> {
         result(aiSwitchEngineRequestId, 'analysis-ai-switch', aiSwitchMove.move, aiSwitchMove.displayMove)
       )
     })
-    const switchGenerateButton = renderer.root
-      .findAllByType('button')
-      .find((button) => textContent(button).includes('產生完整 AI 解說'))
-    assert.ok(switchGenerateButton)
-    act(() => switchGenerateButton.props.onClick())
+    act(() => panelRef.current?.requestExplanation())
     assert.equal(aiStarts.length, 2)
     const switchedAwayAiRequestId = aiStarts[1].requestId
 
@@ -473,7 +469,7 @@ async function main(): Promise<void> {
       selectedAt: Date.now()
     }
     act(() => {
-      renderer?.update(<AnalysisPanel {...props(finalMove)} />)
+      renderer?.update(<AnalysisPanel ref={panelRef} {...props(finalMove)} />)
     })
     assert.equal(aiCancels.at(-1), switchedAwayAiRequestId, '換步必須取消進行中的 AI')
     act(() => {
@@ -491,11 +487,7 @@ async function main(): Promise<void> {
         result(finalEngineRequestId, 'analysis-final', finalMove.move, finalMove.displayMove)
       )
     })
-    const finalGenerateButton = renderer.root
-      .findAllByType('button')
-      .find((button) => textContent(button).includes('產生完整 AI 解說'))
-    assert.ok(finalGenerateButton)
-    act(() => finalGenerateButton.props.onClick())
+    act(() => panelRef.current?.requestExplanation())
     assert.equal(aiStarts.length, 3)
     const completeText = [
       '## 完整實戰解說',

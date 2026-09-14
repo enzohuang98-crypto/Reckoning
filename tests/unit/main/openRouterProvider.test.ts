@@ -154,10 +154,38 @@ for (const format of ['json', 'text', undefined] as const) {
     await new OpenRouterProvider({baseUrl}).generateExplanation(request)
     const body=requests[0].body as Record<string,unknown>
     assert.deepEqual(body.response_format, format === 'json' ? {type:'json_object'} : undefined)
+    assert.equal(body.reasoning, undefined)
     assert.equal(body.model, request.model)
   })
 }
-console.log('OpenRouter free-model binding and response-format tests passed')
+
+await withServer(
+  () => ({
+    model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+    choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }]
+  }),
+  async (baseUrl, requests) => {
+    const request: AIExplanationRequest = {
+      provider: 'openrouter',
+      model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+      apiKey: 'synthetic-test-key',
+      prompt: 'Return structured coaching JSON',
+      responseFormat: 'json',
+      maxOutputTokens: 4_000,
+      metadata: {
+        requestId: 'nemotron-reasoning-budget',
+        analysisId: 'nemotron-reasoning-budget',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical'
+      }
+    }
+    await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
+    const body = requests[0].body as Record<string, unknown>
+    assert.deepEqual(body.reasoning, { max_tokens: 1_000, exclude: true })
+    assert.equal(body.max_tokens, 4_000)
+  }
+)
+console.log('OpenRouter free-model binding, response-format, and reasoning-budget tests passed')
 }
 
 void main().catch((error) => {

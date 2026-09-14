@@ -35,8 +35,12 @@ assert.match(guessPanel, /你選這一步的原因/)
 assert.doesNotMatch(guessPanel, /placeholder="為什麼想走這步？（選填）"[\s\S]{0,160}disabled=/)
 assert.match(
   workspace,
-  /onSubmitGuess=\{\(guess\)\s*=>\s*\{[\s\S]*?setSubmittedGuess\(guess\)[\s\S]*?setActiveView\('coach'\)/
+  /onSubmitGuess=\{\(guess\)\s*=>\s*\{[\s\S]*?setSubmittedGuess\(guess\)[\s\S]*?setGuessSelectionActive\(false\)/
 )
+assert.doesNotMatch(workspace, /setSubmittedGuess\(guess\)[\s\S]{0,100}setActiveView\('coach'\)/)
+assert.doesNotMatch(coachView, /coach-ready-card|引擎證據已準備完成|產生完整 AI 解說/)
+assert.match(guessPanel, /submissionId:\s*crypto\.randomUUID\(\)/)
+assert.match(guessPanel, /重試 AI 解說/)
 
 assert.doesNotMatch(settingsNavigation, /解說品質/)
 assert.doesNotMatch(settingsNavigation, /id:\s*'harness'/)
@@ -52,7 +56,7 @@ const normalized = normalizeSettings(
   DEFAULT_SETTINGS
 )
 assert.equal(normalized.harnessAnswerMode, 'research')
-assert.equal(normalized.harnessAutoRun, true)
+assert.equal(normalized.harnessAutoRun, false)
 assert.equal(normalized.harnessReuseEvidence, true)
 
 console.log('Simplified analysis experience checks passed')

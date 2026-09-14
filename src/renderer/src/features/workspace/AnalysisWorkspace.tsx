@@ -283,14 +283,44 @@ export function AnalysisWorkspace({
             />
 
             <div className="inspector-content">
-              <div hidden={activeView === 'guess'}>
+              <div>
+                {activeView === 'guess' && (
+                  <GuessModePanel
+                    board={board}
+                    draftMove={draftMove}
+                    draftReason={draftReason}
+                    submittedGuess={submittedGuess}
+                    onDraftMoveChange={setDraftMove}
+                    onDraftReasonChange={setDraftReason}
+                    onSubmitGuess={(guess) => {
+                      setSubmittedGuess(guess)
+                      setGuessSelectionActive(false)
+                    }}
+                    onUnlockGuess={() => {
+                      setSubmittedGuess(null)
+                      setGuessSelectionActive(false)
+                      setResult(null)
+                    }}
+                    selectionActive={guessSelectionActive}
+                    onBeginMoveSelection={() => {
+                      setActualMove(null)
+                      setGuessSelectionActive(true)
+                    }}
+                    onCancelMoveSelection={() => setGuessSelectionActive(false)}
+                    result={result}
+                    onRecordGuess={onRecordGuess}
+                    aiBusy={analysisStatus.aiBusy}
+                    aiError={analysisStatus.aiError}
+                    hasExplanation={analysisStatus.hasExplanation}
+                    onRetryExplanation={() => analysisPanelRef.current?.requestExplanation()}
+                  />
+                )}
                 <AnalysisPanel
                   ref={analysisPanelRef}
                   visible
                   activeView="coach"
                   liveDockElement={liveDockElement}
                   detailsDockElement={detailsDockElement}
-                  onActiveViewChange={changeView}
                   board={board}
                   settings={settings}
                   submittedGuess={submittedGuess}
@@ -304,39 +334,6 @@ export function AnalysisWorkspace({
                 />
               </div>
 
-              <div
-                hidden={activeView !== 'guess'}
-                role="tabpanel"
-                id="analysis-panel-guess"
-                aria-labelledby="analysis-tab-guess"
-              >
-                <GuessModePanel
-                  board={board}
-                  draftMove={draftMove}
-                  draftReason={draftReason}
-                  submittedGuess={submittedGuess}
-                  onDraftMoveChange={setDraftMove}
-                  onDraftReasonChange={setDraftReason}
-                  onSubmitGuess={(guess) => {
-                    setSubmittedGuess(guess)
-                    setGuessSelectionActive(false)
-                    setActiveView('coach')
-                  }}
-                  onUnlockGuess={() => {
-                    setSubmittedGuess(null)
-                    setGuessSelectionActive(false)
-                    setResult(null)
-                  }}
-                  selectionActive={guessSelectionActive}
-                  onBeginMoveSelection={() => {
-                    setActualMove(null)
-                    setGuessSelectionActive(true)
-                  }}
-                  onCancelMoveSelection={() => setGuessSelectionActive(false)}
-                  result={result}
-                  onRecordGuess={onRecordGuess}
-                />
-              </div>
             </div>
           </div>
         </aside>

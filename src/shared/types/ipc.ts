@@ -312,6 +312,7 @@ export interface GenerateExplanationErrorPayload {
   requestId: string
   code: AIExplanationErrorCode
   message: string
+  diagnostic?: AICredentialDiagnostic
 }
 
 /**

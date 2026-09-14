@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { HarnessPhase, HarnessProgressPayload } from '@shared/types/Harness'
 
 function phaseText(phase: HarnessPhase): string {
@@ -6,7 +7,7 @@ function phaseText(phase: HarnessPhase): string {
     case 'planning': return '規劃研究任務'
     case 'engine_research': return '引擎加深研究'
     case 'cross_verification': return '交叉驗證'
-    case 'consequence_review': return '檢查具體後果'
+    case 'consequence_review': return '等待 AI 回覆與整理解說'
     case 'waiting_for_user': return '等待你決定'
     case 'writing': return '撰寫說明'
     case 'validating': return '檢查因果鏈與證據'
@@ -28,6 +29,18 @@ export function HarnessProgressCard({
   onContinue,
   onCancel
 }: Props): JSX.Element {
+  const [visibleElapsedMs, setVisibleElapsedMs] = useState(progress.elapsedMs ?? 0)
+
+  useEffect(() => {
+    const baseElapsedMs = progress.elapsedMs ?? 0
+    const receivedAt = Date.now()
+    setVisibleElapsedMs(baseElapsedMs)
+    const timer = window.setInterval(() => {
+      setVisibleElapsedMs(baseElapsedMs + Date.now() - receivedAt)
+    }, 250)
+    return () => window.clearInterval(timer)
+  }, [progress.requestId, progress.phase, progress.elapsedMs])
+
   return (
     <section
       className={`harness-progress${progress.awaitingDecision ? ' awaiting' : ''}`}
@@ -39,9 +52,7 @@ export function HarnessProgressCard({
           <b>正在整理實戰步、AI 首選與對手最強利用</b>
           <span className="muted small">
             {phaseText(progress.phase)}
-            {progress.elapsedMs !== undefined
-              ? ` · ${Math.floor(progress.elapsedMs / 1000)} 秒`
-              : ''}
+            {` · ${Math.floor(visibleElapsedMs / 1000)} 秒`}
           </span>
         </div>
         <span className={`badge ${progress.awaitingDecision ? 'warn' : 'on'}`}>
@@ -61,10 +72,10 @@ export function HarnessProgressCard({
           <span>一鍵解說不會停在這一步；手動研究可選擇繼續或取消。</span>
           <div className="row gap">
             <button className="btn" onClick={onContinue}>繼續分析</button>
-            <button className="btn ghost" onClick={onCancel}>取消</button>
           </div>
         </div>
       )}
+      <button className="btn ghost" onClick={onCancel}>取消 AI 解說</button>
     </section>
   )
 }
