@@ -46,6 +46,28 @@ interface SecretEncryption {
   decryptString(value: Buffer): string
 }
 
+export interface SecretCredentialSnapshot {
+  credential: SecretCredentialRef
+  apiKey: string
+  revision: number
+}
+
+export class SecretCredentialChangedError extends Error {
+  readonly name = 'SecretCredentialChangedError'
+
+  constructor() {
+    super('The active credential changed before the model switch was committed.')
+  }
+}
+
+export class SecretCredentialConflictError extends Error {
+  readonly name = 'SecretCredentialConflictError'
+
+  constructor() {
+    super('The target model already has a different credential.')
+  }
+}
+
 const SECRETS_FILENAME = 'secrets.enc.json'
 const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/
 
@@ -92,6 +114,8 @@ function sameCredential(
 export class SecretStore {
   private readonly filePath: string
   private readonly encryption: SecretEncryption
+  private mutationQueue: Promise<void> = Promise.resolve()
+  private revision = 0
 
   constructor(
     filePath?: string,
@@ -112,22 +136,25 @@ export class SecretStore {
     apiKey: string,
     baseUrl?: string
   ): Promise<SecretCredentialRef> {
-    if (!this.encryption.isEncryptionAvailable()) {
-      throw new Error('此系統不支援安全加密儲存，拒絕以明文保存金鑰。')
-    }
-    const ref = normalizeCredentialRef(provider, model, baseUrl)
-    const data = await this.read()
-    const encryptedKey = this.encryption.encryptString(apiKey).toString('base64')
-    const next: StoredCredential = { ...ref, encryptedKey }
-    const id = credentialId(ref)
-    const existingIndex = data.credentials.findIndex(
-      (credential) => credentialId(credential) === id
-    )
-    if (existingIndex >= 0) data.credentials[existingIndex] = next
-    else data.credentials.push(next)
-    data.activeCredential = ref
-    await this.write(data)
-    return ref
+    return this.enqueueMutation(async () => {
+      if (!this.encryption.isEncryptionAvailable()) {
+        throw new Error('此系統不支援安全加密儲存，拒絕以明文保存金鑰。')
+      }
+      const ref = normalizeCredentialRef(provider, model, baseUrl)
+      const data = await this.read()
+      const encryptedKey = this.encryption.encryptString(apiKey).toString('base64')
+      const next: StoredCredential = { ...ref, encryptedKey }
+      const id = credentialId(ref)
+      const existingIndex = data.credentials.findIndex(
+        (credential) => credentialId(credential) === id
+      )
+      if (existingIndex >= 0) data.credentials[existingIndex] = next
+      else data.credentials.push(next)
+      data.activeCredential = ref
+      await this.write(data)
+      this.revision += 1
+      return ref
+    })
   }
 
   /** 只允許把可解密的精確憑證設為使用中。 */
@@ -136,13 +163,16 @@ export class SecretStore {
     model: string,
     baseUrl?: string
   ): Promise<boolean> {
-    const ref = normalizeCredentialRef(provider, model, baseUrl)
-    const data = await this.read()
-    const stored = this.findStored(data, ref)
-    if (!stored || this.decrypt(stored) === null) return false
-    data.activeCredential = ref
-    await this.write(data)
-    return true
+    return this.enqueueMutation(async () => {
+      const ref = normalizeCredentialRef(provider, model, baseUrl)
+      const data = await this.read()
+      const stored = this.findStored(data, ref)
+      if (!stored || this.decrypt(stored) === null) return false
+      data.activeCredential = ref
+      await this.write(data)
+      this.revision += 1
+      return true
+    })
   }
 
   /** 是否存在精確密文；不代表目前仍能解密。 */
@@ -152,6 +182,7 @@ export class SecretStore {
     baseUrl?: string
   ): Promise<boolean> {
     const ref = normalizeCredentialRef(provider, model, baseUrl)
+    await this.mutationQueue
     return Boolean(this.findStored(await this.read(), ref))
   }
 
@@ -162,8 +193,101 @@ export class SecretStore {
     baseUrl?: string
   ): Promise<string | null> {
     const ref = normalizeCredentialRef(provider, model, baseUrl)
+    await this.mutationQueue
     const stored = this.findStored(await this.read(), ref)
     return stored ? this.decrypt(stored) : null
+  }
+
+  /** 以單一序列化讀取捕獲 active 的模型、明文與 instance revision。 */
+  async captureActiveCredential(
+    expected?: SecretCredentialRef
+  ): Promise<SecretCredentialSnapshot | null> {
+    return this.enqueueMutation(async () => {
+      const data = await this.read()
+      const active = data.activeCredential
+      if (!active || (expected && !sameCredential(active, expected))) return null
+      const stored = this.findStored(data, active)
+      if (!stored) return null
+      const apiKey = this.decrypt(stored)
+      if (apiKey === null) return null
+      return {
+        credential: { ...active },
+        apiKey,
+        revision: this.revision
+      }
+    })
+  }
+
+  /** 以單一序列化讀取捕獲精確憑證，避免 has/get 間的競爭。 */
+  async captureCredential(
+    provider: AIProviderId,
+    model: string,
+    baseUrl?: string
+  ): Promise<{ apiKey: string | null; exists: boolean }> {
+    const ref = normalizeCredentialRef(provider, model, baseUrl)
+    return this.enqueueMutation(async () => {
+      const stored = this.findStored(await this.read(), ref)
+      return {
+        apiKey: stored ? this.decrypt(stored) : null,
+        exists: Boolean(stored)
+      }
+    })
+  }
+
+  /**
+   * 將仍為 active 的來源密文原子改綁到目標模型。驗證在鎖外完成；
+   * commit 時以 revision 與 active ref 拒絕過期操作。
+   */
+  async rebindOpenRouterCredential(
+    snapshot: SecretCredentialSnapshot,
+    targetModel: string
+  ): Promise<SecretCredentialRef> {
+    return this.enqueueMutation(async () => {
+      const source = normalizeCredentialRef(
+        snapshot.credential.provider,
+        snapshot.credential.model,
+        snapshot.credential.baseUrl
+      )
+      const target = normalizeCredentialRef('openrouter', targetModel)
+      const data = await this.read()
+      if (
+        source.provider !== 'openrouter' ||
+        source.baseUrl !== undefined ||
+        snapshot.revision !== this.revision ||
+        !sameCredential(data.activeCredential, source)
+      ) {
+        throw new SecretCredentialChangedError()
+      }
+      const sourceStored = this.findStored(data, source)
+      const sourceKey = sourceStored ? this.decrypt(sourceStored) : null
+      if (!sourceStored || sourceKey === null || sourceKey !== snapshot.apiKey) {
+        throw new SecretCredentialChangedError()
+      }
+      if (sameCredential(source, target)) return target
+
+      const targetStored = this.findStored(data, target)
+      if (targetStored) {
+        const targetKey = this.decrypt(targetStored)
+        if (targetKey === null || targetKey !== sourceKey) {
+          throw new SecretCredentialConflictError()
+        }
+        data.credentials = data.credentials.filter(
+          (credential) => !sameCredential(credential, source)
+        )
+      } else {
+        const sourceIndex = data.credentials.findIndex(
+          (credential) => sameCredential(credential, source)
+        )
+        data.credentials[sourceIndex] = {
+          ...target,
+          encryptedKey: sourceStored.encryptedKey
+        }
+      }
+      data.activeCredential = target
+      await this.write(data)
+      this.revision += 1
+      return target
+    })
   }
 
   /** 刪除一把精確憑證；同 provider 的其他模型仍會保留。 */
@@ -172,20 +296,24 @@ export class SecretStore {
     model: string,
     baseUrl?: string
   ): Promise<void> {
-    const ref = normalizeCredentialRef(provider, model, baseUrl)
-    const data = await this.read()
-    const id = credentialId(ref)
-    data.credentials = data.credentials.filter(
-      (credential) => credentialId(credential) !== id
-    )
-    if (sameCredential(data.activeCredential, ref)) {
-      data.activeCredential = this.firstDecryptable(data)?.ref ?? null
-    }
-    await this.write(data)
+    await this.enqueueMutation(async () => {
+      const ref = normalizeCredentialRef(provider, model, baseUrl)
+      const data = await this.read()
+      const id = credentialId(ref)
+      data.credentials = data.credentials.filter(
+        (credential) => credentialId(credential) !== id
+      )
+      if (sameCredential(data.activeCredential, ref)) {
+        data.activeCredential = this.firstDecryptable(data)?.ref ?? null
+      }
+      await this.write(data)
+      this.revision += 1
+    })
   }
 
   /** 回傳安全 metadata；不包含明文或密文。 */
   async getStatus(): Promise<SecretStatus> {
+    await this.mutationQueue
     const data = await this.read()
     const credentials: SecretCredentialMetadata[] = data.credentials.map(
       (stored) => {
@@ -382,5 +510,14 @@ export class SecretStore {
 
   private async write(data: SecretsFileV4): Promise<void> {
     await writeJsonFileAtomicAsync(this.filePath, data, MAX_SECRET_FILE_BYTES)
+  }
+
+  private enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutationQueue.then(operation)
+    this.mutationQueue = result.then(
+      () => undefined,
+      () => undefined
+    )
+    return result
   }
 }

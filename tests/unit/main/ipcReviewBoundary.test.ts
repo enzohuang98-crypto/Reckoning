@@ -95,6 +95,17 @@ function credentialStore(options: {
     isEncryptionAvailable: () => true,
     async getCredential() { return null },
     async hasCredential() { return false },
+    async captureCredential() { return { apiKey: null, exists: false } },
+    async captureActiveCredential(expected?: { provider: string; model: string }) {
+      if (!active || (expected && (expected.provider !== active.provider || expected.model !== active.model))) {
+        return null
+      }
+      return { credential: active, apiKey: 'sk-or-v1-synthetic', revision: 1 }
+    },
+    async rebindOpenRouterCredential(_snapshot: unknown, targetModel: string) {
+      active = { provider: 'openrouter', model: targetModel }
+      return active
+    },
     async setActiveCredential() { return true },
     async deleteCredential() { return undefined }
   }
@@ -190,6 +201,31 @@ async function main(): Promise<void> {
   const failingStatus = await failingStore.getStatus()
   assert.equal(failingStatus.activeCredential?.model, 'old/model:free')
   assert.doesNotMatch(logOutput.join('\n'), /sk-or-v1-test|sk-or-v1-secret/)
+
+  const listSavedHandler = handlers.get(IPC.AI_OPENROUTER_SAVED_MODELS)
+  const switchSavedHandler = handlers.get(IPC.AI_OPENROUTER_SWITCH_MODEL)
+  assert.ok(listSavedHandler, 'saved OpenRouter model list handler is required')
+  assert.ok(switchSavedHandler, 'saved OpenRouter model switch handler is required')
+  await assert.rejects(
+    () => listSavedHandler(rejectedEvent, {
+      sourceCredential: { provider: 'openrouter', model: 'old/model:free' }
+    }),
+    /Rejected IPC call/
+  )
+  await assert.rejects(
+    () => listSavedHandler(trustedEvent, {
+      sourceCredential: { provider: 'gemini', model: 'gemini-3.5-flash' }
+    }),
+    /只允許使用/
+  )
+  await assert.rejects(
+    () => switchSavedHandler(trustedEvent, {
+      sourceCredential: { provider: 'openrouter', model: 'old/model:free' },
+      targetModel: 'vendor/model-a:free',
+      operationId: 'x'.repeat(129)
+    }),
+    /操作識別碼格式無效/
+  )
 
   handlers.clear()
   let written: AppDataSnapshot | null = null

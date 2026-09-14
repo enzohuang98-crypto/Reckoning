@@ -25,8 +25,10 @@ import {
   type AutoConfigureCredentialResult,
   type GenerateExplanationErrorPayload,
   type GenerateExplanationStartPayload,
+  type SavedOpenRouterModelsResult,
   type SecretCredentialRef,
   type SecretMutationResult,
+  type SwitchSavedOpenRouterModelResult,
   type TestCredentialResult
 } from '@shared/types/ipc'
 import {
@@ -40,6 +42,7 @@ import {
 } from '../storage/AnalysisSessionStore'
 import { getAIProvider } from '../ai/AIProvider'
 import { autoConfigureCredential } from '../ai/autoConfigureCredential'
+import { OpenRouterSavedModelService } from '../ai/switchOpenRouterModel'
 import {
   HarnessExplanationUnavailableError,
   runExplanationHarness
@@ -124,19 +127,26 @@ export async function buildAIExplanationRequest(
   execution: PreparedExplanationExecution,
   deps: {
     secretStore: SecretStore
+    credentialSnapshot?: Awaited<ReturnType<SecretStore['captureActiveCredential']>>
   }
 ): Promise<AIExplanationRequest> {
   const payload = execution.effective
-  const apiKey = (await deps.secretStore.getCredential(
-    payload.provider,
-    payload.model,
-    payload.baseUrl
-  )) ?? ''
-  const hasExactCredential = await deps.secretStore.hasCredential(
-    payload.provider,
-    payload.model,
-    payload.baseUrl
+  const snapshot = deps.credentialSnapshot
+  const snapshotMatches = Boolean(
+    snapshot &&
+      snapshot.credential.provider === payload.provider &&
+      snapshot.credential.model === payload.model &&
+      (snapshot.credential.baseUrl ?? '') === (payload.baseUrl ?? '')
   )
+  const captured = snapshotMatches
+    ? { apiKey: snapshot!.apiKey, exists: true }
+    : await deps.secretStore.captureCredential(
+        payload.provider,
+        payload.model,
+        payload.baseUrl
+      )
+  const apiKey = captured.apiKey ?? ''
+  const hasExactCredential = captured.exists
   if (!apiKey && (
     hasExactCredential ||
     payload.provider !== 'openai-compatible' ||
@@ -283,7 +293,9 @@ export function mapStreamingErrorToPayload(
       return {
         requestId,
         code: 'provider_error',
-        message: `AI 服務暫時無法完成請求 (${status})，本次未顯示替代模板。請重試。`,
+        message: status === 502
+          ? '目前模型暫時無法完成請求 (502)。可稍後重試，或使用同一把 key 更換模型。'
+          : `AI 服務暫時無法完成請求 (${status})，本次未顯示替代模板。請重試。`,
         diagnostic: describeAIExecutionError(error, 'AI 服務')
       }
     }
@@ -327,6 +339,7 @@ export function registerAiExplanationHandlers(
   const traceStore = new HarnessTraceStore(storage)
   const credentialTestGate = new KeyedOperationGate(2)
   const formalCaseGate = new KeyedOperationGate(2)
+  const savedOpenRouterModels = new OpenRouterSavedModelService(secretStore)
 
   const normalizeCredential = (rawInput: unknown): SecretCredentialRef => {
     if (typeof rawInput !== 'object' || rawInput === null) {
@@ -343,6 +356,27 @@ export function registerAiExplanationHandlers(
         ? normalizeAiBaseUrl(value.baseUrl)
         : undefined
     return { provider, model, ...(baseUrl ? { baseUrl } : {}) }
+  }
+
+  const normalizeSavedOpenRouterSource = (rawInput: unknown): SecretCredentialRef => {
+    if (typeof rawInput !== 'object' || rawInput === null) {
+      throw new SecurityValidationError('OpenRouter 模型操作格式無效。')
+    }
+    const value = rawInput as Record<string, unknown>
+    const rawSource = value.sourceCredential
+    if (typeof rawSource !== 'object' || rawSource === null) {
+      throw new SecurityValidationError('OpenRouter 來源憑證格式無效。')
+    }
+    const source = rawSource as Record<string, unknown>
+    if (
+      source.provider !== 'openrouter' ||
+      typeof source.model !== 'string' ||
+      source.baseUrl !== undefined
+    ) {
+      throw new SecurityValidationError('只允許使用沒有自訂網址的 OpenRouter 已存憑證。')
+    }
+    const model = modelRegistry.getModel('openrouter', source.model.trim()).model
+    return { provider: 'openrouter', model }
   }
 
   // ---- SecretStore 通道 ----
@@ -511,6 +545,42 @@ export function registerAiExplanationHandlers(
     }
   )
 
+  ipcMain.handle(
+    IPC.AI_OPENROUTER_SAVED_MODELS,
+    async (event, rawInput: unknown): Promise<SavedOpenRouterModelsResult> => {
+      assertTrustedIpcSender(event)
+      const source = normalizeSavedOpenRouterSource(rawInput)
+      return await savedOpenRouterModels.listModels(source)
+    }
+  )
+
+  ipcMain.handle(
+    IPC.AI_OPENROUTER_SWITCH_MODEL,
+    async (event, rawInput: unknown): Promise<SwitchSavedOpenRouterModelResult> => {
+      assertTrustedIpcSender(event)
+      const source = normalizeSavedOpenRouterSource(rawInput)
+      const value = rawInput as Record<string, unknown>
+      if (typeof value.targetModel !== 'string') {
+        throw new SecurityValidationError('目標模型格式無效。')
+      }
+      const targetModel = modelRegistry.getModel(
+        'openrouter',
+        value.targetModel.trim()
+      ).model
+      if (
+        typeof value.operationId !== 'string' ||
+        !/^[A-Za-z0-9._:-]{1,128}$/.test(value.operationId)
+      ) {
+        throw new SecurityValidationError('操作識別碼格式無效。')
+      }
+      return await savedOpenRouterModels.switchModel(
+        source,
+        targetModel,
+        value.operationId
+      )
+    }
+  )
+
   // ---- 低用量實際推論測試（不落地草稿金鑰） ----
   ipcMain.handle(
     IPC.AI_TEST_CREDENTIAL,
@@ -610,16 +680,34 @@ export function registerAiExplanationHandlers(
       activeExplanationRequests.set(requestId, controller)
       let completedNormally = false
       try {
-        const session = await sessionStore.get(payload.analysisId)
+        const capturedActive = await secretStore.captureActiveCredential()
+        const useRequestedLoopback =
+          payload.provider === 'openai-compatible' &&
+          isLoopbackAiBaseUrl(payload.baseUrl)
+        const effectivePayload = capturedActive && !useRequestedLoopback
+          ? {
+              ...payload,
+              provider: capturedActive.credential.provider,
+              model: capturedActive.credential.model,
+              baseUrl: capturedActive.credential.baseUrl
+            }
+          : payload
+        const session = await sessionStore.get(effectivePayload.analysisId)
         if (!session) throw new AnalysisSessionNotFoundError(payload.analysisId)
-        const resolvedModel = modelRegistry.getModel(payload.provider, payload.model).model
+        const resolvedModel = modelRegistry.getModel(
+          effectivePayload.provider,
+          effectivePayload.model
+        ).model
         const execution = prepareExplanationExecution(
-          payload,
+          effectivePayload,
           session,
           resolvedModel,
           teacherTestRun
         )
-        const request = await buildAIExplanationRequest(execution, { secretStore })
+        const request = await buildAIExplanationRequest(execution, {
+          secretStore,
+          credentialSnapshot: capturedActive
+        })
         const provider = getAIProvider(request.provider)
         const runHarness = () =>
           runExplanationHarness(execution, {
@@ -677,6 +765,8 @@ export function registerAiExplanationHandlers(
         event.reply(IPC.AI_GENERATE_EXPLANATION_DONE, {
           requestId,
           finalText: result.finalText,
+          provider: request.provider,
+          model: request.model,
           usage: result.usage,
           evidence: result.evidence,
           warnings: result.warnings,

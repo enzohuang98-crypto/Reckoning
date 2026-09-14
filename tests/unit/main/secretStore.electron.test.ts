@@ -10,6 +10,10 @@ import {
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
 import type { AnalysisSession } from '../../../src/main/storage/AnalysisSessionStore'
 import { SecretStore } from '../../../src/main/storage/SecretStore'
+import {
+  SecretCredentialChangedError,
+  SecretCredentialConflictError
+} from '../../../src/main/storage/SecretStore'
 import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
 
@@ -189,6 +193,99 @@ async function main(): Promise<void> {
       'renderer 选择的 OpenRouter 完整模型 ID 必须原样进入后端请求'
     )
     assert.equal(openRouterRequest.apiKey, 'sk-or-v1-secret')
+
+    const modelB = 'vendor/model-b:free'
+    const firstSnapshot = await store.captureActiveCredential({
+      provider: 'openrouter',
+      model: openRouterModel
+    })
+    assert(firstSnapshot)
+    await store.rebindOpenRouterCredential(firstSnapshot, modelB)
+    assert.equal(await store.getCredential('openrouter', openRouterModel), null)
+    assert.equal(await store.getCredential('openrouter', modelB), 'sk-or-v1-secret')
+    const secondSnapshot = await store.captureActiveCredential({
+      provider: 'openrouter',
+      model: modelB
+    })
+    assert(secondSnapshot)
+    await store.rebindOpenRouterCredential(secondSnapshot, openRouterModel)
+    assert.equal(await store.getCredential('openrouter', openRouterModel), 'sk-or-v1-secret')
+    assert.equal(await store.getCredential('openrouter', modelB), null)
+
+    const conflictPath = join(directory, 'conflict.enc.json')
+    const conflictStore = new SecretStore(conflictPath, encryption)
+    await conflictStore.setCredential('openrouter', modelB, 'different-key')
+    await conflictStore.setCredential('openrouter', openRouterModel, 'source-key')
+    const conflictSnapshot = await conflictStore.captureActiveCredential({
+      provider: 'openrouter',
+      model: openRouterModel
+    })
+    assert(conflictSnapshot)
+    await assert.rejects(
+      () => conflictStore.rebindOpenRouterCredential(conflictSnapshot, modelB),
+      SecretCredentialConflictError
+    )
+    assert.equal(await conflictStore.getCredential('openrouter', openRouterModel), 'source-key')
+    assert.equal(await conflictStore.getCredential('openrouter', modelB), 'different-key')
+    assert.deepEqual((await conflictStore.getStatus()).activeCredential, {
+      provider: 'openrouter', model: openRouterModel
+    })
+
+    const deleteRacePath = join(directory, 'delete-race.enc.json')
+    const deleteRaceStore = new SecretStore(deleteRacePath, encryption)
+    await deleteRaceStore.setCredential('openrouter', openRouterModel, 'race-key')
+    const deleteRaceSnapshot = await deleteRaceStore.captureActiveCredential()
+    assert(deleteRaceSnapshot)
+    const deleteFirst = deleteRaceStore.deleteCredential('openrouter', openRouterModel)
+    const staleRebind = deleteRaceStore.rebindOpenRouterCredential(
+      deleteRaceSnapshot,
+      modelB
+    )
+    await deleteFirst
+    await assert.rejects(() => staleRebind, SecretCredentialChangedError)
+    assert.equal(await deleteRaceStore.getCredential('openrouter', modelB), null)
+
+    const replaceRacePath = join(directory, 'replace-race.enc.json')
+    const replaceRaceStore = new SecretStore(replaceRacePath, encryption)
+    await replaceRaceStore.setCredential('openrouter', openRouterModel, 'old-key')
+    const replaceSnapshot = await replaceRaceStore.captureActiveCredential()
+    assert(replaceSnapshot)
+    const replaceFirst = replaceRaceStore.setCredential(
+      'openrouter', openRouterModel, 'new-key'
+    )
+    const replacedRebind = replaceRaceStore.rebindOpenRouterCredential(
+      replaceSnapshot,
+      modelB
+    )
+    await replaceFirst
+    await assert.rejects(() => replacedRebind, SecretCredentialChangedError)
+    assert.equal(
+      await replaceRaceStore.getCredential('openrouter', openRouterModel),
+      'new-key'
+    )
+
+    const writeFailurePath = join(directory, 'write-failure.enc.json')
+    const writeFailureStore = new SecretStore(writeFailurePath, encryption)
+    await writeFailureStore.setCredential('openrouter', openRouterModel, 'stable-key')
+    const writeFailureSnapshot = await writeFailureStore.captureActiveCredential()
+    assert(writeFailureSnapshot)
+    ;(writeFailureStore as unknown as { write: () => Promise<void> }).write = async () => {
+      throw new Error('synthetic atomic write failure')
+    }
+    await assert.rejects(() =>
+      writeFailureStore.rebindOpenRouterCredential(writeFailureSnapshot, modelB)
+    )
+    const diskStatus = await new SecretStore(writeFailurePath, encryption).getStatus()
+    assert.deepEqual(diskStatus.activeCredential, {
+      provider: 'openrouter', model: openRouterModel
+    })
+    assert.equal(
+      await new SecretStore(writeFailurePath, encryption).getCredential(
+        'openrouter', openRouterModel
+      ),
+      'stable-key',
+      '原子寫入失敗不得改變磁碟上的 active 或來源 key'
+    )
 
     assert.equal(
       await store.setActiveCredential('gemini', 'gemini-3.5-flash'),

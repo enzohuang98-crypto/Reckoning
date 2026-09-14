@@ -14,6 +14,8 @@ function render(options: {
   onConnectKey?: () => void
   onDeleteKey?: () => void
   onRefreshOpenRouterModels?: () => void
+  onLoadSavedOpenRouterModels?: () => void
+  onSwitchSavedOpenRouterModel?: () => void
   openRouterModels?: AIModelInfo[]
   selectedOpenRouterModel?: string
   onOpenRouterModelChange?: (model: string) => void
@@ -37,6 +39,8 @@ function render(options: {
       onOpenRouterModelChange={options.onOpenRouterModelChange ?? (() => undefined)}
       onConnectKey={options.onConnectKey ?? (() => undefined)}
       onRefreshOpenRouterModels={options.onRefreshOpenRouterModels}
+      onLoadSavedOpenRouterModels={options.onLoadSavedOpenRouterModels}
+      onSwitchSavedOpenRouterModel={options.onSwitchSavedOpenRouterModel}
       onDeleteKey={options.onDeleteKey ?? (() => undefined)}
     />
   )
@@ -158,6 +162,36 @@ const confirmedDelete = configured.root.findAllByType('button').find(
 assert(confirmedDelete)
 TestRenderer.act(() => confirmedDelete.props.onClick())
 assert.equal(deleteCalls, 1)
+
+let savedLoadCalls = 0
+let savedSwitchCalls = 0
+const savedOpenRouter = render({
+  status: {
+    configured: true,
+    needsReentry: false,
+    activeCredential: { provider: 'openrouter', model: 'vendor/model-a:free' },
+    credentials: [{
+      provider: 'openrouter', model: 'vendor/model-a:free',
+      configured: true, needsReentry: false
+    }]
+  },
+  apiKey: '',
+  selectedOpenRouterModel: 'vendor/model-a:free',
+  onLoadSavedOpenRouterModels: () => { savedLoadCalls += 1 },
+  onSwitchSavedOpenRouterModel: () => { savedSwitchCalls += 1 }
+})
+const loadSaved = savedOpenRouter.root.findAllByType('button').find(
+  (button) => button.children.join('') === '讀取模型'
+)
+assert(loadSaved, '重開設定且輸入框為空時，已存 OpenRouter key 仍須可讀取模型')
+TestRenderer.act(() => loadSaved.props.onClick())
+assert.equal(savedLoadCalls, 1)
+const useSaved = savedOpenRouter.root.findAllByType('button').find(
+  (button) => button.children.join('') === '使用此模型'
+)
+assert(useSaved)
+assert.equal(useSaved.props.disabled, true, '尚未讀取候選清單時不可提交草稿模型')
+assert.equal(savedSwitchCalls, 0)
 
 const wizard = TestRenderer.create(
   <SetupWizard

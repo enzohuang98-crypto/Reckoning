@@ -26,6 +26,8 @@ interface Props {
   traceId: string | null
   aiBlockedReason: string | null
   error: string | null
+  canChangeModel?: boolean
+  onChangeModel?: () => void
   notice: string | null
   teacherTestStatus: TeacherTestRunStatusV1 | null
   teacherExecution: GenerateExplanationDonePayload['teacherExecution'] | null
@@ -51,6 +53,8 @@ export function CoachView({
   traceId,
   aiBlockedReason,
   error,
+  canChangeModel = false,
+  onChangeModel,
   notice,
   teacherTestStatus,
   teacherExecution,
@@ -69,7 +73,16 @@ export function CoachView({
 
   return (
     <div className="analysis-view-content coach-view">
-      {error && <div className="error-text" role="alert">{error}</div>}
+      {error && (
+        <div className="error-text" role="alert">
+          {error}
+          {canChangeModel && onChangeModel && (
+            <button type="button" className="btn ghost small" onClick={onChangeModel}>
+              更換模型
+            </button>
+          )}
+        </div>
+      )}
       {notice && <div className="notice-text" role="status">{notice}</div>}
       {teacherTestStatus?.active && (
         <div className="notice-text small" role="status">

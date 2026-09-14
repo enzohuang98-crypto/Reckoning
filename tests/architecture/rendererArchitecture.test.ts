@@ -125,6 +125,21 @@ function registry(verified: boolean): EngineRegistrySnapshot {
 async function main(): Promise<void> {
   console.log('\n## Renderer 架構與啟動復原')
 
+  await check('OpenRouter 切換逾時後的兩段對帳都有期限', () => {
+    const settingsPage = readFileSync(
+      resolve('src/renderer/src/pages/SettingsPage.tsx'),
+      'utf8'
+    )
+    assert.match(
+      settingsPage,
+      /withTimeout\(\s*window\.api\.ai\.switchSavedOpenRouterModel\(input\),\s*AI_RECONCILE_TIMEOUT_MS/
+    )
+    assert.match(
+      settingsPage,
+      /withTimeout\(\s*window\.api\.secret\.status\(\),\s*AI_RECONCILE_TIMEOUT_MS/
+    )
+  })
+
   await check('已驗證的作用中引擎不需要每次啟動重跑短測', () => {
     assert.equal(hasVerifiedActiveEngine(registry(true)), true)
   })
@@ -502,8 +517,8 @@ async function main(): Promise<void> {
     assert.match(panel, /const resultSnapshot = result/)
     assert.match(panel, /conversationMessages: currentConversation\?\.messages\.slice\(\) \?\? \[\]/)
     assert.match(panel, /\.\.\.pending\.conversationMessages/)
-    assert.match(panel, /provider: pending\?\.provider/)
-    assert.match(panel, /model: pending\?\.model/)
+    assert.match(panel, /provider: payload\.provider \?\? pending\?\.provider/)
+    assert.match(panel, /model: payload\.model \?\? pending\?\.model/)
     assert.match(panel, /if \(!result \|\| activeAiRequestId\.current\) return/)
   })
 
