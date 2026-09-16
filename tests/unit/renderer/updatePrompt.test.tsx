@@ -43,6 +43,13 @@ function status(patch: Partial<AppUpdateStatus>): AppUpdateStatus {
     phase: 'idle',
     currentVersion: '0.3.6',
     automaticChecksEnabled: true,
+    preferences: {
+      backgroundPreparationEnabled: true,
+      skippedVersion: null,
+      snoozedVersion: null,
+      snoozeUntil: null
+    },
+    promptSuppressed: false,
     message: '',
     ...patch
   } as AppUpdateStatus
@@ -308,3 +315,6 @@ for (const phase of ['idle', 'checking', 'not-available', 'error', 'unconfigured
 
 console.log(`\n結果：${passed} 通過，${failed} 失敗`)
 if (failed > 0) process.exit(1)
+
+// 與既有 renderer 更新 runner 綁定，確保保存 gate 與 ready-only-install 不會漏跑。
+void import('./updateInstallSafety.test')

@@ -41,6 +41,7 @@ interface Props {
   onDataImported: (snapshot: AppDataSnapshot) => void
   getCurrentDataSnapshot: () => AppDataSnapshot
   dataRecoveryRequired: boolean
+  onInstallUpdate?: () => Promise<AppUpdateStatus>
 }
 
 const EMPTY_SECRET_STATUS: SecretStatus = {
@@ -61,7 +62,8 @@ export function SettingsPage({
   onSettingsChange,
   onDataImported,
   getCurrentDataSnapshot,
-  dataRecoveryRequired
+  dataRecoveryRequired,
+  onInstallUpdate = () => window.api.update.install()
 }: Props): JSX.Element {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('ai')
   const [apiKey, setApiKey] = useState('')
@@ -530,8 +532,12 @@ export function SettingsPage({
     setOperationError(null)
     try {
       setUpdateStatus(await action())
-    } catch {
-      setOperationError('更新操作失敗，請稍後再試。')
+    } catch (error) {
+      setOperationError(
+        error instanceof Error && error.message
+          ? error.message
+          : '更新操作失敗，請稍後再試。'
+      )
     } finally {
       setUpdateBusy(false)
     }
@@ -640,7 +646,12 @@ export function SettingsPage({
                 void runUpdateAction(() => window.api.update.download())
               }
               onInstallUpdate={() =>
-                void runUpdateAction(() => window.api.update.install())
+                void runUpdateAction(onInstallUpdate)
+              }
+              onSetBackgroundPreparation={(enabled) =>
+                void runUpdateAction(() =>
+                  window.api.update.setBackgroundPreparation(enabled)
+                )
               }
               onDeactivateLicense={() => void deactivateLicense()}
             />

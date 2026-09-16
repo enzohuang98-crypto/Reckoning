@@ -103,6 +103,8 @@ interface Props {
   onRetrySave: () => void
   onAnalysisCommandMountChange: (element: HTMLDivElement | null) => void
   onDownloadUpdate: () => void
+  onSkipUpdate?: () => void
+  onSnoozeUpdate?: () => void
   children: ReactNode
 }
 
@@ -117,13 +119,17 @@ export function AppShell({
   onRetrySave,
   onAnalysisCommandMountChange,
   onDownloadUpdate,
+  onSkipUpdate = () => undefined,
+  onSnoozeUpdate = () => undefined,
   children
 }: Props): JSX.Element {
   const handledVersion = useRef<string | null>(null)
+  const migratedLegacyPreference = useRef<string | null>(null)
   const [skippedVersion, setSkippedVersion] = useState(loadSkippedVersion)
   const [reminder, setReminder] = useState(loadUpdateReminder)
   const [dialogVersion, setDialogVersion] = useState<string | null>(null)
-  const availablePromptSuppressed = updateStatus?.phase === 'available' &&
+  const availablePromptSuppressed = updateStatus?.promptSuppressed === true || (
+    updateStatus?.phase === 'available' &&
     !!updateStatus.availableVersion &&
     !shouldShowUpdateDialog(
       updateStatus.availableVersion,
@@ -131,7 +137,28 @@ export function AppShell({
       reminder,
       Date.now()
     )
+  )
   const prompt = availablePromptSuppressed ? null : updatePrompt(updateStatus)
+
+  useEffect(() => {
+    const version = updateStatus?.availableVersion
+    if (!version || migratedLegacyPreference.current === version) return
+    if (skippedVersion === version && updateStatus.preferences.skippedVersion !== version) {
+      migratedLegacyPreference.current = version
+      onSkipUpdate()
+      try { window.localStorage.removeItem(SKIPPED_UPDATE_KEY) } catch { /* transient state remains */ }
+      return
+    }
+    if (
+      reminder?.version === version &&
+      reminder.remindAfter > Date.now() &&
+      updateStatus.preferences.snoozedVersion !== version
+    ) {
+      migratedLegacyPreference.current = version
+      onSnoozeUpdate()
+      saveUpdateReminder(null)
+    }
+  }, [onSkipUpdate, onSnoozeUpdate, reminder, skippedVersion, updateStatus])
 
   useEffect(() => {
     if (updateStatus?.phase === 'error') handledVersion.current = null
@@ -174,6 +201,7 @@ export function AppShell({
     setDialogVersion(null)
     setReminder(nextReminder)
     saveUpdateReminder(nextReminder)
+    onSnoozeUpdate()
   }
 
   const skipVersion = (): void => {
@@ -181,6 +209,7 @@ export function AppShell({
     setSkippedVersion(dialogVersion)
     saveSkippedVersion(dialogVersion)
     setDialogVersion(null)
+    onSkipUpdate()
   }
 
   return (
@@ -271,11 +300,11 @@ export function AppShell({
             <span className="eyebrow">APPLICATION UPDATE</span>
             <h2 id="app-update-title">發現新版 {dialogVersion}</h2>
             <p>
-              選擇立即更新後會在背景下載；完成時 Reckoning 將自動關閉、安裝並重新開啟。
+              更新會在背景準備，期間可繼續下棋；準備完成後由你明確選擇重新啟動完成更新。
             </p>
             <div className="app-update-actions">
               <button className="btn" type="button" data-update-action="now" onClick={updateNow}>
-                立即更新
+                立即背景準備
               </button>
               <button className="btn ghost" type="button" data-update-action="later" onClick={remindLater}>
                 稍後提醒我

@@ -105,6 +105,9 @@ export const IPC = {
   APP_UPDATE_CHECK: 'app-update:check',
   APP_UPDATE_DOWNLOAD: 'app-update:download',
   APP_UPDATE_INSTALL: 'app-update:install',
+  APP_UPDATE_SET_BACKGROUND_PREPARATION: 'app-update:set-background-preparation',
+  APP_UPDATE_SKIP: 'app-update:skip',
+  APP_UPDATE_SNOOZE: 'app-update:snooze',
   APP_UPDATE_CHANGED: 'app-update:changed'
 } as const
 
@@ -534,6 +537,9 @@ export interface RendererApi {
     check(): Promise<AppUpdateStatus>
     download(): Promise<AppUpdateStatus>
     install(): Promise<AppUpdateStatus>
+    setBackgroundPreparation(enabled: boolean): Promise<AppUpdateStatus>
+    skip(): Promise<AppUpdateStatus>
+    snooze(): Promise<AppUpdateStatus>
     onChanged(listener: (status: AppUpdateStatus) => void): () => void
   }
 }

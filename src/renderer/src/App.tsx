@@ -24,6 +24,14 @@ import { withTimeout } from './utils/withTimeout'
 type SetupState = 'checking' | 'wizard' | 'done'
 type LicenseState = 'checking' | 'locked' | 'ok'
 
+export async function installPreparedUpdateSafely(
+  save: () => Promise<boolean>,
+  install: () => Promise<AppUpdateStatus>
+): Promise<AppUpdateStatus | null> {
+  if (!(await save())) return null
+  return install()
+}
+
 export function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<AppTab>('analyze')
   const [analysisCommandMount, setAnalysisCommandMount] = useState<HTMLDivElement | null>(null)
@@ -45,6 +53,7 @@ export function App(): JSX.Element {
     setDataError,
     getCurrentDataSnapshot,
     saveCurrentData,
+    flushCurrentData,
     retryLoadData,
     updateAppData,
     importData
@@ -86,6 +95,16 @@ export function App(): JSX.Element {
         )
       })
   }, [])
+
+  const installUpdate = useCallback(async (): Promise<AppUpdateStatus> => {
+    const result = await installPreparedUpdateSafely(
+      flushCurrentData,
+      () => window.api.update.install()
+    )
+    if (!result) throw new Error('資料尚未成功保存，已取消重新啟動更新。')
+    setUpdateStatus(result)
+    return result
+  }, [flushCurrentData])
 
   useEffect(() => {
     let cancelled = false
@@ -271,6 +290,8 @@ export function App(): JSX.Element {
       onRetrySave={() => saveCurrentData(appData)}
       onAnalysisCommandMountChange={setAnalysisCommandMount}
       onDownloadUpdate={downloadUpdate}
+      onSkipUpdate={() => void window.api.update.skip().then(setUpdateStatus)}
+      onSnoozeUpdate={() => void window.api.update.snooze().then(setUpdateStatus)}
     >
       <AnalysisWorkspace
         hidden={activeTab !== 'analyze'}
@@ -305,6 +326,7 @@ export function App(): JSX.Element {
           onDataImported={importData}
           getCurrentDataSnapshot={getCurrentDataSnapshot}
           dataRecoveryRequired={dataRecoveryRequired}
+          onInstallUpdate={installUpdate}
         />
       )}
 

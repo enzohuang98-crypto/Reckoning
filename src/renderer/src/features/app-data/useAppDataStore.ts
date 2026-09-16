@@ -15,6 +15,7 @@ interface AppDataStore {
   setDataError: (message: string | null) => void
   getCurrentDataSnapshot: () => AppDataSnapshot
   saveCurrentData: (snapshot?: AppDataSnapshot) => void
+  flushCurrentData: () => Promise<boolean>
   retryLoadData: () => void
   updateAppData: (updater: (current: AppDataSnapshot) => AppDataSnapshot) => void
   importData: (snapshot: AppDataSnapshot) => void
@@ -23,6 +24,18 @@ interface AppDataStore {
 interface LoadedAppData {
   snapshot: AppDataSnapshot
   warning: string | null
+}
+
+export async function flushLatestSnapshot<T extends object>(
+  getCurrent: () => T,
+  persist: (snapshot: T) => Promise<boolean>,
+  clone: (snapshot: T) => T
+): Promise<boolean> {
+  while (true) {
+    const source = getCurrent()
+    if (!(await persist(clone(source)))) return false
+    if (getCurrent() === source) return true
+  }
 }
 
 const DATA_RECOVERY_FALLBACK =
@@ -73,6 +86,34 @@ export function useAppDataStore(): AppDataStore {
       .catch(() => {
         setOperationError('儲存失敗，畫面內容仍保留；請稍後重試或匯出備份。')
       })
+  }, [])
+
+  const flushCurrentData = useCallback(async (): Promise<boolean> => {
+    if (dataReadBlockedRef.current) {
+      setDataRecoveryError((current) => current ?? recoveryMessage())
+      return false
+    }
+    return flushLatestSnapshot(
+      () => appDataRef.current,
+      async (snapshot) => {
+        let succeeded = false
+        const operation = saveQueue.current
+          .then(async () => {
+            const saved = await window.api.data.save(snapshot)
+            succeeded = saved.ok
+            if (!saved.ok) setOperationError(saved.message)
+            else setOperationError(null)
+          })
+          .catch(() => {
+            succeeded = false
+            setOperationError('儲存失敗，畫面內容仍保留；請稍後重試或匯出備份。')
+          })
+        saveQueue.current = operation
+        await operation
+        return succeeded
+      },
+      cloneAppDataSnapshot
+    )
   }, [])
 
   const updateAppData = useCallback(
@@ -166,6 +207,7 @@ export function useAppDataStore(): AppDataStore {
     setDataError,
     getCurrentDataSnapshot,
     saveCurrentData,
+    flushCurrentData,
     retryLoadData,
     updateAppData,
     importData

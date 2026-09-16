@@ -12,6 +12,7 @@ interface Props {
   onCheckUpdate: () => void
   onDownloadUpdate: () => void
   onInstallUpdate: () => void
+  onSetBackgroundPreparation: (enabled: boolean) => void
   onDeactivateLicense: () => void
 }
 
@@ -26,6 +27,7 @@ export function SystemSettingsSection({
   onCheckUpdate,
   onDownloadUpdate,
   onInstallUpdate,
+  onSetBackgroundPreparation,
   onDeactivateLicense
 }: Props): JSX.Element {
   const deactivateLicense = (): void => {
@@ -34,7 +36,7 @@ export function SystemSettingsSection({
   }
 
   const installUpdate = (): void => {
-    if (!window.confirm('更新已下载。现在要关闭 Reckoning、安装更新并重新启动吗？')) return
+    if (!window.confirm('更新已準備完成。現在要先保存資料，再重新啟動 Reckoning 完成更新嗎？')) return
     onInstallUpdate()
   }
 
@@ -132,6 +134,17 @@ export function SystemSettingsSection({
             {updateStatus.availableVersion && (
               <p className="muted">可用版本：{updateStatus.availableVersion}</p>
             )}
+            <label className="row gap">
+              <input
+                type="checkbox"
+                checked={updateStatus.preferences.backgroundPreparationEnabled}
+                disabled={updateBusy}
+                onChange={(event) =>
+                  onSetBackgroundPreparation(event.currentTarget.checked)
+                }
+              />
+              在背景準備新版本（準備完成後不會自動關閉程式）
+            </label>
             {updateStatus.phase === 'downloading' && (
               <progress
                 className="update-progress"
@@ -147,14 +160,16 @@ export function SystemSettingsSection({
                   !updateStatus.automaticChecksEnabled ||
                   updateStatus.phase === 'checking' ||
                   updateStatus.phase === 'downloading'
+                  || updateStatus.phase === 'downloaded'
+                  || updateStatus.phase === 'installing'
                 }
                 onClick={onCheckUpdate}
               >
                 {updateStatus.phase === 'checking' ? '檢查中…' : '立即檢查'}
               </button>
               {updateStatus.phase === 'downloaded' && (
-                <button className="btn" disabled={updateBusy} onClick={installUpdate}>
-                  重新啟動並安裝
+                <button data-update-action="install" className="btn" disabled={updateBusy} onClick={installUpdate}>
+                  重新啟動完成更新
                 </button>
               )}
               {updateStatus.phase === 'available' && (
@@ -163,7 +178,7 @@ export function SystemSettingsSection({
                   disabled={updateBusy}
                   onClick={onDownloadUpdate}
                 >
-                  下載更新
+                  立即背景準備
                 </button>
               )}
             </div>

@@ -11,18 +11,14 @@ import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
 import { configureUpdatePolicy } from './UpdatePolicy'
+import { UpdatePreferencesStore } from './UpdatePreferencesStore'
 
-/** 啟動後第一次檢查的延遲；讓視窗先完成初始渲染。 */
 const FIRST_CHECK_DELAY_MS = 5_000
-/**
- * 之後每隔多久重新檢查一次。先前只在啟動後檢查一次，長時間開著不關的
- * App 永遠不會發現後來發布的版本。
- */
 const RECHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+export const UPDATE_SNOOZE_DELAY_MS = 4 * 60 * 60 * 1000
 
 function getAutoUpdater(): AppUpdater {
-  const { autoUpdater } = electronUpdater
-  return autoUpdater
+  return electronUpdater.autoUpdater
 }
 
 function hasPackagedUpdateConfiguration(): boolean {
@@ -33,25 +29,36 @@ interface AppUpdaterServiceOptions {
   updater?: AppUpdater
   supported?: boolean
   configured?: boolean
+  preferences?: UpdatePreferencesStore
+  now?: () => number
 }
 
 export class AppUpdaterService {
   private readonly updater: AppUpdater
+  private readonly preferences: UpdatePreferencesStore
+  private readonly now: () => number
   private configured = false
   private status: AppUpdateStatus
-  private installAfterDownload = false
+  private preparePromise: Promise<void> | null = null
+  private installPromise: Promise<void> | null = null
 
   constructor(options: AppUpdaterServiceOptions = {}) {
     this.updater = options.updater ?? getAutoUpdater()
+    this.preferences =
+      options.preferences ??
+      new UpdatePreferencesStore(join(app.getPath('userData'), 'update-preferences.json'))
+    this.now = options.now ?? Date.now
     const supported = options.supported ?? (process.platform === 'win32' && app.isPackaged)
     this.configured = supported && (options.configured ?? hasPackagedUpdateConfiguration())
     this.status = {
       phase: supported ? (this.configured ? 'idle' : 'unconfigured') : 'unsupported',
       currentVersion: app.getVersion(),
       automaticChecksEnabled: this.configured,
+      preferences: this.preferences.get(),
+      promptSuppressed: false,
       message: supported
         ? this.configured
-          ? '程式會在啟動後自動檢查更新。'
+          ? '程式會在啟動後自動檢查並於背景準備更新。'
           : '尚未設定正式更新來源，請使用最新版安裝程式更新。'
         : '開發模式不執行自動更新。'
     }
@@ -60,18 +67,21 @@ export class AppUpdaterService {
 
     configureUpdatePolicy(this.updater)
     this.updater.on('checking-for-update', () => {
-      this.setStatus({
-        phase: 'checking',
-        message: '正在檢查是否有新版本…'
-      })
+      this.setStatus({ phase: 'checking', message: '正在檢查是否有新版本…' })
     })
     this.updater.on('update-available', (info: UpdateInfo) => {
+      const skipped = this.preferences.get().skippedVersion === info.version
       this.setStatus({
         phase: 'available',
         availableVersion: info.version,
         downloadPercent: undefined,
-        message: `發現新版本 ${info.version}，可立即更新、稍後提醒或跳過此版本。`
+        message: skipped
+          ? `已跳過版本 ${info.version}；手動準備更新可解除跳過。`
+          : `發現新版本 ${info.version}。`
       })
+      if (this.preferences.get().backgroundPreparationEnabled && !skipped) {
+        void this.prepareUpdate()
+      }
     })
     this.updater.on('update-not-available', () => {
       this.setStatus({
@@ -85,24 +95,18 @@ export class AppUpdaterService {
       this.setStatus({
         phase: 'downloading',
         downloadPercent: Math.max(0, Math.min(100, progress.percent)),
-        message: `正在下載更新：${progress.percent.toFixed(0)}%`
+        message: `正在背景準備更新：${progress.percent.toFixed(0)}%；可繼續使用。`
       })
     })
     this.updater.on('update-downloaded', (info: UpdateInfo) => {
-      const restartAndInstall = this.installAfterDownload
-      this.installAfterDownload = false
       this.setStatus({
         phase: 'downloaded',
         availableVersion: info.version,
         downloadPercent: 100,
-        message: restartAndInstall
-          ? `版本 ${info.version} 已下載，正在重新啟動並安裝。`
-          : `版本 ${info.version} 已下載；請確認後重新啟動並安裝。`
+        message: `版本 ${info.version} 已準備完成；重新啟動即可完成更新。`
       })
-      if (restartAndInstall) this.restartAndInstall()
     })
     this.updater.on('error', (error: Error) => {
-      this.installAfterDownload = false
       logger.error('自動更新失敗', error)
       this.setStatus({
         phase: 'error',
@@ -112,27 +116,48 @@ export class AppUpdaterService {
     })
   }
 
+  getStatus(): AppUpdateStatus {
+    return { ...this.status, preferences: { ...this.status.preferences } }
+  }
+
   registerIpc(): void {
     ipcMain.handle(IPC.APP_UPDATE_STATUS, (event): AppUpdateStatus => {
       assertTrustedIpcSender(event)
-      return this.status
+      return this.getStatus()
     })
     ipcMain.handle(IPC.APP_UPDATE_CHECK, async (event): Promise<AppUpdateStatus> => {
       assertTrustedIpcSender(event)
-      await this.check()
-      return this.status
+      await this.check({ userInitiated: true })
+      return this.getStatus()
     })
     ipcMain.handle(IPC.APP_UPDATE_DOWNLOAD, async (event): Promise<AppUpdateStatus> => {
       assertTrustedIpcSender(event)
-      await this.downloadApprovedUpdate()
-      return this.status
+      await this.prepareUpdate({ userInitiated: true })
+      return this.getStatus()
     })
-    ipcMain.handle(IPC.APP_UPDATE_INSTALL, (event): AppUpdateStatus => {
+    ipcMain.handle(IPC.APP_UPDATE_INSTALL, async (event): Promise<AppUpdateStatus> => {
       assertTrustedIpcSender(event)
-      if (this.status.phase === 'downloaded') {
-        this.restartAndInstall()
+      await this.installPreparedUpdate()
+      return this.getStatus()
+    })
+    ipcMain.handle(
+      IPC.APP_UPDATE_SET_BACKGROUND_PREPARATION,
+      async (event, enabled: unknown): Promise<AppUpdateStatus> => {
+        assertTrustedIpcSender(event)
+        if (typeof enabled !== 'boolean') throw new Error('Invalid update preference.')
+        await this.setBackgroundPreparation(enabled)
+        return this.getStatus()
       }
-      return this.status
+    )
+    ipcMain.handle(IPC.APP_UPDATE_SKIP, async (event): Promise<AppUpdateStatus> => {
+      assertTrustedIpcSender(event)
+      await this.skipAvailableVersion()
+      return this.getStatus()
+    })
+    ipcMain.handle(IPC.APP_UPDATE_SNOOZE, async (event): Promise<AppUpdateStatus> => {
+      assertTrustedIpcSender(event)
+      await this.snoozeAvailableVersion()
+      return this.getStatus()
     })
   }
 
@@ -144,51 +169,148 @@ export class AppUpdaterService {
     recheck.unref()
   }
 
-  private async check(): Promise<void> {
+  async check(options: { userInitiated?: boolean } = {}): Promise<void> {
     if (!this.configured) return
-    // 已在檢查／下載中，或已下載待安裝時不得重跑：重跑會把 downloaded
-    // 狀態蓋回 available，使用者剛下載好的更新按鈕會憑空消失。
     if (
       this.status.phase === 'checking' ||
       this.status.phase === 'downloading' ||
-      this.status.phase === 'downloaded'
-    ) {
-      return
+      this.status.phase === 'downloaded' ||
+      this.status.phase === 'installing'
+    ) return
+
+    if (options.userInitiated && this.status.phase === 'available' && this.status.availableVersion) {
+      await this.preferences.clearSkippedVersion(this.status.availableVersion)
+      this.refreshPreferences()
     }
     try {
       await this.updater.checkForUpdates()
     } catch (error) {
       logger.error('檢查更新失敗', error)
-      this.setStatus({
-        phase: 'error',
-        message: '無法連線更新服務，請稍後再試。'
-      })
+      this.setStatus({ phase: 'error', message: '無法連線更新服務，請稍後再試。' })
     }
   }
 
-  async downloadApprovedUpdate(): Promise<void> {
-    if (!this.configured || this.status.phase !== 'available') return
-    this.installAfterDownload = true
-    try {
-      await this.updater.downloadUpdate()
-    } catch (error) {
-      this.installAfterDownload = false
-      logger.error('下載更新失敗', error)
-      this.setStatus({
-        phase: 'error',
-        message: '更新下載失敗，請確認網路後再試。'
+  prepareUpdate(options: { userInitiated?: boolean } = {}): Promise<void> {
+    if (this.preparePromise) return this.preparePromise
+    if (!this.configured || !this.status.availableVersion) return Promise.resolve()
+    if (this.status.phase !== 'available' && this.status.phase !== 'error') {
+      return Promise.resolve()
+    }
+
+    const version = this.status.availableVersion
+    if (!options.userInitiated && this.preferences.get().skippedVersion === version) {
+      return Promise.resolve()
+    }
+
+    // 在任何 await 前同步進入 busy 狀態並保存 Promise，封住重入窗口。
+    this.setStatus({
+      phase: 'downloading',
+      downloadPercent: 0,
+      message: `正在背景準備版本 ${version}；可繼續使用。`
+    })
+    const operation = (async (): Promise<void> => {
+      try {
+        if (options.userInitiated) {
+          await this.preferences.clearSkippedVersion(version)
+          await this.preferences.clearSnooze(version)
+          this.refreshPreferences()
+        }
+        await this.updater.downloadUpdate()
+      } catch (error) {
+        logger.error('下載更新失敗', error)
+        this.setStatus({
+          phase: 'error',
+          downloadPercent: undefined,
+          message: '更新下載失敗，請確認網路後再試。'
+        })
+      } finally {
+        this.preparePromise = null
+      }
+    })()
+    this.preparePromise = operation
+    return operation
+  }
+
+  installPreparedUpdate(): Promise<void> {
+    if (this.installPromise) return this.installPromise
+    if (!this.configured || this.status.phase !== 'downloaded') return Promise.resolve()
+
+    this.setStatus({
+      phase: 'installing',
+      message: '正在關閉程式並完成更新…'
+    })
+    const operation = new Promise<void>((resolve) => {
+      setImmediate(() => {
+        this.updater.quitAndInstall(true, true)
+        resolve()
       })
+    })
+    this.installPromise = operation
+    return operation
+  }
+
+  async setBackgroundPreparation(enabled: boolean): Promise<void> {
+    await this.preferences.setBackgroundPreparation(enabled)
+    this.refreshPreferences()
+    if (
+      enabled &&
+      this.status.phase === 'available' &&
+      this.status.availableVersion &&
+      this.preferences.get().skippedVersion !== this.status.availableVersion
+    ) {
+      void this.prepareUpdate()
     }
   }
 
-  private restartAndInstall(): void {
-    setImmediate(() => this.updater.quitAndInstall(true, true))
+  async skipAvailableVersion(): Promise<void> {
+    const version = this.status.availableVersion
+    if (!version) return
+    await this.preferences.skipVersion(version)
+    this.refreshPreferences()
+    this.setStatus({
+      message:
+        this.status.phase === 'downloading'
+          ? `版本 ${version} 仍會完成背景準備，但不再提示。`
+          : `已跳過版本 ${version}；手動準備更新可解除跳過。`
+    })
+  }
+
+  async snoozeAvailableVersion(): Promise<void> {
+    const version = this.status.availableVersion
+    if (!version) return
+    await this.preferences.snoozeVersion(version, this.now() + UPDATE_SNOOZE_DELAY_MS)
+    this.refreshPreferences()
+  }
+
+  private refreshPreferences(): void {
+    this.status = {
+      ...this.status,
+      preferences: this.preferences.get(),
+      promptSuppressed: this.isPromptSuppressed(this.status.availableVersion)
+    }
+  }
+
+  private isPromptSuppressed(version: string | undefined): boolean {
+    if (!version) return false
+    const preferences = this.preferences.get()
+    if (preferences.skippedVersion === version) return true
+    return (
+      preferences.snoozedVersion === version &&
+      preferences.snoozeUntil !== null &&
+      preferences.snoozeUntil > this.now()
+    )
   }
 
   private setStatus(patch: Partial<AppUpdateStatus>): void {
-    this.status = { ...this.status, ...patch }
+    const version = patch.availableVersion ?? this.status.availableVersion
+    this.status = {
+      ...this.status,
+      ...patch,
+      preferences: this.preferences.get(),
+      promptSuppressed: this.isPromptSuppressed(version)
+    }
     for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) window.webContents.send(IPC.APP_UPDATE_CHANGED, this.status)
+      if (!window.isDestroyed()) window.webContents.send(IPC.APP_UPDATE_CHANGED, this.getStatus())
     }
   }
 }
