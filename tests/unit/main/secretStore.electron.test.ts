@@ -203,6 +203,20 @@ async function main(): Promise<void> {
     await store.rebindOpenRouterCredential(firstSnapshot, modelB)
     assert.equal(await store.getCredential('openrouter', openRouterModel), null)
     assert.equal(await store.getCredential('openrouter', modelB), 'sk-or-v1-secret')
+    const admittedBeforeSwitch = await buildAIExplanationRequest(
+      openRouterExecution,
+      { secretStore: store, credentialSnapshot: firstSnapshot }
+    )
+    assert.equal(
+      admittedBeforeSwitch.model,
+      openRouterModel,
+      '切換前已捕獲的請求仍固定使用原模型'
+    )
+    assert.equal(
+      admittedBeforeSwitch.apiKey,
+      'sk-or-v1-secret',
+      '切換前已捕獲的請求不應因來源 record 改綁而失去 key snapshot'
+    )
     const secondSnapshot = await store.captureActiveCredential({
       provider: 'openrouter',
       model: modelB

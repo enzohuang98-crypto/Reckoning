@@ -147,6 +147,54 @@ async function main(): Promise<void> {
   assert.equal(emptyResult.ok, false)
   if (!emptyResult.ok) assert.equal(emptyResult.diagnostic?.category, 'model_unavailable')
 
+  let listingCapture = 0
+  const staleListingStore = {
+    ...fakeStore(),
+    async captureActiveCredential() {
+      listingCapture += 1
+      return {
+        credential: source,
+        apiKey: 'synthetic-saved-key',
+        revision: listingCapture
+      }
+    }
+  }
+  const staleListing = await new OpenRouterSavedModelService(staleListingStore, {
+    async listFreeModels() { return models },
+    async testCredentialWithModels() { throw new Error('unreachable') }
+  }).listModels(source)
+  assert.equal(staleListing.ok, false, '清單回來前 credential revision 改變必須丟棄舊清單')
+  if (!staleListing.ok) assert.equal(staleListing.code, 'credential_changed')
+
+  for (const expected of [401, 403, 429, 502] as const) {
+    const store = fakeStore()
+    const result = await new OpenRouterSavedModelService(store, {
+      async listFreeModels() { return models },
+      async testCredentialWithModels() {
+        throw new AIHttpError(expected, 'generation', 'synthetic')
+      }
+    }).switchModel(source, targetModel, `operation-generation-${expected}`)
+    assert.equal(result.ok, false)
+    if (!result.ok) assert.equal(result.diagnostic?.httpStatus, expected)
+    assert.equal(store.rebindCount, 0, `generation ${expected} 不得持久化切換`)
+  }
+
+  const generationTimeoutStore = fakeStore()
+  const generationTimeout = await new OpenRouterSavedModelService(
+    generationTimeoutStore,
+    {
+      async listFreeModels() { return models },
+      async testCredentialWithModels() {
+        throw new DOMException('synthetic timeout', 'TimeoutError')
+      }
+    }
+  ).switchModel(source, targetModel, 'operation-generation-timeout')
+  assert.equal(generationTimeout.ok, false)
+  if (!generationTimeout.ok) {
+    assert.equal(generationTimeout.diagnostic?.category, 'timeout')
+  }
+  assert.equal(generationTimeoutStore.rebindCount, 0)
+
   const invalidTargetStore = fakeStore()
   const invalidTarget = await new OpenRouterSavedModelService(invalidTargetStore, {
     async listFreeModels() { return models },

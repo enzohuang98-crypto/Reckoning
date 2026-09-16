@@ -73,6 +73,18 @@ export class OpenRouterSavedModelService {
     }
     try {
       const models = await this.provider.listFreeModels(snapshot.apiKey)
+      const current = await this.store.captureActiveCredential(source)
+      if (
+        !current ||
+        current.revision !== snapshot.revision ||
+        current.apiKey !== snapshot.apiKey
+      ) {
+        return {
+          ok: false,
+          code: 'credential_changed',
+          message: '目前使用中的 OpenRouter 憑證已變更，請重新讀取模型清單。'
+        }
+      }
       if (models.length === 0) {
         return {
           ok: false,

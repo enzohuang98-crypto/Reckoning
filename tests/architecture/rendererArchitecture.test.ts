@@ -138,6 +138,11 @@ async function main(): Promise<void> {
       settingsPage,
       /withTimeout\(\s*window\.api\.secret\.status\(\),\s*AI_RECONCILE_TIMEOUT_MS/
     )
+    assert.match(
+      settingsPage,
+      /catch \(error\) \{[\s\S]*?const status = await withTimeout\([\s\S]*?window\.api\.secret\.status\(\)[\s\S]*?try \{[\s\S]*?const reconciled = await withTimeout\(/,
+      '初次切換逾時後必須先查權威 status，再決定是否接回原 operation'
+    )
   })
 
   await check('已驗證的作用中引擎不需要每次啟動重跑短測', () => {

@@ -275,6 +275,22 @@ export function SettingsPage({
       await applySavedSwitchResult(result, attempt)
     } catch (error) {
       if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
+      const status = await withTimeout(
+        window.api.secret.status(),
+        AI_RECONCILE_TIMEOUT_MS,
+        'API Key 狀態對帳逾時。'
+      ).catch(() => null)
+      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
+      if (
+        status?.activeCredential?.provider === 'openrouter' &&
+        status.activeCredential.model === selectedOpenRouterModel
+      ) {
+        setSecretStatus(status)
+        mirrorActiveCredential(status.activeCredential)
+        setConnectionStage('enabled')
+        setSavedMessage(`已改用 ${selectedOpenRouterModel}。`)
+        return
+      }
       try {
         // 同 operationId 會接回 main 的同一個 bounded operation，不會重送驗證。
         const reconciled = await withTimeout(
@@ -284,11 +300,6 @@ export function SettingsPage({
         )
         await applySavedSwitchResult(reconciled, attempt)
       } catch {
-        const status = await withTimeout(
-          window.api.secret.status(),
-          AI_RECONCILE_TIMEOUT_MS,
-          'API Key 狀態對帳逾時。'
-        ).catch(() => null)
         if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
         if (status) {
           setSecretStatus(status)
