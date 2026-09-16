@@ -32,6 +32,7 @@ import { withTimeout } from '../utils/withTimeout'
 
 const SECRET_OPERATION_TIMEOUT_MS = 10_000
 const AI_CONNECT_TIMEOUT_MS = 45_000
+const AI_RECONCILE_TIMEOUT_MS = 10_000
 const SECRET_TIMEOUT_MESSAGE = '操作逾時，請確認磁碟權限或重試。'
 
 interface Props {
@@ -66,6 +67,8 @@ export function SettingsPage({
   const [apiKey, setApiKey] = useState('')
   const [openRouterModels, setOpenRouterModels] = useState<AIModelInfo[]>([])
   const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState('')
+  const [savedModelsLoaded, setSavedModelsLoaded] = useState(false)
+  const [savedModelsError, setSavedModelsError] = useState<string | null>(null)
   const [connectionStage, setConnectionStage] = useState<AiConnectionStage>('idle')
   const [secretStatus, setSecretStatus] = useState<SecretStatus>(EMPTY_SECRET_STATUS)
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
@@ -86,6 +89,7 @@ export function SettingsPage({
   const [updateBusy, setUpdateBusy] = useState(false)
   const [license, setLicense] = useState<LicenseStatus | null>(null)
   const connectAttemptRef = useRef(0)
+  const savedModelAttemptRef = useRef(0)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -93,6 +97,7 @@ export function SettingsPage({
     return () => {
       mountedRef.current = false
       connectAttemptRef.current += 1
+      savedModelAttemptRef.current += 1
     }
   }, [])
 
@@ -119,7 +124,12 @@ export function SettingsPage({
       SECRET_OPERATION_TIMEOUT_MS,
       SECRET_TIMEOUT_MESSAGE
     )
-      .then(setSecretStatus)
+      .then((status) => {
+        setSecretStatus(status)
+        if (status.activeCredential?.provider === 'openrouter') {
+          setSelectedOpenRouterModel(status.activeCredential.model)
+        }
+      })
       .catch(() => setOperationError('無法查詢 API Key 狀態。'))
     void refreshEngine()
     window.api.license.status().then(setLicense).catch(() => setLicense(null))
@@ -159,6 +169,152 @@ export function SettingsPage({
           ? credential.baseUrl ?? ''
           : ''
     })
+  }
+
+  const mirrorActiveCredential = (credential: SecretCredentialRef): boolean => {
+    const next = {
+      ...settings,
+      aiProvider: credential.provider,
+      aiModel: credential.model,
+      aiBaseUrl:
+        credential.provider === 'openai-compatible'
+          ? credential.baseUrl ?? ''
+          : ''
+    }
+    const saved = saveSettings(next)
+    // main active 是真實來源；即使 localStorage 失敗，記憶體鏡像也必須立即同步，
+    // 避免下一次生成仍送出舊模型。
+    onSettingsChange(next)
+    if (!saved.ok) {
+      setOperationError(
+        `${saved.message ?? '設定儲存失敗。'} 已依目前使用中的憑證修正本次執行設定；請稍後重試儲存。`
+      )
+      return false
+    }
+    setOperationError(null)
+    return true
+  }
+
+  const loadSavedModels = async (): Promise<void> => {
+    const source = secretStatus.activeCredential
+    if (source?.provider !== 'openrouter') return
+    const attempt = ++savedModelAttemptRef.current
+    setSecretBusy(true)
+    setConnectionStage('catalog')
+    setSavedModelsError(null)
+    try {
+      const result = await withTimeout(
+        window.api.ai.listSavedOpenRouterModels({ sourceCredential: source }),
+        AI_CONNECT_TIMEOUT_MS,
+        'OpenRouter 模型清單讀取逾時，請稍後重試。'
+      )
+      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
+      setSavedModelsLoaded(true)
+      if (!result.ok) {
+        setSavedModelsError(result.message)
+        setConnectionStage('enabled')
+        return
+      }
+      setSecretStatus(result.status)
+      const currentModel = selectedOpenRouterModel || source.model
+      setOpenRouterModels(result.models)
+      setSelectedOpenRouterModel(currentModel)
+      setConnectionStage('awaiting-model')
+    } catch (error) {
+      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
+      setSavedModelsLoaded(true)
+      setSavedModelsError(
+        error instanceof Error ? error.message : 'OpenRouter 模型清單讀取失敗。'
+      )
+      setConnectionStage('enabled')
+    } finally {
+      if (mountedRef.current && savedModelAttemptRef.current === attempt) {
+        setSecretBusy(false)
+      }
+    }
+  }
+
+  const applySavedSwitchResult = async (
+    result: Awaited<ReturnType<typeof window.api.ai.switchSavedOpenRouterModel>>,
+    attempt: number
+  ): Promise<void> => {
+    if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
+    if (!result.ok) {
+      setOperationError(result.message)
+      setConnectionStage('awaiting-model')
+      return
+    }
+    setSecretStatus(result.status)
+    setSelectedOpenRouterModel(result.credential.model)
+    const saved = mirrorActiveCredential(result.credential)
+    setConnectionStage('enabled')
+    setSavedMessage(saved ? result.message : null)
+  }
+
+  const switchSavedModel = async (): Promise<void> => {
+    const source = secretStatus.activeCredential
+    if (
+      source?.provider !== 'openrouter' ||
+      !openRouterModels.some((model) => model.id === selectedOpenRouterModel)
+    ) return
+    const attempt = ++savedModelAttemptRef.current
+    const input = {
+      sourceCredential: source,
+      targetModel: selectedOpenRouterModel,
+      operationId: crypto.randomUUID()
+    }
+    setSecretBusy(true)
+    setConnectionStage('generation')
+    setOperationError(null)
+    try {
+      const result = await withTimeout(
+        window.api.ai.switchSavedOpenRouterModel(input),
+        AI_CONNECT_TIMEOUT_MS,
+        'OpenRouter 模型切換逾時，正在對帳目前使用中的模型。'
+      )
+      await applySavedSwitchResult(result, attempt)
+    } catch (error) {
+      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
+      const status = await withTimeout(
+        window.api.secret.status(),
+        AI_RECONCILE_TIMEOUT_MS,
+        'API Key 狀態對帳逾時。'
+      ).catch(() => null)
+      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
+      if (
+        status?.activeCredential?.provider === 'openrouter' &&
+        status.activeCredential.model === selectedOpenRouterModel
+      ) {
+        setSecretStatus(status)
+        mirrorActiveCredential(status.activeCredential)
+        setConnectionStage('enabled')
+        setSavedMessage(`已改用 ${selectedOpenRouterModel}。`)
+        return
+      }
+      try {
+        // 同 operationId 會接回 main 的同一個 bounded operation，不會重送驗證。
+        const reconciled = await withTimeout(
+          window.api.ai.switchSavedOpenRouterModel(input),
+          AI_RECONCILE_TIMEOUT_MS,
+          'OpenRouter 模型切換仍在處理；請稍後重新整理設定確認。'
+        )
+        await applySavedSwitchResult(reconciled, attempt)
+      } catch {
+        if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
+        if (status) {
+          setSecretStatus(status)
+          if (status.activeCredential) mirrorActiveCredential(status.activeCredential)
+        }
+        setOperationError(
+          error instanceof Error ? error.message : 'OpenRouter 模型切換失敗。'
+        )
+        setConnectionStage('enabled')
+      }
+    } finally {
+      if (mountedRef.current && savedModelAttemptRef.current === attempt) {
+        setSecretBusy(false)
+      }
+    }
   }
 
   const connectionStageForFailure = (): AiConnectionStage =>
@@ -209,7 +365,9 @@ export function SettingsPage({
       }
       setApiKey('')
       setOpenRouterModels([])
-      setSelectedOpenRouterModel('')
+      setSelectedOpenRouterModel(result.credential.model)
+      setSavedModelsLoaded(false)
+      setSavedModelsError(null)
       setConnectionStage('enabled')
       setSavedMessage(result.message)
     } catch (error) {
@@ -415,8 +573,13 @@ export function SettingsPage({
               onApiKeyChange={(value) => {
                 connectAttemptRef.current += 1
                 setApiKey(value)
-                setOpenRouterModels([])
-                setSelectedOpenRouterModel('')
+                if (value.trim()) {
+                  setOpenRouterModels([])
+                  setSavedModelsLoaded(false)
+                  setSavedModelsError(null)
+                } else if (secretStatus.activeCredential?.provider === 'openrouter') {
+                  setSelectedOpenRouterModel(secretStatus.activeCredential.model)
+                }
                 setConnectionStage('idle')
               }}
               secretStatus={secretStatus}
@@ -430,6 +593,10 @@ export function SettingsPage({
               }}
               onConnectKey={() => void connectKey()}
               onRefreshOpenRouterModels={() => void connectKey(true)}
+              onLoadSavedOpenRouterModels={() => void loadSavedModels()}
+              onSwitchSavedOpenRouterModel={() => void switchSavedModel()}
+              savedModelsLoaded={savedModelsLoaded}
+              savedModelsError={savedModelsError}
               onDeleteKey={() => void deleteKey()}
               connectionStage={connectionStage}
             />

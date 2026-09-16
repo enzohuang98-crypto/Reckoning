@@ -80,6 +80,8 @@ export const IPC = {
   AI_HARNESS_TRACE_FEEDBACK: 'ai:harness:trace:feedback',
   AI_TEST_CREDENTIAL: 'ai:test-credential',
   AI_AUTO_CONFIGURE_CREDENTIAL: 'ai:auto-configure-credential',
+  AI_OPENROUTER_SAVED_MODELS: 'ai:openrouter:saved-models',
+  AI_OPENROUTER_SWITCH_MODEL: 'ai:openrouter:switch-model',
   TEACHER_TEST_STATUS: 'teacher-test:status',
   TEACHER_TEST_START: 'teacher-test:start',
   TEACHER_TEST_END: 'teacher-test:end',
@@ -278,6 +280,9 @@ export interface GenerateExplanationChunkPayload {
 export interface GenerateExplanationDonePayload {
   requestId: string
   finalText: string
+  /** main 實際固定使用的 provider/model；renderer 不可用目前設定重標舊回答。 */
+  provider?: AIProviderId
+  model?: string
   usage?: TokenUsage
   evidence?: HarnessEvidence[]
   warnings?: string[]
@@ -345,6 +350,48 @@ export type AutoConfigureCredentialResult =
       message: string
     }
   | { ok: false; message: string; diagnostic?: AICredentialDiagnostic }
+
+export interface SavedOpenRouterModelsInput {
+  sourceCredential: SecretCredentialRef
+}
+
+export interface SwitchSavedOpenRouterModelInput
+  extends SavedOpenRouterModelsInput {
+  targetModel: string
+  operationId: string
+}
+
+export type SavedOpenRouterModelsResult =
+  | {
+      ok: true
+      models: AIModelInfo[]
+      status: SecretStatus
+    }
+  | {
+      ok: false
+      code: 'credential_changed' | 'catalog_unavailable'
+      message: string
+      diagnostic?: AICredentialDiagnostic
+    }
+
+export type SwitchSavedOpenRouterModelResult =
+  | {
+      ok: true
+      credential: SecretCredentialRef
+      status: SecretStatus
+      message: string
+    }
+  | {
+      ok: false
+      code:
+        | 'credential_changed'
+        | 'credential_conflict'
+        | 'operation_busy'
+        | 'validation_failed'
+        | 'storage_failed'
+      message: string
+      diagnostic?: AICredentialDiagnostic
+    }
 
 /* ---------- 永久資料與備份 ---------- */
 
@@ -449,6 +496,14 @@ export interface RendererApi {
       apiKey: string,
       model?: string
     ): Promise<AutoConfigureCredentialResult>
+    /** 使用已存 OpenRouter key 讀取目前可用的具名免費文字模型。 */
+    listSavedOpenRouterModels(
+      input: SavedOpenRouterModelsInput
+    ): Promise<SavedOpenRouterModelsResult>
+    /** 驗證成功後，把同一把已存 key 原子改綁到指定模型。 */
+    switchSavedOpenRouterModel(
+      input: SwitchSavedOpenRouterModelInput
+    ): Promise<SwitchSavedOpenRouterModelResult>
   }
   teacherTest: {
     status(): Promise<TeacherTestRunStatusV1>

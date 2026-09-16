@@ -46,6 +46,7 @@ interface Props {
   conversation: AIConversation | null
   onConversationChange: (conversation: AIConversation | null) => void
   onRecordGuess: (guess: UserGuess) => void
+  onOpenAiSettings: () => void
 }
 
 export function AnalysisWorkspace({
@@ -65,7 +66,8 @@ export function AnalysisWorkspace({
   onDeleteSavedPosition,
   conversation,
   onConversationChange,
-  onRecordGuess
+  onRecordGuess,
+  onOpenAiSettings
 }: Props): JSX.Element {
   const [activeView, setActiveView] = useState<AnalysisView>('coach')
   const [draftMove, setDraftMove] = useState('')
@@ -331,6 +333,7 @@ export function AnalysisWorkspace({
                   onReplayCandidates={setReplayCandidates}
                   onExplanation={() => undefined}
                   onStatusChange={setAnalysisStatus}
+                  onOpenAiSettings={onOpenAiSettings}
                 />
               </div>
 

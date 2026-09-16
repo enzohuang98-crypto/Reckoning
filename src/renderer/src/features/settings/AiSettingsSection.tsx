@@ -24,6 +24,10 @@ interface Props {
   onOpenRouterModelChange: (model: string) => void
   onConnectKey: () => void
   onRefreshOpenRouterModels?: () => void
+  onLoadSavedOpenRouterModels?: () => void
+  onSwitchSavedOpenRouterModel?: () => void
+  savedModelsLoaded?: boolean
+  savedModelsError?: string | null
   onDeleteKey: () => void
   connectionStage?: AiConnectionStage
 }
@@ -41,11 +45,16 @@ export function AiSettingsSection({
   onOpenRouterModelChange,
   onConnectKey,
   onRefreshOpenRouterModels,
+  onLoadSavedOpenRouterModels,
+  onSwitchSavedOpenRouterModel,
+  savedModelsLoaded = false,
+  savedModelsError = null,
   onDeleteKey,
   connectionStage = 'idle'
 }: Props): JSX.Element {
   const [deleteConfirmation, setDeleteConfirmation] = useState(false)
   const active = secretStatus.activeCredential
+  const savedOpenRouterActive = active?.provider === 'openrouter'
   const selectedModelUnavailable =
     selectedOpenRouterModel !== '' &&
     !openRouterModels.some((model) => model.id === selectedOpenRouterModel)
@@ -119,30 +128,40 @@ export function AiSettingsSection({
           </button>
         </div>
 
-        {openRouterModels.length > 0 && (
+        {(savedOpenRouterActive || openRouterModels.length > 0) && (
           <div className="field">
             <label className="field-label" htmlFor="openrouter-free-model">
               OpenRouter 免费模型
             </label>
-            <select
-              id="openrouter-free-model"
-              aria-label="OpenRouter 免费模型"
-              className="select"
-              value={selectedOpenRouterModel}
-              disabled={secretBusy}
-              onChange={(event) => onOpenRouterModelChange(event.target.value)}
-            >
-              {selectedModelUnavailable && (
-                <option value={selectedOpenRouterModel} disabled>
-                  {selectedOpenRouterModel} · 已不可用，請重新選擇
-                </option>
-              )}
-              {openRouterModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label} · {model.id}
-                </option>
-              ))}
-            </select>
+            {openRouterModels.length > 0 ? (
+              <select
+                id="openrouter-free-model"
+                aria-label="OpenRouter 免费模型"
+                className="select"
+                value={selectedOpenRouterModel}
+                disabled={secretBusy}
+                onChange={(event) => onOpenRouterModelChange(event.target.value)}
+              >
+                {selectedModelUnavailable && (
+                  <option value={selectedOpenRouterModel} disabled>
+                    {selectedOpenRouterModel} · 已不可用，請重新選擇
+                  </option>
+                )}
+                {openRouterModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label} · {model.id}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="muted small" role="status">
+                {savedModelsError
+                  ? `模型清單讀取失敗：${savedModelsError}`
+                  : savedModelsLoaded
+                    ? '目前沒有可用的具名免費文字模型。'
+                    : '尚未讀取候選模型；已存金鑰不需要重新輸入。'}
+              </p>
+            )}
             <p className="muted small">
               清单来自 OpenRouter 官方即时目录；只列具名的 :free 模型，不使用会随机换模型的自动路由。
             </p>
@@ -151,7 +170,25 @@ export function AiSettingsSection({
                 目前選擇的模型已不在最新清單，請重新選擇模型。
               </p>
             )}
-            {onRefreshOpenRouterModels && (
+            {savedOpenRouterActive && !apiKey.trim() && onSwitchSavedOpenRouterModel && (
+              <button
+                className="btn small"
+                aria-label="使用已存金鑰切換模型"
+                disabled={secretBusy || openRouterModels.length === 0 || selectedModelUnavailable}
+                onClick={onSwitchSavedOpenRouterModel}
+              >
+                使用此模型
+              </button>
+            )}
+            {savedOpenRouterActive && !apiKey.trim() && onLoadSavedOpenRouterModels ? (
+              <button
+                className="btn ghost small"
+                disabled={secretBusy}
+                onClick={onLoadSavedOpenRouterModels}
+              >
+                {openRouterModels.length > 0 ? '重新讀取免費模型' : '讀取模型'}
+              </button>
+            ) : onRefreshOpenRouterModels && openRouterModels.length > 0 ? (
               <button
                 className="btn ghost small"
                 disabled={secretBusy}
@@ -159,7 +196,7 @@ export function AiSettingsSection({
               >
                 重新讀取免費模型
               </button>
-            )}
+            ) : null}
           </div>
         )}
 

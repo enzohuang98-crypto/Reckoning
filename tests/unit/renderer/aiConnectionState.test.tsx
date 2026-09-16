@@ -358,6 +358,180 @@ async function settingsBackupFlow(): Promise<void> {
   }
 }
 
+async function savedOpenRouterSwitchFlow(): Promise<void> {
+  let active: SecretStatus = {
+    configured: true,
+    needsReentry: false,
+    activeCredential: { provider: 'openrouter', model: models[0]!.id },
+    credentials: [{
+      provider: 'openrouter', model: models[0]!.id,
+      configured: true, needsReentry: false
+    }]
+  }
+  const listedSources: unknown[] = []
+  const switches: Array<{ targetModel: string; operationId: string }> = []
+  const settingsChanges: AppSettings[] = []
+  const storage = new Map<string, string>()
+  let failSettingsWrite = false
+  let simulateSwitchTimeout = false
+  let reconciliationTarget: string | null = null
+  const api = {
+    ai: {
+      async listSavedOpenRouterModels(input: unknown) {
+        listedSources.push(input)
+        return { ok: true as const, models, status: active }
+      },
+      async switchSavedOpenRouterModel(input: {
+        targetModel: string
+        operationId: string
+      }) {
+        switches.push(input)
+        if (simulateSwitchTimeout) return new Promise<never>(() => undefined)
+        active = {
+          configured: true,
+          needsReentry: false,
+          activeCredential: { provider: 'openrouter', model: input.targetModel },
+          credentials: [{
+            provider: 'openrouter', model: input.targetModel,
+            configured: true, needsReentry: false
+          }]
+        }
+        return {
+          ok: true as const,
+          credential: active.activeCredential!,
+          status: active,
+          message: 'switched'
+        }
+      }
+    },
+    secret: {
+      isAvailable: async () => true,
+      status: async () => {
+        if (reconciliationTarget) {
+          active = {
+            configured: true,
+            needsReentry: false,
+            activeCredential: { provider: 'openrouter', model: reconciliationTarget },
+            credentials: [{
+              provider: 'openrouter', model: reconciliationTarget,
+              configured: true, needsReentry: false
+            }]
+          }
+          reconciliationTarget = null
+        }
+        return active
+      },
+      delete: async () => ({ ok: true as const, status: emptySecretStatus })
+    },
+    engine: { listInstallations: async () => emptyEngineRegistry },
+    license: { status: async () => ({ activated: false, message: 'not activated' }) },
+    update: {
+      onChanged: () => () => undefined,
+      status: async () => null
+    }
+  } as unknown as RendererApi
+  const localStorage = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      if (failSettingsWrite) throw new Error('synthetic localStorage failure')
+      storage.set(key, value)
+    },
+    removeItem: (key: string) => { storage.delete(key) }
+  }
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const previousLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: localStorage })
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { api, setTimeout, clearTimeout, localStorage }
+  })
+  const renderPage = (): TestRenderer.ReactTestRenderer => TestRenderer.create(
+    <SettingsPage
+      settings={{ ...DEFAULT_SETTINGS, aiProvider: 'openrouter', aiModel: active.activeCredential!.model }}
+      onSettingsChange={(next) => settingsChanges.push(next)}
+      onDataImported={() => undefined}
+      getCurrentDataSnapshot={() => ({
+        schemaVersion: 2, savedPositions: [], conversations: [], userGuesses: []
+      })}
+      dataRecoveryRequired={false}
+    />
+  )
+  let renderer: TestRenderer.ReactTestRenderer | null = null
+  try {
+    TestRenderer.act(() => { renderer = renderPage() })
+    await flush()
+    assert.equal(
+      renderer!.root.findByProps({ 'aria-label': 'AI API Key' }).props.value,
+      '',
+      '已存 key 永遠不回填 renderer'
+    )
+    TestRenderer.act(() => buttonByText(renderer!.root, '讀取模型').props.onClick())
+    await flush()
+    assert.equal(listedSources.length, 1)
+    const select = renderer!.root.findByProps({ id: 'openrouter-free-model' })
+    assert.equal(select.props.value, models[0]!.id)
+    TestRenderer.act(() => select.props.onChange({ target: { value: models[1]!.id } }))
+    assert.equal(switches.length, 0, '下拉只更新草稿，不得自動啟用')
+    failSettingsWrite = true
+    TestRenderer.act(() =>
+      renderer!.root
+        .findByProps({ 'aria-label': '使用已存金鑰切換模型' })
+        .props.onClick()
+    )
+    await flush()
+    assert.equal(switches.length, 1)
+    assert.equal(
+      settingsChanges.at(-1)?.aiModel,
+      models[1]!.id,
+      'localStorage 失敗仍須以 main active model 修正記憶體設定'
+    )
+    assert.match(textContent(renderer!.root), /設定儲存失敗/)
+    assert.match(switches[0]!.operationId, /^[0-9a-f-]{36}$/)
+    renderer!.unmount()
+    renderer = null
+
+    TestRenderer.act(() => { renderer = renderPage() })
+    await flush()
+    assert.ok(buttonByText(renderer!.root, '讀取模型'), '重開設定後仍可用已存 key 讀取模型')
+    assert.match(textContent(renderer!.root), new RegExp(models[1]!.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+
+    TestRenderer.act(() => buttonByText(renderer!.root, '讀取模型').props.onClick())
+    await flush()
+    const reopenedSelect = renderer!.root.findByProps({ id: 'openrouter-free-model' })
+    TestRenderer.act(() => reopenedSelect.props.onChange({ target: { value: models[0]!.id } }))
+    await flush()
+    failSettingsWrite = false
+    simulateSwitchTimeout = true
+    reconciliationTarget = models[0]!.id
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = ((handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
+      originalSetTimeout(handler, 0, ...args)) as typeof setTimeout
+    try {
+      TestRenderer.act(() =>
+        renderer!.root
+          .findByProps({ 'aria-label': '使用已存金鑰切換模型' })
+          .props.onClick()
+      )
+      await flush()
+      await flush()
+      await TestRenderer.act(async () => {
+        await new Promise<void>((resolve) => originalSetTimeout(resolve, 20))
+      })
+    } finally {
+      globalThis.setTimeout = originalSetTimeout
+    }
+    assert.equal(switches.length, 2, 'timeout 後 status 已對帳成功時不得重送切換')
+    assert.equal(settingsChanges.at(-1)?.aiModel, models[0]!.id)
+    console.log('Saved OpenRouter empty-key, draft, switch and reopen UI flow: passed')
+  } finally {
+    if (renderer) TestRenderer.act(() => renderer?.unmount())
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+    if (previousLocalStorage) Object.defineProperty(globalThis, 'localStorage', previousLocalStorage)
+    else Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+}
+
 async function main(): Promise<void> {
   const requests: Array<{
     apiKey: string
@@ -538,6 +712,7 @@ async function main(): Promise<void> {
   }
   await setupWizardFlow()
   await settingsBackupFlow()
+  await savedOpenRouterSwitchFlow()
 }
 
 void main().catch((error) => {

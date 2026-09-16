@@ -303,6 +303,7 @@ async function main(): Promise<void> {
     aiModel: 'changed-after-failure-model'
   }
   const panelRef = React.createRef<AnalysisPanelHandle>()
+  let openAiSettings = 0
   const callbacks = {
     onActiveViewChange: () => undefined,
     onConversationChange: (next: AIConversation | null) => {
@@ -312,7 +313,8 @@ async function main(): Promise<void> {
     onResult: () => undefined,
     onReplayCandidates: (_: EngineCandidateMove[]) => undefined,
     onExplanation: () => undefined,
-    onStatusChange: () => undefined
+    onStatusChange: () => undefined,
+    onOpenAiSettings: () => { openAiSettings += 1 }
   }
   const panel = (settings: AppSettings, selection = actualMove) => (
     <AnalysisPanel
@@ -395,16 +397,25 @@ async function main(): Promise<void> {
       aiErrorListener?.({
         requestId: failedRegeneration.requestId,
         code: 'provider_error',
-        message: 'OpenRouter 暫時 503'
+        message: '目前模型暫時無法完成請求 (502)。',
+        diagnostic: {
+          stage: 'generation',
+          category: 'provider_unavailable',
+          retryable: true,
+          httpStatus: 502,
+          message: '目前模型暫時無法完成請求 (502)。'
+        }
       })
     })
     assert.match(textContent(renderer.root), /OLD_ANSWER_MUST_REMAIN_VISIBLE/)
-    assert.match(textContent(renderer.root), /OpenRouter 暫時 503/)
+    assert.match(textContent(renderer.root), /目前模型暫時無法完成請求 \(502\)/)
     assert.equal(
       conversationChanges.includes(null),
       false,
-      '503 不得清除已儲存的對話'
+      '502 不得清除已儲存的對話'
     )
+    act(() => findButton(renderer!, '更換模型').props.onClick())
+    assert.equal(openAiSettings, 1, '502 應提供前往 AI 設定的可操作入口')
     act(() => {
       findButton(renderer!, '複製').props.onClick()
     })
@@ -418,7 +429,7 @@ async function main(): Promise<void> {
     act(() => {
       panelRef.current?.requestExplanation()
     })
-    assert.equal(aiStarts.length, 4, '503 後可以針對同一局面重試')
+    assert.equal(aiStarts.length, 4, '502 後可以針對同一局面重試')
     const successfulRegeneration = aiStarts[3]
     assert.notEqual(successfulRegeneration.requestId, failedRegeneration.requestId)
     assert.equal(successfulRegeneration.analysisId, firstAiRequest.analysisId)
