@@ -39,6 +39,8 @@ export class AppUpdaterService {
   private readonly now: () => number
   private configured = false
   private status: AppUpdateStatus
+  private initialization: Promise<void> | null = null
+  private initialized = false
   private preparePromise: Promise<void> | null = null
   private installPromise: Promise<void> | null = null
 
@@ -120,9 +122,19 @@ export class AppUpdaterService {
     return { ...this.status, preferences: { ...this.status.preferences } }
   }
 
+  initialize(): Promise<void> {
+    if (this.initialization) return this.initialization
+    this.initialization = this.preferences.initialize().then(() => {
+      this.refreshPreferences()
+      this.initialized = true
+    })
+    return this.initialization
+  }
+
   registerIpc(): void {
-    ipcMain.handle(IPC.APP_UPDATE_STATUS, (event): AppUpdateStatus => {
+    ipcMain.handle(IPC.APP_UPDATE_STATUS, async (event): Promise<AppUpdateStatus> => {
       assertTrustedIpcSender(event)
+      await this.initialize()
       return this.getStatus()
     })
     ipcMain.handle(IPC.APP_UPDATE_CHECK, async (event): Promise<AppUpdateStatus> => {
@@ -163,14 +175,19 @@ export class AppUpdaterService {
 
   startAutomaticCheck(): void {
     if (!this.configured) return
-    const firstCheck = setTimeout(() => void this.check(), FIRST_CHECK_DELAY_MS)
-    firstCheck.unref()
-    const recheck = setInterval(() => void this.check(), RECHECK_INTERVAL_MS)
-    recheck.unref()
+    void this.initialize().then(() => {
+      const firstCheck = setTimeout(() => void this.check(), FIRST_CHECK_DELAY_MS)
+      firstCheck.unref()
+      const recheck = setInterval(() => void this.check(), RECHECK_INTERVAL_MS)
+      recheck.unref()
+    }).catch((error: unknown) => {
+      logger.error('初始化更新偏好失敗', error)
+    })
   }
 
   async check(options: { userInitiated?: boolean } = {}): Promise<void> {
     if (!this.configured) return
+    await this.initialize()
     if (
       this.status.phase === 'checking' ||
       this.status.phase === 'downloading' ||
@@ -192,23 +209,26 @@ export class AppUpdaterService {
 
   prepareUpdate(options: { userInitiated?: boolean } = {}): Promise<void> {
     if (this.preparePromise) return this.preparePromise
-    if (!this.configured || !this.status.availableVersion) return Promise.resolve()
-    if (this.status.phase !== 'available' && this.status.phase !== 'error') {
-      return Promise.resolve()
+    if (!this.initialized) {
+      const initialization = this.initialize().then(() => {
+        this.preparePromise = null
+        return this.prepareUpdate(options)
+      })
+      this.preparePromise = initialization
+      return initialization
     }
-
-    const version = this.status.availableVersion
-    if (!options.userInitiated && this.preferences.get().skippedVersion === version) {
-      return Promise.resolve()
-    }
-
-    // 在任何 await 前同步進入 busy 狀態並保存 Promise，封住重入窗口。
-    this.setStatus({
-      phase: 'downloading',
-      downloadPercent: 0,
-      message: `正在背景準備版本 ${version}；可繼續使用。`
-    })
     const operation = (async (): Promise<void> => {
+      if (!this.configured || !this.status.availableVersion) return
+      if (this.status.phase !== 'available' && this.status.phase !== 'error') return
+
+      const version = this.status.availableVersion
+      if (!options.userInitiated && this.preferences.get().skippedVersion === version) return
+
+      this.setStatus({
+        phase: 'downloading',
+        downloadPercent: 0,
+        message: `正在背景準備版本 ${version}；可繼續使用。`
+      })
       try {
         if (options.userInitiated) {
           await this.preferences.clearSkippedVersion(version)
@@ -250,6 +270,7 @@ export class AppUpdaterService {
   }
 
   async setBackgroundPreparation(enabled: boolean): Promise<void> {
+    await this.initialize()
     await this.preferences.setBackgroundPreparation(enabled)
     this.refreshPreferences()
     if (
@@ -263,6 +284,7 @@ export class AppUpdaterService {
   }
 
   async skipAvailableVersion(): Promise<void> {
+    await this.initialize()
     const version = this.status.availableVersion
     if (!version) return
     await this.preferences.skipVersion(version)
@@ -276,6 +298,7 @@ export class AppUpdaterService {
   }
 
   async snoozeAvailableVersion(): Promise<void> {
+    await this.initialize()
     const version = this.status.availableVersion
     if (!version) return
     await this.preferences.snoozeVersion(version, this.now() + UPDATE_SNOOZE_DELAY_MS)

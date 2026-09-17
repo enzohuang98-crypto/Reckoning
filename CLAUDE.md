@@ -21,9 +21,10 @@
   使用者仍可另外指定自備的 UCI/UCCI 引擎。
 - 自動更新：`electron-updater`（`AppUpdaterService`）從 GitHub Releases
   （`enzohuang98-crypto/Reckoning`）取得更新，只在已封裝的 Windows 版啟用；
-  啟動後 5 秒首次檢查，之後每 4 小時重新檢查一次。**只自動偵測與提示，
-  不自動下載**（`autoDownload = false`）；有新版時由 `AppShell` 在標題列顯示提示，
-  實際下載與安裝一律由使用者在設定頁按鈕決定。
+  啟動後 5 秒首次檢查，之後每 4 小時重新檢查一次。SDK 的
+  `autoDownload = false`，但主程序預設會以單一佇列在背景準備偵測到的更新；
+  使用者可在設定頁關閉背景準備、稍後提醒或跳過版本。下載完成後絕不自動
+  關閉或安裝，必須由使用者明確選擇重新啟動，且會先完成目前資料的持久化。
   細節見 `docs/operations/update-channel.md` 與 `docs/operations/release.md`。
 
 ## 啟動指令

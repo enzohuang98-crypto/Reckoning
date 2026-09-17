@@ -44,23 +44,19 @@ function loadUpdateReminder(): UpdateReminder | null {
   }
 }
 
-function saveSkippedVersion(version: string): void {
+function removeLegacySkippedVersion(): void {
   try {
-    window.localStorage.setItem(SKIPPED_UPDATE_KEY, version)
+    window.localStorage.removeItem(SKIPPED_UPDATE_KEY)
   } catch {
-    // localStorage 不可用時，當次執行仍由 React 狀態記住選擇。
+    // 舊資料清理由下一次啟動再嘗試。
   }
 }
 
-function saveUpdateReminder(reminder: UpdateReminder | null): void {
+function removeLegacyUpdateReminder(): void {
   try {
-    if (reminder) {
-      window.localStorage.setItem(UPDATE_REMINDER_KEY, JSON.stringify(reminder))
-    } else {
-      window.localStorage.removeItem(UPDATE_REMINDER_KEY)
-    }
+    window.localStorage.removeItem(UPDATE_REMINDER_KEY)
   } catch {
-    // localStorage 不可用時，提醒排程仍在當次執行有效。
+    // 舊資料清理由下一次啟動再嘗試。
   }
 }
 
@@ -97,14 +93,15 @@ interface Props {
   onTabChange: (tab: AppTab) => void
   updateStatus: AppUpdateStatus | null
   dataError: string | null
+  updateError?: string | null
   dataRecoveryRequired: boolean
   dataRecoveryBusy: boolean
   onRetryLoad: () => void
   onRetrySave: () => void
   onAnalysisCommandMountChange: (element: HTMLDivElement | null) => void
   onDownloadUpdate: () => void
-  onSkipUpdate?: () => void
-  onSnoozeUpdate?: () => void
+  onSkipUpdate?: () => Promise<void>
+  onSnoozeUpdate?: () => Promise<void>
   children: ReactNode
 }
 
@@ -113,29 +110,31 @@ export function AppShell({
   onTabChange,
   updateStatus,
   dataError,
+  updateError = null,
   dataRecoveryRequired,
   dataRecoveryBusy,
   onRetryLoad,
   onRetrySave,
   onAnalysisCommandMountChange,
   onDownloadUpdate,
-  onSkipUpdate = () => undefined,
-  onSnoozeUpdate = () => undefined,
+  onSkipUpdate = async () => undefined,
+  onSnoozeUpdate = async () => undefined,
   children
 }: Props): JSX.Element {
   const handledVersion = useRef<string | null>(null)
   const migratedLegacyPreference = useRef<string | null>(null)
-  const [skippedVersion, setSkippedVersion] = useState(loadSkippedVersion)
-  const [reminder, setReminder] = useState(loadUpdateReminder)
+  const legacySkippedVersion = useRef(loadSkippedVersion())
+  const legacyReminder = useRef(loadUpdateReminder())
   const [dialogVersion, setDialogVersion] = useState<string | null>(null)
-  const availablePromptSuppressed = updateStatus?.promptSuppressed === true || (
-    updateStatus?.phase === 'available' &&
-    !!updateStatus.availableVersion &&
-    !shouldShowUpdateDialog(
-      updateStatus.availableVersion,
-      skippedVersion,
-      reminder,
-      Date.now()
+  const [, setPreferenceClock] = useState(0)
+  const version = updateStatus?.availableVersion
+  const preferences = updateStatus?.preferences
+  const availablePromptSuppressed = !!version && (
+    preferences?.skippedVersion === version ||
+    (
+      preferences?.snoozedVersion === version &&
+      preferences.snoozeUntil !== null &&
+      preferences.snoozeUntil > Date.now()
     )
   )
   const prompt = availablePromptSuppressed ? null : updatePrompt(updateStatus)
@@ -143,73 +142,82 @@ export function AppShell({
   useEffect(() => {
     const version = updateStatus?.availableVersion
     if (!version || migratedLegacyPreference.current === version) return
-    if (skippedVersion === version && updateStatus.preferences.skippedVersion !== version) {
+    if (
+      legacySkippedVersion.current === version &&
+      updateStatus.preferences.skippedVersion !== version
+    ) {
       migratedLegacyPreference.current = version
-      onSkipUpdate()
-      try { window.localStorage.removeItem(SKIPPED_UPDATE_KEY) } catch { /* transient state remains */ }
+      void onSkipUpdate()
+        .then(() => {
+          legacySkippedVersion.current = null
+          removeLegacySkippedVersion()
+        })
+        .catch(() => {
+          migratedLegacyPreference.current = null
+        })
       return
     }
+    const reminder = legacyReminder.current
     if (
       reminder?.version === version &&
       reminder.remindAfter > Date.now() &&
       updateStatus.preferences.snoozedVersion !== version
     ) {
       migratedLegacyPreference.current = version
-      onSnoozeUpdate()
-      saveUpdateReminder(null)
+      void onSnoozeUpdate()
+        .then(() => {
+          legacyReminder.current = null
+          removeLegacyUpdateReminder()
+        })
+        .catch(() => {
+          migratedLegacyPreference.current = null
+        })
     }
-  }, [onSkipUpdate, onSnoozeUpdate, reminder, skippedVersion, updateStatus])
+  }, [onSkipUpdate, onSnoozeUpdate, updateStatus])
+
+  useEffect(() => {
+    const until = updateStatus?.preferences.snoozeUntil
+    if (
+      updateStatus?.availableVersion !== updateStatus?.preferences.snoozedVersion ||
+      until == null ||
+      until <= Date.now()
+    ) return
+    const timer = globalThis.setTimeout(
+      () => setPreferenceClock((current) => current + 1),
+      until - Date.now()
+    )
+    return () => globalThis.clearTimeout(timer)
+  }, [updateStatus])
 
   useEffect(() => {
     if (updateStatus?.phase === 'error') handledVersion.current = null
     const version = updateStatus?.phase === 'available'
       ? updateStatus.availableVersion
       : undefined
-    if (!version || handledVersion.current === version) {
+    if (!version || handledVersion.current === version || availablePromptSuppressed) {
       setDialogVersion(null)
-      return
-    }
-    if (!shouldShowUpdateDialog(version, skippedVersion, reminder, Date.now())) {
-      setDialogVersion(null)
-      if (reminder?.version === version && reminder.remindAfter > Date.now()) {
-        const timer = globalThis.setTimeout(
-          () => setReminder(null),
-          reminder.remindAfter - Date.now()
-        )
-        return () => globalThis.clearTimeout(timer)
-      }
       return
     }
     setDialogVersion(version)
-  }, [reminder, skippedVersion, updateStatus])
+  }, [availablePromptSuppressed, updateStatus])
 
   const updateNow = (): void => {
     if (!dialogVersion) return
     handledVersion.current = dialogVersion
     setDialogVersion(null)
-    setReminder(null)
-    saveUpdateReminder(null)
     onDownloadUpdate()
   }
 
   const remindLater = (): void => {
     if (!dialogVersion) return
-    const nextReminder = {
-      version: dialogVersion,
-      remindAfter: Date.now() + UPDATE_REMINDER_DELAY_MS
-    }
     setDialogVersion(null)
-    setReminder(nextReminder)
-    saveUpdateReminder(nextReminder)
-    onSnoozeUpdate()
+    void onSnoozeUpdate().catch(() => undefined)
   }
 
   const skipVersion = (): void => {
     if (!dialogVersion) return
-    setSkippedVersion(dialogVersion)
-    saveSkippedVersion(dialogVersion)
     setDialogVersion(null)
-    onSkipUpdate()
+    void onSkipUpdate().catch(() => undefined)
   }
 
   return (
@@ -285,6 +293,15 @@ export function AppShell({
                 ? '重新讀取中…'
                 : '重新讀取資料'
               : '重試儲存'}
+          </button>
+        </div>
+      )}
+
+      {updateError && (
+        <div className="global-storage-error" role="alert">
+          <span>{updateError}</span>
+          <button className="btn ghost small" onClick={() => onTabChange('settings')}>
+            前往更新設定
           </button>
         </div>
       )}

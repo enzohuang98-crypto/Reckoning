@@ -81,6 +81,7 @@ async function run(): Promise<void> {
   {
     const { updater, service, directory } = fixture()
     try {
+      await service.initialize()
       updater.emit('update-available', { version: '0.4.14' } as UpdateInfo)
       assert.equal(service.getStatus().phase, 'downloading')
       assert.equal(updater.downloadCalls, 1, '預設應在背景準備更新')

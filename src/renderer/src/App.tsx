@@ -23,6 +23,8 @@ import { withTimeout } from './utils/withTimeout'
 
 type SetupState = 'checking' | 'wizard' | 'done'
 type LicenseState = 'checking' | 'locked' | 'ok'
+const UPDATE_OPERATION_TIMEOUT_MS = 15_000
+const UPDATE_PREPARATION_TIMEOUT_MS = 20 * 60 * 1000
 
 export async function installPreparedUpdateSafely(
   save: () => Promise<boolean>,
@@ -36,6 +38,7 @@ export function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<AppTab>('analyze')
   const [analysisCommandMount, setAnalysisCommandMount] = useState<HTMLDivElement | null>(null)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
+  const [updateError, setUpdateError] = useState<string | null>(null)
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings())
   const [activeConversation, setActiveConversation] = useState<AIConversation | null>(null)
   const [setupState, setSetupState] = useState<SetupState>(() =>
@@ -69,21 +72,29 @@ export function App(): JSX.Element {
   } = useBoardWorkspace()
 
   // 更新狀態：main 會在啟動後與每隔數小時自動檢查，並以事件廣播結果。
-  // 這裡收下狀態讓全域提示詢問；確認一次後，下載完成會自動重啟安裝。
+  // 這裡收下狀態讓全域提示顯示；背景準備完成後仍需明確重新啟動。
   useEffect(() => {
     const unsubscribe = window.api.update.onChanged(setUpdateStatus)
-    void window.api.update
-      .status()
+    void withTimeout(
+      window.api.update.status(),
+      UPDATE_OPERATION_TIMEOUT_MS,
+      '更新狀態查詢逾時。'
+    )
       .then(setUpdateStatus)
       .catch(() => setUpdateStatus(null))
     return unsubscribe
   }, [])
 
   const downloadUpdate = useCallback((): void => {
-    void window.api.update
-      .download()
+    setUpdateError(null)
+    void withTimeout(
+      window.api.update.download(),
+      UPDATE_PREPARATION_TIMEOUT_MS,
+      '更新背景準備逾時，請確認網路後再試。'
+    )
       .then(setUpdateStatus)
       .catch(() => {
+        setUpdateError('更新背景準備失敗，請確認網路後再試。')
         setUpdateStatus((current) =>
           current
             ? {
@@ -99,7 +110,11 @@ export function App(): JSX.Element {
   const installUpdate = useCallback(async (): Promise<AppUpdateStatus> => {
     const result = await installPreparedUpdateSafely(
       flushCurrentData,
-      () => window.api.update.install()
+      () => withTimeout(
+        window.api.update.install(),
+        UPDATE_OPERATION_TIMEOUT_MS,
+        '啟動更新安裝逾時。'
+      )
     )
     if (!result) throw new Error('資料尚未成功保存，已取消重新啟動更新。')
     setUpdateStatus(result)
@@ -284,14 +299,39 @@ export function App(): JSX.Element {
       onTabChange={setActiveTab}
       updateStatus={updateStatus}
       dataError={dataError}
+      updateError={updateError}
       dataRecoveryRequired={dataRecoveryRequired}
       dataRecoveryBusy={dataRecoveryBusy}
       onRetryLoad={retryLoadData}
       onRetrySave={() => saveCurrentData(appData)}
       onAnalysisCommandMountChange={setAnalysisCommandMount}
       onDownloadUpdate={downloadUpdate}
-      onSkipUpdate={() => void window.api.update.skip().then(setUpdateStatus)}
-      onSnoozeUpdate={() => void window.api.update.snooze().then(setUpdateStatus)}
+      onSkipUpdate={async () => {
+        setUpdateError(null)
+        try {
+          setUpdateStatus(await withTimeout(
+            window.api.update.skip(),
+            UPDATE_OPERATION_TIMEOUT_MS,
+            '儲存跳過版本設定逾時。'
+          ))
+        } catch (error) {
+          setUpdateError(error instanceof Error ? error.message : '無法儲存跳過版本設定。')
+          throw error
+        }
+      }}
+      onSnoozeUpdate={async () => {
+        setUpdateError(null)
+        try {
+          setUpdateStatus(await withTimeout(
+            window.api.update.snooze(),
+            UPDATE_OPERATION_TIMEOUT_MS,
+            '儲存稍後提醒設定逾時。'
+          ))
+        } catch (error) {
+          setUpdateError(error instanceof Error ? error.message : '無法儲存稍後提醒設定。')
+          throw error
+        }
+      }}
     >
       <AnalysisWorkspace
         hidden={activeTab !== 'analyze'}

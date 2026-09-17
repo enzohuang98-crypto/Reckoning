@@ -33,6 +33,8 @@ import { withTimeout } from '../utils/withTimeout'
 const SECRET_OPERATION_TIMEOUT_MS = 10_000
 const AI_CONNECT_TIMEOUT_MS = 45_000
 const AI_RECONCILE_TIMEOUT_MS = 10_000
+const UPDATE_OPERATION_TIMEOUT_MS = 15_000
+const UPDATE_PREPARATION_TIMEOUT_MS = 20 * 60 * 1000
 const SECRET_TIMEOUT_MESSAGE = '操作逾時，請確認磁碟權限或重試。'
 
 interface Props {
@@ -135,7 +137,11 @@ export function SettingsPage({
       .catch(() => setOperationError('無法查詢 API Key 狀態。'))
     void refreshEngine()
     window.api.license.status().then(setLicense).catch(() => setLicense(null))
-    window.api.update.status().then(setUpdateStatus).catch(() => setUpdateStatus(null))
+    withTimeout(
+      window.api.update.status(),
+      UPDATE_OPERATION_TIMEOUT_MS,
+      '更新狀態查詢逾時。'
+    ).then(setUpdateStatus).catch(() => setUpdateStatus(null))
     return unsubscribeUpdate
   }, [])
 
@@ -526,12 +532,13 @@ export function SettingsPage({
   }
 
   const runUpdateAction = async (
-    action: () => Promise<AppUpdateStatus>
+    action: () => Promise<AppUpdateStatus>,
+    timeoutMs = UPDATE_OPERATION_TIMEOUT_MS
   ): Promise<void> => {
     setUpdateBusy(true)
     setOperationError(null)
     try {
-      setUpdateStatus(await action())
+      setUpdateStatus(await withTimeout(action(), timeoutMs, '更新操作逾時，請稍後再試。'))
     } catch (error) {
       setOperationError(
         error instanceof Error && error.message
@@ -643,7 +650,10 @@ export function SettingsPage({
               onImportBackup={() => void importBackup()}
               onCheckUpdate={() => void runUpdateAction(() => window.api.update.check())}
               onDownloadUpdate={() =>
-                void runUpdateAction(() => window.api.update.download())
+                void runUpdateAction(
+                  () => window.api.update.download(),
+                  UPDATE_PREPARATION_TIMEOUT_MS
+                )
               }
               onInstallUpdate={() =>
                 void runUpdateAction(onInstallUpdate)

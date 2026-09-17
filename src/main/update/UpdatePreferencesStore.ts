@@ -1,6 +1,5 @@
-import { existsSync } from 'node:fs'
 import {
-  readJsonFile,
+  readJsonFileAsync,
   writeJsonFileAtomicAsync
 } from '../storage/SecureJsonFile'
 import type { UpdatePreferences } from '@shared/types/AppUpdate'
@@ -46,18 +45,25 @@ function normalize(value: unknown): UpdatePreferences {
 }
 
 export class UpdatePreferencesStore {
-  private state: UpdatePreferences
+  private state: UpdatePreferences = { ...DEFAULT_PREFERENCES }
+  private initialization: Promise<void> | null = null
   private writeQueue = Promise.resolve()
 
-  constructor(private readonly filePath: string) {
-    try {
-      this.state = existsSync(filePath)
-        ? normalize(readJsonFile<unknown>(filePath, MAX_PREFERENCES_BYTES))
-        : { ...DEFAULT_PREFERENCES }
-    } catch {
-      // 損壞或不安全的偏好檔不影響啟動；採安全預設且不覆寫原檔。
-      this.state = { ...DEFAULT_PREFERENCES }
-    }
+  constructor(private readonly filePath: string) {}
+
+  initialize(): Promise<void> {
+    if (this.initialization) return this.initialization
+    this.initialization = (async () => {
+      try {
+        this.state = normalize(
+          await readJsonFileAsync<unknown>(this.filePath, MAX_PREFERENCES_BYTES)
+        )
+      } catch {
+        // 缺少、損壞或不安全的偏好檔不影響啟動；採安全預設且不覆寫原檔。
+        this.state = { ...DEFAULT_PREFERENCES }
+      }
+    })()
+    return this.initialization
   }
 
   get(): UpdatePreferences {
@@ -114,6 +120,7 @@ export class UpdatePreferencesStore {
     update: (current: UpdatePreferences) => UpdatePreferences
   ): Promise<void> {
     const write = this.writeQueue.then(async () => {
+      await this.initialize()
       const next = update(this.state)
       if (next === this.state) return
       await writeJsonFileAtomicAsync(this.filePath, next, MAX_PREFERENCES_BYTES)

@@ -21,6 +21,7 @@ async function run(): Promise<void> {
     await store.snoozeVersion('0.4.15', 123456789)
 
     const reopened = new UpdatePreferencesStore(path)
+    await reopened.initialize()
     assert.deepEqual(reopened.get(), {
       backgroundPreparationEnabled: false,
       skippedVersion: '0.4.14',
