@@ -4,9 +4,19 @@ import TestRenderer from 'react-test-renderer'
 import { installPreparedUpdateSafely } from '../../../src/renderer/src/App'
 import { flushLatestSnapshot } from '../../../src/renderer/src/features/app-data/useAppDataStore'
 import { SystemSettingsSection } from '../../../src/renderer/src/features/settings/SystemSettingsSection'
+import { isUnsavedAnalysisDraft } from '../../../src/renderer/src/features/workspace/AnalysisWorkspace'
 import type { AppUpdateStatus } from '../../../src/shared/types/AppUpdate'
 
 async function run(): Promise<void> {
+  assert.equal(isUnsavedAnalysisDraft('h2e2', '', null), true)
+  assert.equal(isUnsavedAnalysisDraft('', '我想搶先手', null), true)
+  assert.equal(isUnsavedAnalysisDraft('h2e2', '我想搶先手', {
+    submissionId: 'submitted-1',
+    move: 'h2e2',
+    reason: '我想搶先手',
+    submittedAt: 1
+  }), false)
+
   const first = { revision: 1 }
   const second = { revision: 2 }
   let current = first
@@ -34,6 +44,41 @@ async function run(): Promise<void> {
     null
   )
   assert.equal(installs, 0, '保存失敗不得退出安裝')
+
+  let saves = 0
+  await assert.rejects(
+    () => installPreparedUpdateSafely(
+      async () => {
+        saves++
+        return true
+      },
+      async () => {
+        installs++
+        return { phase: 'installing' } as AppUpdateStatus
+      },
+      () => true
+    ),
+    /尚未提交/
+  )
+  assert.equal(saves, 0, '尚未提交草稿時不得開始保存或退出流程')
+  assert.equal(installs, 0, '尚未提交草稿時不得呼叫安裝')
+
+  let draftAppearedDuringSave = false
+  await assert.rejects(
+    () => installPreparedUpdateSafely(
+      async () => {
+        draftAppearedDuringSave = true
+        return true
+      },
+      async () => {
+        installs++
+        return { phase: 'installing' } as AppUpdateStatus
+      },
+      () => draftAppearedDuringSave
+    ),
+    /尚未提交/
+  )
+  assert.equal(installs, 0, '保存期間出現新草稿時仍不得呼叫安裝')
 
   const installed = { phase: 'installing' } as AppUpdateStatus
   assert.equal(

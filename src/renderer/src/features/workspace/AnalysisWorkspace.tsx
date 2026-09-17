@@ -47,6 +47,15 @@ interface Props {
   onConversationChange: (conversation: AIConversation | null) => void
   onRecordGuess: (guess: UserGuess) => void
   onOpenAiSettings: () => void
+  onUnsavedDraftChange: (hasUnsavedDraft: boolean) => void
+}
+
+export function isUnsavedAnalysisDraft(
+  draftMove: string,
+  draftReason: string,
+  submittedGuess: SubmittedGuess | null
+): boolean {
+  return submittedGuess === null && Boolean(draftMove.trim() || draftReason.trim())
 }
 
 export function AnalysisWorkspace({
@@ -67,7 +76,8 @@ export function AnalysisWorkspace({
   conversation,
   onConversationChange,
   onRecordGuess,
-  onOpenAiSettings
+  onOpenAiSettings,
+  onUnsavedDraftChange
 }: Props): JSX.Element {
   const [activeView, setActiveView] = useState<AnalysisView>('coach')
   const [draftMove, setDraftMove] = useState('')
@@ -91,6 +101,12 @@ export function AnalysisWorkspace({
   const analysisPanelRef = useRef<AnalysisPanelHandle>(null)
   const analysisLayoutRef = useRef<HTMLDivElement>(null)
   const detailsCloseButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    onUnsavedDraftChange(
+      isUnsavedAnalysisDraft(draftMove, draftReason, submittedGuess)
+    )
+  }, [draftMove, draftReason, onUnsavedDraftChange, submittedGuess])
 
   useEffect(() => {
     setResult(null)
