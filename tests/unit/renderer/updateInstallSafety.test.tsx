@@ -4,8 +4,153 @@ import TestRenderer from 'react-test-renderer'
 import { installPreparedUpdateSafely } from '../../../src/renderer/src/App'
 import { flushLatestSnapshot } from '../../../src/renderer/src/features/app-data/useAppDataStore'
 import { SystemSettingsSection } from '../../../src/renderer/src/features/settings/SystemSettingsSection'
-import { isUnsavedAnalysisDraft } from '../../../src/renderer/src/features/workspace/AnalysisWorkspace'
+import {
+  AnalysisWorkspace,
+  isUnsavedAnalysisDraft
+} from '../../../src/renderer/src/features/workspace/AnalysisWorkspace'
+import { parseFen } from '../../../src/shared/logic/board/fen'
 import type { AppUpdateStatus } from '../../../src/shared/types/AppUpdate'
+import { START_FEN } from '../../../src/shared/types/BoardState'
+import { DEFAULT_SETTINGS } from '../../../src/shared/types/Settings'
+import type { RendererApi } from '../../../src/shared/types/ipc'
+
+async function flushMicrotasks(): Promise<void> {
+  for (let index = 0; index < 8; index += 1) await Promise.resolve()
+}
+
+async function verifyWorkspaceDraftBlocksInstall(): Promise<void> {
+  const parsed = parseFen(START_FEN)
+  assert.equal(parsed.valid, true)
+  if (!parsed.valid) throw new Error(parsed.message)
+
+  const unsubscribe = (): void => undefined
+  const api = {
+    engine: {
+      startAnalysis: () => undefined,
+      cancelAnalysis: () => undefined,
+      onAnalysisResult: () => unsubscribe,
+      onAnalysisProgress: () => unsubscribe,
+      onAnalysisError: () => unsubscribe,
+      status: async () => ({
+        engineId: null,
+        available: false,
+        engineName: null,
+        protocol: null
+      }),
+      test: async () => ({ ok: false, error: 'fixture unavailable' }),
+      listInstallations: async () => ({
+        activeEngineId: null,
+        verificationEngineId: null,
+        installations: []
+      }),
+      selectInstallation: async () => ({
+        activeEngineId: null,
+        verificationEngineId: null,
+        installations: []
+      })
+    },
+    ai: {
+      startExplanation: () => undefined,
+      cancelExplanation: () => undefined,
+      continueExplanation: () => undefined,
+      onExplanationChunk: () => unsubscribe,
+      onExplanationDone: () => unsubscribe,
+      onExplanationError: () => unsubscribe,
+      onHarnessProgress: () => unsubscribe,
+      setHarnessFeedback: async () => ({ ok: true as const })
+    },
+    teacherTest: {
+      status: async () => ({
+        currentAppVersion: '0.4.14',
+        active: false,
+        manifest: null
+      })
+    }
+  } as unknown as RendererApi
+
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      api,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      setTimeout: () => 1,
+      clearTimeout: () => undefined,
+      setInterval: () => 1,
+      clearInterval: () => undefined,
+      requestAnimationFrame: () => 1,
+      confirm: () => true
+    } as unknown as Window & typeof globalThis
+  })
+
+  let hasUnsavedDraft = false
+  let saves = 0
+  let installs = 0
+  let renderer: TestRenderer.ReactTestRenderer | null = null
+  try {
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(
+        <AnalysisWorkspace
+          hidden={false}
+          headerCommandMount={null}
+          board={parsed.board}
+          settings={DEFAULT_SETTINGS}
+          canUndo={false}
+          canRedo={false}
+          onBoardChange={() => undefined}
+          onUndo={() => undefined}
+          onRedo={() => undefined}
+          onRestoreOriginal={() => undefined}
+          savedPositions={[]}
+          onSavePosition={() => undefined}
+          onLoadSavedPosition={() => undefined}
+          onDeleteSavedPosition={() => undefined}
+          conversation={null}
+          onConversationChange={() => undefined}
+          onRecordGuess={() => undefined}
+          onOpenAiSettings={() => undefined}
+          onUnsavedDraftChange={(value) => {
+            hasUnsavedDraft = value
+          }}
+        />
+      )
+      await flushMicrotasks()
+    })
+    assert.ok(renderer)
+
+    TestRenderer.act(() => {
+      renderer?.root.findByProps({ id: 'analysis-tab-guess' }).props.onClick()
+    })
+    TestRenderer.act(() => {
+      renderer?.root.findByProps({ id: 'guess-reason-input' }).props.onChange({
+        target: { value: '尚未送出的理由' }
+      })
+    })
+    assert.equal(hasUnsavedDraft, true, '分析頁草稿必須同步到更新阻擋狀態')
+
+    await assert.rejects(
+      () => installPreparedUpdateSafely(
+        async () => {
+          saves++
+          return true
+        },
+        async () => {
+          installs++
+          return { phase: 'installing' } as AppUpdateStatus
+        },
+        () => hasUnsavedDraft
+      ),
+      /尚未提交/
+    )
+    assert.equal(saves, 0, '實際分析頁草稿存在時不得開始保存')
+    assert.equal(installs, 0, '實際分析頁草稿存在時不得呼叫安裝')
+  } finally {
+    if (renderer) TestRenderer.act(() => renderer?.unmount())
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+}
 
 async function run(): Promise<void> {
   assert.equal(isUnsavedAnalysisDraft('h2e2', '', null), true)
@@ -89,6 +234,8 @@ async function run(): Promise<void> {
     installed
   )
   assert.equal(installs, 1)
+
+  await verifyWorkspaceDraftBlocksInstall()
 
   let downloads = 0
   let readyInstalls = 0
