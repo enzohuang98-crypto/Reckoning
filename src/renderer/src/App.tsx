@@ -30,12 +30,17 @@ type SetupState = 'checking' | 'wizard' | 'done'
 type LicenseState = 'checking' | 'locked' | 'ok'
 const UPDATE_OPERATION_TIMEOUT_MS = 15_000
 const UPDATE_PREPARATION_TIMEOUT_MS = 20 * 60 * 1000
+export const UNSAVED_UPDATE_DRAFT_MESSAGE =
+  '仍有尚未提交的著法或理由；請先提交或清除草稿，再重新啟動完成更新。'
 
 export async function installPreparedUpdateSafely(
   save: () => Promise<boolean>,
-  install: () => Promise<AppUpdateStatus>
+  install: () => Promise<AppUpdateStatus>,
+  hasUnsavedDraft: () => boolean = () => false
 ): Promise<AppUpdateStatus | null> {
+  if (hasUnsavedDraft()) throw new Error(UNSAVED_UPDATE_DRAFT_MESSAGE)
   if (!(await save())) return null
+  if (hasUnsavedDraft()) throw new Error(UNSAVED_UPDATE_DRAFT_MESSAGE)
   return install()
 }
 
@@ -51,6 +56,7 @@ export function App(): JSX.Element {
   )
   const [licenseState, setLicenseState] = useState<LicenseState>('checking')
   const pendingConversationId = useRef<string | null>(null)
+  const hasUnsavedAnalysisDraftRef = useRef(false)
 
   const {
     appData,
@@ -125,7 +131,8 @@ export function App(): JSX.Element {
         window.api.update.install(),
         UPDATE_OPERATION_TIMEOUT_MS,
         '啟動更新安裝逾時。'
-      )
+      ),
+      () => hasUnsavedAnalysisDraftRef.current
     )
     if (!result) throw new Error('資料尚未成功保存，已取消重新啟動更新。')
     setUpdateStatus(result)
@@ -368,6 +375,9 @@ export function App(): JSX.Element {
         onConversationChange={changeConversation}
         onRecordGuess={recordGuess}
         onOpenAiSettings={() => setActiveTab('settings')}
+        onUnsavedDraftChange={(hasUnsavedDraft) => {
+          hasUnsavedAnalysisDraftRef.current = hasUnsavedDraft
+        }}
       />
 
       {activeTab === 'settings' && (

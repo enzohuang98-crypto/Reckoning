@@ -140,6 +140,7 @@ export class AppUpdaterService {
     })
     this.updater.on('error', (error: Error) => {
       logger.error('自動更新失敗', error)
+      if (this.status.phase === 'installing') this.installPromise = null
       this.setStatus({
         phase: 'error',
         downloadPercent: undefined,
@@ -250,46 +251,54 @@ export class AppUpdaterService {
 
   prepareUpdate(options: { userInitiated?: boolean } = {}): Promise<void> {
     if (this.preparePromise) return this.preparePromise
-    if (!this.initialized) {
-      const initialization = this.initialize().then(() => {
-        this.preparePromise = null
-        return this.prepareUpdate(options)
-      })
-      this.preparePromise = initialization
-      return initialization
-    }
-    const operation = (async (): Promise<void> => {
-      if (!this.configured || !this.status.availableVersion) return
-      if (this.status.phase !== 'available' && this.status.phase !== 'error') return
-
-      const version = this.status.availableVersion
-      if (!options.userInitiated && this.preferences.get().skippedVersion === version) return
-
-      this.setStatus({
-        phase: 'downloading',
-        downloadPercent: 0,
-        message: `正在背景準備版本 ${version}；可繼續使用。`
-      })
-      try {
-        if (options.userInitiated) {
-          await this.preferences.clearSkippedVersion(version)
-          await this.preferences.clearSnooze(version)
-          this.refreshPreferences()
-        }
-        await this.updater.downloadUpdate()
-      } catch (error) {
-        logger.error('下載更新失敗', error)
-        this.setStatus({
-          phase: 'error',
-          downloadPercent: undefined,
-          message: '更新下載失敗，請確認網路後再試。'
-        })
-      } finally {
-        this.preparePromise = null
-      }
-    })()
+    if (this.initialized && !this.canPrepareUpdate(options)) return Promise.resolve()
+    const execution = this.initialized
+      ? this.prepareUpdateInitialized(options)
+      : this.initialize().then(() => this.prepareUpdateInitialized(options))
+    const operation = execution.finally(() => {
+      if (this.preparePromise === operation) this.preparePromise = null
+    })
     this.preparePromise = operation
     return operation
+  }
+
+  private async prepareUpdateInitialized(
+    options: { userInitiated?: boolean }
+  ): Promise<void> {
+    if (!this.canPrepareUpdate(options) || !this.status.availableVersion) return
+
+    const version = this.status.availableVersion
+
+    this.setStatus({
+      phase: 'downloading',
+      downloadPercent: 0,
+      message: `正在背景準備版本 ${version}；可繼續使用。`
+    })
+    try {
+      if (options.userInitiated) {
+        await this.preferences.clearSkippedVersion(version)
+        await this.preferences.clearSnooze(version)
+        this.refreshPreferences()
+      }
+      await this.updater.downloadUpdate()
+    } catch (error) {
+      logger.error('下載更新失敗', error)
+      this.setStatus({
+        phase: 'error',
+        downloadPercent: undefined,
+        message: '更新下載失敗，請確認網路後再試。'
+      })
+    }
+  }
+
+  private canPrepareUpdate(options: { userInitiated?: boolean }): boolean {
+    const version = this.status.availableVersion
+    return Boolean(
+      this.configured &&
+      version &&
+      (this.status.phase === 'available' || this.status.phase === 'error') &&
+      (options.userInitiated || this.preferences.get().skippedVersion !== version)
+    )
   }
 
   installPreparedUpdate(): Promise<void> {
@@ -300,10 +309,20 @@ export class AppUpdaterService {
       phase: 'installing',
       message: '正在關閉程式並完成更新…'
     })
-    const operation = new Promise<void>((resolve) => {
+    const operation = new Promise<void>((resolve, reject) => {
       setImmediate(() => {
-        this.updater.quitAndInstall(true, true)
-        resolve()
+        try {
+          this.updater.quitAndInstall(true, true)
+          resolve()
+        } catch (error) {
+          this.installPromise = null
+          logger.error('啟動更新安裝失敗', error)
+          this.setStatus({
+            phase: 'error',
+            message: '無法啟動更新安裝；請重新準備更新後再試。'
+          })
+          reject(error)
+        }
       })
     })
     this.installPromise = operation

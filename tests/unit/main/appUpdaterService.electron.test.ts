@@ -121,6 +121,39 @@ async function run(): Promise<void> {
       await Promise.all([firstInstall, secondInstall])
       await flushImmediate()
       assert.deepEqual(updater.installCalls, [[true, true]], '連點只能觸發一次安裝')
+
+      updater.emit('error', new Error('fixture install failed'))
+      updater.nextDownload = new Deferred<string[]>()
+      updater.emit('update-available', { version: '0.4.14' } as UpdateInfo)
+      await waitFor(() => updater.downloadCalls === 2)
+      updater.emit('update-downloaded', { version: '0.4.14' } as UpdateInfo)
+      updater.nextDownload.resolve([])
+      await service.prepareUpdate()
+      await service.installPreparedUpdate()
+      await flushImmediate()
+      assert.deepEqual(
+        updater.installCalls,
+        [[true, true], [true, true]],
+        '安裝失敗並重新準備完成後必須能再次呼叫安裝'
+      )
+    } finally {
+      cleanup(directory)
+    }
+  }
+
+  {
+    const { updater, service, directory } = fixture()
+    try {
+      await service.initialize()
+      void service.prepareUpdate({ userInitiated: true })
+      updater.emit('update-available', { version: '0.4.14' } as UpdateInfo)
+      await flushImmediate()
+      assert.equal(
+        updater.downloadCalls,
+        1,
+        'idle 早退不得留下已完成的 prepare lock 阻止後續新版下載'
+      )
+      updater.nextDownload.resolve([])
     } finally {
       cleanup(directory)
     }
