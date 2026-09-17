@@ -4,7 +4,12 @@ import type { AIConversation, SavedPosition } from '@shared/types/AppData'
 import type { AppSettings } from '@shared/types/Settings'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
 import type { UserGuess } from '@shared/types/UserGuess'
-import { AppShell, type AppTab } from './app/AppShell'
+import {
+  AppShell,
+  clearLegacyUpdatePreferences,
+  loadLegacyUpdatePreferences,
+  type AppTab
+} from './app/AppShell'
 import { LICENSE_GATE_DISABLED } from './app/productFlags'
 import { StartupScreen } from './app/StartupScreen'
 import { AnalysisWorkspace } from './features/workspace/AnalysisWorkspace'
@@ -76,12 +81,18 @@ export function App(): JSX.Element {
   useEffect(() => {
     const unsubscribe = window.api.update.onChanged(setUpdateStatus)
     void withTimeout(
-      window.api.update.status(),
+      window.api.update.migrateLegacyPreferences(loadLegacyUpdatePreferences()),
       UPDATE_OPERATION_TIMEOUT_MS,
-      '更新狀態查詢逾時。'
+      '更新偏好遷移逾時。'
     )
-      .then(setUpdateStatus)
-      .catch(() => setUpdateStatus(null))
+      .then((status) => {
+        clearLegacyUpdatePreferences()
+        setUpdateStatus(status)
+      })
+      .catch((error: unknown) => {
+        setUpdateStatus(null)
+        setUpdateError(error instanceof Error ? error.message : '更新偏好遷移失敗。')
+      })
     return unsubscribe
   }, [])
 

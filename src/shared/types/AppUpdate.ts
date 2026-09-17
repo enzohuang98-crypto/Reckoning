@@ -17,6 +17,12 @@ export interface UpdatePreferences {
   snoozeUntil: number | null
 }
 
+export interface LegacyUpdatePreferences {
+  skippedVersion: string | null
+  snoozedVersion: string | null
+  snoozeUntil: number | null
+}
+
 export interface AppUpdateStatus {
   phase: AppUpdatePhase
   currentVersion: string

@@ -81,6 +81,27 @@ async function run(): Promise<void> {
   {
     const { updater, service, directory } = fixture()
     try {
+      await service.migrateLegacyPreferences({
+        skippedVersion: '0.4.14',
+        snoozedVersion: null,
+        snoozeUntil: null
+      })
+      updater.emit('update-available', { version: '0.4.14' } as UpdateInfo)
+      await flushImmediate()
+      assert.equal(
+        updater.downloadCalls,
+        0,
+        'renderer 舊跳過偏好必須在首次 available 前阻止背景準備'
+      )
+      assert.equal(service.getStatus().promptSuppressed, true)
+    } finally {
+      cleanup(directory)
+    }
+  }
+
+  {
+    const { updater, service, directory } = fixture()
+    try {
       await service.initialize()
       updater.emit('update-available', { version: '0.4.14' } as UpdateInfo)
       assert.equal(service.getStatus().phase, 'downloading')

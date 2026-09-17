@@ -2,7 +2,7 @@ import {
   readJsonFileAsync,
   writeJsonFileAtomicAsync
 } from '../storage/SecureJsonFile'
-import type { UpdatePreferences } from '@shared/types/AppUpdate'
+import type { LegacyUpdatePreferences, UpdatePreferences } from '@shared/types/AppUpdate'
 
 const MAX_PREFERENCES_BYTES = 8 * 1024
 const MAX_VERSION_LENGTH = 64
@@ -75,6 +75,30 @@ export class UpdatePreferencesStore {
       ...current,
       backgroundPreparationEnabled: enabled
     }))
+  }
+
+  migrateLegacy(input: LegacyUpdatePreferences): Promise<void> {
+    return this.commit((current) => {
+      const skippedVersion = safeVersion(input.skippedVersion)
+      const snoozedVersion = safeVersion(input.snoozedVersion)
+      const snoozeUntil =
+        typeof input.snoozeUntil === 'number' &&
+        Number.isFinite(input.snoozeUntil) &&
+        input.snoozeUntil >= 0
+          ? input.snoozeUntil
+          : null
+      const next = {
+        ...current,
+        skippedVersion: current.skippedVersion ?? skippedVersion,
+        snoozedVersion: current.snoozedVersion ?? snoozedVersion,
+        snoozeUntil: current.snoozeUntil ?? (snoozedVersion ? snoozeUntil : null)
+      }
+      return next.skippedVersion === current.skippedVersion &&
+        next.snoozedVersion === current.snoozedVersion &&
+        next.snoozeUntil === current.snoozeUntil
+        ? current
+        : next
+    })
   }
 
   skipVersion(version: string): Promise<void> {

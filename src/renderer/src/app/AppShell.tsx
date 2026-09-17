@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
+import type { LegacyUpdatePreferences } from '@shared/types/AppUpdate'
 import { Icon } from '../components/ui/Icon'
 
 export type AppTab = 'analyze' | 'settings'
@@ -44,16 +45,18 @@ function loadUpdateReminder(): UpdateReminder | null {
   }
 }
 
-function removeLegacySkippedVersion(): void {
-  try {
-    window.localStorage.removeItem(SKIPPED_UPDATE_KEY)
-  } catch {
-    // 舊資料清理由下一次啟動再嘗試。
+export function loadLegacyUpdatePreferences(): LegacyUpdatePreferences {
+  const reminder = loadUpdateReminder()
+  return {
+    skippedVersion: loadSkippedVersion(),
+    snoozedVersion: reminder?.version ?? null,
+    snoozeUntil: reminder?.remindAfter ?? null
   }
 }
 
-function removeLegacyUpdateReminder(): void {
+export function clearLegacyUpdatePreferences(): void {
   try {
+    window.localStorage.removeItem(SKIPPED_UPDATE_KEY)
     window.localStorage.removeItem(UPDATE_REMINDER_KEY)
   } catch {
     // 舊資料清理由下一次啟動再嘗試。
@@ -122,9 +125,6 @@ export function AppShell({
   children
 }: Props): JSX.Element {
   const handledVersion = useRef<string | null>(null)
-  const migratedLegacyPreference = useRef<string | null>(null)
-  const legacySkippedVersion = useRef(loadSkippedVersion())
-  const legacyReminder = useRef(loadUpdateReminder())
   const [dialogVersion, setDialogVersion] = useState<string | null>(null)
   const [, setPreferenceClock] = useState(0)
   const version = updateStatus?.availableVersion
@@ -138,42 +138,6 @@ export function AppShell({
     )
   )
   const prompt = availablePromptSuppressed ? null : updatePrompt(updateStatus)
-
-  useEffect(() => {
-    const version = updateStatus?.availableVersion
-    if (!version || migratedLegacyPreference.current === version) return
-    if (
-      legacySkippedVersion.current === version &&
-      updateStatus.preferences.skippedVersion !== version
-    ) {
-      migratedLegacyPreference.current = version
-      void onSkipUpdate()
-        .then(() => {
-          legacySkippedVersion.current = null
-          removeLegacySkippedVersion()
-        })
-        .catch(() => {
-          migratedLegacyPreference.current = null
-        })
-      return
-    }
-    const reminder = legacyReminder.current
-    if (
-      reminder?.version === version &&
-      reminder.remindAfter > Date.now() &&
-      updateStatus.preferences.snoozedVersion !== version
-    ) {
-      migratedLegacyPreference.current = version
-      void onSnoozeUpdate()
-        .then(() => {
-          legacyReminder.current = null
-          removeLegacyUpdateReminder()
-        })
-        .catch(() => {
-          migratedLegacyPreference.current = null
-        })
-    }
-  }, [onSkipUpdate, onSnoozeUpdate, updateStatus])
 
   useEffect(() => {
     const until = updateStatus?.preferences.snoozeUntil

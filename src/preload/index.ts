@@ -120,6 +120,8 @@ const api: RendererApi = {
     install: () => ipcRenderer.invoke(IPC.APP_UPDATE_INSTALL),
     setBackgroundPreparation: (enabled) =>
       ipcRenderer.invoke(IPC.APP_UPDATE_SET_BACKGROUND_PREPARATION, enabled),
+    migrateLegacyPreferences: (input) =>
+      ipcRenderer.invoke(IPC.APP_UPDATE_MIGRATE_LEGACY_PREFERENCES, input),
     skip: () => ipcRenderer.invoke(IPC.APP_UPDATE_SKIP),
     snooze: () => ipcRenderer.invoke(IPC.APP_UPDATE_SNOOZE),
     onChanged: (listener: (status: AppUpdateStatus) => void) =>

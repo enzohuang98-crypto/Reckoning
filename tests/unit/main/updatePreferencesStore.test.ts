@@ -45,6 +45,24 @@ async function run(): Promise<void> {
       snoozedVersion: null,
       snoozeUntil: null
     })
+
+    const migrated = new UpdatePreferencesStore(join(directory, 'migrated.json'))
+    await migrated.migrateLegacy({
+      skippedVersion: '0.4.17',
+      snoozedVersion: null,
+      snoozeUntil: null
+    })
+    assert.equal(migrated.get().skippedVersion, '0.4.17')
+    await migrated.migrateLegacy({
+      skippedVersion: '0.4.18',
+      snoozedVersion: null,
+      snoozeUntil: null
+    })
+    assert.equal(
+      migrated.get().skippedVersion,
+      '0.4.17',
+      '既有 main 偏好不得被 renderer 舊資料覆寫'
+    )
     console.log('更新偏好安全持久化測試：通過')
   } finally {
     rmSync(directory, { recursive: true, force: true })

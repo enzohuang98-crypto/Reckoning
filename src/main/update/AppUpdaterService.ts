@@ -7,7 +7,7 @@ import electronUpdater, {
   type UpdateInfo
 } from 'electron-updater'
 import { IPC } from '@shared/types/ipc'
-import type { AppUpdateStatus } from '@shared/types/AppUpdate'
+import type { AppUpdateStatus, LegacyUpdatePreferences } from '@shared/types/AppUpdate'
 import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
 import { configureUpdatePolicy } from './UpdatePolicy'
@@ -16,6 +16,32 @@ import { UpdatePreferencesStore } from './UpdatePreferencesStore'
 const FIRST_CHECK_DELAY_MS = 5_000
 const RECHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 export const UPDATE_SNOOZE_DELAY_MS = 4 * 60 * 60 * 1000
+const LEGACY_MIGRATION_WAIT_MS = 5_000
+
+function parseLegacyPreferences(value: unknown): LegacyUpdatePreferences {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid legacy update preferences.')
+  }
+  const input = value as Partial<LegacyUpdatePreferences>
+  const validVersion = (version: unknown): version is string | null =>
+    version === null ||
+    (typeof version === 'string' && version.trim().length > 0 && version.length <= 64)
+  if (
+    !validVersion(input.skippedVersion) ||
+    !validVersion(input.snoozedVersion) ||
+    !(
+      input.snoozeUntil === null ||
+      (typeof input.snoozeUntil === 'number' &&
+        Number.isFinite(input.snoozeUntil) &&
+        input.snoozeUntil >= 0)
+    )
+  ) throw new Error('Invalid legacy update preferences.')
+  return {
+    skippedVersion: input.skippedVersion,
+    snoozedVersion: input.snoozedVersion,
+    snoozeUntil: input.snoozeUntil
+  }
+}
 
 function getAutoUpdater(): AppUpdater {
   return electronUpdater.autoUpdater
@@ -41,6 +67,10 @@ export class AppUpdaterService {
   private status: AppUpdateStatus
   private initialization: Promise<void> | null = null
   private initialized = false
+  private resolveLegacyMigration!: () => void
+  private readonly legacyMigrationBarrier = new Promise<void>((resolve) => {
+    this.resolveLegacyMigration = resolve
+  })
   private preparePromise: Promise<void> | null = null
   private installPromise: Promise<void> | null = null
 
@@ -161,6 +191,14 @@ export class AppUpdaterService {
         return this.getStatus()
       }
     )
+    ipcMain.handle(
+      IPC.APP_UPDATE_MIGRATE_LEGACY_PREFERENCES,
+      async (event, input: unknown): Promise<AppUpdateStatus> => {
+        assertTrustedIpcSender(event)
+        await this.migrateLegacyPreferences(parseLegacyPreferences(input))
+        return this.getStatus()
+      }
+    )
     ipcMain.handle(IPC.APP_UPDATE_SKIP, async (event): Promise<AppUpdateStatus> => {
       assertTrustedIpcSender(event)
       await this.skipAvailableVersion()
@@ -176,7 +214,10 @@ export class AppUpdaterService {
   startAutomaticCheck(): void {
     if (!this.configured) return
     void this.initialize().then(() => {
-      const firstCheck = setTimeout(() => void this.check(), FIRST_CHECK_DELAY_MS)
+      const firstCheck = setTimeout(
+        () => void this.waitForLegacyMigration().then(() => this.check()),
+        FIRST_CHECK_DELAY_MS
+      )
       firstCheck.unref()
       const recheck = setInterval(() => void this.check(), RECHECK_INTERVAL_MS)
       recheck.unref()
@@ -283,6 +324,13 @@ export class AppUpdaterService {
     }
   }
 
+  async migrateLegacyPreferences(input: LegacyUpdatePreferences): Promise<void> {
+    await this.initialize()
+    await this.preferences.migrateLegacy(input)
+    this.refreshPreferences()
+    this.resolveLegacyMigration()
+  }
+
   async skipAvailableVersion(): Promise<void> {
     await this.initialize()
     const version = this.status.availableVersion
@@ -311,6 +359,14 @@ export class AppUpdaterService {
       preferences: this.preferences.get(),
       promptSuppressed: this.isPromptSuppressed(this.status.availableVersion)
     }
+  }
+
+  private waitForLegacyMigration(): Promise<void> {
+    const fallback = new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, LEGACY_MIGRATION_WAIT_MS)
+      timer.unref()
+    })
+    return Promise.race([this.legacyMigrationBarrier, fallback])
   }
 
   private isPromptSuppressed(version: string | undefined): boolean {
