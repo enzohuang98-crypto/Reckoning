@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
+import type { LegacyUpdatePreferences } from '@shared/types/AppUpdate'
 import { Icon } from '../components/ui/Icon'
 
 export type AppTab = 'analyze' | 'settings'
@@ -44,23 +45,21 @@ function loadUpdateReminder(): UpdateReminder | null {
   }
 }
 
-function saveSkippedVersion(version: string): void {
-  try {
-    window.localStorage.setItem(SKIPPED_UPDATE_KEY, version)
-  } catch {
-    // localStorage 不可用時，當次執行仍由 React 狀態記住選擇。
+export function loadLegacyUpdatePreferences(): LegacyUpdatePreferences {
+  const reminder = loadUpdateReminder()
+  return {
+    skippedVersion: loadSkippedVersion(),
+    snoozedVersion: reminder?.version ?? null,
+    snoozeUntil: reminder?.remindAfter ?? null
   }
 }
 
-function saveUpdateReminder(reminder: UpdateReminder | null): void {
+export function clearLegacyUpdatePreferences(): void {
   try {
-    if (reminder) {
-      window.localStorage.setItem(UPDATE_REMINDER_KEY, JSON.stringify(reminder))
-    } else {
-      window.localStorage.removeItem(UPDATE_REMINDER_KEY)
-    }
+    window.localStorage.removeItem(SKIPPED_UPDATE_KEY)
+    window.localStorage.removeItem(UPDATE_REMINDER_KEY)
   } catch {
-    // localStorage 不可用時，提醒排程仍在當次執行有效。
+    // 舊資料清理由下一次啟動再嘗試。
   }
 }
 
@@ -97,12 +96,15 @@ interface Props {
   onTabChange: (tab: AppTab) => void
   updateStatus: AppUpdateStatus | null
   dataError: string | null
+  updateError?: string | null
   dataRecoveryRequired: boolean
   dataRecoveryBusy: boolean
   onRetryLoad: () => void
   onRetrySave: () => void
   onAnalysisCommandMountChange: (element: HTMLDivElement | null) => void
   onDownloadUpdate: () => void
+  onSkipUpdate?: () => Promise<void>
+  onSnoozeUpdate?: () => Promise<void>
   children: ReactNode
 }
 
@@ -111,76 +113,75 @@ export function AppShell({
   onTabChange,
   updateStatus,
   dataError,
+  updateError = null,
   dataRecoveryRequired,
   dataRecoveryBusy,
   onRetryLoad,
   onRetrySave,
   onAnalysisCommandMountChange,
   onDownloadUpdate,
+  onSkipUpdate = async () => undefined,
+  onSnoozeUpdate = async () => undefined,
   children
 }: Props): JSX.Element {
   const handledVersion = useRef<string | null>(null)
-  const [skippedVersion, setSkippedVersion] = useState(loadSkippedVersion)
-  const [reminder, setReminder] = useState(loadUpdateReminder)
   const [dialogVersion, setDialogVersion] = useState<string | null>(null)
-  const availablePromptSuppressed = updateStatus?.phase === 'available' &&
-    !!updateStatus.availableVersion &&
-    !shouldShowUpdateDialog(
-      updateStatus.availableVersion,
-      skippedVersion,
-      reminder,
-      Date.now()
+  const [, setPreferenceClock] = useState(0)
+  const version = updateStatus?.availableVersion
+  const preferences = updateStatus?.preferences
+  const availablePromptSuppressed = !!version && (
+    preferences?.skippedVersion === version ||
+    (
+      preferences?.snoozedVersion === version &&
+      preferences.snoozeUntil !== null &&
+      preferences.snoozeUntil > Date.now()
     )
+  )
   const prompt = availablePromptSuppressed ? null : updatePrompt(updateStatus)
+
+  useEffect(() => {
+    const until = updateStatus?.preferences.snoozeUntil
+    if (
+      updateStatus?.availableVersion !== updateStatus?.preferences.snoozedVersion ||
+      until == null ||
+      until <= Date.now()
+    ) return
+    const timer = globalThis.setTimeout(
+      () => setPreferenceClock((current) => current + 1),
+      until - Date.now()
+    )
+    return () => globalThis.clearTimeout(timer)
+  }, [updateStatus])
 
   useEffect(() => {
     if (updateStatus?.phase === 'error') handledVersion.current = null
     const version = updateStatus?.phase === 'available'
       ? updateStatus.availableVersion
       : undefined
-    if (!version || handledVersion.current === version) {
+    if (!version || handledVersion.current === version || availablePromptSuppressed) {
       setDialogVersion(null)
-      return
-    }
-    if (!shouldShowUpdateDialog(version, skippedVersion, reminder, Date.now())) {
-      setDialogVersion(null)
-      if (reminder?.version === version && reminder.remindAfter > Date.now()) {
-        const timer = globalThis.setTimeout(
-          () => setReminder(null),
-          reminder.remindAfter - Date.now()
-        )
-        return () => globalThis.clearTimeout(timer)
-      }
       return
     }
     setDialogVersion(version)
-  }, [reminder, skippedVersion, updateStatus])
+  }, [availablePromptSuppressed, updateStatus])
 
   const updateNow = (): void => {
     if (!dialogVersion) return
     handledVersion.current = dialogVersion
     setDialogVersion(null)
-    setReminder(null)
-    saveUpdateReminder(null)
     onDownloadUpdate()
   }
 
   const remindLater = (): void => {
     if (!dialogVersion) return
-    const nextReminder = {
-      version: dialogVersion,
-      remindAfter: Date.now() + UPDATE_REMINDER_DELAY_MS
-    }
     setDialogVersion(null)
-    setReminder(nextReminder)
-    saveUpdateReminder(nextReminder)
+    void onSnoozeUpdate().catch(() => undefined)
   }
 
   const skipVersion = (): void => {
     if (!dialogVersion) return
-    setSkippedVersion(dialogVersion)
-    saveSkippedVersion(dialogVersion)
     setDialogVersion(null)
+    void onSkipUpdate().catch(() => undefined)
   }
 
   return (
@@ -260,6 +261,15 @@ export function AppShell({
         </div>
       )}
 
+      {updateError && (
+        <div className="global-storage-error" role="alert">
+          <span>{updateError}</span>
+          <button className="btn ghost small" onClick={() => onTabChange('settings')}>
+            前往更新設定
+          </button>
+        </div>
+      )}
+
       {dialogVersion && (
         <div className="app-update-backdrop" role="presentation">
           <section
@@ -271,11 +281,11 @@ export function AppShell({
             <span className="eyebrow">APPLICATION UPDATE</span>
             <h2 id="app-update-title">發現新版 {dialogVersion}</h2>
             <p>
-              選擇立即更新後會在背景下載；完成時 Reckoning 將自動關閉、安裝並重新開啟。
+              更新會在背景準備，期間可繼續下棋；準備完成後由你明確選擇重新啟動完成更新。
             </p>
             <div className="app-update-actions">
               <button className="btn" type="button" data-update-action="now" onClick={updateNow}>
-                立即更新
+                立即背景準備
               </button>
               <button className="btn ghost" type="button" data-update-action="later" onClick={remindLater}>
                 稍後提醒我

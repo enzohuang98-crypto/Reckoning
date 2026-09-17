@@ -15,6 +15,7 @@ interface AppDataStore {
   setDataError: (message: string | null) => void
   getCurrentDataSnapshot: () => AppDataSnapshot
   saveCurrentData: (snapshot?: AppDataSnapshot) => void
+  flushCurrentData: () => Promise<boolean>
   retryLoadData: () => void
   updateAppData: (updater: (current: AppDataSnapshot) => AppDataSnapshot) => void
   importData: (snapshot: AppDataSnapshot) => void
@@ -25,8 +26,21 @@ interface LoadedAppData {
   warning: string | null
 }
 
+export async function flushLatestSnapshot<T extends object>(
+  getCurrent: () => T,
+  persist: (snapshot: T) => Promise<boolean>,
+  clone: (snapshot: T) => T
+): Promise<boolean> {
+  while (true) {
+    const source = getCurrent()
+    if (!(await persist(clone(source)))) return false
+    if (getCurrent() === source) return true
+  }
+}
+
 const DATA_RECOVERY_FALLBACK =
   '無法讀取本機資料；原始資料檔已保留，程式不會以空白資料覆蓋它。'
+const DATA_SAVE_TIMEOUT_MS = 15_000
 
 function recoveryMessage(message?: string): string {
   return `${message?.trim() || DATA_RECOVERY_FALLBACK} 請按「重新讀取資料」再試一次；成功前新增、修改、刪除與儲存會保持暫停。`
@@ -66,13 +80,49 @@ export function useAppDataStore(): AppDataStore {
     }
     saveQueue.current = saveQueue.current
       .then(async () => {
-        const saved = await window.api.data.save(snapshot)
+        const saved = await withTimeout(
+          window.api.data.save(snapshot),
+          DATA_SAVE_TIMEOUT_MS,
+          '儲存本機資料逾時；畫面內容仍保留。'
+        )
         if (!saved.ok) setOperationError(saved.message)
         else setOperationError(null)
       })
       .catch(() => {
         setOperationError('儲存失敗，畫面內容仍保留；請稍後重試或匯出備份。')
       })
+  }, [])
+
+  const flushCurrentData = useCallback(async (): Promise<boolean> => {
+    if (dataReadBlockedRef.current) {
+      setDataRecoveryError((current) => current ?? recoveryMessage())
+      return false
+    }
+    return flushLatestSnapshot(
+      () => appDataRef.current,
+      async (snapshot) => {
+        let succeeded = false
+        const operation = saveQueue.current
+          .then(async () => {
+            const saved = await withTimeout(
+              window.api.data.save(snapshot),
+              DATA_SAVE_TIMEOUT_MS,
+              '儲存本機資料逾時；畫面內容仍保留。'
+            )
+            succeeded = saved.ok
+            if (!saved.ok) setOperationError(saved.message)
+            else setOperationError(null)
+          })
+          .catch(() => {
+            succeeded = false
+            setOperationError('儲存失敗，畫面內容仍保留；請稍後重試或匯出備份。')
+          })
+        saveQueue.current = operation
+        await operation
+        return succeeded
+      },
+      cloneAppDataSnapshot
+    )
   }, [])
 
   const updateAppData = useCallback(
@@ -166,6 +216,7 @@ export function useAppDataStore(): AppDataStore {
     setDataError,
     getCurrentDataSnapshot,
     saveCurrentData,
+    flushCurrentData,
     retryLoadData,
     updateAppData,
     importData

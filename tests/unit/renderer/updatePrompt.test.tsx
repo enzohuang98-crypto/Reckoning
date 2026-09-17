@@ -43,6 +43,13 @@ function status(patch: Partial<AppUpdateStatus>): AppUpdateStatus {
     phase: 'idle',
     currentVersion: '0.3.6',
     automaticChecksEnabled: true,
+    preferences: {
+      backgroundPreparationEnabled: true,
+      skippedVersion: null,
+      snoozedVersion: null,
+      snoozeUntil: null
+    },
+    promptSuppressed: false,
     message: '',
     ...patch
   } as AppUpdateStatus
@@ -154,8 +161,8 @@ function render(
     renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 0
   )
   check(
-    '稍後提醒期間不顯示標題通知',
-    renderer!.root.findAllByProps({ className: 'app-update-chip' }).length === 0
+    '偏好尚未由主程序回傳前不自行寫入 renderer 狀態',
+    renderer!.root.findAllByProps({ className: 'app-update-chip' }).length === 1
   )
   renderer!.unmount()
 }
@@ -186,8 +193,8 @@ function render(
     renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 0
   )
   check(
-    '跳過後隱藏同版本標題通知',
-    renderer!.root.findAllByProps({ className: 'app-update-chip' }).length === 0
+    '跳過偏好尚未由主程序回傳前不自行寫入 renderer 狀態',
+    renderer!.root.findAllByProps({ className: 'app-update-chip' }).length === 1
   )
   TestRenderer.act(() => {
     renderer!.update(
@@ -211,6 +218,30 @@ function render(
     '跳過舊版不影響下一個新版本提醒',
     renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 1
   )
+}
+
+{
+  const suppressed = status({
+    phase: 'available',
+    availableVersion: '0.4.2',
+    preferences: {
+      backgroundPreparationEnabled: true,
+      skippedVersion: '0.4.2',
+      snoozedVersion: null,
+      snoozeUntil: null
+    },
+    promptSuppressed: true
+  })
+  let renderer: TestRenderer.ReactTestRenderer
+  TestRenderer.act(() => {
+    renderer = render(suppressed)
+  })
+  check(
+    '主程序持久化的跳過偏好會隱藏視窗與標題通知',
+    renderer!.root.findAllByProps({ className: 'app-update-dialog' }).length === 0 &&
+      renderer!.root.findAllByProps({ className: 'app-update-chip' }).length === 0
+  )
+  renderer!.unmount()
 }
 
 function chips(
@@ -308,3 +339,6 @@ for (const phase of ['idle', 'checking', 'not-available', 'error', 'unconfigured
 
 console.log(`\n結果：${passed} 通過，${failed} 失敗`)
 if (failed > 0) process.exit(1)
+
+// 與既有 renderer 更新 runner 綁定，確保保存 gate 與 ready-only-install 不會漏跑。
+void import('./updateInstallSafety.test')

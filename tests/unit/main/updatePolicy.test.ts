@@ -6,4 +6,4 @@ configureUpdatePolicy(updater)
 
 assert.equal(updater.autoDownload, false)
 assert.equal(updater.autoInstallOnAppQuit, false)
-console.log('更新须经使用者同意的政策测试：通过')
+console.log('背景準備但僅明確操作才安裝的政策測試：通過')
