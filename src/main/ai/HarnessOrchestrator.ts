@@ -34,6 +34,7 @@ import {
   compactChineseText,
   countHanCharacters,
   distinctMentionedMoves,
+  isLimitedInsufficiencyStatement,
   looksVagueConsequenceText,
   looksVaguePurposeText,
   playerFacingAnswerText,
@@ -43,12 +44,17 @@ import {
   textSimilarity,
   type QualityReport
 } from '@shared/logic/ai/ExplanationQualityScorer'
+import {
+  moveComparisonEvidenceState,
+  type MoveComparisonEvidenceState
+} from '@shared/logic/ai/MoveComparisonEvidence'
 import type { CausalChain } from '@shared/types/Harness'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../storage/HarnessTraceStore'
 import { aiErrorStatus, describeAIExecutionError } from './http'
 import type { PreparedExplanationExecution } from './prepareExplanationExecution'
+import { openRouterReasoningConfig } from './OpenRouterRequestPolicy'
 
 interface HarnessTask {
   kind: 'root' | 'evaluate_move'
@@ -62,6 +68,8 @@ interface PlannerResult {
 }
 
 export type ConsequenceCategory =
+  | 'central_control'
+  | 'piece_development'
   | 'initiative_loss'
   | 'piece_restriction'
   | 'king_safety'
@@ -103,11 +111,13 @@ type ExplanationLanguage = GenerateExplanationStartPayload['language']
 
 export interface AnswerRequirements {
   hasUserMove: boolean
+  comparisonState?: MoveComparisonEvidenceState
   requiredSectionIds: HarnessSectionId[]
   /** 明確點擊實戰步後的完整一鍵解說：正好五段、單一原則、至少 400 漢字。 */
   enforceInitialMoveContract?: boolean
   dualEngineDisagreement?: boolean
   verifiedFindingIds?: string[]
+  verifiedFindings?: ConsequenceFinding[]
   language?: ExplanationLanguage
 }
 
@@ -225,6 +235,8 @@ class HarnessModelBudgetExceededError extends Error {
   }
 }
 const CONSEQUENCE_CATEGORIES = new Set<ConsequenceCategory>([
+  'central_control',
+  'piece_development',
   'initiative_loss',
   'piece_restriction',
   'king_safety',
@@ -357,6 +369,7 @@ function makeEvidence(
   purpose: string,
   move?: string
 ): HarnessEvidence {
+  const isUserMoveEvidence = move !== undefined && move === analysis.userMove
   return {
     id,
     engineId: analysis.engineId ?? 'unknown-engine',
@@ -365,14 +378,14 @@ function makeEvidence(
     positionFen: analysis.positionFen,
     move,
     displayMove:
-      move === analysis.userMove ? analysis.displayUserMove : analysis.displayBestMove,
+      isUserMoveEvidence ? analysis.displayUserMove : analysis.displayBestMove,
     depth: analysis.depth,
     score:
-      move === analysis.userMove
+      isUserMoveEvidence
         ? analysis.scoreAfterUserMove
         : analysis.scoreAfterBestMove,
     displayPrincipalVariation:
-      move === analysis.userMove
+      isUserMoveEvidence
         ? analysis.displayUserMovePrincipalVariation ??
           analysis.userMovePrincipalVariation ??
           []
@@ -554,6 +567,41 @@ const SECTION_HEADINGS: Record<HarnessSectionId, string> = {
   [HARNESS_SECTION_IDS.followUp]: '追問'
 }
 
+const COMPARISON_SECTION_HEADINGS: Record<
+  MoveComparisonEvidenceState,
+  Partial<Record<HarnessSectionId, string>>
+> = {
+  same_move: {
+    [HARNESS_SECTION_IDS.actualMoveProblem]: '與首選一致',
+    [HARNESS_SECTION_IDS.bestMovePlan]: '這步的好處',
+    [HARNESS_SECTION_IDS.opponentExploitation]: '對手合理應對'
+  },
+  near_equivalent: {
+    [HARNESS_SECTION_IDS.actualMoveProblem]: '實戰步評價',
+    [HARNESS_SECTION_IDS.opponentExploitation]: '對手合理應對與後續'
+  },
+  evidence_backed_difference: {},
+  insufficient: {
+    [HARNESS_SECTION_IDS.actualMoveProblem]: '目前可確定的比較',
+    [HARNESS_SECTION_IDS.opponentExploitation]: '可見主線與限制'
+  }
+}
+
+function applyComparisonPresentation(
+  answer: HarnessAnswer,
+  state: MoveComparisonEvidenceState
+): HarnessAnswer {
+  const headings = COMPARISON_SECTION_HEADINGS[state]
+  return {
+    ...answer,
+    title: state === 'same_move' ? '首選著法解析' : answer.title,
+    sections: answer.sections.map((section) => ({
+      ...section,
+      heading: headings[section.id] ?? section.heading
+    }))
+  }
+}
+
 const KNOWN_SECTION_IDS = new Set<HarnessSectionId>(
   Object.values(HARNESS_SECTION_IDS)
 )
@@ -688,6 +736,15 @@ function collectDisplayMoves(evidence: HarnessEvidence[]): string[] {
     .filter(Boolean)
 }
 
+function collectReferencedVariationMoves(evidence: HarnessEvidence[]): string[] {
+  return evidence
+    .flatMap((item) => [
+      ...(item.displayMove ? [item.displayMove] : []),
+      ...item.displayPrincipalVariation
+    ])
+    .filter(Boolean)
+}
+
 const SIMPLIFIED_CONCRETE_XIANGQI_TERMS =
   /(牵制|蹩马腿|塞象眼|空头炮|沉底车|巡河|肋道|中路|中线|亮车|抽将|双将|失根|王区|九宫|底线|河口|炮架|马腿|象眼|兵线|卒线|车路|炮线|将军|杀棋)/
 
@@ -704,18 +761,20 @@ function containsConcreteTermForLanguage(
   return false
 }
 
-function acknowledgesInsufficiencyForLanguage(
+function isLimitedInsufficiencyForLanguage(
   text: string,
   language: ExplanationLanguage
 ): boolean {
-  if (/(證據不足|证据不足|資料不足|资料不足|主線(?:還)?不足|主线(?:还)?不足|尚不能|無法確認|无法确认|不足以)/.test(text)) {
-    return true
-  }
-  return language === 'en'
-    ? /\b(?:insufficient evidence|not enough evidence|insufficient data|not enough data|cannot confirm|can't confirm|unable to confirm|the line is too short)\b/i.test(
-        text
-      )
-    : false
+  if (language !== 'en') return isLimitedInsufficiencyStatement(text)
+  const pattern = /\b(?:insufficient evidence|not enough evidence|insufficient data|not enough data|cannot confirm|can't confirm|unable to confirm|the line is too short)\b/i
+  if (!pattern.test(text)) return false
+  const residual = text
+    .split(/(?<=[.!?;])|,(?=(?:\s*(?:but|however|yet)\b))/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !pattern.test(part))
+    .join(' ')
+  return residual.replace(/[^a-z0-9]/gi, '').length < 6
 }
 
 function mentionsContinuationForLanguage(
@@ -816,10 +875,14 @@ export function validateConsequenceAudit(
   evidence: HarnessEvidence[],
   hasUserMove: boolean,
   dualComparison?: DualEngineComparison | null,
-  language: ExplanationLanguage = 'zh-TW'
+  language: ExplanationLanguage = 'zh-TW',
+  comparisonState: MoveComparisonEvidenceState = hasUserMove
+    ? 'evidence_backed_difference'
+    : 'insufficient'
 ): string[] {
   const errors: string[] = []
   const evidenceIds = new Set(evidence.map((item) => item.id))
+  const evidenceById = new Map(evidence.map((item) => [item.id, item]))
   const availableMoves = new Set(collectDisplayMoves(evidence))
   if (!audit.bestMovePurpose) {
     errors.push('缺少最佳著法的具體目的。')
@@ -831,6 +894,20 @@ export function validateConsequenceAudit(
       errors.push('缺少使用者著法錯失機會的解釋。')
     } else if (looksVaguePurposeText(audit.userMoveProblem)) {
       errors.push('使用者著法的問題描述太空泛，必須具體說明錯失了什麼。')
+    }
+    if (
+      comparisonState === 'same_move' &&
+      /(錯失|失誤|敗著|較差|更差|懲罰|惩罚)/.test(audit.userMoveProblem)
+    ) {
+      errors.push('使用者著法與引擎首選相同，不得硬寫成較差、失誤或遭到懲罰。')
+    }
+    if (
+      comparisonState === 'insufficient' &&
+      /(錯失|錯過|错过|失去先手|失誤|敗著|較差|更差|懲罰|惩罚|必然受罰|必然受罚)/.test(
+        audit.userMoveProblem
+      )
+    ) {
+      errors.push('比較證據不足時，不得把使用者著法寫成確定的錯失、較差或懲罰。')
     }
   } else {
     const noUserMoveAuditText = [
@@ -873,12 +950,27 @@ export function validateConsequenceAudit(
     for (const id of consequence.evidenceIds) {
       if (!evidenceIds.has(id)) errors.push(`${consequence.id} 引用了不存在的 ${id}。`)
     }
+    const referencedEvidence = consequence.evidenceIds
+      .map((id) => evidenceById.get(id))
+      .filter((item): item is HarnessEvidence => Boolean(item))
+    const canonicalPosition = evidence[0]?.positionFen
+    if (
+      canonicalPosition &&
+      referencedEvidence.some((item) => item.positionFen !== canonicalPosition)
+    ) {
+      errors.push(`${consequence.id} 引用了另一個局面的證據。`)
+    }
+    const referencedMoves = new Set(
+      collectReferencedVariationMoves(referencedEvidence)
+    )
     if (consequence.supportingMoves.length < 2) {
       errors.push(`${consequence.id} 至少要指出兩步主線著法，不能只貼一個結果標籤。`)
     } else if (
-      consequence.supportingMoves.some((move) => !availableMoves.has(move))
+      consequence.supportingMoves.some(
+        (move) => !availableMoves.has(move) || !referencedMoves.has(move)
+      )
     ) {
-      errors.push(`${consequence.id} 使用了引擎主線中沒有的著法。`)
+      errors.push(`${consequence.id} 使用了未出現在其引用變例中的著法。`)
     }
     for (const issue of consequenceTextIssues(consequence, language)) {
       errors.push(`${consequence.id} ${issue}`)
@@ -1037,10 +1129,11 @@ export function validateAnswer(
   const errors: string[] = []
   const language = requirements.language ?? 'zh-TW'
   const evidenceIds = new Set(evidence.map((item) => item.id))
+  const evidenceById = new Map(evidence.map((item) => [item.id, item]))
   const explanationMoves = [...new Set(collectDisplayMoves(evidence))]
   const requiredSectionIds = requirements.requiredSectionIds
   if (!answer.directAnswer?.trim()) errors.push('缺少直接回答。')
-  const directNeedsEvidence = !acknowledgesInsufficiencyForLanguage(
+  const directNeedsEvidence = !isLimitedInsufficiencyForLanguage(
     answer.directAnswer,
     language
   )
@@ -1119,6 +1212,44 @@ export function validateAnswer(
     for (const id of claim.evidenceIds) {
       if (!evidenceIds.has(id)) errors.push(`${claim.id} 引用了不存在的 ${id}。`)
     }
+    const referencedEvidence = claim.evidenceIds
+      .map((id) => evidenceById.get(id))
+      .filter((item): item is HarnessEvidence => Boolean(item))
+    const canonicalPosition = evidence[0]?.positionFen
+    if (
+      canonicalPosition &&
+      referencedEvidence.some((item) => item.positionFen !== canonicalPosition)
+    ) {
+      errors.push(`${claim.id} 引用了另一個局面的證據。`)
+    }
+    const claimText = [
+      claim.text,
+      ...(claim.causal ? Object.values(claim.causal) : [])
+    ].join(' ')
+    const scopedMoves = new Set(
+      collectReferencedVariationMoves(referencedEvidence)
+    )
+    const crossVariationMoves = explanationMoves.filter(
+      (move) => claimText.includes(move) && !scopedMoves.has(move)
+    )
+    if (crossVariationMoves.length > 0) {
+      errors.push(
+        `${claim.id} 提到 ${crossVariationMoves.join('、')}，但引用的變例中沒有這些著法。`
+      )
+    }
+    if (claim.causal && !isLimitedInsufficiencyStatement(claimText)) {
+      const opponentMoves = referencedEvidence.flatMap((item) =>
+        item.displayPrincipalVariation.filter((_, index) => index % 2 === 1)
+      )
+      if (
+        opponentMoves.length > 0 &&
+        !opponentMoves.some((move) => claim.causal?.opponentUse.includes(move))
+      ) {
+        errors.push(
+          `${claim.id} 的對手利用沒有引用所屬變例中輪到對手走的著法。`
+        )
+      }
+    }
   }
   const verifiedFindingIds = new Set(requirements.verifiedFindingIds ?? [])
   if (verifiedFindingIds.size > 0) {
@@ -1130,7 +1261,11 @@ export function validateAnswer(
       const isGroundedCoreSection = groundedCoreIds.includes(section.id)
       if (!isGroundedCoreSection) continue
       for (const claim of section.claims) {
-        if (/證據不足|证据不足|無法確認|无法确认/.test(claim.text)) continue
+        const completeClaimText = [
+          claim.text,
+          ...(claim.causal ? Object.values(claim.causal) : [])
+        ].join(' ')
+        if (isLimitedInsufficiencyStatement(completeClaimText)) continue
         const findingIds = claim.findingIds ?? []
         if (findingIds.length === 0) {
           errors.push(`${claim.id} 沒有連到已驗證的具體後果 K 編號。`)
@@ -1139,6 +1274,23 @@ export function validateAnswer(
         for (const id of findingIds) {
           if (!verifiedFindingIds.has(id)) {
             errors.push(`${claim.id} 引用了未通過審查的具體後果 ${id}。`)
+          }
+        }
+        const linkedFindings = (requirements.verifiedFindings ?? []).filter(
+          (finding) => findingIds.includes(finding.id)
+        )
+        for (const finding of linkedFindings) {
+          if (
+            !finding.evidenceIds.some((id) => claim.evidenceIds.includes(id)) ||
+            !finding.supportingMoves.some((move) =>
+              [claim.text, ...(claim.causal ? Object.values(claim.causal) : [])]
+                .join(' ')
+                .includes(move)
+            )
+          ) {
+            errors.push(
+              `${claim.id} 雖引用 ${finding.id}，內容卻沒有連到該 finding 的變例與著法。`
+            )
           }
         }
       }
@@ -1225,8 +1377,19 @@ export function validateAnswer(
   ) {
     errors.push('回答缺少後續主線與具體後果。')
   }
-  if (requirements.hasUserMove && !/(錯失|不好|問題|不對)/.test(prose)) {
+  if (
+    requirements.hasUserMove &&
+    requirements.comparisonState === 'evidence_backed_difference' &&
+    !/(錯失|不好|問題|不對)/.test(prose)
+  ) {
     errors.push('回答沒有說明使用者著法為什麼不好。')
+  }
+  if (
+    requirements.hasUserMove &&
+    requirements.comparisonState === 'insufficient' &&
+    /(錯失|錯過|错过|失去先手|失誤|敗著|較差|更差|懲罰|惩罚|必然受罰|必然受罚)/.test(prose)
+  ) {
+    errors.push('比較證據不足時，回答不得宣稱使用者著法確定較差或必然受罰。')
   }
   if (scoreUsedAsReasonForLanguage(prose, language)) {
     errors.push('回答以分數高低代替棋理原因。')
@@ -1276,6 +1439,7 @@ function scoreAnswerForLanguage(
   bestMoveDisplay: string | null | undefined,
   userMoveDisplay: string | null | undefined,
   hasUserMove: boolean,
+  comparisonState: MoveComparisonEvidenceState,
   language: ExplanationLanguage,
   minimumHanCharacters?: number
 ): QualityReport {
@@ -1285,6 +1449,7 @@ function scoreAnswerForLanguage(
     bestMoveDisplay,
     userMoveDisplay,
     hasUserMove,
+    comparisonState,
     minimumHanCharacters
   })
   if (hasUserMove || language === 'zh-TW') return base
@@ -1302,10 +1467,10 @@ function scoreAnswerForLanguage(
   if (!consequenceSection) {
     consequenceIssues.push('缺少「後續主線與具體後果」區塊。')
   } else if (availableMoves.length < 2) {
-    if (!acknowledgesInsufficiencyForLanguage(consequenceText, language)) {
+    if (!isLimitedInsufficiencyForLanguage(consequenceText, language)) {
       consequenceIssues.push('引擎主線不足時，必須明確說明資料不足，不能自行編造後續變化。')
     }
-  } else if (!acknowledgesInsufficiencyForLanguage(consequenceText, language)) {
+  } else if (!isLimitedInsufficiencyForLanguage(consequenceText, language)) {
     if (distinctMentionedMoves(consequenceText, availableMoves) < 2) {
       consequenceIssues.push('後續後果沒有逐字連回至少兩步主線著法。')
     }
@@ -2034,6 +2199,7 @@ export async function runExplanationHarness(
   const evidence: HarnessEvidence[] = []
   const validationErrors: string[] = []
   const phases: HarnessTrace['phases'] = []
+  const modelCallDiagnostics: NonNullable<HarnessTrace['modelCallDiagnostics']> = []
   let usage: TokenUsage | undefined
   /** 提升到函式作用域，讓逾時自動收尾（catch 區塊）也能用目前已知的具體後果產生保守版答案。 */
   let audit: ConsequenceAudit = {
@@ -2061,6 +2227,17 @@ export async function runExplanationHarness(
     )
   const canonicalMove = payload.attachedMove
   const hasUserMove = Boolean(canonicalMove)
+  const comparisonState = hasUserMove
+    ? moveComparisonEvidenceState(deps.session.moveComparison)
+    : 'insufficient'
+  const comparisonContract =
+    comparisonState === 'same_move'
+      ? '比較狀態：實戰步與引擎首選是同一著法。必須明說一致，改為解釋這步的好處、對手合理應對與實戰原則；禁止硬寫錯失、失誤、較差、懲罰或「更好的同一著法」。'
+      : comparisonState === 'near_equivalent'
+        ? '比較狀態：既有分級只支持可接受或輕微誤差。可比較計畫差異，但不得誇大成明顯錯誤、敗著或必然受罰。'
+        : comparisonState === 'insufficient'
+          ? '比較狀態：證據不足。分開寫目前可確定的主線與缺少的證據，不得編造戰術或用全篇「不足」掩蓋已存在的盤面事實。'
+          : '比較狀態：既有引擎比較與可信度支持兩步有實質差異；仍須以本局兩條主線解釋原因，不得只拿分差或候選排名當理由。'
   const isFollowUp = execution.answerStrategy === 'conversation-follow-up'
   const isFormalMoveComparison =
     execution.answerStrategy === 'formal-move-comparison'
@@ -2102,6 +2279,7 @@ export async function runExplanationHarness(
   }
   const answerRequirements: AnswerRequirements = {
     hasUserMove,
+    comparisonState,
     requiredSectionIds,
     enforceInitialMoveContract: isInitialMoveComparison,
     dualEngineDisagreement:
@@ -2164,6 +2342,7 @@ export async function runExplanationHarness(
       modelCalls,
       engineRounds,
       usage,
+      modelCallDiagnostics,
       ...(status === 'failed'
         ? { providerDiagnostic: describeAIExecutionError(error, 'AI 服務') }
         : {}),
@@ -2181,7 +2360,8 @@ export async function runExplanationHarness(
     prompt: string,
     preferredMaxTokens = 3_000,
     phaseTimeoutMs?: number,
-    responseFormat: 'json' | 'text' = 'json'
+    responseFormat: 'json' | 'text' = 'json',
+    callStage: NonNullable<HarnessTrace['modelCallDiagnostics']>[number]['stage'] = 'writer'
   ): Promise<string> => {
     const phaseDeadlineAt =
       phaseTimeoutMs === undefined ? null : Date.now() + Math.max(1, phaseTimeoutMs)
@@ -2197,6 +2377,14 @@ export async function runExplanationHarness(
         throw new HarnessModelBudgetExceededError()
       }
       modelCalls += 1
+      const callIndex = modelCalls
+      const callStartedAt = Date.now()
+      const requestMaxOutputTokens = Math.min(remainingTokens, preferredMaxTokens)
+      const reasoningPolicy =
+        payload.provider === 'openrouter' &&
+        openRouterReasoningConfig(deps.model, responseFormat)
+          ? 'bounded_1000_excluded' as const
+          : 'provider_managed' as const
       try {
         const request = {
           provider: payload.provider,
@@ -2204,7 +2392,7 @@ export async function runExplanationHarness(
           apiKey: deps.apiKey,
           baseUrl: payload.baseUrl,
           prompt,
-          maxOutputTokens: Math.min(remainingTokens, preferredMaxTokens),
+          maxOutputTokens: requestMaxOutputTokens,
           // Every Harness phase returns an object (planner, audit, writer or
           // repair). Providers that support structured output can therefore
           // enforce valid JSON instead of relying on markdown extraction.
@@ -2249,11 +2437,65 @@ export async function runExplanationHarness(
           outputTokens += response.usage.outputTokens
           usage = {
             inputTokens: (usage?.inputTokens ?? 0) + response.usage.inputTokens,
-            outputTokens: (usage?.outputTokens ?? 0) + response.usage.outputTokens
+            outputTokens: (usage?.outputTokens ?? 0) + response.usage.outputTokens,
+            ...((usage?.reasoningTokens ?? 0) +
+                (response.usage.reasoningTokens ?? 0) >
+              0
+              ? {
+                  reasoningTokens:
+                    (usage?.reasoningTokens ?? 0) +
+                    (response.usage.reasoningTokens ?? 0)
+                }
+              : {}),
+            ...(response.usage.finishReason
+              ? { finishReason: response.usage.finishReason }
+              : {})
           }
         }
+        modelCallDiagnostics.push({
+          callIndex,
+          stage: callStage,
+          model: deps.model,
+          maxOutputTokens: requestMaxOutputTokens,
+          responseFormat,
+          reasoningPolicy,
+          ...(phaseTimeoutMs === undefined ? {} : { timeoutMs: phaseTimeoutMs }),
+          durationMs: Date.now() - callStartedAt,
+          status: 'completed',
+          ...(response.usage?.outputTokens === undefined
+            ? {}
+            : { outputTokens: response.usage.outputTokens }),
+          ...(response.usage?.reasoningTokens === undefined
+            ? {}
+            : { reasoningTokens: response.usage.reasoningTokens }),
+          ...(response.usage?.finishReason === undefined
+            ? {}
+            : { finishReason: response.usage.finishReason })
+        })
         return response.text
       } catch (error) {
+        const diagnostic = describeAIExecutionError(error, 'AI 服務')
+        modelCallDiagnostics.push({
+          callIndex,
+          stage: callStage,
+          model: deps.model,
+          maxOutputTokens: requestMaxOutputTokens,
+          responseFormat,
+          reasoningPolicy,
+          ...(phaseTimeoutMs === undefined ? {} : { timeoutMs: phaseTimeoutMs }),
+          durationMs: Date.now() - callStartedAt,
+          status: 'failed',
+          errorCategory: diagnostic.category,
+          ...(diagnostic.outputTokens === undefined
+            ? {}
+            : { outputTokens: diagnostic.outputTokens }),
+          ...(diagnostic.reasoningTokens === undefined
+            ? {}
+            : { reasoningTokens: diagnostic.reasoningTokens }),
+          ...(diagnostic.finishReason === undefined
+            ? {}
+            : { finishReason: diagnostic.finishReason })
+        })
         rethrowAbortLikeError(error)
         if (attempt > 0 || !isTransientModelError(error)) throw error
         if (
@@ -2334,7 +2576,7 @@ export async function runExplanationHarness(
       boardFacts: boardQuestion.facts,
       engineFacts: JSON.stringify(evidence.map(item => ({ purpose: item.purpose, analysis: publicAnalysis(item.analysis, hasUserMove) }))),
       context: deps.explanationPrompt
-    }), 1_200, 30_000, 'text')
+    }), 1_200, 30_000, 'text', 'question_recovery')
     const text = extractDirectQuestionText(response)
     if (!text || !hasEngineAnchor(text) || !isFocusedQuestionAnswer(question, text) ||
         !followsRequestedSentenceCount(text, question, validationLanguage)) {
@@ -2724,9 +2966,16 @@ export async function runExplanationHarness(
 這是棋手點擊實戰著法後的一鍵比較：在同一次呼叫完成具體後果審查與最終寫作。
 只使用下方既有${existingSnapshotLabel}快照；不得要求或假設額外引擎研究。
 ${languageRule}
+${comparisonContract}
 
 內容規則：
-- 第一段直接回答實戰步為什麼比 AI 首選差，同時使用兩步的中文著法。
+- ${
+              comparisonState === 'same_move'
+                ? '第一段直接明說實戰步與 AI 首選是同一著法，解釋這步的好處。'
+                : comparisonState === 'evidence_backed_difference'
+                  ? '第一段直接回答實戰步與 AI 首選的實質差異，同時使用兩步的中文著法。'
+                  : '第一段中性說明目前可支持的比較結論，不得把證據強度不足寫成確定優劣。'
+            }
 - 說清楚「原因 → 棋盤機制 → 受影響棋子／線路 → 對手利用 → 後果」。
 - 對手利用與後果至少逐字引用兩步真實引擎主線；不得拿分數當理由。
 - 不得虛構戰術、錯認輪走方、顯示 FEN、UCI、token、trace、證據編號或模型輪次。
@@ -2735,10 +2984,11 @@ ${languageRule}
 - 使用者可讀正文不得少於 400 個漢字，以約 500–900 個中文字為目標；棋理深度優先，不以增加模型輪次換篇幅。
 - 字數要直接分配在五段可見正文：直接結論約 70–100 字、實戰步問題約 130–180 字、AI 首選約 90–140 字、對手利用與後果約 180–260 字、實戰原則約 50–80 字。不可用重複句或內部欄位湊字數。
 - answer 固定五個 section id，依序為 direct_conclusion、actual_move_problem、best_move_plan、opponent_exploitation、practical_principle。
-- heading 依序顯示「直接結論／實戰步問題／AI 首選／對手利用與後果／實戰原則」；heading 只供顯示。
-- actual_move_problem 必須完整比較實戰步與 AI 首選；opponent_exploitation 必須包含對手最強利用、至少兩步主線與後續盤面結果。
+- heading 只供顯示；section id 固定，但標題須符合上方比較狀態，不得用標題暗示不存在的失誤。
+- actual_move_problem 必須依比較狀態完整說明兩步關係；opponent_exploitation 必須包含對手合理應對、至少兩步主線與後續盤面結果。
 - 若棋手提供原本想法，actual_move_problem 必須正面檢驗該想法在兩條主線中是否成立；棋手自述不是引擎證據，不得直接當成事實。
 - actual_move_problem 與 opponent_exploitation 的非「證據不足」claim 都附完整 causal 五段，並用 findingIds 連到 audit 中已驗證的 K 編號。
+- 每個 evidenceId 只能支持它自己列出的 principalVariation；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
 - practical_principle 只給一條可帶走、可操作的思考原則。
 ${
   isFormalMoveComparison
@@ -2749,7 +2999,13 @@ ${
 }
 
 audit 規則：
-- bestMovePurpose 說明 AI 首選的具體目的；userMoveProblem 直接說實戰步問題。
+- bestMovePurpose 說明 AI 首選的具體目的；userMoveProblem ${
+              comparisonState === 'same_move'
+                ? '說明實戰步與首選一致及其具體價值，不得杜撰問題。'
+                : comparisonState === 'evidence_backed_difference'
+                  ? '直接說明實戰步與首選之間有證據支持的問題差異。'
+                  : '中性記錄目前可確定的差異與證據限制。'
+            }
 - 至少提出兩項互不重複、由主線可查證的 consequences。
 - summary、opponentUse、boardImpact 合計至少逐字包含兩步不同中文主線著法，且說出棋子、線路、王區、陣形或威脅。
 - supportingMoves 只能使用 evidence 中真實出現的中文著法；禁止用評估分數當原因。
@@ -2779,10 +3035,16 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
 {
   "audit":{
     "bestMovePurpose":"AI 首選的具體目的",
-    "userMoveProblem":"實戰步較差的直接原因",
+    "userMoveProblem":"${
+              comparisonState === 'same_move'
+                ? '實戰步與首選一致及其具體價值'
+                : comparisonState === 'evidence_backed_difference'
+                  ? '實戰步與首選有證據支持的差異'
+                  : '目前可確定的比較與證據限制'
+            }",
     "consequences":[
-      {"id":"K1","category":"initiative_loss","summary":"具體後果","opponentUse":"對手如何利用","boardImpact":"盤面結果","supportingMoves":["中文著法一","中文著法二"],"evidenceIds":["E1"],"verified":true},
-      {"id":"K2","category":"opponent_development","summary":"另一項具體後果","opponentUse":"對手後續利用","boardImpact":"另一項盤面結果","supportingMoves":["中文著法二","中文著法三"],"evidenceIds":["E1"],"verified":true}
+      {"id":"K1","category":"${comparisonState === 'same_move' ? 'central_control' : 'initiative_loss'}","summary":"具體後果","opponentUse":"對手如何利用","boardImpact":"盤面結果","supportingMoves":["中文著法一","中文著法二"],"evidenceIds":["對應變例 evidence id"],"verified":true},
+      {"id":"K2","category":"${comparisonState === 'same_move' ? 'piece_development' : 'opponent_development'}","summary":"另一項具體後果","opponentUse":"對手後續利用","boardImpact":"另一項盤面結果","supportingMoves":["中文著法二","中文著法三"],"evidenceIds":["對應變例 evidence id"],"verified":true}
     ],
     "contradictions":[],
     "enoughEvidence":true${
@@ -2799,20 +3061,31 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
     "directAnswerEvidenceIds":["E1"],
     "sections":[
       {"id":"direct_conclusion","heading":"直接結論","claims":[{"id":"C1","text":"與 directAnswer 相同的直接結論","evidenceIds":["E1"]}]},
-      {"id":"actual_move_problem","heading":"實戰步問題","claims":[{"id":"C2","text":"點名兩步並完整比較","evidenceIds":["E1"],"findingIds":["K1"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際利用","consequence":"具體後果"}}]},
-      {"id":"best_move_plan","heading":"AI 首選","claims":[{"id":"C3","text":"AI 首選的目的","evidenceIds":["E1"]}${
+      {"id":"actual_move_problem","heading":"${
+              COMPARISON_SECTION_HEADINGS[comparisonState][
+                SECTION_IDS.actualMoveProblem
+              ] ?? SECTION_HEADINGS[SECTION_IDS.actualMoveProblem]
+            }","claims":[{"id":"C2","text":"依比較狀態點名著法並完整說明","evidenceIds":["E1"],"findingIds":["K1"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際利用","consequence":"具體後果"}}]},
+      {"id":"best_move_plan","heading":"${
+              COMPARISON_SECTION_HEADINGS[comparisonState][SECTION_IDS.bestMovePlan] ??
+              SECTION_HEADINGS[SECTION_IDS.bestMovePlan]
+            }","claims":[{"id":"C3","text":"AI 首選的目的","evidenceIds":["E1"]}${
         dualComparison?.status === 'disagreement'
           ? ',{"id":"CD1","text":"逐字比較兩條候選的可控性、容錯與長期局勢","evidenceIds":["兩個不同引擎 evidence id"]}'
           : ''
       }]},
-      {"id":"opponent_exploitation","heading":"對手利用與後果","claims":[{"id":"C4","text":"至少兩步主線、對手最強利用與盤面結果","evidenceIds":["E1"],"findingIds":["K1","K2"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際利用","consequence":"具體後果"}}]},
+      {"id":"opponent_exploitation","heading":"${
+              COMPARISON_SECTION_HEADINGS[comparisonState][
+                SECTION_IDS.opponentExploitation
+              ] ?? SECTION_HEADINGS[SECTION_IDS.opponentExploitation]
+            }","claims":[{"id":"C4","text":"至少兩步主線、對手合理應對與盤面結果","evidenceIds":["對應變例 evidence id"],"findingIds":["K1","K2"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際應對","consequence":"具體後果"}}]},
       {"id":"practical_principle","heading":"實戰原則","claims":[{"id":"C5","text":"一條可操作原則","evidenceIds":["E1"]}]}
     ],
     "generalNotes":[],
     "warnings":[]
   }
 }
-`, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS, timing.initialMoveFirstCallTimeoutMs)
+`, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS, timing.initialMoveFirstCallTimeoutMs, 'json', 'initial_combined')
           )
           audit = normalizeConsequenceAudit(combined.audit)
           auditErrors = validateConsequenceAudit(
@@ -2820,7 +3093,8 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
             evidence,
             true,
             dualComparison,
-            validationLanguage
+            validationLanguage,
+            comparisonState
           )
           combinedInitialWriterText = JSON.stringify(combined.answer)
         } catch (error) {
@@ -2889,6 +3163,8 @@ ${
 }
 
 可接受的具體後果類型：
+- central_control：中線控制與壓力
+- piece_development：子力發展與協調
 - initiative_loss：失去先手
 - piece_restriction：棋子受限
 - king_safety：王區變弱
@@ -2960,7 +3236,7 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
     "evidenceIds":["兩個不同引擎的證據 ID"]
   }
 }
-`)
+`, 3_000, undefined, 'json', 'audit')
           )
         )
         auditErrors = validateConsequenceAudit(
@@ -2968,7 +3244,8 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
           evidence,
           hasUserMove,
           dualComparison,
-          validationLanguage
+          validationLanguage,
+          comparisonState
         )
       } catch (error) {
         if (error instanceof HarnessModelPhaseTimeoutError) throw error
@@ -3023,6 +3300,7 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
     answerRequirements.verifiedFindingIds = concreteConsequences.map(
       (item) => item.id
     )
+    answerRequirements.verifiedFindings = concreteConsequences
 
     progress('writing', `正在依引擎證據撰寫${outputLanguage}說明。`)
     let writerText: string | null = combinedInitialWriterText
@@ -3030,6 +3308,7 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
       writerText = await callModel(`
 你是象棋教練。只輸出 JSON，不要輸出推理過程。
 ${languageRule}
+${hasUserMove ? comparisonContract : ''}
 你只能使用「已驗證具體後果」與引擎證據，不得自行新增戰術事實。
 正文完全禁止使用分數高低、評估差距或可信度作為理由，也不要報告這些數字。
 著法只能使用證據中的中文名稱，不得顯示 h2e2 之類座標。
@@ -3173,7 +3452,7 @@ ${
   "warnings":[]
 }`
 }
-`, isFollowUp ? 1_200 : 3_000)
+`, isFollowUp ? 1_200 : 3_000, undefined, 'json', 'writer')
     } catch (error) {
       if (isFollowUp && (aiErrorStatus(error) === 400 || aiErrorStatus(error) === 422)) {
         return await recoverQuestion(null)
@@ -3246,6 +3525,9 @@ ${
       }
     }
 
+    if (isInitialMoveComparison) {
+      answer = applyComparisonPresentation(answer, comparisonState)
+    }
     progress('validating', '正在檢查每項敘述的證據引用與因果鏈。')
     const availableMoves = [...new Set(collectDisplayMoves(evidence))]
     const validateCandidate = (candidate: HarnessAnswer): string[] => {
@@ -3289,6 +3571,7 @@ ${
             deps.session.engineAnalysis.displayBestMove,
             deps.session.engineAnalysis.displayUserMove,
             answerRequirements.hasUserMove,
+            comparisonState,
             validationLanguage,
             isInitialMoveComparison
               ? INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS
@@ -3302,6 +3585,7 @@ ${
     )
     if (
       isInitialMoveComparison &&
+      comparisonState === 'evidence_backed_difference' &&
       auditErrors.length === 0 &&
       initialVisibleHanCharacters < INITIAL_MOVE_TARGET_MIN_HAN_CHARACTERS &&
       deterministicErrors.every((error) =>
@@ -3422,6 +3706,7 @@ ${
           await callModel(`
 只輸出 JSON，不要輸出推理過程。這是針對「失敗區塊」的局部重寫，不是整篇重生。
 ${languageRule}
+${hasUserMove ? comparisonContract : ''}
 只重寫下列區塊，其他區塊不要輸出（會原樣保留）：
 ${JSON.stringify(
             [...failedSections.entries()].map(([id, diagnosis]) => ({
@@ -3454,7 +3739,7 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
     ? '{"directAnswer":"（僅在被要求時）","sections":[{"id":"actual_move_problem|opponent_exploitation","heading":"實戰步問題或對手利用與後果","claims":[{"id":"C2","text":"...","evidenceIds":["E1"],"findingIds":["K1"],"causal":{"cause":"...","mechanism":"...","affected":"...","opponentUse":"...","consequence":"..."}}]}]}'
     : '{"directAnswer":"（僅在被要求時）","sections":[{"id":"opponent_exploitation","heading":"對手利用與後果","claims":[{"id":"C2","text":"最佳著法主線的具體後果。","evidenceIds":["E1"],"findingIds":["K1"],"causal":{"cause":"最佳著法主線中的中文著法","mechanism":"...","affected":"...","opponentUse":"對手最強回應","consequence":"..."}}]}]}'
 }
-`)
+`, 3_000, undefined, 'json', 'repair')
         )
         const replacements = normalizeSections(rewritten.sections)
         const mergedSections = answer.sections.map((section) => {
@@ -3536,14 +3821,12 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
       progress(
         'quality_check',
         isFollowUp
-          ? '追問已通過證據與格式檢查。'
-          : hasUserMove
-          ? '已通過品質檢查：最佳著法目的、錯失機會、對手利用、後續後果與完整比較均已驗證。'
-          : '已通過品質檢查：目前局面、最佳著法目的與後續主線均已驗證。'
+          ? '追問已通過格式、引用關聯與可計算棋盤事實檢查；棋理解釋仍是模型依引擎資料整理。'
+          : '已通過結構、引用關聯與可計算棋盤事實檢查；棋理解釋仍是模型依引擎主線整理。'
       )
     }
 
-    progress('completed', '分析與證據驗證完成。')
+    progress('completed', '結構、引用關聯與可計算棋盤事實檢查完成。')
     const finalText = renderAnswer(
       answer,
       hasUserMove,
