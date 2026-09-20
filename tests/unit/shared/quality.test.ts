@@ -23,6 +23,11 @@ import {
   type ScorableSection
 } from '../../../src/shared/logic/ai/ExplanationQualityScorer'
 import {
+  moveComparisonEvidenceState,
+  type MoveComparisonEvidenceState
+} from '../../../src/shared/logic/ai/MoveComparisonEvidence'
+import type { MoveComparisonResult } from '../../../src/shared/types/MoveComparisonResult'
+import {
   HARNESS_SECTION_IDS,
   INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS,
   type CausalChain,
@@ -163,16 +168,64 @@ function buildAnswer(overrides: Partial<Record<string, ScorableSection>> = {}): 
 function score(
   answer: ScorableAnswer,
   moves = AVAILABLE_MOVES,
-  minimumHanCharacters?: number
+  minimumHanCharacters?: number,
+  comparisonState: MoveComparisonEvidenceState = 'evidence_backed_difference',
+  bestMoveDisplay = '炮二平五',
+  userMoveDisplay = '馬八進七'
 ) {
   return scoreExplanationAnswer({
     answer,
     availableMoves: moves,
-    bestMoveDisplay: '炮二平五',
-    userMoveDisplay: '馬八進七',
+    bestMoveDisplay,
+    userMoveDisplay,
     hasUserMove: true,
+    comparisonState,
     minimumHanCharacters
   })
+}
+
+function buildSameMoveAnswer(): ScorableAnswer {
+  const causal: CausalChain = {
+    cause: '因為炮二平五先架起中炮',
+    mechanism: '中炮立即控制中路並限制黑方中卒活動',
+    affected: '紅方中炮、黑方中卒與中央線路',
+    opponentUse: '黑方可用馬8進7正常發展右翼馬',
+    consequence: '紅方接著馬八進七時仍保有協調出子的計畫'
+  }
+  return {
+    directAnswer: '炮二平五就是引擎首選；這步立即控制中路，黑方可用馬8進7合理出子。',
+    sections: [
+      {
+        id: HARNESS_SECTION_IDS.directConclusion,
+        heading: '直接結論',
+        claims: [{ id: 'DIRECT', text: '炮二平五就是引擎首選，兩者是同一著法。' }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.actualMoveProblem,
+        heading: '與首選一致',
+        claims: [{ id: 'C2', text: '實戰的炮二平五與首選一致，能立即控制中路。', causal }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.bestMovePlan,
+        heading: '這步的好處',
+        claims: [{ id: 'C3', text: '炮二平五先建立中炮，直接控制中路。' }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.opponentExploitation,
+        heading: '對手合理應對',
+        claims: [{
+          id: 'C4',
+          text: '炮二平五後，黑方可走馬8進7，紅方再馬八進七；雙方依序發展子力並保持中路張力。',
+          causal
+        }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.practicalPrinciple,
+        heading: '實戰原則',
+        claims: [{ id: 'C5', text: '著法與首選一致時，重點是理解計畫與對手的合理應對。' }]
+      }
+    ]
+  }
 }
 
 function criterionFailed(report: ReturnType<typeof score>, id: string): boolean {
@@ -181,6 +234,85 @@ function criterionFailed(report: ReturnType<typeof score>, id: string): boolean 
 
 async function main(): Promise<void> {
   console.log('\n## 品質評分器：核心守門行為')
+
+  const comparisonFixture: MoveComparisonResult = {
+    positionFen: 'fixture',
+    sideToMove: 'red',
+    userMove: 'h2e2',
+    engineBestMove: 'h2e2',
+    evaluationAfterUserMove: 0.3,
+    evaluationAfterBestMove: 0.3,
+    scoreDifference: 0,
+    mistakeLevel: 'acceptable_or_tiny_inaccuracy',
+    depth: 18,
+    confidence: 'high',
+    uncertaintyReasons: []
+  }
+  check(
+    '同一著法由實際比較欄位判定，不以候選排名推論',
+    moveComparisonEvidenceState(comparisonFixture) === 'same_move'
+  )
+  check(
+    '既有可接受分級映射為近似等值，不另造分差門檻',
+    moveComparisonEvidenceState({
+      ...comparisonFixture,
+      userMove: 'b0c2',
+      engineBestMove: 'h2e2'
+    }) === 'near_equivalent'
+  )
+  check(
+    '低可信比較明確落入證據不足',
+    moveComparisonEvidenceState({
+      ...comparisonFixture,
+      userMove: 'b0c2',
+      confidence: 'low'
+    }) === 'insufficient'
+  )
+
+  const sameMoveReport = score(
+    buildSameMoveAnswer(),
+    AVAILABLE_MOVES,
+    undefined,
+    'same_move',
+    '炮二平五',
+    '炮二平五'
+  )
+  check('同首選可用正向計畫與合理應對通過，不強制負面解釋', sameMoveReport.pass, sameMoveReport.summary)
+  const falselyNegativeSameMove = buildSameMoveAnswer()
+  falselyNegativeSameMove.sections[1]!.claims[0]!.text =
+    '炮二平五雖與首選相同，仍是較差失誤，必然受到懲罰。'
+  check(
+    '同首選卻硬寫較差或懲罰會被擋下',
+    criterionFailed(
+      score(
+        falselyNegativeSameMove,
+        AVAILABLE_MOVES,
+        undefined,
+        'same_move',
+        '炮二平五',
+        '炮二平五'
+      ),
+      'missed_opportunity'
+    )
+  )
+
+check(
+  '不足字樣不能豁免同段仍存在的確定戰術斷言',
+    validateClaimCausalChain(
+      {
+        id: 'mixed-insufficiency',
+        text: '目前證據不足，但這步必然丟車。'
+      },
+      AVAILABLE_MOVES
+    ).length > 0
+)
+check(
+  '不足字樣與確定斷言之間沒有標點也不能整段豁免',
+  validateClaimCausalChain(
+    { id: 'mixed-no-punctuation', text: '證據不足但這步必然丟車' },
+    ['炮二平五', '馬８進７']
+  ).length > 0
+)
 
   const good = score(buildAnswer())
   check('具體回答（含完整因果鏈）通過全部準則', good.pass, good.summary)
