@@ -48,6 +48,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Run AI acceptance self-test
+        run: npm run test:acceptance:ai
+
       - name: Audit dependencies
         run: npm run security:audit
 
