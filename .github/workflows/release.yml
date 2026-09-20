@@ -252,7 +252,7 @@ jobs:
 
           ## 本次 Windows 發布狀態
 
-          本次 $tag 是經擁有者明確允許的**未簽章過渡更新**。同一次 workflow 會核對版本、SHA-256、latest.yml、安裝與解除安裝，並從匿名公開網址重新下載驗證；全部通過後才升為 Latest，供既有桌面 App 同步。沒有受信任的 Authenticode 發行者與時間戳，Windows SmartScreen 仍可能警告或封鎖。
+          本次 $tag 是經擁有者明確允許的**未簽章過渡更新候選**。此 workflow 只會核對版本、SHA-256、latest.yml、安裝與解除安裝，並從匿名公開網址重新下載驗證；完成真正 Windows App、AI 與新版更新器驗收後，必須另行執行 immutable candidate promotion，才會升為 Latest。沒有受信任的 Authenticode 發行者與時間戳，Windows SmartScreen 仍可能警告或封鎖。
           EOF
             title="象棋 AI 分析講解 $tag（未簽章過渡更新）"
           else
@@ -266,11 +266,10 @@ jobs:
           fi
           assets=("$setup" "$setup.blockmap" release/latest.yml release/SHA256SUMS.txt)
           if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$tag" "${assets[@]}" --repo "${{ github.repository }}" --clobber
-            gh release edit "$tag" --repo "${{ github.repository }}" --prerelease --title "$title" --notes-file release-notes.md
-          else
-            gh release create "$tag" "${assets[@]}" --repo "${{ github.repository }}" --verify-tag --prerelease --title "$title" --notes-file release-notes.md
+            echo "Release $tag already exists; choose the next unused patch version instead of overwriting candidate assets." >&2
+            exit 1
           fi
+          gh release create "$tag" "${assets[@]}" --repo "${{ github.repository }}" --verify-tag --prerelease --title "$title" --notes-file release-notes.md
 
   server-proxy-acceptance:
     name: Public installer check (${{ matrix.label }} proxy)
@@ -322,33 +321,6 @@ jobs:
             -ExpectedSha256 '${{ needs.build.outputs.setup_sha256 }}'
           "This runner is a ${{ matrix.label }}. It is not Windows 10 or Windows 11 consumer-client evidence." |
             Out-File -Append -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
-
-  promote-unsigned-release:
-    name: Promote explicitly approved unsigned update to Latest
-    needs: [build, publish-release, server-proxy-acceptance]
-    if: ${{ inputs.mode == 'unsigned-release' && needs.server-proxy-acceptance.result == 'success' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-
-    steps:
-      - name: Reconfirm approval and publish the verified public bytes
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          UNSIGNED_ACK: ${{ inputs.unsigned_release_acknowledgement }}
-        run: |
-          set -euo pipefail
-          if [[ "$UNSIGNED_ACK" != 'PUBLISH UNSIGNED LATEST' ]]; then
-            echo 'Unsigned Latest acknowledgement is missing or changed.' >&2
-            exit 1
-          fi
-          gh release edit "${{ inputs.tag }}" \
-            --repo "${{ github.repository }}" \
-            --prerelease=false \
-            --latest \
-            --title "象棋 AI 分析講解 ${{ inputs.tag }}（未簽章過渡更新）"
 
   windows-client-evidence:
     name: Require clean Windows 10 22H2 and Windows 11 client evidence
