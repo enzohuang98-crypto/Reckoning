@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { OpenRouterProvider } from '../../../src/main/ai/providers/OpenRouterProvider'
+import { AIResponseValidationError } from '../../../src/main/ai/http'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
 
 interface RecordedRequest {
@@ -183,6 +184,104 @@ await withServer(
     const body = requests[0].body as Record<string, unknown>
     assert.deepEqual(body.reasoning, { max_tokens: 1_000, exclude: true })
     assert.equal(body.max_tokens, 4_000)
+  }
+)
+
+await withServer(
+  () => ({
+    model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
+    usage: {
+      prompt_tokens: 20,
+      completion_tokens: 900,
+      completion_tokens_details: { reasoning_tokens: 600 }
+    }
+  }),
+  async (baseUrl, requests) => {
+    const request: AIExplanationRequest = {
+      provider: 'openrouter',
+      model: 'nvidia/nemotron-3-super-120b-a12b:free',
+      apiKey: 'synthetic-test-key',
+      prompt: 'Return structured coaching JSON',
+      responseFormat: 'json',
+      maxOutputTokens: 4_000,
+      metadata: {
+        requestId: 'nemotron-super-reasoning-budget',
+        analysisId: 'nemotron-super-reasoning-budget',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical'
+      }
+    }
+    const response = await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
+    const body = requests[0].body as Record<string, unknown>
+    assert.deepEqual(body.reasoning, { max_tokens: 1_000, exclude: true })
+    assert.equal(body.max_tokens, 4_000)
+    assert.deepEqual(response.usage, {
+      inputTokens: 20,
+      outputTokens: 900,
+      reasoningTokens: 600,
+      finishReason: 'stop'
+    })
+  }
+)
+
+await withServer(
+  () => ({
+    model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    choices: [{ message: { content: 'plain text' }, finish_reason: 'stop' }]
+  }),
+  async (baseUrl, requests) => {
+    await new OpenRouterProvider({ baseUrl }).generateExplanation({
+      provider: 'openrouter',
+      model: 'nvidia/nemotron-3-super-120b-a12b:free',
+      apiKey: 'synthetic-test-key',
+      prompt: 'Return plain text',
+      responseFormat: 'text',
+      metadata: {
+        requestId: 'nemotron-super-text',
+        analysisId: 'nemotron-super-text',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical'
+      }
+    })
+    const body = requests[0].body as Record<string, unknown>
+    assert.equal(body.reasoning, undefined, '非 JSON 路徑不得誤套用模型專屬 reasoning 設定')
+  }
+)
+
+await withServer(
+  () => ({
+    model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    choices: [{ message: { content: '{"partial":true}' }, finish_reason: 'length' }],
+    usage: {
+      prompt_tokens: 20,
+      completion_tokens: 4_000,
+      completion_tokens_details: { reasoning_tokens: 1_000 }
+    }
+  }),
+  async (baseUrl) => {
+    await assert.rejects(
+      new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter',
+        model: 'nvidia/nemotron-3-super-120b-a12b:free',
+        apiKey: 'synthetic-test-key',
+        prompt: 'Return structured coaching JSON',
+        responseFormat: 'json',
+        maxOutputTokens: 4_000,
+        metadata: {
+          requestId: 'nemotron-super-length',
+          analysisId: 'nemotron-super-length',
+          userLevel: 'intermediate',
+          explanationStyle: 'long_analytical'
+        }
+      }),
+      (error: unknown) =>
+        error instanceof AIResponseValidationError &&
+        error.category === 'generation_incomplete' &&
+        error.details.finishReason === 'length' &&
+        error.details.outputTokens === 4_000 &&
+        error.details.reasoningTokens === 1_000
+    )
   }
 )
 console.log('OpenRouter free-model binding, response-format, and reasoning-budget tests passed')
