@@ -418,6 +418,10 @@ const ciWorkflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
   .replace(/\r\n/g, '\n')
 const releaseWorkflow = readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
   .replace(/\r\n/g, '\n')
+const unsignedPromotionWorkflow = readFileSync(
+  resolve('.github/workflows/promote-unsigned-candidate.yml'),
+  'utf8'
+).replace(/\r\n/g, '\n')
 const compileFakeEngineAction = readFileSync(
   resolve('.github/actions/compile-fake-engine/action.yml'),
   'utf8'
@@ -622,10 +626,16 @@ check(
     releaseWorkflow.includes('-AllowUnsigned') &&
     releaseWorkflow.includes('Windows SmartScreen may warn or block it') &&
     releaseWorkflow.includes('unsigned-release') &&
-    releaseWorkflow.includes('PUBLISH UNSIGNED LATEST') &&
-    releaseWorkflow.includes('Promote explicitly approved unsigned update to Latest') &&
-    releaseWorkflow.indexOf('Promote explicitly approved unsigned update to Latest') >
-      releaseWorkflow.indexOf('Public installer check') &&
+    releaseWorkflow.includes('choose the next unused patch version') &&
+    !releaseWorkflow.includes('--clobber') &&
+    unsignedPromotionWorkflow.includes('PUBLISH UNSIGNED LATEST') &&
+    unsignedPromotionWorkflow.includes('Promote explicitly approved unsigned update to Latest') &&
+    unsignedPromotionWorkflow.includes('expected_setup_sha256') &&
+    unsignedPromotionWorkflow.includes('gh release download') &&
+    unsignedPromotionWorkflow.includes('--prerelease=false') &&
+    unsignedPromotionWorkflow.includes('--latest') &&
+    !unsignedPromotionWorkflow.includes('electron-builder') &&
+    !unsignedPromotionWorkflow.includes('--clobber') &&
     installerSmokeScript.includes('[switch]$AllowUnsigned') &&
     installerSmokeScript.includes('SignatureStatus]::NotSigned') &&
     verifySignatureScript.includes('SignatureStatus]::Valid') &&
