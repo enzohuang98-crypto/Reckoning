@@ -17,7 +17,7 @@ import {
   validateConsequenceAudit
 } from '../../../src/main/ai/HarnessOrchestrator'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
-import { AIResponseValidationError } from '../../../src/main/ai/http'
+import { AIHttpError, AIResponseValidationError } from '../../../src/main/ai/http'
 import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
 import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
@@ -1059,7 +1059,9 @@ async function main(): Promise<void> {
     provider.prompts[0]?.includes('先出馬可以讓子力調度更靈活') &&
       provider.prompts[0]?.includes('不可信自述') &&
       !provider.prompts[0]?.includes('"candidates"') &&
-      !provider.prompts[0]?.includes('"rawScore"')
+      !provider.prompts[0]?.includes('"rawScore"') &&
+      !provider.prompts[0]?.includes('本機術語知識') &&
+      !provider.prompts[0]?.includes('"score":')
   )
   check(
     '只有主引擎時，進度與 prompt 不會虛構複核引擎',
@@ -1575,7 +1577,9 @@ async function main(): Promise<void> {
 
   const shortProvider = new FakeProvider(false)
   const shortTraces: HarnessTrace[] = []
-  const completedShortResult = await runExplanationHarness(
+  let shortResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
+  let shortError: unknown
+  try { shortResult = await runExplanationHarness(
     {
       requestId: 'ai-request-grounded-short-completion',
       analysisId: session.analysisId,
@@ -1609,34 +1613,23 @@ async function main(): Promise<void> {
       signal: new AbortController().signal,
       onProgress: () => undefined
     }
+  ) } catch (error) { shortError = error }
+  check(
+    '不足 400 漢字的首答不得用固定文字補字交付',
+    shortResult === null && shortError instanceof Error &&
+      shortError.message.includes('沒有通過棋理與證據檢查')
   )
   check(
-    '內容正確但過短的首答只用同一證據包補足，不再呼叫模型',
-    shortProvider.calls === 1 && completedShortResult.warnings.length === 0
+    '短答至多嘗試一次有界修補，失敗後仍拒絕交付',
+    shortProvider.calls === 2 && shortTraces.at(-1)?.status === 'failed' &&
+      !shortTraces.at(-1)?.finalText,
+    JSON.stringify({ calls: shortProvider.calls, errors: shortTraces.at(-1)?.validationErrors })
   )
   check(
-    '本機補足後達到 500 漢字目標並保留真實兩條主線',
-    countHanCharacters(completedShortResult.finalText) >= 500 &&
-      completedShortResult.finalText.includes('馬八進七') &&
-      completedShortResult.finalText.includes('炮二平五') &&
-      completedShortResult.finalText.includes('馬8進7')
-  )
-  check(
-    '補足後 trace 完成且保留原始短答診斷供責任判定',
-    shortTraces.at(-1)?.status === 'completed' &&
+    '短答 trace 保留原始字數診斷',
       shortTraces.at(-1)?.validationErrors.some((error) =>
         error.includes('一鍵完整解說正文只有')
       )
-  )
-  check(
-    '本機補足不產生連續或衝突的中文標點',
-    !/(?:。；|。。|，。)/u.test(completedShortResult.finalText),
-    completedShortResult.finalText
-  )
-  check(
-    '本機補足不拼出「對手接著紅方」一類重複主詞病句',
-    !/對手(?:接著|後續)(?:紅方|黑方)/u.test(completedShortResult.finalText),
-    completedShortResult.finalText
   )
 
   const nearTargetProvider = new NearTargetProvider()
@@ -1679,12 +1672,11 @@ async function main(): Promise<void> {
     }
   )
   check(
-    '400–499 漢字的合格首答也會用同一證據包補到 500 字產品目標',
+    '400–499 漢字的合格正文達最低門檻，保留原文不補字',
     nearTargetProvider.calls === 1 &&
-      countHanCharacters(nearTargetResult.finalText) >= 500 &&
-      nearTargetTraces.at(-1)?.validationErrors.some((error) =>
-        error.includes('低於 500 個漢字的產品目標')
-      ),
+      countHanCharacters(nearTargetResult.finalText) >= 400 &&
+      countHanCharacters(nearTargetResult.finalText) < 500 &&
+      nearTargetTraces.at(-1)?.status === 'completed',
     JSON.stringify({
       calls: nearTargetProvider.calls,
       finalHan: countHanCharacters(nearTargetResult.finalText),
@@ -3850,6 +3842,54 @@ async function main(): Promise<void> {
       countHanCharacters(repairedResult.finalText) >= 400 &&
       repairedTraces[0]?.status === 'completed',
     JSON.stringify({ calls: repairSuccessProvider.calls, errors: repairedTraces[0]?.validationErrors })
+  )
+
+  const repairOutageProvider = {
+    id: 'openai' as const,
+    displayName: 'Fake repair outage',
+    calls: 0,
+    async generateExplanation() {
+      this.calls++
+      if (this.calls > 1) throw new AIHttpError(503, 'generation', 'Provider unavailable (503)')
+      return {
+        text: JSON.stringify(invalidRepairDraft), provider: 'openai' as const,
+        model: 'fake-model', createdAt: Date.now(), groundedOnEngineData: true as const,
+        usage: { inputTokens: 10, outputTokens: 20 }
+      }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  const repairOutageTraces: HarnessTrace[] = []
+  let repairOutageError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-repair-outage', analysisId: sameMoveSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW',
+        attachedMove: sameMoveAnalysis.userMove, answerMode: 'research',
+        budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: 8000 }
+      },
+      {
+        provider: repairOutageProvider, apiKey: 'synthetic-test-key', model: 'fake-model',
+        session: sameMoveSession,
+        registry: {
+          list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: (trace: HarnessTrace) => repairOutageTraces.push(trace) } as never,
+        signal: new AbortController().signal, onProgress: () => undefined
+      }
+    )
+  } catch (error) { repairOutageError = error }
+  check(
+    '修補階段 503 保留服務錯誤分類，不能吞成正文品質失敗',
+    repairOutageError instanceof AIHttpError &&
+      repairOutageError.status === 503 &&
+      repairOutageProvider.calls === 2 &&
+      repairOutageTraces[0]?.providerDiagnostic?.category === 'provider_unavailable',
+    JSON.stringify({ calls: repairOutageProvider.calls, error: repairOutageError instanceof Error ? repairOutageError.name : null,
+      diagnostic: repairOutageTraces[0]?.providerDiagnostic })
   )
 
   // 模型第二次仍空泛時，不得進入第三次內容重試。
