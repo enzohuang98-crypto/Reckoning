@@ -289,7 +289,7 @@ jobs:
       - name: Check out release test scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.tag }}
           persist-credentials: false
 
       - name: Download installer from the anonymous public URL

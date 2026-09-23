@@ -418,6 +418,9 @@ const ciWorkflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
   .replace(/\r\n/g, '\n')
 const releaseWorkflow = readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
   .replace(/\r\n/g, '\n')
+const publicInstallerJob = releaseWorkflow
+  .split('  server-proxy-acceptance:')[1]
+  ?.split('  windows-client-evidence:')[0] ?? ''
 const unsignedPromotionWorkflow = readFileSync(
   resolve('.github/workflows/promote-unsigned-candidate.yml'),
   'utf8'
@@ -640,6 +643,11 @@ check(
     installerSmokeScript.includes('SignatureStatus]::NotSigned') &&
     verifySignatureScript.includes('SignatureStatus]::Valid') &&
     verifySignatureScript.includes('TimeStamperCertificate')
+)
+check(
+  '公開 installer 代理核對與候選建置使用同一個 annotated tag 的腳本',
+  publicInstallerJob.includes('ref: ${{ inputs.tag }}') &&
+    !publicInstallerJob.includes('ref: ${{ github.sha }}')
 )
 check(
   'Release 只把 Windows Server 當代理，Latest 前強制核對 Win10 22H2 與 Win11 用戶端',
