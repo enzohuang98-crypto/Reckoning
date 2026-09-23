@@ -2974,6 +2974,7 @@ export async function runExplanationHarness(
         const bestEvidence = evidence
           .filter((item) =>
             item.move === undefined &&
+            item.positionFen === deps.session.positionFen &&
             item.displayMove === deps.session.engineAnalysis.displayBestMove &&
             item.displayPrincipalVariation.length >= INITIAL_MOVE_MIN_BEST_LINE_PLIES
           )
@@ -2981,6 +2982,7 @@ export async function runExplanationHarness(
         const userEvidence = evidence
           .filter((item) =>
             item.move === canonicalMove &&
+            item.positionFen === deps.session.positionFen &&
             item.displayPrincipalVariation.length >= INITIAL_MOVE_MIN_USER_LINE_PLIES
           )
           .sort((a, b) => b.displayPrincipalVariation.length - a.displayPrincipalVariation.length)[0]
