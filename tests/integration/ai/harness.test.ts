@@ -1779,6 +1779,9 @@ async function main(): Promise<void> {
       shallowEvidenceProvider.prompts[0]?.includes(`${deepUserEvidence.id} 作實戰步主線`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"directAnswerEvidenceIds":["E1","${deepUserEvidence.id}"]`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"id":"C4","text":"至少兩步主線、對手合理應對與盤面結果","evidenceIds":["${deepUserEvidence.id}"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"opponentReplies":["${deepUserEvidence.displayPrincipalVariation[1]}"`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"supportingMoves":["${deepUserEvidence.displayPrincipalVariation[0]}","${deepUserEvidence.displayPrincipalVariation[1]}"],"evidenceIds":["${deepUserEvidence.id}"]`) &&
+      !shallowEvidenceProvider.prompts[0]?.includes('"supportingMoves":["中文著法一"') &&
       !shallowEvidenceProvider.prompts[0]?.includes('"id":"E2"'),
     JSON.stringify({
       selected: deepUserEvidence?.id,
@@ -3733,7 +3736,7 @@ async function main(): Promise<void> {
 
   console.log('\n## 一鍵品質收斂（loop engineering）')
 
-  // 一個區塊空泛：不得再花第二輪內容呼叫而撞上 30 秒硬截止。
+  // 一個區塊空泛：只許一次有明確診斷的整份修補，仍不交付空泛內容。
   const rewriteProvider = new RewriteLoopProvider()
   const rewriteProgress: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
   let rewriteError: unknown
@@ -3777,8 +3780,8 @@ async function main(): Promise<void> {
     rewriteError = error
   }
   check(
-    '空泛首答不啟動第二次內容呼叫',
-    rewriteProvider.calls === 1,
+    '空泛首答最多啟動一次有界修補呼叫',
+    rewriteProvider.calls === 2,
     rewriteProvider.calls
   )
   check(
@@ -3787,11 +3790,69 @@ async function main(): Promise<void> {
       rewriteError.message.includes('沒有通過棋理與證據檢查')
   )
   check(
-    '一鍵首答失敗不回報虛假的局部重寫進度',
-    !rewriteProgress.some((item) => item.phase === 'repairing')
+    '一鍵首答失敗只回報實際啟動的一次修補',
+    rewriteProgress.filter((item) => item.phase === 'repairing').length === 1
   )
 
-  // 模型即使願意再回空泛內容，也不得進入內容重試迴圈。
+  const validRepairText = (await new SameMoveProvider().generateExplanation({ prompt: '' })).text
+  const invalidRepairDraft = JSON.parse(validRepairText) as {
+    audit: ConsequenceAudit; answer: HarnessAnswer
+  }
+  invalidRepairDraft.answer.sections[3]!.claims[0]!.text = '黑方大致有機會。'
+  const repairSuccessProvider = {
+    id: 'openai' as const,
+    displayName: 'Fake successful combined repair',
+    calls: 0,
+    prompts: [] as string[],
+    async generateExplanation(request: { prompt: string; maxOutputTokens?: number }) {
+      this.calls++
+      this.prompts.push(request.prompt)
+      return {
+        text: this.calls === 1 ? JSON.stringify(invalidRepairDraft) : validRepairText,
+        provider: 'openai' as const,
+        model: 'fake-model',
+        createdAt: Date.now(),
+        groundedOnEngineData: true as const,
+        usage: { inputTokens: 10, outputTokens: 20 }
+      }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  const repairedTraces: HarnessTrace[] = []
+  let repairedResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
+  try { repairedResult = await runExplanationHarness(
+    {
+      requestId: 'ai-request-combined-repair-success',
+      analysisId: sameMoveSession.analysisId,
+      provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW',
+      attachedMove: sameMoveAnalysis.userMove,
+      answerMode: 'research',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: 8000 }
+    },
+    {
+      provider: repairSuccessProvider,
+      apiKey: 'synthetic-test-key', model: 'fake-model', session: sameMoveSession,
+      registry: {
+        list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+        getAdapter: () => null
+      } as never,
+      traceStore: { save: (trace: HarnessTrace) => repairedTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    }
+  ) } catch { /* The assertion reports the validator errors below. */ }
+  check(
+    '審核與正文修補後仍由正式 validator 驗收完整五段',
+    repairSuccessProvider.calls === 2 &&
+      repairSuccessProvider.prompts[1]?.includes('錯誤：') &&
+      repairedTraces[0]?.modelCallDiagnostics?.[1]?.stage === 'repair' &&
+      repairedResult !== null &&
+      countHanCharacters(repairedResult.finalText) >= 400 &&
+      repairedTraces[0]?.status === 'completed',
+    JSON.stringify({ calls: repairSuccessProvider.calls, errors: repairedTraces[0]?.validationErrors })
+  )
+
+  // 模型第二次仍空泛時，不得進入第三次內容重試。
   const stubbornProvider = new StubbornVagueProvider()
   const stubbornTraces: HarnessTrace[] = []
   let stubbornError: unknown
@@ -3835,8 +3896,8 @@ async function main(): Promise<void> {
     stubbornError = error
   }
   check(
-    '初次內容不合格 → 恰好一次模型呼叫後停止',
-    stubbornProvider.calls === 1,
+    '初次內容不合格且修補仍錯 → 恰好兩次模型呼叫後停止',
+    stubbornProvider.calls === 2,
     stubbornProvider.calls
   )
   check(
