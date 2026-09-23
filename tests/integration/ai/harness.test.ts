@@ -17,6 +17,7 @@ import {
   validateConsequenceAudit
 } from '../../../src/main/ai/HarnessOrchestrator'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import { AIResponseValidationError } from '../../../src/main/ai/http'
 import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
 import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
@@ -1026,7 +1027,7 @@ async function main(): Promise<void> {
       traces.at(-1)?.modelCallDiagnostics?.[0]?.stage === 'initial_combined' &&
       traces.at(-1)?.modelCallDiagnostics?.[0]?.maxOutputTokens === 4_000 &&
       traces.at(-1)?.modelCallDiagnostics?.[0]?.reasoningPolicy ===
-        'bounded_1000_excluded' &&
+        'reasoning_disabled' &&
       traces.at(-1)?.modelCallDiagnostics?.[0]?.status === 'completed' &&
       traces.at(-1)?.modelCallDiagnostics?.[0]?.outputTokens === 20
   )
@@ -1040,6 +1041,12 @@ async function main(): Promise<void> {
     provider.prompts[0]?.includes('direct_conclusion、actual_move_problem、best_move_plan、opponent_exploitation、practical_principle') &&
       provider.prompts[0]?.includes('不得少於 400 個漢字') &&
       provider.prompts[0]?.includes('500–900')
+  )
+  check(
+    '首次比較 prompt 明確區分首選與實戰兩條主線且示意引用不誤導模型',
+    provider.prompts[0]?.includes('E1 是 AI 首選主線，E2 是實戰步主線') &&
+      provider.prompts[0]?.includes('"directAnswerEvidenceIds":["E1","E2"]') &&
+      provider.prompts[0]?.includes('"id":"C1","text":"與 directAnswer 相同的直接結論","evidenceIds":["E1","E2"]')
   )
   check(
     '首次比較 prompt 禁止把跨引擎分歧或主線外後續寫成確定事實',
@@ -1134,6 +1141,58 @@ async function main(): Promise<void> {
     sameMoveResult.finalText
   )
 
+  const probeFollowUpPrompt = async (analysisSession: AnalysisSession): Promise<string> => {
+    const prompts: string[] = []
+    const probeProvider = {
+      id: 'openai' as const,
+      displayName: 'Audit prompt probe',
+      generateExplanation: async (request: { prompt: string }): Promise<never> => {
+        prompts.push(request.prompt)
+        throw new Error('audit prompt captured')
+      },
+      async *generateExplanationStream(): AsyncIterable<never> { return }
+    }
+    try {
+      await runExplanationHarness(
+        {
+          requestId: `follow-up-prompt-${analysisSession.analysisId}`,
+          analysisId: analysisSession.analysisId,
+          provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+          explanationStyle: 'long_analytical', language: 'zh-TW',
+          attachedMove: analysisSession.engineAnalysis.userMove,
+          followUpQuestion: '這一步與首選相比，後續主線怎麼走？',
+          conversationHistory: [{
+            id: 'previous-answer', role: 'assistant', text: '先前的完整講解。',
+            createdAt: new Date().toISOString(), provider: 'openai', model: 'fake-model'
+          }],
+          reuseEvidence: true,
+          budget: { engineTimeMs: 100, maxEngineRounds: 1, maxModelCalls: 1, maxOutputTokens: 4_000 }
+        },
+        {
+          provider: probeProvider, apiKey: 'synthetic-test-key', model: 'fake-model',
+          session: analysisSession,
+          registry: {
+            list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+            getAdapter: () => null
+          } as never,
+          traceStore: { save: () => undefined } as never,
+          signal: new AbortController().signal, onProgress: () => undefined
+        }
+      )
+    } catch {
+      // The probe stops after capturing the first real model request.
+    }
+    return prompts[0] ?? ''
+  }
+  const sameMoveFollowUpPrompt = await probeFollowUpPrompt(sameMoveSession)
+  check(
+    '同首選的短追問提示使用正向主線，不要求證明失誤',
+    sameMoveFollowUpPrompt.includes('實戰步與引擎首選是同一著法') &&
+      sameMoveFollowUpPrompt.includes('只回答使用者這一次的問題') &&
+      !sameMoveFollowUpPrompt.includes('這步為什麼不好、錯失什麼'),
+    sameMoveFollowUpPrompt.slice(0, 400)
+  )
+
   const insufficientSession: AnalysisSession = {
     ...session,
     analysisId: 'analysis-insufficient-comparison-evidence',
@@ -1206,6 +1265,14 @@ async function main(): Promise<void> {
       traceStatus: insufficientTraces.at(-1)?.status,
       hasFinalText: insufficientTraces.at(-1)?.finalText !== undefined
     })
+  )
+  const insufficientFollowUpPrompt = await probeFollowUpPrompt(insufficientSession)
+  check(
+    '比較證據不足的短追問提示要求區分已知與未知',
+    insufficientFollowUpPrompt.includes('分開寫目前可確定的主線與缺少的證據') &&
+      insufficientFollowUpPrompt.includes('只回答使用者這一次的問題') &&
+      !insufficientFollowUpPrompt.includes('這步為什麼不好、錯失什麼'),
+    insufficientFollowUpPrompt.slice(0, 400)
   )
 
   const frozenCase = getTeacherTestCatalog().cases[0]
@@ -3595,6 +3662,57 @@ async function main(): Promise<void> {
     outputTokenBoundaryProvider.calls === 1 &&
       outputTokenBoundaryError instanceof Error &&
       outputTokenBoundaryError.message.includes('沒有通過棋理與證據檢查')
+  )
+
+  const failedAuditBudgets: number[] = []
+  const failedAuditProvider = {
+    id: 'openai' as const,
+    displayName: 'Failed audit budget probe',
+    generateExplanation: async (request: { maxOutputTokens?: number }) => {
+      failedAuditBudgets.push(request.maxOutputTokens ?? -1)
+      if (failedAuditBudgets.length === 1) {
+        throw new AIResponseValidationError(
+          'generation', 'generation_incomplete', 'Output reached its limit.',
+          { reason: 'output_truncated', finishReason: 'length', outputTokens: 3_000 }
+        )
+      }
+      return {
+        text: '{}', provider: 'openai' as const, model: 'fake-model',
+        createdAt: Date.now(), groundedOnEngineData: true as const,
+        usage: { inputTokens: 10, outputTokens: 10 }
+      }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'failed-audit-budget', analysisId: noMoveSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW',
+        answerMode: 'research', followUpQuestion: '請完整解釋目前局面',
+        budget: { engineTimeMs: 100, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 4_000 }
+      },
+      {
+        provider: failedAuditProvider, apiKey: 'synthetic-test-key', model: 'fake-model',
+        session: noMoveSession,
+        registry: {
+          list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: () => undefined } as never,
+        signal: new AbortController().signal, onProgress: () => undefined
+      }
+    )
+  } catch {
+    // This probe exercises budgeting, not answer acceptance.
+  }
+  check(
+    '截斷的審核呼叫已消耗 3000 tokens，後續寫作只能使用剩餘 1000',
+    failedAuditBudgets.length === 2 &&
+      failedAuditBudgets[0] === 3_000 &&
+      failedAuditBudgets[1] === 1_000,
+    failedAuditBudgets.join(',')
   )
 
   console.log('\n## 一鍵品質收斂（loop engineering）')

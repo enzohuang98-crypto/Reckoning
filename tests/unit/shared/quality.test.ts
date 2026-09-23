@@ -313,6 +313,20 @@ check(
     ['炮二平五', '馬８進７']
   ).length > 0
 )
+check(
+  '不足聲明後接正面確定錯著不能豁免因果鏈',
+  validateClaimCausalChain(
+    { id: 'mixed-positive-certainty', text: '證據不足，目前能確定這步是錯著。' },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '單純指出缺少主線仍可免不適用的因果鏈',
+  validateClaimCausalChain(
+    { id: 'limited-insufficiency', text: '目前引擎證據不足，無法確認錯失的具體機會。' },
+    AVAILABLE_MOVES
+  ).length === 0
+)
 
   const good = score(buildAnswer())
   check('具體回答（含完整因果鏈）通過全部準則', good.pass, good.summary)

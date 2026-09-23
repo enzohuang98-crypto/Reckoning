@@ -153,7 +153,7 @@ export interface HarnessModelCallDiagnostic {
   model: string
   maxOutputTokens: number
   responseFormat: 'json' | 'text'
-  reasoningPolicy: 'bounded_1000_excluded' | 'provider_managed'
+  reasoningPolicy: 'bounded_1000_excluded' | 'reasoning_disabled' | 'provider_managed'
   timeoutMs?: number
   durationMs: number
   status: 'completed' | 'failed'

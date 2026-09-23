@@ -214,7 +214,7 @@ await withServer(
     }
     const response = await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
     const body = requests[0].body as Record<string, unknown>
-    assert.deepEqual(body.reasoning, { max_tokens: 1_000, exclude: true })
+    assert.deepEqual(body.reasoning, { effort: 'none', exclude: true })
     assert.equal(body.max_tokens, 4_000)
     assert.deepEqual(response.usage, {
       inputTokens: 20,

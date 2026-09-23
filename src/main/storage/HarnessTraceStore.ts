@@ -296,6 +296,7 @@ function sanitizeModelCallDiagnostics(value: unknown): HarnessModelCallDiagnosti
       typeof item.maxOutputTokens === 'number' &&
       (item.responseFormat === 'json' || item.responseFormat === 'text') &&
       (item.reasoningPolicy === 'bounded_1000_excluded' ||
+        item.reasoningPolicy === 'reasoning_disabled' ||
         item.reasoningPolicy === 'provider_managed') &&
       typeof item.durationMs === 'number' &&
       (item.status === 'completed' || item.status === 'failed')

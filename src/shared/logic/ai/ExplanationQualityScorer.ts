@@ -169,9 +169,12 @@ export function isLimitedInsufficiencyStatement(text: string): boolean {
       const residual = part.replace(INSUFFICIENCY_PATTERNS, '').trim()
       if (
         hadInsufficiencyMarker &&
-        /(?:只能|僅能|仅能|目前能確定|目前能确定|目前可確定|目前可确定|缺少|需要|尚需|不能|無法|无法|未能|沒有|没有)/.test(
+        /(?:只能|僅能|仅能|缺少|需要|尚需|不能|無法|无法|未能|沒有|没有)/.test(
           residual
         ) &&
+        // Saying what is positively established is a substantive claim, even
+        // when the same sentence also says some other evidence is missing.
+        !/(?:能|可|只能|僅能|仅能)(?:夠)?(?:確定|确定|確認|确认)/.test(residual) &&
         !/(必然|一定|被迫|導致|导致|造成|使得|讓|让|所以|因此|勝勢|胜势|敗勢|败势|丟|丢|得子|失子)/.test(
           residual
         )

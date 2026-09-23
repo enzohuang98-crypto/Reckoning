@@ -2383,7 +2383,9 @@ export async function runExplanationHarness(
       const reasoningPolicy =
         payload.provider === 'openrouter' &&
         openRouterReasoningConfig(deps.model, responseFormat)
-          ? 'bounded_1000_excluded' as const
+          ? deps.model === 'nvidia/nemotron-3-super-120b-a12b:free'
+            ? 'reasoning_disabled' as const
+            : 'bounded_1000_excluded' as const
           : 'provider_managed' as const
       try {
         const request = {
@@ -2475,6 +2477,16 @@ export async function runExplanationHarness(
         return response.text
       } catch (error) {
         const diagnostic = describeAIExecutionError(error, 'AI 服務')
+        // A completed but rejected response (for example finish_reason=length)
+        // has already consumed output tokens. Keep later phases inside the same
+        // request budget even when the provider rejected that response.
+        if (
+          typeof diagnostic.outputTokens === 'number' &&
+          Number.isFinite(diagnostic.outputTokens) &&
+          diagnostic.outputTokens > 0
+        ) {
+          outputTokens += Math.min(requestMaxOutputTokens, diagnostic.outputTokens)
+        }
         modelCallDiagnostics.push({
           callIndex,
           stage: callStage,
@@ -2989,6 +3001,9 @@ ${comparisonContract}
 - 若棋手提供原本想法，actual_move_problem 必須正面檢驗該想法在兩條主線中是否成立；棋手自述不是引擎證據，不得直接當成事實。
 - actual_move_problem 與 opponent_exploitation 的非「證據不足」claim 都附完整 causal 五段，並用 findingIds 連到 audit 中已驗證的 K 編號。
 - 每個 evidenceId 只能支持它自己列出的 principalVariation；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
+- 本次 E1 是 AI 首選主線，E2 是實戰步主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 E1、E2；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
+- 寫完後先逐段核對：五段可見正文合計至少 400 漢字；summary、opponentUse、boardImpact 每項都要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
+- 下方 JSON 只示範欄位與 id，所有「一句直接結論」「具體後果」「盤面機制」等佔位文字都必須換成本局完整敘述。每段 claims.text 要承擔該段字數，不可只在 causal 或 audit 欄位寫長文；寫完自行計算五段 claims.text 合計漢字，不足 400 就在同一次回答內補上由主線支持的棋盤變化。
 - practical_principle 只給一條可帶走、可操作的思考原則。
 ${
   isFormalMoveComparison
@@ -3058,14 +3073,14 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
     "mode":"${mode}",
     "title":"實戰著法解析",
     "directAnswer":"一句直接結論",
-    "directAnswerEvidenceIds":["E1"],
+    "directAnswerEvidenceIds":["E1","E2"],
     "sections":[
-      {"id":"direct_conclusion","heading":"直接結論","claims":[{"id":"C1","text":"與 directAnswer 相同的直接結論","evidenceIds":["E1"]}]},
+      {"id":"direct_conclusion","heading":"直接結論","claims":[{"id":"C1","text":"與 directAnswer 相同的直接結論","evidenceIds":["E1","E2"]}]},
       {"id":"actual_move_problem","heading":"${
               COMPARISON_SECTION_HEADINGS[comparisonState][
                 SECTION_IDS.actualMoveProblem
               ] ?? SECTION_HEADINGS[SECTION_IDS.actualMoveProblem]
-            }","claims":[{"id":"C2","text":"依比較狀態點名著法並完整說明","evidenceIds":["E1"],"findingIds":["K1"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際利用","consequence":"具體後果"}}]},
+            }","claims":[{"id":"C2","text":"依比較狀態點名著法並完整說明","evidenceIds":["E1","E2"],"findingIds":["K1"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際利用","consequence":"具體後果"}}]},
       {"id":"best_move_plan","heading":"${
               COMPARISON_SECTION_HEADINGS[comparisonState][SECTION_IDS.bestMovePlan] ??
               SECTION_HEADINGS[SECTION_IDS.bestMovePlan]
@@ -3149,12 +3164,17 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
 你是象棋分析 Harness 的「具體後果審查器」。只輸出 JSON，不要輸出思考過程。
 你可以根據棋盤 FEN 與引擎主線推導棋理，但每項結論必須指出主線中實際出現的中文著法。
 目標不是比較分數，而是回答：
+${hasUserMove ? comparisonContract : ''}
 ${
   hasUserMove
     ? `1. 最佳著法的具體目的。
-2. 使用者著法錯失了什麼機會、為什麼不好。
-3. 對手如何利用。
-4. 最終造成哪些盤面影響。`
+2. ${comparisonState === 'same_move'
+  ? '使用者著法與首選一致，這步帶來什麼具體好處。'
+  : comparisonState === 'evidence_backed_difference'
+    ? '使用者著法與首選有什麼有證據支持的差異、原因為何。'
+    : '目前能確定的比較內容與仍缺少的證據；不得硬判失誤。'}
+3. 對手在對應主線中如何合理應對。
+4. 主線顯示哪些盤面影響；不可把可選變例寫成必然。`
     : `本次沒有提供使用者著法。只審查目前局面與最佳著法：
 1. 最佳著法的具體目的。
 2. 對手對最佳著法的最強回應。
@@ -3321,11 +3341,15 @@ ${
 若本次未提供使用者著法，仍不得補造、批評或比較不存在的著法。
 claim 不需要 findingIds 或 causal 物件。棋規及已計算棋盤事實可以直接回答；不得以模型自行推論的一般棋理替代皮卡魚結果，generalNotes 保持空陣列。只有引用具體引擎變例時才需要逐字使用 evidence 中的中文著法，不得以主線或「證據不足」取代對問題的回答。`
     : hasUserMove
-      ? `先用 directAnswer 寫一段短結論：這步為什麼不好、錯失什麼、對手如何利用、最後造成什麼。
+      ? `先用 directAnswer 寫一段符合比較證據狀態的短結論：${comparisonState === 'same_move'
+  ? '明說實戰步與首選一致，解釋這步的好處與對手合理應對。'
+  : comparisonState === 'evidence_backed_difference'
+    ? '解釋兩步有證據支持的差異、原因與後續盤面。'
+    : '中性說明目前可確定的主線與欠缺的比較證據。'}
 固定依序使用五個 section id 與具名標題：direct_conclusion／直接結論、actual_move_problem／實戰步問題、best_move_plan／AI 首選、opponent_exploitation／對手利用與後果、practical_principle／實戰原則。
 不得使用模擬提問或自問自答。使用者可讀正文不得少於 400 個漢字，以約 500–900 個中文字為目標。
 opponent_exploitation 要按引擎主線順序，逐手說明目的與盤面影響，一直寫到具體後果出現。
-actual_move_problem 要先說最佳著法的目的，再逐步對照實戰著法錯失什麼、為什麼不好。
+actual_move_problem 要先說最佳著法的目的，再依比較狀態說明實戰著法；同一步不得硬造錯失，證據不足不得硬判劣勢。
 每項 claims 都必須引用 supporting evidenceIds。若資料不足，直接說證據不足，不能猜。
 actual_move_problem 與 opponent_exploitation 每個非「證據不足」的 claim 還必須用 findingIds 連到已驗證具體後果的 K 編號；不得自行新增 K 編號。
 每個關鍵 claim 至少要包含一個 evidence 主線中的中文著法，並說明這步棋造成的具體盤面後果；禁止只寫「失去先手」「陣形變差」這種分類詞。
@@ -3334,7 +3358,7 @@ actual_move_problem 與 opponent_exploitation 的每個 claim 都必須附 "caus
 - mechanism：造成什麼棋理或盤面變化
 - affected：受影響的棋子、線路、王區、陣形或威脅
 - opponentUse：對手下一步如何利用
-- consequence：後續具體變差在哪裡
+- consequence：後續主線顯示的具體盤面變化
 只有明確承認證據不足的 claim 可以不附 causal。
 因果敘述要使用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）指出位置、棋子關係或威脅，不能只用抽象評價。`
     : `本次沒有提供使用者著法。只解釋目前局面、最佳著法的目的、對手最強回應與最佳著法主線的具體後果。
