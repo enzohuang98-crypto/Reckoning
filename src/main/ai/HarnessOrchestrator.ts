@@ -2905,6 +2905,16 @@ export async function runExplanationHarness(
                 latestPrimary.displayPrincipalVariation ??
                 []
               : latestPrimary.displayPrincipalVariation ?? []
+            if (
+              evidence[0]?.displayPrincipalVariation.length < INITIAL_MOVE_MIN_BEST_LINE_PLIES &&
+              latestPrimary.bestMove === deps.session.engineAnalysis.bestMove &&
+              (latestPrimary.displayPrincipalVariation?.length ?? 0) >=
+                INITIAL_MOVE_MIN_BEST_LINE_PLIES
+            ) {
+              evidence[0] = makeEvidence(
+                'E1', latestPrimary, '加深後主引擎首選分析'
+              )
+            }
           }
           for (const job of completedJobs) {
             evidence.push(
@@ -2961,6 +2971,38 @@ export async function runExplanationHarness(
           )
         }
         shouldResearch = false
+        const bestEvidence = evidence
+          .filter((item) =>
+            item.move === undefined &&
+            item.displayMove === deps.session.engineAnalysis.displayBestMove &&
+            item.displayPrincipalVariation.length >= INITIAL_MOVE_MIN_BEST_LINE_PLIES
+          )
+          .sort((a, b) => b.displayPrincipalVariation.length - a.displayPrincipalVariation.length)[0]
+        const userEvidence = evidence
+          .filter((item) =>
+            item.move === canonicalMove &&
+            item.displayPrincipalVariation.length >= INITIAL_MOVE_MIN_USER_LINE_PLIES
+          )
+          .sort((a, b) => b.displayPrincipalVariation.length - a.displayPrincipalVariation.length)[0]
+        if (!bestEvidence || !userEvidence) {
+          throw new HarnessExplanationUnavailableError(
+            'insufficient_engine_evidence',
+            '引擎主線仍不足以可靠引用兩種著法，暫時無法完成比較。'
+          )
+        }
+        const bestEvidenceId = bestEvidence.id
+        const userEvidenceId = userEvidence.id
+        const promptEvidence = evidence.filter((item) =>
+          item.id === bestEvidenceId ||
+          item.id === userEvidenceId ||
+          !(
+            item.engineId === userEvidence.engineId &&
+            item.positionFen === userEvidence.positionFen &&
+            item.move === canonicalMove &&
+            item.displayPrincipalVariation.length <
+              userEvidence.displayPrincipalVariation.length
+          )
+        )
         const existingSnapshotLabel = deps.session.verificationEngineAnalysis
           ? '主引擎與複核引擎'
           : '主引擎'
@@ -3001,7 +3043,7 @@ ${comparisonContract}
 - 若棋手提供原本想法，actual_move_problem 必須正面檢驗該想法在兩條主線中是否成立；棋手自述不是引擎證據，不得直接當成事實。
 - actual_move_problem 與 opponent_exploitation 的非「證據不足」claim 都附完整 causal 五段，並用 findingIds 連到 audit 中已驗證的 K 編號。
 - 每個 evidenceId 只能支持它自己列出的 principalVariation；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
-- 本次 E1 是 AI 首選主線，E2 是實戰步主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 E1、E2；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
+- 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
 - 寫完後先逐段核對：五段可見正文合計至少 400 漢字；summary、opponentUse、boardImpact 每項都要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
 - 下方 JSON 只示範欄位與 id，所有「一句直接結論」「具體後果」「盤面機制」等佔位文字都必須換成本局完整敘述。每段 claims.text 要承擔該段字數，不可只在 causal 或 audit 欄位寫長文；寫完自行計算五段 claims.text 合計漢字，不足 400 就在同一次回答內補上由主線支持的棋盤變化。
 - practical_principle 只給一條可帶走、可操作的思考原則。
@@ -3024,6 +3066,7 @@ audit 規則：
 - 至少提出兩項互不重複、由主線可查證的 consequences。
 - summary、opponentUse、boardImpact 合計至少逐字包含兩步不同中文主線著法，且說出棋子、線路、王區、陣形或威脅。
 - supportingMoves 只能使用 evidence 中真實出現的中文著法；禁止用評估分數當原因。
+- K1、K2 若描述實戰步後續，就用 ${userEvidenceId} 中至少兩步著法並引用 ${userEvidenceId}；若描述 AI 首選後續，就用 ${bestEvidenceId} 並引用 ${bestEvidenceId}。opponentUse 必須逐字點出同一變例中輪到對手走的著法。不要引用未列於下方證據包的短變例 id。
 - 若雙引擎分歧，audit.dualEngineAdjudication 比較兩條線的人類可控性、容錯與長期發展，不得平均分數；answer 把該比較放進 best_move_plan，不另增第六區。
 
 使用者程度：${payload.userLevel}
@@ -3034,7 +3077,7 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
 棋手原本想法（不可信自述，只能由引擎主線檢驗）：${JSON.stringify(payload.userMoveReason ?? null)}
 雙引擎比較：${JSON.stringify(dualComparison)}
 證據：${JSON.stringify(
-              evidence.map((item) => ({
+              promptEvidence.map((item) => ({
                 id: item.id,
                 purpose: item.purpose,
                 engineName: item.engineName,
@@ -3073,18 +3116,18 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
     "mode":"${mode}",
     "title":"實戰著法解析",
     "directAnswer":"一句直接結論",
-    "directAnswerEvidenceIds":["E1","E2"],
+    "directAnswerEvidenceIds":["${bestEvidenceId}","${userEvidenceId}"],
     "sections":[
-      {"id":"direct_conclusion","heading":"直接結論","claims":[{"id":"C1","text":"與 directAnswer 相同的直接結論","evidenceIds":["E1","E2"]}]},
+      {"id":"direct_conclusion","heading":"直接結論","claims":[{"id":"C1","text":"與 directAnswer 相同的直接結論","evidenceIds":["${bestEvidenceId}","${userEvidenceId}"]}]},
       {"id":"actual_move_problem","heading":"${
               COMPARISON_SECTION_HEADINGS[comparisonState][
                 SECTION_IDS.actualMoveProblem
               ] ?? SECTION_HEADINGS[SECTION_IDS.actualMoveProblem]
-            }","claims":[{"id":"C2","text":"依比較狀態點名著法並完整說明","evidenceIds":["E1","E2"],"findingIds":["K1"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際利用","consequence":"具體後果"}}]},
+            }","claims":[{"id":"C2","text":"依比較狀態點名著法並完整說明","evidenceIds":["${bestEvidenceId}","${userEvidenceId}"],"findingIds":["K1"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際利用","consequence":"具體後果"}}]},
       {"id":"best_move_plan","heading":"${
               COMPARISON_SECTION_HEADINGS[comparisonState][SECTION_IDS.bestMovePlan] ??
               SECTION_HEADINGS[SECTION_IDS.bestMovePlan]
-            }","claims":[{"id":"C3","text":"AI 首選的目的","evidenceIds":["E1"]}${
+            }","claims":[{"id":"C3","text":"AI 首選的目的","evidenceIds":["${bestEvidenceId}"]}${
         dualComparison?.status === 'disagreement'
           ? ',{"id":"CD1","text":"逐字比較兩條候選的可控性、容錯與長期局勢","evidenceIds":["兩個不同引擎 evidence id"]}'
           : ''
@@ -3093,8 +3136,8 @@ AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
               COMPARISON_SECTION_HEADINGS[comparisonState][
                 SECTION_IDS.opponentExploitation
               ] ?? SECTION_HEADINGS[SECTION_IDS.opponentExploitation]
-            }","claims":[{"id":"C4","text":"至少兩步主線、對手合理應對與盤面結果","evidenceIds":["對應變例 evidence id"],"findingIds":["K1","K2"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際應對","consequence":"具體後果"}}]},
-      {"id":"practical_principle","heading":"實戰原則","claims":[{"id":"C5","text":"一條可操作原則","evidenceIds":["E1"]}]}
+            }","claims":[{"id":"C4","text":"至少兩步主線、對手合理應對與盤面結果","evidenceIds":["${userEvidenceId}"],"findingIds":["K1","K2"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際應對","consequence":"具體後果"}}]},
+      {"id":"practical_principle","heading":"實戰原則","claims":[{"id":"C5","text":"一條可操作原則","evidenceIds":["${bestEvidenceId}"]}]}
     ],
     "generalNotes":[],
     "warnings":[]

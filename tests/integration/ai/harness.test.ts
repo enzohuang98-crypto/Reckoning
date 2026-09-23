@@ -1044,7 +1044,7 @@ async function main(): Promise<void> {
   )
   check(
     '首次比較 prompt 明確區分首選與實戰兩條主線且示意引用不誤導模型',
-    provider.prompts[0]?.includes('E1 是 AI 首選主線，E2 是實戰步主線') &&
+    provider.prompts[0]?.includes('E1 作 AI 首選主線、E2 作實戰步主線') &&
       provider.prompts[0]?.includes('"directAnswerEvidenceIds":["E1","E2"]') &&
       provider.prompts[0]?.includes('"id":"C1","text":"與 directAnswer 相同的直接結論","evidenceIds":["E1","E2"]')
   )
@@ -1766,6 +1766,23 @@ async function main(): Promise<void> {
     JSON.stringify({
       engineCalls: shallowEvidenceResearchCalls,
       engineRounds: shallowEvidenceTraces.at(-1)?.engineRounds
+    })
+  )
+  const deepUserEvidence = shallowEvidenceTraces.at(-1)?.evidence
+    .filter((item) => item.move === shallowAnalysis.userMove)
+    .sort((a, b) => b.displayPrincipalVariation.length - a.displayPrincipalVariation.length)[0]
+  check(
+    '實戰線加深後 prompt 改引用較完整的變例，不能仍把淺層 E2 當作唯一實戰線',
+    deepUserEvidence?.displayPrincipalVariation.length === 4 &&
+      deepUserEvidence.id !== 'E2' &&
+      (shallowEvidenceTraces.at(-1)?.evidence[0]?.displayPrincipalVariation.length ?? 0) >= 2 &&
+      shallowEvidenceProvider.prompts[0]?.includes(`${deepUserEvidence.id} 作實戰步主線`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"directAnswerEvidenceIds":["E1","${deepUserEvidence.id}"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"id":"C4","text":"至少兩步主線、對手合理應對與盤面結果","evidenceIds":["${deepUserEvidence.id}"]`) &&
+      !shallowEvidenceProvider.prompts[0]?.includes('"id":"E2"'),
+    JSON.stringify({
+      selected: deepUserEvidence?.id,
+      lineLength: deepUserEvidence?.displayPrincipalVariation.length
     })
   )
 
@@ -3663,7 +3680,6 @@ async function main(): Promise<void> {
       outputTokenBoundaryError instanceof Error &&
       outputTokenBoundaryError.message.includes('沒有通過棋理與證據檢查')
   )
-
   const failedAuditBudgets: number[] = []
   const failedAuditProvider = {
     id: 'openai' as const,
