@@ -2960,13 +2960,13 @@ ${comparisonContract}
                   ? '第一段直接回答實戰步與 AI 首選的實質差異，同時使用兩步的中文著法。'
                   : '第一段中性說明目前可支持的比較結論，不得把證據強度不足寫成確定優劣。'
             }
-- 說清楚「原因 → 棋盤機制 → 受影響棋子／線路 → 對手利用 → 後果」。
+- 說清楚「原因 → 棋盤機制 → 受影響棋子／線路 → 對手合理應對 → 後果」。
 - 對手利用與後果至少逐字引用兩步真實引擎主線；不得拿分數當理由。
 - 不得虛構戰術、錯認輪走方、顯示 FEN、UCI、token、trace、證據編號或模型輪次。
 - 主線未出現的後續不得寫成已經發生、必然發生或「被迫」；若兩個引擎的對手首應不同，只能說「其中一條主線顯示」，不可把單一路線寫成唯一確定反應。
 - 除非主線直接出現將死或確定得子，避免「完全、全面、嚴重、必然」等誇大語氣；結論強度必須與可見主線相稱。
 - 使用者可讀正文不得少於 400 個漢字，以約 500–900 個中文字為目標；棋理深度優先，不以增加模型輪次換篇幅。
-- 字數只計五段 claims.text 的繁體漢字，不計 JSON、audit、causal 或 heading：直接結論約 90–120 漢字、實戰步問題約 150–190 漢字、AI 首選約 120–150 漢字、對手利用與後果約 180–240 漢字、實戰原則約 70–100 漢字。不可用重複句或內部欄位湊字數。
+- 字數只計五段 claims.text 的繁體漢字，不計 JSON、audit、causal 或 heading：直接結論約 90–120 漢字、實戰步比較約 150–190 漢字、AI 首選約 120–150 漢字、對手應對與後果約 180–240 漢字、實戰原則約 70–100 漢字。不可用重複句或內部欄位湊字數。
 - answer 固定五個 section id，依序為 direct_conclusion、actual_move_problem、best_move_plan、opponent_exploitation、practical_principle。
 - heading 只供顯示；section id 固定，但標題須符合上方比較狀態，不得用標題暗示不存在的失誤。
 - actual_move_problem 必須依比較狀態完整說明兩步關係；opponent_exploitation 必須包含對手合理應對、至少兩步主線與後續盤面結果。
@@ -3032,8 +3032,8 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
                   : '目前可確定的比較與證據限制'
             }",
     "consequences":[
-      {"id":"K1","category":"${comparisonState === 'same_move' ? 'central_control' : 'initiative_loss'}","summary":"具體後果","opponentUse":"${userLineMoves[1]} 後的具體應對","boardImpact":"盤面結果","supportingMoves":["${userLineMoves[0]}","${userLineMoves[1]}"],"evidenceIds":["${userEvidenceId}"],"verified":true},
-      {"id":"K2","category":"${comparisonState === 'same_move' ? 'piece_development' : 'opponent_development'}","summary":"另一項具體後果","opponentUse":"${userLineMoves[1]} 後的另一項盤面影響","boardImpact":"另一項盤面結果","supportingMoves":["${userLineMoves[1]}","${userLineMoves[2]}"],"evidenceIds":["${userEvidenceId}"],"verified":true}
+      {"id":"K1","category":"${comparisonState === 'evidence_backed_difference' ? 'initiative_loss' : comparisonState === 'same_move' ? 'central_control' : 'piece_development'}","summary":"具體後果","opponentUse":"${userLineMoves[1]} 後的具體應對","boardImpact":"盤面結果","supportingMoves":["${userLineMoves[0]}","${userLineMoves[1]}"],"evidenceIds":["${userEvidenceId}"],"verified":true},
+      {"id":"K2","category":"${comparisonState === 'evidence_backed_difference' ? 'opponent_development' : 'piece_development'}","summary":"另一項具體後果","opponentUse":"${userLineMoves[1]} 後的另一項盤面影響","boardImpact":"另一項盤面結果","supportingMoves":["${userLineMoves[1]}","${userLineMoves[2]}"],"evidenceIds":["${userEvidenceId}"],"verified":true}
     ],
     "contradictions":[],
     "enoughEvidence":true${
@@ -3054,7 +3054,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
               COMPARISON_SECTION_HEADINGS[comparisonState][
                 SECTION_IDS.actualMoveProblem
               ] ?? SECTION_HEADINGS[SECTION_IDS.actualMoveProblem]
-            }","claims":[{"id":"C2","text":"依比較狀態點名著法並完整說明","evidenceIds":["${bestEvidenceId}","${userEvidenceId}"],"findingIds":["K1"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際利用","consequence":"具體後果"}}]},
+            }","claims":[{"id":"C2","text":"依比較狀態點名著法並完整說明","evidenceIds":["${bestEvidenceId}","${userEvidenceId}"],"findingIds":["K1"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手合理應對","consequence":"具體後果"}}]},
       {"id":"best_move_plan","heading":"${
               COMPARISON_SECTION_HEADINGS[comparisonState][SECTION_IDS.bestMovePlan] ??
               SECTION_HEADINGS[SECTION_IDS.bestMovePlan]

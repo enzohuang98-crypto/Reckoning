@@ -1135,6 +1135,11 @@ async function main(): Promise<void> {
       sameMoveProvider.prompt.includes('禁止硬寫錯失、失誤、較差、懲罰')
   )
   check(
+    '同首選正文配額與 causal 範例不預設實戰步有問題或可被利用',
+    !sameMoveProvider.prompt.includes('實戰步問題約') &&
+      !sameMoveProvider.prompt.includes('"opponentUse":"對手實際利用"')
+  )
+  check(
     '實戰步等同首選時保留五段 id 並改用正向顯示標題',
     sameMoveResult.finalText.includes('## 與首選一致') &&
       sameMoveResult.finalText.includes('## 這步的好處') &&
@@ -1269,6 +1274,12 @@ async function main(): Promise<void> {
     })
   )
   const insufficientFollowUpPrompt = await probeFollowUpPrompt(insufficientSession)
+  check(
+    '證據不足的範例不預填失去先手或讓對手獲利類型，有證據差異仍可正常比較',
+    !insufficientProvider.prompts[0]?.includes('"category":"initiative_loss"') &&
+      !insufficientProvider.prompts[0]?.includes('"category":"opponent_development"') &&
+      provider.prompts[0]?.includes('"category":"initiative_loss"') === true
+  )
   check(
     '比較證據不足的短追問提示要求區分已知與未知',
     insufficientFollowUpPrompt.includes('分開寫目前可確定的主線與缺少的證據') &&
