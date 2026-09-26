@@ -1,4 +1,7 @@
 import { EngineRegistryService } from '../../../src/main/engine/EngineRegistryService'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   ENGINE_PROFILES,
   getEngineProfile,
@@ -75,6 +78,45 @@ check(
   '內建引擎登錄會保存供下次啟動使用',
   new EngineRegistryService(bundledStorage as never).list().installations.length === 1
 )
+
+const relocationRoot = mkdtempSync(join(tmpdir(), 'reckoning-engine-relocation-'))
+try {
+  const oldBundle = join(relocationRoot, 'old', 'resources', 'engine', 'pikafish.exe')
+  const newBundle = join(relocationRoot, 'new', 'resources', 'engine', 'pikafish.exe')
+  mkdirSync(join(relocationRoot, 'new', 'resources', 'engine'), { recursive: true })
+  writeFileSync(newBundle, 'test engine')
+  const movedStorage = new FakeStorage()
+  movedStorage.values.set('engine-registry.json', {
+    installations: [{
+      ...pikafish,
+      displayName: 'Pikafish（內建）',
+      executablePath: oldBundle,
+      verified: true,
+      detectedName: 'Old Pikafish'
+    }],
+    activeEngineId: pikafish.id,
+    verificationEngineId: null
+  })
+  const moved = new EngineRegistryService(movedStorage as never, newBundle)
+  check('安裝路徑搬家後只修復已失效的內建 Pikafish',
+    moved.getInstallation()?.executablePath === newBundle &&
+      moved.getInstallation()?.verified === false &&
+      moved.list().activeEngineId === pikafish.id)
+  check('內建 Pikafish 搬家修復會保存供重開使用',
+    new EngineRegistryService(movedStorage as never).getInstallation()?.executablePath === newBundle)
+
+  const customStorage = new FakeStorage()
+  customStorage.values.set('engine-registry.json', {
+    installations: [{ ...pikafish, displayName: '我的自訂 Pikafish', executablePath: oldBundle }],
+    activeEngineId: pikafish.id,
+    verificationEngineId: null
+  })
+  check('自訂引擎選擇不因安裝路徑搬家而改寫',
+    new EngineRegistryService(customStorage as never, newBundle)
+      .getInstallation()?.executablePath === oldBundle)
+} finally {
+  rmSync(relocationRoot, { recursive: true, force: true })
+}
 
 const profileStorage = new FakeStorage()
 const profileRegistry = new EngineRegistryService(profileStorage as never)

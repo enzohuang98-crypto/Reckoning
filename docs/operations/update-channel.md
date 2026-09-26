@@ -15,9 +15,10 @@ GitHub Release 是安裝下載與自動更新的同一個權威來源，不再�
 ## 發布來源與順序
 
 1. `main` 的 commit 通過 CI，建立並推送與 `package.json` 一致的 annotated `vX.Y.Z` tag。
-2. Release workflow 從該 tag 重建、驗證並建立 GitHub Release。
+2. Release workflow 從該 tag 重建、驗證並建立 GitHub prerelease 候選版。
 3. 從 GitHub Release 下載同一組三項資產，執行 `npm.cmd run verify:update`。
 4. 使用剛下載的 Release 安裝檔進行全新安裝或升級驗證。
+5. 全部候選驗收通過後，只提升該既有 Release 為 stable Latest；promotion 不重新建置或覆寫資產。
 
 `dist:update:github` 會把固定的 GitHub owner/repository 寫入安裝版。`publish:update:github` 只供既有 Release 的人工修復流程使用，會重新驗證本機產物後，以 `gh release upload --clobber` 更新該版本的三項資產。
 
@@ -52,6 +53,6 @@ GitHub Release 是安裝下載與自動更新的同一個權威來源，不再�
 
 桌面 App 追蹤的是 GitHub **Latest stable Release**，不是只有 tag 或 `main` 裡的 `package.json`。因此新版本若只有 tag、失敗的正式 workflow，或未升 Latest 的 prerelease，已安裝 App 都不會誤報已同步。
 
-缺少公開信任簽章憑證而由擁有者明確要求維持桌面同步時，可使用 `unsigned-release` 過渡模式。呼叫者必須輸入精確確認字串 `PUBLISH UNSIGNED LATEST`；workflow 會保留原始碼 `forceCodeSigning: true`，只在隔離 runner 的該次 build 關閉強制簽章，並在同次執行中完成測試、依賴稽核、更新資產驗證、SHA-256、安裝／解除安裝與兩個匿名公開網址重新下載檢查。完成後才把該 Release 設成 stable Latest。發布說明與標題必須明確標示未簽章及 SmartScreen 風險。
+缺少公開信任簽章憑證而由擁有者明確要求維持桌面同步時，可使用 `unsigned-release` 過渡模式。呼叫者必須輸入精確確認字串 `PUBLISH UNSIGNED LATEST`；workflow 會保留原始碼 `forceCodeSigning: true`，只在隔離 runner 的該次 build 關閉強制簽章，並在同次執行中完成測試、依賴稽核、更新資產驗證、SHA-256、安裝／解除安裝與兩個匿名公開網址重新下載檢查。完成後只建立 prerelease 候選版。真正 Windows App、AI、資料保護與隔離更新器驗收全部通過後，才以獨立 `Promote unsigned candidate` workflow 輸入已驗收 installer SHA-256，把完全相同的 Release 設成 stable Latest。promotion 不執行 builder、不重新上傳，也不使用 `--clobber`。發布說明與標題必須明確標示未簽章及 SmartScreen 風險。
 
 既有安裝版會在啟動後五秒檢查這個 stable Latest。偵測到較新版本後，App 依主程序持久化偏好在背景下載該 Release 的 `latest.yml`、blockmap 與安裝檔；準備完成後仍須使用者明確選擇重新啟動，不需要人工替換 `Program Files` 檔案。這證明更新來源與桌面流程接通，但未簽章產物仍不等於通過 Authenticode 或乾淨 Windows 10／11 正式發布門檻。

@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { basename, dirname } from 'node:path'
 import {
   EMPTY_ENGINE_REGISTRY,
   getEngineProfile,
@@ -135,6 +137,16 @@ function sanitizeRegistry(value: unknown): EngineRegistrySnapshot {
   }
 }
 
+function isStaleBundledPikafish(installation: EngineInstallation): boolean {
+  const path = installation.executablePath
+  return installation.profileId === 'pikafish' &&
+    installation.displayName === 'Pikafish（內建）' &&
+    basename(path).toLowerCase() === 'pikafish.exe' &&
+    basename(dirname(path)).toLowerCase() === 'engine' &&
+    basename(dirname(dirname(path))).toLowerCase() === 'resources' &&
+    !existsSync(path)
+}
+
 export class EngineRegistryService {
   private snapshot: EngineRegistrySnapshot
   private readonly adapters = new Map<string, PikafishAdapter>()
@@ -148,6 +160,30 @@ export class EngineRegistryService {
     )
     this.snapshot =
       stored.installations.length > 0 ? stored : this.migrateLegacyConfiguration()
+    if (this.snapshot.installations.length > 0 && bundledEnginePath) {
+      try {
+        const currentBundledPath = normalizeEnginePath(bundledEnginePath)
+        if (currentBundledPath && existsSync(currentBundledPath)) {
+          const installations = this.snapshot.installations.map((installation) =>
+            isStaleBundledPikafish(installation)
+              ? {
+                  ...installation,
+                  executablePath: currentBundledPath,
+                  verified: false,
+                  detectedName: null,
+                  lastError: undefined
+                }
+              : installation
+          )
+          if (installations.some((item, index) => item !== this.snapshot.installations[index])) {
+            this.snapshot = { ...this.snapshot, installations }
+            this.persist()
+          }
+        }
+      } catch {
+        // A missing or unsafe bundled binary must not rewrite saved engine choices.
+      }
+    }
     if (this.snapshot.installations.length === 0 && bundledEnginePath) {
       try {
         const executablePath = normalizeEnginePath(bundledEnginePath)

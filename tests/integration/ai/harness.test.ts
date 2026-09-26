@@ -10,12 +10,15 @@ import {
   playerFacingAnswerText
 } from '../../../src/shared/logic/ai/ExplanationQualityScorer'
 import {
+  HarnessExplanationUnavailableError,
   runExplanationHarness as runPreparedExplanationHarness,
   type HarnessRuntimeDependencies,
   validateAnswer,
   validateConsequenceAudit
 } from '../../../src/main/ai/HarnessOrchestrator'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import { buildVariationBoardFacts } from '../../../src/main/ai/VariationBoardFacts'
+import { AIHttpError, AIResponseValidationError } from '../../../src/main/ai/http'
 import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
 import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
@@ -198,16 +201,19 @@ class FakeProvider implements AIProvider {
     this.prompts.push(request.prompt)
     this.requestedMaxTokens.push(request.maxOutputTokens ?? -1)
     const outputs = [
-      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方補走炮二平五後中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}',
-      '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。","directAnswerEvidenceIds":["E1"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五立即控制中路並保留先手。","evidenceIds":["E1"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七先出子，錯過立即控制中路的時機。","evidenceIds":["E1"],"causal":{"cause":"因為先走馬八進七而不是炮二平五","mechanism":"開局第一時間的中路壓制被推遲","affected":"紅方中炮與中路攻勢","opponentUse":"黑方趁機馬8進7完成出子","consequence":"紅方補走炮二平五時黑方已多完成一步部署"}}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方以馬8進7和馬2進3完成兩翼馬部署。","evidenceIds":["E1"],"causal":{"cause":"因為馬八進七沒有立即施壓","mechanism":"黑方獲得連續出子的節奏，完成兩翼部署","affected":"黑方雙馬與整體陣形","opponentUse":"黑方接連走馬8進7與馬2進3","consequence":"黑方陣形完整，紅方中路計畫慢一拍"}}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。","evidenceIds":["E1"],"causal":{"cause":"因為馬八進七後黑方馬8進7","mechanism":"紅方被迫在第三手才補炮二平五控制中路","affected":"紅方中路與先手節奏","opponentUse":"黑方再走馬2進3補齊另一翼","consequence":"黑方多完成一步部署，紅方攻勢延後"}}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。","evidenceIds":["E1"],"causal":{"cause":"因為炮二平五與馬八進七的次序互換","mechanism":"中路控制與出子節奏易手","affected":"紅方先手與黑方陣形","opponentUse":"黑方按馬8進7、馬2進3從容應對","consequence":"紅方需要多花一手補回中炮，黑方部署領先"}}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。","evidenceIds":["E1"]}]}],"generalNotes":["一般而言，先出正馬再補中炮，容易讓對手搶先完成部署。"],"warnings":[]}',
+      '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E2"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方補走炮二平五後中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E2"],"verified":true}],"contradictions":[],"enoughEvidence":true}',
+      '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。","directAnswerEvidenceIds":["E2"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五立即控制中路並保留先手。","evidenceIds":["E2"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七先出子，錯過立即控制中路的時機。","evidenceIds":["E2"],"causal":{"cause":"因為先走馬八進七而不是炮二平五","mechanism":"開局第一時間的中路壓制被推遲","affected":"紅方中炮與中路攻勢","opponentUse":"黑方趁機馬8進7完成出子","consequence":"紅方補走炮二平五時黑方已多完成一步部署"}}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方以馬8進7和馬2進3完成兩翼馬部署。","evidenceIds":["E2"],"causal":{"cause":"因為馬八進七沒有立即施壓","mechanism":"黑方獲得連續出子的節奏，完成兩翼部署","affected":"黑方雙馬與整體陣形","opponentUse":"黑方接連走馬8進7與馬2進3","consequence":"黑方陣形完整，紅方中路計畫慢一拍"}}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。","evidenceIds":["E2"],"causal":{"cause":"因為馬八進七後黑方馬8進7","mechanism":"紅方在這條主線第三手才補炮二平五控制中路","affected":"紅方中路與先手節奏","opponentUse":"黑方再走馬2進3補齊另一翼","consequence":"黑方多完成一步部署，紅方攻勢延後"}}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。","evidenceIds":["E2"],"causal":{"cause":"因為炮二平五與馬八進七的次序互換","mechanism":"中路控制與出子節奏易手","affected":"紅方先手與黑方陣形","opponentUse":"黑方按馬8進7、馬2進3從容應對","consequence":"紅方需要多花一手補回中炮，黑方部署領先"}}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。","evidenceIds":["E2"]}]}],"generalNotes":["一般而言，先出正馬再補中炮，容易讓對手搶先完成部署。"],"warnings":[]}',
       '{"unsupportedClaimIds":[],"reasons":[]}'
     ]
+    const scopedEvidenceId = [
+      ...request.prompt.matchAll(/"id":"(E\d+)"/g)
+    ].at(-1)?.[1] ?? 'E2'
     return {
       text:
         this.calls === 1
           ? combineAuditAndAnswer(
-              outputs[0],
-              outputs[1],
+              outputs[0].replaceAll('"E2"', `"${scopedEvidenceId}"`),
+              outputs[1].replaceAll('"E2"', `"${scopedEvidenceId}"`),
               this.ensureCompleteDepth
             )
           : outputs[2] ?? '{}',
@@ -216,6 +222,83 @@ class FakeProvider implements AIProvider {
       createdAt: Date.now(),
       groundedOnEngineData: true as const,
       usage: { inputTokens: 10, outputTokens: 20 }
+    }
+  }
+
+  async *generateExplanationStream(): AsyncIterable<never> {
+    return
+  }
+}
+
+class SameMoveProvider implements AIProvider {
+  readonly id = 'openai' as const
+  readonly displayName = 'Fake same-move provider'
+  calls = 0
+  prompt = ''
+
+  async generateExplanation(request: { prompt: string }) {
+    this.calls += 1
+    this.prompt = request.prompt
+    const causal = {
+      cause: '因為炮二平五先把二路炮移到中路',
+      mechanism: '中炮立即形成中線控制並限制黑方中卒活動',
+      affected: '紅方中炮、黑方中卒與雙方中央線路',
+      opponentUse: '黑方可走馬8進7發展右翼馬並協助中路防守',
+      consequence: '紅方接著馬八進七時仍可協調雙馬與中炮的部署'
+    }
+    const longNeutralText =
+      '炮二平五後，黑方可用馬8進7自然發展右翼馬；紅方再走馬八進七，既補出正馬，也讓中炮與馬彼此照應。接著黑方馬2進3發展另一翼，這條主線顯示雙方都在開局原則內改善子力，也是目前可見的一條合理應對。紅方這步的實際價值，是第一時間把炮移到中線，直接關注中卒與中央通道，同時保留兩翼馬依局勢出動的彈性。黑方以馬8進7應對後，中卒多一層防守，右翼馬也靠近中心；紅方用馬八進七延續部署，之後可以再判斷是加強中路、準備出車，或先處理黑方的反擊。沿著炮二平五、馬8進7、馬八進七、馬2進3的次序觀察，雙方每一步都能連回具體棋子與線路：紅方先建立中炮，黑方補馬守中，紅方再出正馬，黑方完成另一翼發展。這些是目前主線能直接支持的盤面事實；更遠的攻勢是否成立，仍要看後續引擎變例，不能把可發生的計畫寫成已經確定的結果。實戰理解上，炮二平五不是因為名稱或候選排名而值得採用，而是它在這個起始局面先處理中央控制，再讓後續子力圍繞中炮協調。面對馬8進7，紅方仍需觀察黑方中卒、兩翼馬與出車節奏，不能因為第一步正確就假定後續自動取得優勢。每走一步都應重新核對當前局面與可見主線，這樣才能把正確開局選擇轉化為後續可執行的計畫。'
+    return {
+      text: JSON.stringify({
+        audit: {
+          bestMovePurpose: '炮二平五立即建立中炮，控制中線並關注黑方中卒。',
+          userMoveProblem: '實戰的炮二平五與引擎首選一致，具體價值是立即控制中路。',
+          consequences: [
+            {
+              id: 'K1',
+              category: 'central_control',
+              summary: '炮二平五建立中炮，馬8進7協助黑方守中。',
+              opponentUse: '黑方以馬8進7發展右翼馬並協防中卒。',
+              boardImpact: '炮二平五與馬8進7走完後，雙方子力圍繞中線展開。',
+              supportingMoves: ['炮二平五', '馬8進7'],
+              evidenceIds: ['E1'],
+              verified: true
+            },
+            {
+              id: 'K2',
+              category: 'piece_development',
+              summary: '炮二平五先控制中路，黑方馬8進7完成自然出子。',
+              opponentUse: '黑方走馬8進7後，以右翼馬增加中央防守。',
+              boardImpact: '中炮與右翼馬在中線形成可見的攻防關係。',
+              supportingMoves: ['炮二平五', '馬8進7'],
+              evidenceIds: ['E1'],
+              verified: true
+            }
+          ],
+          contradictions: [],
+          enoughEvidence: true
+        },
+        answer: {
+          mode: 'research',
+          title: '實戰著法解析',
+          directAnswer: '炮二平五與引擎首選一致；這步立即建立中炮，黑方可用馬8進7合理應對。',
+          directAnswerEvidenceIds: ['E1'],
+          sections: [
+            { id: HARNESS_SECTION_IDS.directConclusion, heading: '直接結論', claims: [{ id: 'S1', text: '炮二平五就是引擎首選，兩者是同一著法。', evidenceIds: ['E1'] }] },
+            { id: HARNESS_SECTION_IDS.actualMoveProblem, heading: '與首選一致', claims: [{ id: 'S2', text: '實戰的炮二平五與首選一致，能立即建立中炮並控制中路。', evidenceIds: ['E1'], findingIds: ['K1'], causal }] },
+            { id: HARNESS_SECTION_IDS.bestMovePlan, heading: '這步的好處', claims: [{ id: 'S3', text: '炮二平五把炮移到中線，關注中卒並保留馬八進七的協調發展。', evidenceIds: ['E1'] }] },
+            { id: HARNESS_SECTION_IDS.opponentExploitation, heading: '對手合理應對', claims: [{ id: 'S4', text: longNeutralText, evidenceIds: ['E1'], findingIds: ['K1', 'K2'], causal }] },
+            { id: HARNESS_SECTION_IDS.practicalPrinciple, heading: '實戰原則', claims: [{ id: 'S5', text: '著法與首選一致時，應理解它改善哪條線，以及對手有哪些合理回應。', evidenceIds: ['E1'] }] }
+          ],
+          generalNotes: [],
+          warnings: []
+        }
+      }),
+      provider: this.id,
+      model: 'fake-model',
+      createdAt: Date.now(),
+      groundedOnEngineData: true as const,
+      usage: { inputTokens: 10, outputTokens: 800 }
     }
   }
 
@@ -286,7 +369,7 @@ class WriterBudgetProvider implements AIProvider {
 }
 
 const GOOD_AUDIT_JSON =
-  '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E1"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方補走炮二平五後中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E1"],"verified":true}],"contradictions":[],"enoughEvidence":true}'
+  '{"bestMovePurpose":"炮二平五立即控制中路並保留先手。","userMoveProblem":"馬八進七先出子，錯過立即控制中路的機會。","consequences":[{"id":"K1","category":"initiative_loss","summary":"紅方失去立即控制中路的先手。","opponentUse":"黑方以馬8進7順利完成出子。","boardImpact":"紅方之後仍要補走炮二平五，等於讓黑方多完成一步部署。","supportingMoves":["馬八進七","馬8進7","炮二平五"],"evidenceIds":["E2"],"verified":true},{"id":"K2","category":"opponent_development","summary":"黑方獲得從容部署另一匹馬的時間。","opponentUse":"黑方接著走馬2進3，兩翼馬都完成發展。","boardImpact":"紅方補走炮二平五後中路計畫延後，黑方陣形更完整。","supportingMoves":["炮二平五","馬2進3"],"evidenceIds":["E2"],"verified":true}],"contradictions":[],"enoughEvidence":true}'
 
 const NO_USER_MOVE_AUDIT_JSON = JSON.stringify({
   bestMovePurpose: '炮二平五立即把中炮移到中路，瞄準中卒並建立中線壓力。',
@@ -775,7 +858,7 @@ class OutputTokenBoundaryProvider implements AIProvider {
 
 /** 寫作者輸出一個空泛的「對手如何利用」區塊，其餘皆合格；修正迴圈應只重寫該區塊。 */
 const VAGUE_OPPONENT_WRITER_JSON =
-  '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。","directAnswerEvidenceIds":["E1"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五立即控制中路並保留先手。","evidenceIds":["E1"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七先出子，錯過立即控制中路的時機。","evidenceIds":["E1"],"causal":{"cause":"因為先走馬八進七而不是炮二平五","mechanism":"開局第一時間的中路壓制被推遲","affected":"紅方中炮與中路攻勢","opponentUse":"黑方趁機馬8進7完成出子","consequence":"紅方補走炮二平五時黑方已多完成一步部署"}}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方大致上可以獲得不錯的機會。","evidenceIds":["E1"]}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。","evidenceIds":["E1"],"causal":{"cause":"因為馬八進七後黑方馬8進7","mechanism":"紅方被迫在第三手才補炮二平五控制中路","affected":"紅方中路與先手節奏","opponentUse":"黑方再走馬2進3補齊另一翼","consequence":"黑方多完成一步部署，紅方攻勢延後"}}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。","evidenceIds":["E1"],"causal":{"cause":"因為炮二平五與馬八進七的次序互換","mechanism":"中路控制與出子節奏易手","affected":"紅方先手與黑方陣形","opponentUse":"黑方按馬8進7、馬2進3從容應對","consequence":"紅方需要多花一手補回中炮，黑方部署領先"}}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。","evidenceIds":["E1"]}]}],"generalNotes":[],"warnings":[]}'
+  '{"mode":"research","title":"你問我答：著法分析","directAnswer":"馬八進七先走，錯過炮二平五立即控制中路的機會；黑方可趁機完成兩翼馬的部署，使紅方之後補走中炮時已失去先手。","directAnswerEvidenceIds":["E2"],"sections":[{"heading":"問：最佳著法想做什麼？","claims":[{"id":"C1","text":"炮二平五立即控制中路並保留先手。","evidenceIds":["E2"]}]},{"heading":"問：你的著法錯失什麼？","claims":[{"id":"C2","text":"馬八進七先出子，錯過立即控制中路的時機。","evidenceIds":["E2"],"causal":{"cause":"因為先走馬八進七而不是炮二平五","mechanism":"開局第一時間的中路壓制被推遲","affected":"紅方中炮與中路攻勢","opponentUse":"黑方趁機馬8進7完成出子","consequence":"紅方補走炮二平五時黑方已多完成一步部署"}}]},{"heading":"問：對手如何利用？","claims":[{"id":"C3","text":"黑方大致上可以獲得不錯的機會。","evidenceIds":["E2"]}]},{"heading":"問：後續主線與具體後果是什麼？","claims":[{"id":"C4","text":"馬八進七後黑方馬8進7，紅方再補炮二平五，黑方馬2進3；結果是紅方中路計畫延後，黑方多完成一步部署。","evidenceIds":["E2"],"causal":{"cause":"因為馬八進七後黑方馬8進7","mechanism":"紅方在這條主線第三手才補炮二平五控制中路","affected":"紅方中路與先手節奏","opponentUse":"黑方再走馬2進3補齊另一翼","consequence":"黑方多完成一步部署，紅方攻勢延後"}}]},{"heading":"問：兩種著法完整比較後，差別在哪裡？","claims":[{"id":"C5","text":"炮二平五先控制中路；馬八進七則讓黑方先完成出子，之後紅方仍要補走中炮。","evidenceIds":["E2"],"causal":{"cause":"因為炮二平五與馬八進七的次序互換","mechanism":"中路控制與出子節奏易手","affected":"紅方先手與黑方陣形","opponentUse":"黑方按馬8進7、馬2進3從容應對","consequence":"紅方需要多花一手補回中炮，黑方部署領先"}}]},{"heading":"問：下次遇到類似局面要先問自己什麼？","claims":[{"id":"C6","text":"先問是否有需要立即爭取的中路或先手機會，再檢查普通出子是否會讓對手從容部署。","evidenceIds":["E2"]}]}],"generalNotes":[],"warnings":[]}'
 
 const FIXED_OPPONENT_SECTION_JSON = JSON.stringify({
   sections: [
@@ -786,7 +869,7 @@ const FIXED_OPPONENT_SECTION_JSON = JSON.stringify({
         {
           id: 'C3',
           text: `黑方以馬8進7搶先出子，再馬2進3完成兩翼部署。${DEEP_INITIAL_EXPLANATION_EXTENSION}`,
-          evidenceIds: ['E1'],
+            evidenceIds: ['E2'],
           causal: {
             cause: '因為馬八進七沒有立即施壓',
             mechanism: '黑方獲得連續出子的節奏，完成兩翼部署',
@@ -865,6 +948,36 @@ class StubbornVagueProvider implements AIProvider {
 }
 
 async function main(): Promise<void> {
+  const boardFactEvidence = (moves: string[], display: string[], fen = START_FEN): HarnessEvidence => ({
+    id: 'facts-fixture', engineId: 'engine-1', engineName: 'Fixture', purpose: 'Board facts',
+    positionFen: fen, depth: 12, score: null, displayPrincipalVariation: display,
+    analysis: { ...engineAnalysis, positionFen: fen, principalVariation: moves }
+  })
+  const legalFacts = buildVariationBoardFacts(boardFactEvidence(
+    ['h2e2', 'h9g7'], ['炮二平五', '馬8進7']
+  ))
+  check('逐手棋盤事實由正確方別計算炮的路數與對手應手',
+    legalFacts.warning === null && legalFacts.steps.length === 2 &&
+      legalFacts.steps[0]?.side === 'red' && legalFacts.steps[0]?.fromFile === 2 &&
+      legalFacts.steps[0]?.toFile === 5 && legalFacts.steps[0]?.captured === null &&
+      legalFacts.steps[1]?.side === 'black' && legalFacts.steps[1]?.piece === 'horse')
+  const captureCheckFacts = buildVariationBoardFacts(boardFactEvidence(
+    ['a1a9'], ['車九進八'], 'p3k4/9/9/9/4p4/9/9/9/R8/4K4 w - - 0 1'
+  ))
+  check('吃子與將軍從走後棋盤計算，沒有沿用模型 verified 欄位',
+    captureCheckFacts.warning === null && captureCheckFacts.steps[0]?.captured?.side === 'black' &&
+      captureCheckFacts.steps[0]?.captured?.piece === 'pawn' && captureCheckFacts.steps[0]?.givesCheck === true)
+  const wrongSideFacts = buildVariationBoardFacts(boardFactEvidence(['h9g7'], ['馬8進7']))
+  check('輪走方錯誤的主線不產生棋盤事實',
+    wrongSideFacts.steps.length === 0 && wrongSideFacts.warning !== null)
+  const otherVariationFacts = buildVariationBoardFacts(boardFactEvidence(['h2e2'], ['馬八進七']))
+  check('中文著法與另一條變例混用時不替它提供棋盤背書',
+    otherVariationFacts.steps.length === 0 && otherVariationFacts.warning !== null)
+  const invalidContinuationFacts = buildVariationBoardFacts(boardFactEvidence(
+    ['h2e2', 'h0g2'], ['炮二平五', '馬二進三']
+  ))
+  check('無效後續只保留合法前綴的事實，不推測後面走法',
+    invalidContinuationFacts.steps.length === 1 && invalidContinuationFacts.warning !== null)
   console.log('\n## AI 解說 Harness')
   const traces: HarnessTrace[] = []
   const provider = new FakeProvider()
@@ -891,8 +1004,8 @@ async function main(): Promise<void> {
     {
       requestId: 'ai-request-1',
       analysisId: session.analysisId,
-      provider: 'openai',
-      model: 'fake-model',
+      provider: 'openrouter',
+      model: 'nvidia/nemotron-3-super-120b-a12b:free',
       userLevel: 'intermediate',
       explanationStyle: 'long_analytical',
       language: 'zh-TW',
@@ -916,7 +1029,7 @@ async function main(): Promise<void> {
     {
       provider,
       apiKey: 'not-stored-in-trace',
-      model: 'fake-model',
+      model: 'nvidia/nemotron-3-super-120b-a12b:free',
       session,
       registry: {
         list: () => ({
@@ -940,6 +1053,16 @@ async function main(): Promise<void> {
     String(provider.requestedMaxTokens[0])
   )
   check(
+    'trace 只保存安全的模型階段、預算、耗時與 token 診斷',
+    traces.at(-1)?.modelCallDiagnostics?.length === 1 &&
+      traces.at(-1)?.modelCallDiagnostics?.[0]?.stage === 'initial_combined' &&
+      traces.at(-1)?.modelCallDiagnostics?.[0]?.maxOutputTokens === 4_000 &&
+      traces.at(-1)?.modelCallDiagnostics?.[0]?.reasoningPolicy ===
+        'reasoning_disabled' &&
+      traces.at(-1)?.modelCallDiagnostics?.[0]?.status === 'completed' &&
+      traces.at(-1)?.modelCallDiagnostics?.[0]?.outputTokens === 20
+  )
+  check(
     '首次實戰步 combined prompt 不重複 PromptBuilder 引擎資料與對話區塊',
     !provider.prompts[0]?.includes('【引擎分析數據】') &&
       !provider.prompts[0]?.includes('Previous coach context marker')
@@ -951,6 +1074,20 @@ async function main(): Promise<void> {
       provider.prompts[0]?.includes('500–900')
   )
   check(
+    '首次比較 prompt 明確區分首選與實戰兩條主線且示意引用不誤導模型',
+    provider.prompts[0]?.includes('E1 作 AI 首選主線、E2 作實戰步主線') &&
+      provider.prompts[0]?.includes('"directAnswerEvidenceIds":["E1","E2"]') &&
+      provider.prompts[0]?.includes('"evidenceIds":["E1","E2"]')
+  )
+  check(
+    '完整正文提示不把第一段限制成摘要，先寫正文再填審查欄位',
+    !provider.prompts[0]?.includes('與 directAnswer 相同的直接結論') &&
+      (provider.prompts[0]?.indexOf('"answer":{') ?? -1) <
+        (provider.prompts[0]?.indexOf('"audit":{') ?? -1)
+  )
+  check('實戰原則的示意引用涵蓋兩種著法，不預填成只能引用首選線',
+    provider.prompts[0]?.includes('"id":"C5","text":"約70–100漢字的一條可操作原則，說明本局先檢查什麼、如何判斷與適用限制","evidenceIds":["E1","E2"]'))
+  check(
     '首次比較 prompt 禁止把跨引擎分歧或主線外後續寫成確定事實',
     provider.prompts[0]?.includes('若兩個引擎的對手首應不同') &&
       provider.prompts[0]?.includes('主線未出現的後續不得寫成已經發生') &&
@@ -961,7 +1098,9 @@ async function main(): Promise<void> {
     provider.prompts[0]?.includes('先出馬可以讓子力調度更靈活') &&
       provider.prompts[0]?.includes('不可信自述') &&
       !provider.prompts[0]?.includes('"candidates"') &&
-      !provider.prompts[0]?.includes('"rawScore"')
+      !provider.prompts[0]?.includes('"rawScore"') &&
+      !provider.prompts[0]?.includes('本機術語知識') &&
+      !provider.prompts[0]?.includes('"score":')
   )
   check(
     '只有主引擎時，進度與 prompt 不會虛構複核引擎',
@@ -971,6 +1110,233 @@ async function main(): Promise<void> {
       provider.prompts[0]?.includes('只使用下方既有主引擎快照') &&
       !initialProgressEvents.some((event) => event.message.includes('複核引擎')) &&
       !provider.prompts[0]?.includes('主引擎／複核引擎快照')
+  )
+
+  const sameMoveAnalysis: EngineAnalysis = {
+    ...engineAnalysis,
+    userMove: engineAnalysis.bestMove,
+    displayUserMove: engineAnalysis.displayBestMove,
+    scoreAfterUserMove: engineAnalysis.scoreAfterBestMove,
+    evaluationAfterUserMove: engineAnalysis.evaluationAfterBestMove,
+    userMovePrincipalVariation: ['h2e2', 'h9g7', 'b0c2', 'b9c7'],
+    displayUserMovePrincipalVariation: ['炮二平五', '馬8進7', '馬八進七', '馬2進3'],
+    principalVariation: ['h2e2', 'h9g7', 'b0c2', 'b9c7'],
+    displayPrincipalVariation: ['炮二平五', '馬8進7', '馬八進七', '馬2進3']
+  }
+  const sameMoveSession: AnalysisSession = {
+    ...session,
+    analysisId: 'analysis-same-user-and-best-move',
+    engineAnalysis: sameMoveAnalysis,
+    moveComparison: compareMove(sameMoveAnalysis)
+  }
+  const sameMoveProvider = new SameMoveProvider()
+  const sameMoveResult = await runExplanationHarness(
+    {
+      requestId: 'ai-request-same-user-and-best-move',
+      analysisId: sameMoveSession.analysisId,
+      provider: 'openai',
+      model: 'fake-model',
+      userLevel: 'intermediate',
+      explanationStyle: 'long_analytical',
+      language: 'zh-TW',
+      attachedMove: sameMoveAnalysis.userMove,
+      userMoveReason: '想用中炮控制中央並取得主動',
+      answerMode: 'research',
+      budget: {
+        engineTimeMs: 3_000,
+        maxEngineRounds: 1,
+        maxModelCalls: 2,
+        maxOutputTokens: 4_000
+      }
+    },
+    {
+      provider: sameMoveProvider,
+      apiKey: 'secret',
+      model: 'fake-model',
+      session: sameMoveSession,
+      registry: {
+        list: () => ({
+          installations: [],
+          activeEngineId: 'engine-1',
+          verificationEngineId: null
+        }),
+        getAdapter: () => null
+      } as never,
+      traceStore: { save: () => undefined } as never,
+      signal: new AbortController().signal,
+      onProgress: () => undefined
+    }
+  )
+  check(
+    '實戰步等同首選時，prompt 明確禁止硬寫失誤且一次完成',
+    sameMoveProvider.calls === 1 &&
+      sameMoveProvider.prompt.includes('實戰步與引擎首選是同一著法') &&
+      sameMoveProvider.prompt.includes('禁止硬寫錯失、失誤、較差、懲罰')
+  )
+  check(
+    '同首選正文配額與 causal 範例不預設實戰步有問題或可被利用',
+    !sameMoveProvider.prompt.includes('實戰步問題約') &&
+      !sameMoveProvider.prompt.includes('"opponentUse":"對手實際利用"')
+  )
+  check(
+    '正式完整比較提供各變例獨立計算的輪走方、吃子與將軍事實',
+    sameMoveProvider.prompt.includes('"computedBoardFacts"') &&
+      sameMoveProvider.prompt.includes('"move":"炮二平五","side":"red"') &&
+      sameMoveProvider.prompt.includes('"move":"馬8進7","side":"black"') &&
+      sameMoveProvider.prompt.includes('"captured":null,"givesCheck":false')
+  )
+  check(
+    '實戰步等同首選時保留五段 id 並改用正向顯示標題',
+    sameMoveResult.finalText.includes('## 與首選一致') &&
+      sameMoveResult.finalText.includes('## 這步的好處') &&
+      sameMoveResult.finalText.includes('## 對手合理應對') &&
+      !/(較差失誤|必然受到懲罰)/.test(sameMoveResult.finalText),
+    sameMoveResult.finalText
+  )
+
+  const probeFollowUpPrompt = async (analysisSession: AnalysisSession): Promise<string> => {
+    const prompts: string[] = []
+    const probeProvider = {
+      id: 'openai' as const,
+      displayName: 'Audit prompt probe',
+      generateExplanation: async (request: { prompt: string }): Promise<never> => {
+        prompts.push(request.prompt)
+        throw new Error('audit prompt captured')
+      },
+      async *generateExplanationStream(): AsyncIterable<never> { return }
+    }
+    try {
+      await runExplanationHarness(
+        {
+          requestId: `follow-up-prompt-${analysisSession.analysisId}`,
+          analysisId: analysisSession.analysisId,
+          provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+          explanationStyle: 'long_analytical', language: 'zh-TW',
+          attachedMove: analysisSession.engineAnalysis.userMove,
+          followUpQuestion: '這一步與首選相比，後續主線怎麼走？',
+          conversationHistory: [{
+            id: 'previous-answer', role: 'assistant', text: '先前的完整講解。',
+            createdAt: new Date().toISOString(), provider: 'openai', model: 'fake-model'
+          }],
+          reuseEvidence: true,
+          budget: { engineTimeMs: 100, maxEngineRounds: 1, maxModelCalls: 1, maxOutputTokens: 4_000 }
+        },
+        {
+          provider: probeProvider, apiKey: 'synthetic-test-key', model: 'fake-model',
+          session: analysisSession,
+          registry: {
+            list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+            getAdapter: () => null
+          } as never,
+          traceStore: { save: () => undefined } as never,
+          signal: new AbortController().signal, onProgress: () => undefined
+        }
+      )
+    } catch {
+      // The probe stops after capturing the first real model request.
+    }
+    return prompts[0] ?? ''
+  }
+  const sameMoveFollowUpPrompt = await probeFollowUpPrompt(sameMoveSession)
+  check(
+    '同首選的短追問提示使用正向主線，不要求證明失誤',
+    sameMoveFollowUpPrompt.includes('實戰步與引擎首選是同一著法') &&
+      sameMoveFollowUpPrompt.includes('只回答使用者這一次的問題') &&
+      !sameMoveFollowUpPrompt.includes('這步為什麼不好、錯失什麼'),
+    sameMoveFollowUpPrompt.slice(0, 400)
+  )
+
+  const insufficientSession: AnalysisSession = {
+    ...session,
+    analysisId: 'analysis-insufficient-comparison-evidence',
+    moveComparison: {
+      ...session.moveComparison,
+      confidence: 'low',
+      uncertaintyReasons: ['固定 fixture：比較可信度不足']
+    }
+  }
+  const insufficientProvider = new FakeProvider()
+  const insufficientTraces: HarnessTrace[] = []
+  let insufficientError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-insufficient-comparison-evidence',
+        analysisId: insufficientSession.analysisId,
+        provider: 'openai',
+        model: 'fake-model',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical',
+        language: 'zh-TW',
+        attachedMove: insufficientSession.engineAnalysis.userMove,
+        userMoveReason: '想先出馬改善子力',
+        answerMode: 'research',
+        budget: {
+          engineTimeMs: 3_000,
+          maxEngineRounds: 1,
+          maxModelCalls: 2,
+          maxOutputTokens: 4_000
+        }
+      },
+      {
+        provider: insufficientProvider,
+        apiKey: 'secret',
+        model: 'fake-model',
+        session: insufficientSession,
+        registry: {
+          list: () => ({
+            installations: [],
+            activeEngineId: 'engine-1',
+            verificationEngineId: null
+          }),
+          getAdapter: () => null
+        } as never,
+        traceStore: {
+          save: (trace: HarnessTrace) => insufficientTraces.push(trace)
+        } as never,
+        signal: new AbortController().signal,
+        onProgress: () => undefined
+      }
+    )
+  } catch (error) {
+    insufficientError = error
+  }
+  check(
+    '比較證據不足 fixture 會要求中性回答並拒絕模型硬造錯失結論',
+    insufficientProvider.prompts[0]?.includes('比較狀態：證據不足') === true &&
+      insufficientError instanceof HarnessExplanationUnavailableError &&
+      insufficientError.reason === 'quality_validation_failed' &&
+      insufficientTraces.at(-1)?.status === 'failed' &&
+      insufficientTraces.at(-1)?.finalText === undefined,
+    JSON.stringify({
+      promptMarkedInsufficient:
+        insufficientProvider.prompts[0]?.includes('比較狀態：證據不足') === true,
+      error:
+        insufficientError instanceof HarnessExplanationUnavailableError
+          ? insufficientError.reason
+          : String(insufficientError),
+      traceStatus: insufficientTraces.at(-1)?.status,
+      hasFinalText: insufficientTraces.at(-1)?.finalText !== undefined
+    })
+  )
+  const insufficientFollowUpPrompt = await probeFollowUpPrompt(insufficientSession)
+  check(
+    '中性審查範例提供兩種不同後果類型，不要求模型照抄重複類型',
+    insufficientProvider.prompts[0]?.includes('"id":"K1","category":"central_control"') === true &&
+      insufficientProvider.prompts[0]?.includes('"id":"K2","category":"piece_development"') === true
+  )
+  check(
+    '證據不足的範例不預填失去先手或讓對手獲利類型，有證據差異仍可正常比較',
+    !insufficientProvider.prompts[0]?.includes('"category":"initiative_loss"') &&
+      !insufficientProvider.prompts[0]?.includes('"category":"opponent_development"') &&
+      provider.prompts[0]?.includes('"category":"initiative_loss"') === true
+  )
+  check(
+    '比較證據不足的短追問提示要求區分已知與未知',
+    insufficientFollowUpPrompt.includes('分開寫目前可確定的主線與缺少的證據') &&
+      insufficientFollowUpPrompt.includes('只回答使用者這一次的問題') &&
+      !insufficientFollowUpPrompt.includes('這步為什麼不好、錯失什麼'),
+    insufficientFollowUpPrompt.slice(0, 400)
   )
 
   const frozenCase = getTeacherTestCatalog().cases[0]
@@ -1241,8 +1607,8 @@ async function main(): Promise<void> {
     '完成 trace 保存請求、模型、語言、歷史訊息數與耗時 metadata',
     traces[0]?.requestId === 'ai-request-1' &&
       traces[0]?.analysisId === session.analysisId &&
-      traces[0]?.provider === 'openai' &&
-      traces[0]?.model === 'fake-model' &&
+      traces[0]?.provider === 'openrouter' &&
+      traces[0]?.model === 'nvidia/nemotron-3-super-120b-a12b:free' &&
       traces[0]?.language === 'zh-TW' &&
       traces[0]?.historyMessageCount === 1 &&
       typeof traces[0]?.durationMs === 'number' &&
@@ -1273,7 +1639,9 @@ async function main(): Promise<void> {
 
   const shortProvider = new FakeProvider(false)
   const shortTraces: HarnessTrace[] = []
-  const completedShortResult = await runExplanationHarness(
+  let shortResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
+  let shortError: unknown
+  try { shortResult = await runExplanationHarness(
     {
       requestId: 'ai-request-grounded-short-completion',
       analysisId: session.analysisId,
@@ -1307,34 +1675,23 @@ async function main(): Promise<void> {
       signal: new AbortController().signal,
       onProgress: () => undefined
     }
+  ) } catch (error) { shortError = error }
+  check(
+    '不足 400 漢字的首答不得用固定文字補字交付',
+    shortResult === null && shortError instanceof Error &&
+      shortError.message.includes('沒有通過棋理與證據檢查')
   )
   check(
-    '內容正確但過短的首答只用同一證據包補足，不再呼叫模型',
-    shortProvider.calls === 1 && completedShortResult.warnings.length === 0
+    '短答至多嘗試一次有界修補，失敗後仍拒絕交付',
+    shortProvider.calls === 2 && shortTraces.at(-1)?.status === 'failed' &&
+      !shortTraces.at(-1)?.finalText,
+    JSON.stringify({ calls: shortProvider.calls, errors: shortTraces.at(-1)?.validationErrors })
   )
   check(
-    '本機補足後達到 500 漢字目標並保留真實兩條主線',
-    countHanCharacters(completedShortResult.finalText) >= 500 &&
-      completedShortResult.finalText.includes('馬八進七') &&
-      completedShortResult.finalText.includes('炮二平五') &&
-      completedShortResult.finalText.includes('馬8進7')
-  )
-  check(
-    '補足後 trace 完成且保留原始短答診斷供責任判定',
-    shortTraces.at(-1)?.status === 'completed' &&
+    '短答 trace 保留原始字數診斷',
       shortTraces.at(-1)?.validationErrors.some((error) =>
         error.includes('一鍵完整解說正文只有')
       )
-  )
-  check(
-    '本機補足不產生連續或衝突的中文標點',
-    !/(?:。；|。。|，。)/u.test(completedShortResult.finalText),
-    completedShortResult.finalText
-  )
-  check(
-    '本機補足不拼出「對手接著紅方」一類重複主詞病句',
-    !/對手(?:接著|後續)(?:紅方|黑方)/u.test(completedShortResult.finalText),
-    completedShortResult.finalText
   )
 
   const nearTargetProvider = new NearTargetProvider()
@@ -1377,12 +1734,11 @@ async function main(): Promise<void> {
     }
   )
   check(
-    '400–499 漢字的合格首答也會用同一證據包補到 500 字產品目標',
+    '400–499 漢字的合格正文達最低門檻，保留原文不補字',
     nearTargetProvider.calls === 1 &&
-      countHanCharacters(nearTargetResult.finalText) >= 500 &&
-      nearTargetTraces.at(-1)?.validationErrors.some((error) =>
-        error.includes('低於 500 個漢字的產品目標')
-      ),
+      countHanCharacters(nearTargetResult.finalText) >= 400 &&
+      countHanCharacters(nearTargetResult.finalText) < 500 &&
+      nearTargetTraces.at(-1)?.status === 'completed',
     JSON.stringify({
       calls: nearTargetProvider.calls,
       finalHan: countHanCharacters(nearTargetResult.finalText),
@@ -1464,6 +1820,28 @@ async function main(): Promise<void> {
     JSON.stringify({
       engineCalls: shallowEvidenceResearchCalls,
       engineRounds: shallowEvidenceTraces.at(-1)?.engineRounds
+    })
+  )
+  const deepUserEvidence = shallowEvidenceTraces.at(-1)?.evidence
+    .filter((item) => item.move === shallowAnalysis.userMove)
+    .sort((a, b) => b.displayPrincipalVariation.length - a.displayPrincipalVariation.length)[0]
+  check(
+    '實戰線加深後 prompt 改引用較完整的變例，不能仍把淺層 E2 當作唯一實戰線',
+    deepUserEvidence?.displayPrincipalVariation.length === 4 &&
+      deepUserEvidence.id !== 'E2' &&
+      (shallowEvidenceTraces.at(-1)?.evidence[0]?.displayPrincipalVariation.length ?? 0) >= 2 &&
+      shallowEvidenceProvider.prompts[0]?.includes(`${deepUserEvidence.id} 作實戰步主線`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"directAnswerEvidenceIds":["E1","${deepUserEvidence.id}"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K1"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K2"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"opponentReplies":["${deepUserEvidence.displayPrincipalVariation[1]}"`) &&
+      shallowEvidenceProvider.prompts[0]?.includes('"claimId":"C4a"') &&
+      shallowEvidenceProvider.prompts[0]?.includes('"claimId":"C4b"') &&
+      !shallowEvidenceProvider.prompts[0]?.includes('"supportingMoves":["中文著法一"') &&
+      !shallowEvidenceProvider.prompts[0]?.includes('"id":"E2"'),
+    JSON.stringify({
+      selected: deepUserEvidence?.id,
+      lineLength: deepUserEvidence?.displayPrincipalVariation.length
     })
   )
 
@@ -2105,7 +2483,9 @@ async function main(): Promise<void> {
     noUserMoveProgress.some(
       (item) =>
         item.phase === 'quality_check' &&
-        item.message.includes('目前局面、最佳著法目的與後續主線')
+        item.message.includes('結構與引用關聯檢查') &&
+        item.message.includes('未經獨立證實') &&
+        !item.message.includes('可計算棋盤事實檢查')
     ) && !noUserMoveResult.finalText.includes('保守版問答')
   )
 
@@ -2251,6 +2631,7 @@ async function main(): Promise<void> {
   for (const scenario of [
     { name: 'malformed', outputs: ['{broken', '炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 2 },
     { name: 'plain', outputs: ['炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 1 },
+    { name: 'false-board-salvage', outputs: ['黑方炮二平五吃紅方車，開局中路取得優勢。', '紅方炮二平五把炮轉到中路，開局應先檢查中兵的保護與馬的出路。'], calls: 2 },
     { name: 'unrelated', outputs: [JSON.stringify({directAnswer: '先看引擎首選炮二平五。'}), '皮卡魚主線炮二平五把炮移到中路，這段開局變化顯示了中路子力的調動。'], calls: 2 },
     { name: 'unsupported-json', outputs: ['', '皮卡魚主線炮二平五把炮移到中路，這段開局變化顯示了中路子力的調動。'], calls: 2 }
   ]) {
@@ -2281,10 +2662,40 @@ async function main(): Promise<void> {
       traceStore: {save:()=>undefined} as never, signal:new AbortController().signal,onProgress:()=>undefined
     })
     check('首次具體問題可恢復短文回答 ' + scenario.name, result.finalText.includes('中') && provider.calls === scenario.calls)
+    if (scenario.name === 'false-board-salvage') {
+      check('原始追問草稿的錯誤棋盤斷言不能被 salvage 交付',
+        result.finalText === scenario.outputs[1] && !result.finalText.includes('吃紅方車'))
+    }
     if (scenario.calls === 2) {
       check('恢復請求使用純文字且保留原問題 ' + scenario.name,
         requests[1].responseFormat === undefined && requests[1].prompt.includes('開局中路需要注意什麼？') && requests[1].maxOutputTokens === 1200)
     }
+  }
+
+  for (const scenario of [
+    {name:'wrong-side', text:'黑方炮二平五把炮移到中路，開局應檢查中路子力。', accepted:false},
+    {name:'fake-capture', text:'紅方炮二平五吃黑方車，開局控制中路並取得子力優勢。', accepted:false},
+    {name:'correct-board', text:'紅方炮二平五把炮移到中路，開局應檢查中兵的保護與馬的出路。', accepted:true}
+  ]) {
+    const provider = new LocalizedNoUserMoveProvider(['{broken', scenario.text])
+    let completed = false
+    let reason: string | undefined
+    try {
+      const result = await runExplanationHarness({
+        requestId:'question-recovery-board-' + scenario.name,analysisId:noMoveSession.analysisId,
+        provider:'openai',model:'fake-model',userLevel:'intermediate',explanationStyle:'long_analytical',
+        language:'zh-TW',followUpQuestion:'開局中路需要注意什麼？',
+        budget:{engineTimeMs:100,maxEngineRounds:1,maxModelCalls:2,maxOutputTokens:3000}
+      },{provider,apiKey:'synthetic-test-key',model:'fake-model',session:noMoveSession,
+        registry:{list:()=>({installations:[],activeEngineId:null,verificationEngineId:null}),getAdapter:()=>null} as never,
+        traceStore:{save:()=>undefined} as never,signal:new AbortController().signal,onProgress:()=>undefined})
+      completed = result.finalText === scenario.text
+    } catch (error) {
+      if (error instanceof HarnessExplanationUnavailableError) reason = error.reason
+      else throw error
+    }
+    check('短追問 recovery 核對實際棋盤事實 ' + scenario.name,
+      provider.calls === 2 && (scenario.accepted ? completed : !completed && reason === 'quality_validation_failed'))
   }
 
   {
@@ -2713,6 +3124,33 @@ async function main(): Promise<void> {
       score: null,
       displayPrincipalVariation: ['炮二平五', '馬8進7'],
       analysis: engineAnalysis
+    },
+    {
+      id: 'E2',
+      engineId: 'engine-1',
+      engineName: 'Test Engine',
+      purpose: '初始主引擎使用者著法分析',
+      positionFen: START_FEN,
+      move: engineAnalysis.userMove,
+      displayMove: engineAnalysis.displayUserMove,
+      depth: 12,
+      score: engineAnalysis.scoreAfterUserMove,
+      displayPrincipalVariation:
+        engineAnalysis.displayUserMovePrincipalVariation ?? [],
+      analysis: engineAnalysis
+    },
+    {
+      id: 'E3',
+      engineId: 'engine-1',
+      engineName: 'Test Engine',
+      purpose: '候選兵三進一變例',
+      positionFen: START_FEN,
+      move: 'c3c4',
+      displayMove: '兵三進一',
+      depth: 12,
+      score: engineAnalysis.candidateMoves[2]?.score ?? null,
+      displayPrincipalVariation: ['兵三進一', '馬8進7'],
+      analysis: engineAnalysis
     }
   ]
   const makeFinding = (
@@ -2724,7 +3162,7 @@ async function main(): Promise<void> {
     opponentUse: '黑方以馬8進7搶先出子。',
     boardImpact: '等紅方補走炮二平五時，黑方已先完成一步部署。',
     supportingMoves: ['馬八進七', '馬8進7', '炮二平五'],
-    evidenceIds: ['E1'],
+    evidenceIds: ['E2'],
     verified: true,
     ...overrides
   })
@@ -2812,16 +3250,32 @@ async function main(): Promise<void> {
         summary: '改走兵三進一雖然開通馬路，但讓黑方馬8進7搶先控制河口。',
         opponentUse: '黑方馬8進7後紅方馬路仍被壓制。',
         boardImpact: '紅方兵三進一後的部署比炮二平五慢。',
-        supportingMoves: ['兵三進一', '馬8進7']
+        supportingMoves: ['兵三進一', '馬8進7'],
+        evidenceIds: ['E3']
       })
     ]),
     validatorEvidence,
     true
   )
   check(
-    '候選著法變例中的著法可以合法引用（不再誤判違規）',
-    !candidateLineErrors.some((error) => error.includes('引擎主線中沒有的著法')),
+    '候選著法變例中的著法以對應 evidence 引用時可以合法通過',
+    !candidateLineErrors.some((error) => error.includes('引用變例中的著法')),
     candidateLineErrors
+  )
+
+  const crossVariationErrors = validateConsequenceAudit(
+    makeAudit([
+      makeFinding({ evidenceIds: ['E1'] }),
+      goodSecondFinding
+    ]),
+    validatorEvidence,
+    true
+  )
+  check(
+    '存在於其他候選線的著法不能用錯誤 evidence 冒充同一變例',
+    crossVariationErrors.some((error) =>
+      error.includes('未出現在其引用變例中的著法')
+    )
   )
 
   const badNoteAnswer: HarnessAnswer = {
@@ -2886,6 +3340,94 @@ async function main(): Promise<void> {
     normalContractErrors.length === 0,
     normalContractErrors
   )
+  const fakeCaptureAnswer = JSON.parse(JSON.stringify(normalContractAnswer)) as HarnessAnswer
+  fakeCaptureAnswer.sections[2]!.claims[0]!.text = '紅方炮二平五吃掉黑卒並將軍，後續黑方馬8進7保護中路。'
+  fakeCaptureAnswer.sections[2]!.claims[0]!.evidenceIds = ['E1']
+  check(
+    '合法引用不能讓本步不存在的吃子與將軍斷言通過正文驗證',
+    validateAnswer(fakeCaptureAnswer, validatorEvidence, initialMoveRequirements)
+      .some((error) => error.includes('棋盤事實'))
+  )
+  const fakeCaptureAudit = JSON.parse(GOOD_AUDIT_JSON) as ConsequenceAudit
+  fakeCaptureAudit.consequences[0]!.summary = '黑方炮二平五立即在中路吃掉紅方車。'
+  fakeCaptureAudit.consequences[0]!.opponentUse = '紅方以馬8進7跳馬將軍並吃掉黑方炮。'
+  fakeCaptureAudit.consequences[0]!.supportingMoves = ['炮二平五', '馬8進7']
+  fakeCaptureAudit.consequences[0]!.evidenceIds = ['E1']
+  check(
+    '模型自填 verified 加合法 evidenceId 不能讓錯誤方別及假戰術通過審查',
+    validateConsequenceAudit(fakeCaptureAudit, validatorEvidence, true)
+      .some((error) => error.includes('棋盤事實'))
+  )
+  const sameVerdictAnswer = (JSON.parse(
+    (await new SameMoveProvider().generateExplanation({ prompt: '' })).text
+  ) as { answer: HarnessAnswer }).answer
+  const sameVerdictEvidence = validatorEvidence.slice(0, 2).map((item) => ({
+    ...item,
+    move: 'h2e2',
+    displayMove: '炮二平五',
+    displayPrincipalVariation: sameMoveSession.engineAnalysis.displayPrincipalVariation,
+    analysis: sameMoveSession.engineAnalysis
+  }))
+  const sameVerdictRequirements = { ...initialMoveRequirements, comparisonState: 'same_move' as const }
+  check('同首選完整正文可通過正式 validator',
+    validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements).length === 0)
+  sameVerdictAnswer.directAnswer = '炮二平五是較差著法，這步是失誤。'
+  check('同首選的負面矛盾不能藏在 directAnswer 避過正文檢查',
+    validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
+      .some((error) => error.includes('同一著法')))
+  sameVerdictAnswer.directAnswer = '炮二平五與首選一致，不能說這步是失誤。'
+  check('同首選澄清不是失誤不會被負評篩選誤擋',
+    !validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
+      .some((error) => error.includes('同一著法')))
+
+  const wrongSideEvidence: HarnessEvidence = {
+    ...validatorEvidence[1]!,
+    id: 'E4',
+    positionFen: START_FEN.replace(' w ', ' b ')
+  }
+  const wrongSideAnswer = JSON.parse(
+    JSON.stringify(normalContractAnswer)
+  ) as HarnessAnswer
+  wrongSideAnswer.sections[1]!.claims[0]!.evidenceIds = ['E4']
+  const wrongSideErrors = validateAnswer(
+    wrongSideAnswer,
+    [...validatorEvidence, wrongSideEvidence],
+    initialMoveRequirements
+  )
+  check(
+    '另一輪走方的證據不能替目前局面主張背書',
+    wrongSideErrors.some((error) => error.includes('另一個局面的證據'))
+  )
+
+  const unrelatedFindingAnswer = JSON.parse(
+    JSON.stringify(normalContractAnswer)
+  ) as HarnessAnswer
+  const unrelatedCoreClaim = unrelatedFindingAnswer.sections[1]!.claims[0]!
+  unrelatedCoreClaim.findingIds = ['K9']
+  const unrelatedFinding = makeFinding({
+    id: 'K9',
+    category: 'piece_restriction',
+    summary: '兵三進一後黑方以馬8進7控制河口。',
+    opponentUse: '黑方馬8進7後增加中央子力。',
+    boardImpact: '兵三進一與馬8進7形成另一條候選變例。',
+    supportingMoves: ['兵三進一', '馬8進7'],
+    evidenceIds: ['E3']
+  })
+  const unrelatedFindingErrors = validateAnswer(
+    unrelatedFindingAnswer,
+    validatorEvidence,
+    {
+      ...initialMoveRequirements,
+      verifiedFindingIds: ['K9'],
+      verifiedFindings: [unrelatedFinding]
+    }
+  )
+  check(
+    '有效 findingId 搭配無關變例內容仍會被擋下',
+    unrelatedFindingErrors.some((error) =>
+      error.includes('內容卻沒有連到該 finding 的變例與著法')
+    )
+  )
 
   const forcedLineAnswer = JSON.parse(
     JSON.stringify(normalContractAnswer)
@@ -2901,6 +3443,30 @@ async function main(): Promise<void> {
     '單一 PV 不得被寫成被迫、必然或唯一回應',
     forcedLineErrors.some((error) => error.includes('不得把單一引擎主線誇大'))
   )
+  for (const text of [
+    '主線顯示馬8進7，但不是唯一回應。',
+    '不能說黑方被迫走馬8進7，主線只展示其中一種合理選擇。',
+    '這不代表黑方只能走馬8進7。',
+    'The principal variation does not mean Black must play this reply.'
+  ]) {
+    forcedLineAnswer.directAnswer = text
+    check('否定必然應對的澄清不能被誇大斷言篩選誤擋 ' + text,
+      !validateAnswer(forcedLineAnswer, validatorEvidence, initialMoveRequirements)
+        .some(error => error.includes('不得把單一引擎主線誇大')))
+  }
+  forcedLineAnswer.directAnswer = '馬8進7不是唯一回應，但黑方被迫走馬2進3。'
+  check('否定一句不能豁免另一句肯定的被迫斷言',
+    validateAnswer(forcedLineAnswer, validatorEvidence, initialMoveRequirements)
+      .some(error => error.includes('不得把單一引擎主線誇大')))
+  forcedLineAnswer.directAnswer = '馬8進7不是唯一回應且黑方被迫走馬2進3。'
+  check('同一分句的否定不能重用來豁免第二個肯定斷言',
+    validateAnswer(forcedLineAnswer, validatorEvidence, initialMoveRequirements)
+      .some(error => error.includes('不得把單一引擎主線誇大')))
+  forcedLineAnswer.directAnswer = normalContractAnswer.directAnswer
+  forcedLineAnswer.sections[1]!.claims[0]!.causal!.opponentUse = '黑方被迫走馬8進7。'
+  check('隱藏 causal 也不能聲稱主線是被迫應對',
+    validateAnswer(forcedLineAnswer, validatorEvidence, initialMoveRequirements)
+      .some(error => error.includes('不得把單一引擎主線誇大')))
 
   const extraSectionAnswer = JSON.parse(
     JSON.stringify(normalContractAnswer)
@@ -3269,10 +3835,60 @@ async function main(): Promise<void> {
       outputTokenBoundaryError instanceof Error &&
       outputTokenBoundaryError.message.includes('沒有通過棋理與證據檢查')
   )
+  const failedAuditBudgets: number[] = []
+  const failedAuditProvider = {
+    id: 'openai' as const,
+    displayName: 'Failed audit budget probe',
+    generateExplanation: async (request: { maxOutputTokens?: number }) => {
+      failedAuditBudgets.push(request.maxOutputTokens ?? -1)
+      if (failedAuditBudgets.length === 1) {
+        throw new AIResponseValidationError(
+          'generation', 'generation_incomplete', 'Output reached its limit.',
+          { reason: 'output_truncated', finishReason: 'length', outputTokens: 3_000 }
+        )
+      }
+      return {
+        text: '{}', provider: 'openai' as const, model: 'fake-model',
+        createdAt: Date.now(), groundedOnEngineData: true as const,
+        usage: { inputTokens: 10, outputTokens: 10 }
+      }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'failed-audit-budget', analysisId: noMoveSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW',
+        answerMode: 'research', followUpQuestion: '請完整解釋目前局面',
+        budget: { engineTimeMs: 100, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 4_000 }
+      },
+      {
+        provider: failedAuditProvider, apiKey: 'synthetic-test-key', model: 'fake-model',
+        session: noMoveSession,
+        registry: {
+          list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: () => undefined } as never,
+        signal: new AbortController().signal, onProgress: () => undefined
+      }
+    )
+  } catch {
+    // This probe exercises budgeting, not answer acceptance.
+  }
+  check(
+    '截斷的審核呼叫已消耗 3000 tokens，後續寫作只能使用剩餘 1000',
+    failedAuditBudgets.length === 2 &&
+      failedAuditBudgets[0] === 3_000 &&
+      failedAuditBudgets[1] === 1_000,
+    failedAuditBudgets.join(',')
+  )
 
   console.log('\n## 一鍵品質收斂（loop engineering）')
 
-  // 一個區塊空泛：不得再花第二輪內容呼叫而撞上 30 秒硬截止。
+  // 一個區塊空泛：只許一次有明確診斷的整份修補，仍不交付空泛內容。
   const rewriteProvider = new RewriteLoopProvider()
   const rewriteProgress: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
   let rewriteError: unknown
@@ -3316,8 +3932,8 @@ async function main(): Promise<void> {
     rewriteError = error
   }
   check(
-    '空泛首答不啟動第二次內容呼叫',
-    rewriteProvider.calls === 1,
+    '空泛首答最多啟動一次有界修補呼叫',
+    rewriteProvider.calls === 2,
     rewriteProvider.calls
   )
   check(
@@ -3326,11 +3942,192 @@ async function main(): Promise<void> {
       rewriteError.message.includes('沒有通過棋理與證據檢查')
   )
   check(
-    '一鍵首答失敗不回報虛假的局部重寫進度',
-    !rewriteProgress.some((item) => item.phase === 'repairing')
+    '一鍵首答失敗只回報實際啟動的一次修補',
+    rewriteProgress.filter((item) => item.phase === 'repairing').length === 1
   )
 
-  // 模型即使願意再回空泛內容，也不得進入內容重試迴圈。
+  const validRepairText = (await new SameMoveProvider().generateExplanation({ prompt: '' })).text
+  const invalidRepairDraft = JSON.parse(validRepairText) as {
+    audit: ConsequenceAudit; answer: HarnessAnswer
+  }
+  invalidRepairDraft.answer.sections[3]!.claims[0]!.text = '黑方大致有機會。'
+  const repairSuccessProvider = {
+    id: 'openai' as const,
+    displayName: 'Fake successful combined repair',
+    calls: 0,
+    prompts: [] as string[],
+    async generateExplanation(request: { prompt: string; maxOutputTokens?: number }) {
+      this.calls++
+      this.prompts.push(request.prompt)
+      return {
+        text: this.calls === 1 ? JSON.stringify(invalidRepairDraft) : validRepairText,
+        provider: 'openai' as const,
+        model: 'fake-model',
+        createdAt: Date.now(),
+        groundedOnEngineData: true as const,
+        usage: { inputTokens: 10, outputTokens: 20 }
+      }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  const repairedTraces: HarnessTrace[] = []
+  let repairedResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
+  try { repairedResult = await runExplanationHarness(
+    {
+      requestId: 'ai-request-combined-repair-success',
+      analysisId: sameMoveSession.analysisId,
+      provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW',
+      attachedMove: sameMoveAnalysis.userMove,
+      answerMode: 'research',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: 8000 }
+    },
+    {
+      provider: repairSuccessProvider,
+      apiKey: 'synthetic-test-key', model: 'fake-model', session: sameMoveSession,
+      registry: {
+        list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+        getAdapter: () => null
+      } as never,
+      traceStore: { save: (trace: HarnessTrace) => repairedTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    }
+  ) } catch { /* The assertion reports the validator errors below. */ }
+  check(
+    '審核與正文修補後仍由正式 validator 驗收完整五段',
+    repairSuccessProvider.calls === 2 &&
+      repairSuccessProvider.prompts[1]?.includes('錯誤：') &&
+      repairSuccessProvider.prompts[1]?.includes('"computedBoardFacts"') &&
+      repairedTraces[0]?.modelCallDiagnostics?.[1]?.stage === 'repair' &&
+      repairedResult !== null &&
+      countHanCharacters(repairedResult.finalText) >= 400 &&
+      repairedTraces[0]?.status === 'completed',
+    JSON.stringify({ calls: repairSuccessProvider.calls, errors: repairedTraces[0]?.validationErrors })
+  )
+  check(
+    '修補保留失敗診斷與原局面但不回灌被拒絕的草稿斷言',
+    repairSuccessProvider.prompts[1]?.includes('錯誤：') &&
+      !repairSuccessProvider.prompts[1]?.includes('黑方大致有機會。') &&
+      repairSuccessProvider.prompts[1]?.includes('direct_conclusion')
+  )
+
+  const compactCombined = JSON.parse(validRepairText) as { audit: ConsequenceAudit; answer: HarnessAnswer }
+  const originalConsequenceClaim = compactCombined.answer.sections[3]!.claims[0]!
+  const secondFinding = compactCombined.audit.consequences[1]!
+  compactCombined.answer.sections[3]!.claims = [
+    { ...originalConsequenceClaim, id: 'C4a', findingIds: ['K1'] },
+    {
+      ...originalConsequenceClaim, id: 'C4b', findingIds: ['K2'],
+      text: `${secondFinding.supportingMoves.join('、')}：${secondFinding.summary}${secondFinding.boardImpact}`,
+      causal: { ...originalConsequenceClaim.causal!, opponentUse: secondFinding.opponentUse, consequence: secondFinding.boardImpact }
+    }
+  ]
+  const compactAudit = {
+    ...compactCombined.audit,
+    consequences: compactCombined.audit.consequences.map((finding, index) => ({
+      id: finding.id, category: finding.category, claimId: index === 0 ? 'C4a' : 'C4b', verified: true
+    }))
+  }
+  const compactProvider = {
+    id: 'openai' as const, displayName: 'Complete answer with compact audit references', calls: 0,
+    async generateExplanation() {
+      this.calls++
+      return { text: JSON.stringify({ answer: compactCombined.answer, audit: compactAudit }), provider: this.id,
+        model: 'fake-model', usage: { inputTokens: 100, outputTokens: 2000 } }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  let compactResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
+  const compactTraces: HarnessTrace[] = []
+  const runCompactScenario = async (): Promise<void> => {
+    compactResult = null
+    compactProvider.calls = 0
+    compactTraces.length = 0
+    try {
+    compactResult = await runExplanationHarness({
+      requestId: 'compact-audit-full-body', analysisId: sameMoveSession.analysisId,
+      provider: 'openai', model: 'fake-model', userLevel: 'intermediate', explanationStyle: 'long_analytical',
+      language: 'zh-TW', answerMode: 'research', attachedMove: 'h2e2',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 8000 }
+    }, {
+      provider: compactProvider, apiKey: 'synthetic-test-key', model: 'fake-model', session: sameMoveSession,
+      registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+      traceStore: { save: (trace: HarnessTrace) => compactTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    })
+    } catch { /* The assertion exposes the actual validator verdict. */ }
+  }
+  await runCompactScenario()
+  check('完整正文可用 audit claim 引用通過同一正式審查，沒有補字或省略因果',
+    compactProvider.calls === 1 && compactResult !== null && countHanCharacters(compactResult.finalText) >= 400,
+    compactTraces.at(-1)?.validationErrors)
+  compactAudit.consequences[1]!.claimId = 'missing-claim'
+  await runCompactScenario()
+  check('不存在的 audit claim 引用不能填造後果或交付正文', compactResult === null && compactProvider.calls === 2)
+  compactAudit.consequences[1]!.claimId = 'C4a'
+  await runCompactScenario()
+  check('同一 claim 不能冒充兩個不同後果', compactResult === null && compactProvider.calls === 2)
+  compactAudit.consequences[1]!.claimId = 'C4b'
+  const originalCompactCausal = compactCombined.answer.sections[3]!.claims[1]!.causal
+  const originalCompactEvidenceIds = compactCombined.answer.sections[3]!.claims[1]!.evidenceIds
+  compactCombined.answer.sections[3]!.claims[1]!.evidenceIds = ['E404']
+  await runCompactScenario()
+  check('compact audit 不能用不在本次證據內的引用替實戰後果背書', compactResult === null && compactProvider.calls === 2)
+  compactCombined.answer.sections[3]!.claims[1]!.evidenceIds = originalCompactEvidenceIds
+  delete compactCombined.answer.sections[3]!.claims[1]!.causal
+  await runCompactScenario()
+  check('compact audit 不替缺少 causal 的正文補造因果', compactResult === null && compactProvider.calls === 2)
+  compactCombined.answer.sections[3]!.claims[1]!.causal = originalCompactCausal
+
+  const repairOutageProvider = {
+    id: 'openai' as const,
+    displayName: 'Fake repair outage',
+    calls: 0,
+    async generateExplanation() {
+      this.calls++
+      if (this.calls > 1) throw new AIHttpError(503, 'generation', 'Provider unavailable (503)')
+      return {
+        text: JSON.stringify(invalidRepairDraft), provider: 'openai' as const,
+        model: 'fake-model', createdAt: Date.now(), groundedOnEngineData: true as const,
+        usage: { inputTokens: 10, outputTokens: 20 }
+      }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  const repairOutageTraces: HarnessTrace[] = []
+  let repairOutageError: unknown
+  try {
+    await runExplanationHarness(
+      {
+        requestId: 'ai-request-repair-outage', analysisId: sameMoveSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW',
+        attachedMove: sameMoveAnalysis.userMove, answerMode: 'research',
+        budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: 8000 }
+      },
+      {
+        provider: repairOutageProvider, apiKey: 'synthetic-test-key', model: 'fake-model',
+        session: sameMoveSession,
+        registry: {
+          list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+          getAdapter: () => null
+        } as never,
+        traceStore: { save: (trace: HarnessTrace) => repairOutageTraces.push(trace) } as never,
+        signal: new AbortController().signal, onProgress: () => undefined
+      }
+    )
+  } catch (error) { repairOutageError = error }
+  check(
+    '修補階段 503 保留服務錯誤分類，不能吞成正文品質失敗',
+    repairOutageError instanceof AIHttpError &&
+      repairOutageError.status === 503 &&
+      repairOutageProvider.calls === 2 &&
+      repairOutageTraces[0]?.providerDiagnostic?.category === 'provider_unavailable',
+    JSON.stringify({ calls: repairOutageProvider.calls, error: repairOutageError instanceof Error ? repairOutageError.name : null,
+      diagnostic: repairOutageTraces[0]?.providerDiagnostic })
+  )
+
+  // 模型第二次仍空泛時，不得進入第三次內容重試。
   const stubbornProvider = new StubbornVagueProvider()
   const stubbornTraces: HarnessTrace[] = []
   let stubbornError: unknown
@@ -3374,8 +4171,8 @@ async function main(): Promise<void> {
     stubbornError = error
   }
   check(
-    '初次內容不合格 → 恰好一次模型呼叫後停止',
-    stubbornProvider.calls === 1,
+    '初次內容不合格且修補仍錯 → 恰好兩次模型呼叫後停止',
+    stubbornProvider.calls === 2,
     stubbornProvider.calls
   )
   check(
@@ -3418,6 +4215,20 @@ async function main(): Promise<void> {
       score: engineAnalysis.scoreAfterBestMove,
       displayPrincipalVariation:
         engineAnalysis.displayPrincipalVariation ?? [],
+      analysis: engineAnalysis
+    },
+    {
+      id: 'E2',
+      engineId: 'engine-1',
+      engineName: engineAnalysis.engineName,
+      purpose: '主引擎使用者著法',
+      positionFen: START_FEN,
+      move: engineAnalysis.userMove,
+      displayMove: engineAnalysis.displayUserMove,
+      depth: engineAnalysis.depth,
+      score: engineAnalysis.scoreAfterUserMove,
+      displayPrincipalVariation:
+        engineAnalysis.displayUserMovePrincipalVariation ?? [],
       analysis: engineAnalysis
     },
     {

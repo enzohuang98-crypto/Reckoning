@@ -1,0 +1,145 @@
+name: Promote unsigned candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing validated prerelease tag, for example v0.4.15
+        required: true
+        type: string
+      expected_setup_sha256:
+        description: SHA-256 recorded during candidate and Windows acceptance
+        required: true
+        type: string
+      candidate_run_id:
+        description: Successful Release workflow run that published and checked this candidate
+        required: true
+        type: string
+      acknowledgement:
+        description: Type PUBLISH UNSIGNED LATEST after all Windows acceptance gates pass
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: promote-unsigned-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote explicitly approved unsigned update to Latest
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: windows-client-release
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Check out the exact candidate tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable public candidate and promote without rebuilding
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_SHA256: ${{ inputs.expected_setup_sha256 }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          UNSIGNED_ACK: ${{ inputs.acknowledgement }}
+        run: |
+          set -euo pipefail
+          if [[ "$UNSIGNED_ACK" != 'PUBLISH UNSIGNED LATEST' ]]; then
+            echo 'Unsigned Latest acknowledgement is missing or changed.' >&2
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]]; then
+            echo 'Expected installer SHA-256 must contain exactly 64 hexadecimal characters.' >&2
+            exit 1
+          fi
+          if [[ ! "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo 'Candidate workflow run ID must be a positive integer.' >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" != "v$(node -p "require('./package.json').version")" ]]; then
+            echo 'Tag does not match the package version at the candidate commit.' >&2
+            exit 1
+          fi
+          if [[ "$(git cat-file -t "$RELEASE_TAG")" != 'tag' ]]; then
+            echo 'Candidate must use an annotated tag.' >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$RELEASE_TAG^{commit}" origin/main
+
+          candidate_run="$(gh api "repos/${{ github.repository }}/actions/runs/$CANDIDATE_RUN_ID")"
+          candidate_commit="$(git rev-parse "$RELEASE_TAG^{commit}")"
+          if ! jq -e --arg commit "$candidate_commit" '.path == ".github/workflows/release.yml" and .event == "workflow_dispatch" and .conclusion == "success" and .head_sha == $commit' <<< "$candidate_run" >/dev/null; then
+            echo 'Candidate Release workflow did not finish successfully for this exact tag commit.' >&2
+            exit 1
+          fi
+          candidate_jobs="$(gh api "repos/${{ github.repository }}/actions/runs/$CANDIDATE_RUN_ID/jobs?per_page=100")"
+          if ! jq -e '[.jobs[] | select(.name | startswith("Public installer check ("))] | length == 2 and all(.[]; .conclusion == "success")' <<< "$candidate_jobs" >/dev/null; then
+            echo 'Both public installer Server proxy checks must succeed before Latest promotion.' >&2
+            exit 1
+          fi
+
+          release_json="$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json isPrerelease,body)"
+          if [[ "$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(String(value.isPrerelease))' "$release_json")" != 'true' ]]; then
+            echo 'Candidate must still be a prerelease before promotion.' >&2
+            exit 1
+          fi
+          release_body="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.body || "")' "$release_json")"
+          if [[ "$release_body" != *'未簽章'* || "$release_body" != *'SmartScreen'* ]]; then
+            echo 'Candidate release notes must disclose unsigned and SmartScreen limitations.' >&2
+            exit 1
+          fi
+
+          version="${RELEASE_TAG#v}"
+          setup="xiangqi-analyzer-$version-setup.exe"
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf "$work_dir"' EXIT
+          gh release download "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --dir "$work_dir" \
+            --pattern "$setup" \
+            --pattern "$setup.blockmap" \
+            --pattern latest.yml \
+            --pattern SHA256SUMS.txt
+
+          test -s "$work_dir/$setup"
+          test -s "$work_dir/$setup.blockmap"
+          test -s "$work_dir/latest.yml"
+          test -s "$work_dir/SHA256SUMS.txt"
+          actual_sha256="$(sha256sum "$work_dir/$setup" | awk '{print $1}')"
+          if [[ "${actual_sha256,,}" != "${EXPECTED_SHA256,,}" ]]; then
+            echo 'Public installer SHA-256 does not match accepted candidate.' >&2
+            exit 1
+          fi
+          manifest="$(tr -d '\r\n' < "$work_dir/SHA256SUMS.txt")"
+          manifest_sha256="${manifest:0:64}"
+          if [[ "${manifest_sha256,,}" != "$actual_sha256" || "${manifest:64}" != "  $setup" ]]; then
+            echo 'SHA256SUMS.txt does not match public installer.' >&2
+            exit 1
+          fi
+          grep -Fx "version: $version" "$work_dir/latest.yml" >/dev/null
+          grep -Fx "path: $setup" "$work_dir/latest.yml" >/dev/null
+          setup_size="$(stat -c '%s' "$work_dir/$setup")"
+          grep -Fx "size: $setup_size" "$work_dir/latest.yml" >/dev/null
+          expected_sha512="$(openssl dgst -sha512 -binary "$work_dir/$setup" | base64 -w0)"
+          grep -Fx "sha512: $expected_sha512" "$work_dir/latest.yml" >/dev/null
+
+          gh release edit "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --prerelease=false \
+            --latest \
+            --title "象棋 AI 分析講解 $RELEASE_TAG（未簽章過渡更新）"

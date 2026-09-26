@@ -1,10 +1,12 @@
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   writeFileSync
 } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { START_FEN } from '../../src/shared/types/BoardState'
@@ -418,6 +420,47 @@ const ciWorkflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
   .replace(/\r\n/g, '\n')
 const releaseWorkflow = readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
   .replace(/\r\n/g, '\n')
+const publicInstallerJob = releaseWorkflow
+  .split('  server-proxy-acceptance:')[1]
+  ?.split('  windows-client-evidence:')[0] ?? ''
+const unsignedPromotionWorkflow = readFileSync(
+  resolve('.github/workflows/promote-unsigned-candidate.yml'),
+  'utf8'
+).replace(/\r\n/g, '\n')
+// Run the actual promotion checksum gate against manifests written by the
+// PowerShell candidate workflow (uppercase), not a duplicate JS verifier.
+const manifestGate = unsignedPromotionWorkflow
+  .split('          if [[ "${actual_sha256,,}"')[1]
+  ?.split('          grep -Fx')[0]
+const manifestCheckDirectory = mkdtempSync(join(tmpdir(), 'reckoning-promotion-hash-'))
+try {
+  const bashPath = process.platform === 'win32' && existsSync('C:/Program Files/Git/bin/bash.exe')
+    ? 'C:/Program Files/Git/bin/bash.exe'
+    : 'bash'
+  const hash = 'abcdef0123456789'.repeat(4)
+  const setup = 'xiangqi-analyzer-0.4.15-setup.exe'
+  const runManifestGate = (manifest: string): number | null => {
+    writeFileSync(join(manifestCheckDirectory, 'SHA256SUMS.txt'), manifest)
+    const script = `set -euo pipefail\nif [[ "${'${actual_sha256,,}'}"${manifestGate ?? ''}`
+    return spawnSync(bashPath, ['--noprofile', '--norc', '-c', script], {
+      env: {
+        ...process.env,
+        work_dir: manifestCheckDirectory.replace(/\\/g, '/'),
+        actual_sha256: hash,
+        EXPECTED_SHA256: hash,
+        setup
+      }, encoding: 'utf8'
+    }).status
+  }
+  check('Latest promotion 接受 PowerShell 寫出的 uppercase SHA-256 與 CRLF',
+    runManifestGate(`${hash.toUpperCase()}  ${setup}\r\n`) === 0)
+  check('Latest promotion 接受 lowercase SHA-256，拒絕錯誤 hash 或檔名',
+    runManifestGate(`${hash}  ${setup}\n`) === 0 &&
+      runManifestGate(`${'0'.repeat(64)}  ${setup}\n`) !== 0 &&
+      runManifestGate(`${hash}  other-setup.exe\n`) !== 0)
+} finally {
+  rmSync(manifestCheckDirectory, { recursive: true, force: true })
+}
 const compileFakeEngineAction = readFileSync(
   resolve('.github/actions/compile-fake-engine/action.yml'),
   'utf8'
@@ -622,14 +665,25 @@ check(
     releaseWorkflow.includes('-AllowUnsigned') &&
     releaseWorkflow.includes('Windows SmartScreen may warn or block it') &&
     releaseWorkflow.includes('unsigned-release') &&
-    releaseWorkflow.includes('PUBLISH UNSIGNED LATEST') &&
-    releaseWorkflow.includes('Promote explicitly approved unsigned update to Latest') &&
-    releaseWorkflow.indexOf('Promote explicitly approved unsigned update to Latest') >
-      releaseWorkflow.indexOf('Public installer check') &&
+    releaseWorkflow.includes('choose the next unused patch version') &&
+    !releaseWorkflow.includes('--clobber') &&
+    unsignedPromotionWorkflow.includes('PUBLISH UNSIGNED LATEST') &&
+    unsignedPromotionWorkflow.includes('Promote explicitly approved unsigned update to Latest') &&
+    unsignedPromotionWorkflow.includes('expected_setup_sha256') &&
+    unsignedPromotionWorkflow.includes('gh release download') &&
+    unsignedPromotionWorkflow.includes('--prerelease=false') &&
+    unsignedPromotionWorkflow.includes('--latest') &&
+    !unsignedPromotionWorkflow.includes('electron-builder') &&
+    !unsignedPromotionWorkflow.includes('--clobber') &&
     installerSmokeScript.includes('[switch]$AllowUnsigned') &&
     installerSmokeScript.includes('SignatureStatus]::NotSigned') &&
     verifySignatureScript.includes('SignatureStatus]::Valid') &&
     verifySignatureScript.includes('TimeStamperCertificate')
+)
+check(
+  '公開 installer 代理核對與候選建置使用同一個 annotated tag 的腳本',
+  publicInstallerJob.includes('ref: ${{ inputs.tag }}') &&
+    !publicInstallerJob.includes('ref: ${{ github.sha }}')
 )
 check(
   'Release 只把 Windows Server 當代理，Latest 前強制核對 Win10 22H2 與 Win11 用戶端',

@@ -147,6 +147,22 @@ export interface HarnessProgressPayload {
   awaitingDecision?: boolean
 }
 
+export interface HarnessModelCallDiagnostic {
+  callIndex: number
+  stage: 'question_recovery' | 'initial_combined' | 'audit' | 'writer' | 'repair'
+  model: string
+  maxOutputTokens: number
+  responseFormat: 'json' | 'text'
+  reasoningPolicy: 'bounded_1000_excluded' | 'reasoning_disabled' | 'provider_managed'
+  timeoutMs?: number
+  durationMs: number
+  status: 'completed' | 'failed'
+  outputTokens?: number
+  reasoningTokens?: number
+  finishReason?: string
+  errorCategory?: string
+}
+
 /**
  * 因果鏈：核心主張必須完整交代五段結構，
  * 品質評分器逐段驗證具體性，缺一段即退回重寫。
@@ -216,6 +232,8 @@ export interface HarnessTrace {
   modelCalls: number
   engineRounds: number
   usage?: TokenUsage
+  /** Safe per-call telemetry only; never includes prompts, keys, headers or response bodies. */
+  modelCallDiagnostics?: HarnessModelCallDiagnostic[]
   providerDiagnostic?: AICredentialDiagnostic
   feedback?: 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
   /** 正式 teacher run 才會存在；舊 trace 保持相容。 */

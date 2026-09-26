@@ -14,6 +14,7 @@ import { MISTAKE_LEVEL_LABELS } from '@shared/types/MoveComparisonResult'
 import type { ExplanationLanguage, ExplanationStyle } from '@shared/types/AIExplanationTypes'
 import type { UserLevel } from '@shared/types/Settings'
 import type { ConversationMessage } from '@shared/types/AppData'
+import { moveComparisonEvidenceState } from '@shared/logic/ai/MoveComparisonEvidence'
 
 const LANGUAGE_NAME: Record<ExplanationLanguage, string> = {
   'zh-TW': '繁體中文',
@@ -94,6 +95,7 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
   })
 
   if (ea.userMove) {
+    const comparisonState = moveComparisonEvidenceState(mc)
     lines.push('')
     lines.push('【使用者著法比較】')
     const userCandidate = ea.candidateMoves.find((candidate) => candidate.move === ea.userMove)
@@ -108,6 +110,7 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
       )
     }
     lines.push(`錯誤等級：${MISTAKE_LEVEL_LABELS[mc.mistakeLevel]}`)
+    lines.push(`比較證據狀態：${comparisonState}`)
     if (mc.uncertaintyReasons.length > 0) {
       lines.push(`不確定原因：${mc.uncertaintyReasons.join('；')}`)
     }
@@ -132,11 +135,24 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
   lines.push('【寫作要求】')
   lines.push('以穩定 section id 輸出具名內容區塊；標題是顯示文字，不得作為驗證依據。')
   if (ea.userMove) {
+    const comparisonState = moveComparisonEvidenceState(mc)
     lines.push('全文以約 500–900 個中文字為目標，依序包含：')
-    lines.push('1. direct_conclusion／直接結論：第一句直接說實戰步為什麼較差。')
-    lines.push('2. actual_move_problem／實戰步問題：同時點名實戰步與 AI 首選，說明原因、盤面機制與受影響棋子或線路。')
-    lines.push('3. best_move_plan／AI 首選：解釋首選著法的具體目的。')
-    lines.push('4. opponent_exploitation／對手利用與後果：引用至少兩步真實主線，說明對手最強利用與盤面結果。')
+    if (comparisonState === 'same_move') {
+      lines.push('1. direct_conclusion／直接結論：第一句明說實戰步與引擎首選是同一著法。')
+      lines.push('2. actual_move_problem／與首選一致：解釋這步的具體好處，不得硬寫錯失、失誤、較差或懲罰。')
+      lines.push('3. best_move_plan／這步的好處：連回本局主線與受影響棋子或線路。')
+      lines.push('4. opponent_exploitation／對手合理應對：引用至少兩步真實主線，說明合理回應與後續盤面。')
+    } else if (comparisonState === 'evidence_backed_difference') {
+      lines.push('1. direct_conclusion／直接結論：第一句直接說兩步有證據支持的實質差異。')
+      lines.push('2. actual_move_problem／實戰步問題：同時點名實戰步與 AI 首選，說明原因、盤面機制與受影響棋子或線路。')
+      lines.push('3. best_move_plan／AI 首選：解釋首選著法的具體目的。')
+      lines.push('4. opponent_exploitation／對手利用與後果：引用至少兩步真實主線，說明對手利用與盤面結果。')
+    } else {
+      lines.push('1. direct_conclusion／直接結論：中性說明目前證據可支持的比較，不誇大優劣。')
+      lines.push('2. actual_move_problem／實戰步評價：分開說目前可確定的內容與欠缺的證據。')
+      lines.push('3. best_move_plan／AI 首選：解釋主線可見的具體目的，不以排名代替原因。')
+      lines.push('4. opponent_exploitation／對手合理應對與後續：引用至少兩步真實主線，不把可能變例寫成必然。')
+    }
     lines.push('5. practical_principle／實戰原則：給出一條可帶走、可操作的思考原則。')
     lines.push('不得使用模擬提問、自問自答、FEN、UCI、證據編號、trace、token 或模型輪次等內部資訊。')
   } else {
