@@ -1176,6 +1176,22 @@ function hasNoUserMoveFraming(text: string): boolean {
   return NO_USER_MOVE_FRAMING.some((pattern) => pattern.test(text))
 }
 
+/** Screen explicit forced-line assertions, preserving local negations only. */
+function hasAssertedForcedVariation(text: string): boolean {
+  const assertion = /(?:被迫|必然(?:會|会|導致|导致|發生|发生)|唯一(?:著法|着法|走法|回應|回应|選擇|选择)|只能(?:走|下|應|应|回應|回应|選擇|选择|防守|撤退|棄|弃|退|補|补|跟著|跟着))|\b(?:forced|only (?:move|reply|response)|must (?:play|reply|respond))\b/gi
+  for (const clause of text.split(/[。！？；，,.!?;\n]|但(?:是)?|然而|卻|却|\bbut\b/i)) {
+    let previousAssertionEnd = 0
+    for (const match of clause.matchAll(assertion)) {
+      const prefix = clause.slice(previousAssertionEnd, match.index)
+      const denied = /(?:不是|並非|并非|不代表|不表示|不能(?:說|说|稱|称|認定|认定|當成|当成)|不可(?:說|说|稱|称|認定|认定|當成|当成)|不應(?:說|说|稱|称|認定|认定|當成|当成))[^。！？；，]{0,30}$/.test(prefix) ||
+        /\b(?:not|never|cannot)(?:\s+(?:mean|imply|claim|say|that|Black|Red|the|opponent|is|was|a|to)){0,6}\s*$/i.test(prefix)
+      if (!denied) return true
+      previousAssertionEnd = match.index! + match[0].length
+    }
+  }
+  return false
+}
+
 export function validateAnswer(
   rawAnswer: HarnessAnswer,
   evidence: HarnessEvidence[],
@@ -1402,11 +1418,7 @@ export function validateAnswer(
     ) {
       errors.push('一鍵解說含有棋手不需要的內部格式或診斷資訊。')
     }
-    if (
-      /(?:被迫|必然(?:會|会|導致|导致|發生|发生)|唯一(?:著法|着法|走法|回應|回应|選擇|选择)|只能(?:走|下|應|应|回應|回应|選擇|选择|防守|撤退|棄|弃|退|補|补|跟著|跟着))|\b(?:forced|only (?:move|reply|response)|must (?:play|reply|respond))\b/i.test(
-        prose
-      )
-    ) {
+    if (hasAssertedForcedVariation(playerFacingProse)) {
       errors.push('一鍵解說不得把單一引擎主線誇大為被迫、必然或唯一回應。')
     }
   }
@@ -2583,9 +2595,14 @@ export async function runExplanationHarness(
   const recoverQuestion = async (raw: string | null) => {
     const question = payload.followUpQuestion ?? ''
     const hasEngineAnchor = (text: string): boolean => collectDisplayMoves(evidence).some(move => text.includes(move))
+    const passesQuestionChecks = (text: string): boolean => {
+      const boardIssues = validateVariationBoardStatements(text, evidence)
+      validationErrors.push(...boardIssues.map(issue => `追問回答未通過：${issue}`))
+      return hasEngineAnchor(text) && isFocusedQuestionAnswer(question, text) &&
+        followsRequestedSentenceCount(text, question, validationLanguage) && boardIssues.length === 0
+    }
     const salvage = raw === null ? null : extractDirectQuestionText(raw)
-    if (salvage && hasEngineAnchor(salvage) && isFocusedQuestionAnswer(question, salvage) &&
-        followsRequestedSentenceCount(salvage, question, validationLanguage)) {
+    if (salvage && passesQuestionChecks(salvage)) {
       return completeQuestion(salvage)
     }
     progress('writing', '正在直接回答這次問題。')
@@ -2596,8 +2613,7 @@ export async function runExplanationHarness(
       context: deps.explanationPrompt
     }), 1_200, 30_000, 'text', 'question_recovery')
     const text = extractDirectQuestionText(response)
-    if (!text || !hasEngineAnchor(text) || !isFocusedQuestionAnswer(question, text) ||
-        !followsRequestedSentenceCount(text, question, validationLanguage)) {
+    if (!text || !passesQuestionChecks(text)) {
       throw new HarnessExplanationUnavailableError('quality_validation_failed',
         'AI 未能回答這次問題，已保留原解說。請重試或更換模型。')
     }
@@ -2811,7 +2827,7 @@ export async function runExplanationHarness(
           if (elapsedMs < timing.progressDelayMs) return
           progress(
             verificationAdapter ? 'cross_verification' : 'engine_research',
-            `仍在尋找可驗證的具體後果；目前深度 ${liveDepth ?? '—'}，已確認 ${verifiedConsequenceCount} 項。`,
+            `仍在分析具體後果；目前深度 ${liveDepth ?? '—'}，已有 ${verifiedConsequenceCount} 項摘要通過結構與引用檢查。`,
             {
               elapsedMs,
               depth: liveDepth,
@@ -3347,7 +3363,7 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
       }
       progress(
         'consequence_review',
-        `目前只確認 ${verifiedConsequenceCount} 項具體後果，證據仍不足，繼續加深引擎。`
+        `目前只有 ${verifiedConsequenceCount} 項後果摘要通過結構與引用檢查，繼續加深引擎。`
       )
       if (!primaryAdapter || engineRounds >= budget.maxEngineRounds) break
       shouldResearch = true
@@ -3388,7 +3404,7 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
 你是象棋教練。只輸出 JSON，不要輸出推理過程。
 ${languageRule}
 ${hasUserMove ? comparisonContract : ''}
-你只能使用「已驗證具體後果」與引擎證據，不得自行新增戰術事實。
+你只能使用「已通過結構與引用檢查的模型後果摘要」與引擎證據，不得自行新增戰術事實。摘要的檢查不代表模型棋理解釋已獨立證實；verified 僅是模型欄位，不能當作引擎證明。
 正文完全禁止使用分數高低、評估差距或可信度作為理由，也不要報告這些數字。
 著法只能使用證據中的中文名稱，不得顯示 h2e2 之類座標。
 
@@ -3410,7 +3426,7 @@ claim 不需要 findingIds 或 causal 物件。棋規及已計算棋盤事實可
 opponent_exploitation 要按引擎主線順序，逐手說明目的與盤面影響，一直寫到具體後果出現。
 actual_move_problem 要先說最佳著法的目的，再依比較狀態說明實戰著法；同一步不得硬造錯失，證據不足不得硬判劣勢。
 每項 claims 都必須引用 supporting evidenceIds。若資料不足，直接說證據不足，不能猜。
-actual_move_problem 與 opponent_exploitation 每個非「證據不足」的 claim 還必須用 findingIds 連到已驗證具體後果的 K 編號；不得自行新增 K 編號。
+actual_move_problem 與 opponent_exploitation 每個非「證據不足」的 claim 還必須用 findingIds 連到已通過結構與引用檢查的模型後果摘要的 K 編號；不得自行新增 K 編號。
 每個關鍵 claim 至少要包含一個 evidence 主線中的中文著法，並說明這步棋造成的具體盤面後果；禁止只寫「失去先手」「陣形變差」這種分類詞。
 actual_move_problem 與 opponent_exploitation 的每個 claim 都必須附 "causal" 因果鏈物件，五段齊備：
 - cause：因為哪一步（必須逐字使用主線中的中文著法）
@@ -3426,7 +3442,7 @@ actual_move_problem 與 opponent_exploitation 的每個 claim 都必須附 "caus
 固定使用 direct_conclusion／直接結論、best_move_plan／AI 首選、opponent_exploitation／對手利用與後果、practical_principle／實戰原則；不得使用模擬提問。
 opponent_exploitation 要按最佳著法的引擎主線順序，盡可能逐手說明每一步目的與盤面影響，一直寫到具體後果出現。
 每項 claims 都必須引用 supporting evidenceIds。若資料不足，直接說證據不足，不能猜。
-opponent_exploitation 每個非「證據不足」的 claim 必須用 findingIds 連到已驗證具體後果的 K 編號，並附完整 "causal" 因果鏈；其中 opponentUse 代表對手對最佳著法的最強回應。
+opponent_exploitation 每個非「證據不足」的 claim 必須用 findingIds 連到已通過結構與引用檢查的模型後果摘要的 K 編號，並附完整 "causal" 因果鏈；其中 opponentUse 代表對手對最佳著法的最強回應。
 每個關鍵 claim 至少要包含一個 evidence 主線中的中文著法，並用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）說明盤面後果。`
 }
 頂層 "generalNotes" 保持空陣列。解說只能依據已完成的皮卡魚主線及棋盤事實，不得自行補算、改判最佳著法或編造引擎未顯示的後續。
@@ -3451,7 +3467,7 @@ ${
     : ''
 }
 模式：${mode}
-已驗證具體後果：${JSON.stringify(writerAudit)}
+已通過結構與引用檢查的模型後果摘要：${JSON.stringify(writerAudit)}
 證據：${JSON.stringify(
       evidence.map((item) => ({
         id: item.id,
@@ -3646,7 +3662,7 @@ ${
               }
             ],
             failedSections: [],
-            summary: '追問已通過證據與格式檢查'
+            summary: '追問使用獨立的格式、相關性與引用檢查；不代表棋理解釋已證實'
           }
         : scoreAnswerForLanguage(
             candidate,
@@ -3874,7 +3890,7 @@ ${
 - section id 必須保持原值；heading 使用對應具名標題，claims 引用可用 evidenceIds。
 待重寫區塊原文：${JSON.stringify(sectionsToRewrite)}
 ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.directAnswer)}（請一併輸出修正後 "directAnswer" 與 "directAnswerEvidenceIds"）` : ''}
-已驗證具體後果：${JSON.stringify(writerAudit)}
+已通過結構與引用檢查的模型後果摘要：${JSON.stringify(writerAudit)}
 可用 evidenceIds：${JSON.stringify(evidence.map((item) => item.id))}
 可用 findingIds：${JSON.stringify(concreteConsequences.map((item) => item.id))}
 可引用的主線中文著法：${JSON.stringify(availableMoves.slice(0, 60))}
