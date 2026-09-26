@@ -1085,6 +1085,8 @@ async function main(): Promise<void> {
       (provider.prompts[0]?.indexOf('"answer":{') ?? -1) <
         (provider.prompts[0]?.indexOf('"audit":{') ?? -1)
   )
+  check('實戰原則的示意引用涵蓋兩種著法，不預填成只能引用首選線',
+    provider.prompts[0]?.includes('"id":"C5","text":"約70–100漢字的一條可操作原則，說明本局先檢查什麼、如何判斷與適用限制","evidenceIds":["E1","E2"]'))
   check(
     '首次比較 prompt 禁止把跨引擎分歧或主線外後續寫成確定事實',
     provider.prompts[0]?.includes('若兩個引擎的對手首應不同') &&

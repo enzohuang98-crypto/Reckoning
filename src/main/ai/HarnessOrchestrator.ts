@@ -3057,7 +3057,7 @@ ${comparisonContract}
 - 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
 - 寫完後先逐段核對：五段可見正文合計至少 400 漢字；C4a、C4b 的可見正文及 causal.opponentUse、causal.consequence 要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
 - 下方 JSON 只示範欄位與 id，所有「一句直接結論」「具體後果」「盤面機制」等佔位文字都必須換成本局完整敘述。每段 claims.text 要承擔該段字數，不可只在 causal 或 audit 欄位寫長文；寫完自行計算五段 claims.text 合計漢字，不足 400 就在同一次回答內補上由主線支持的棋盤變化。
-- practical_principle 只給一條可帶走、可操作的思考原則。
+- practical_principle 只給一條可帶走、可操作的思考原則；本次對照兩種著法時，C5 也要同時引用首選與實戰線，不能只有首選線。
 ${
   isFormalMoveComparison
     ? `- 這是獨立的老師凍結案例；必須直接回答下方固定問題，同時保留完整五段比較，不得改成單段聊天追問。
@@ -3078,6 +3078,7 @@ audit 規則：
 - opponent_exploitation 中 C4a、C4b 各寫約90–120漢字並附完整 causal，描述互不重複的兩項後果。每個 claim 的可見正文與 causal.opponentUse、causal.consequence 合計逐字包含至少兩步實戰主線，以及具體棋子／線路關係。
 - 被引用的 C4a、C4b 各自要在 text、causal.opponentUse、causal.consequence 合計逐字包含兩步不同中文實戰主線著法，且說出棋子、線路、王區、陣形或威脅。
 - 只能引用 evidence 中真實出現的中文著法；禁止用評估分數當原因。程式不改寫或補足正文中的著法。
+- 中文著法的走子方只能依它所屬 computedBoardFacts.steps 的 side：red=紅方，black=黑方；不要把紅方著法寫成黑方應手。opponentUse 要逐字使用該線 opponentReplies 列出的對手著法。
 - computedBoardFacts 是從該 evidence 起始局面逐手合法走子計算的輪走方、路數、吃子及將軍事實；只適用該變例已列出的步數。它不證明策略優劣，不代表對手必然照走；warning 之後的棋盤事實不得推測。
 - K1、K2 本次分別引用 C4a、C4b；這兩個 claim 都描述實戰步主線且僅引用 ${userEvidenceId}，各自逐字引用至少兩步該線著法，causal.opponentUse 逐字包含該線 opponentReplies 中的著法（例如 ${userLineMoves[1]}）。AI 首選另在 best_move_plan 引用 ${bestEvidenceId}，不要混入 K1、K2。不得自行把棋譜改寫成看似合理但不在該線的著法。
 - 若雙引擎分歧，audit.dualEngineAdjudication 比較兩條線的人類可控性、容錯與長期發展，不得平均分數；answer 把該比較放進 best_move_plan，不另增第六區。
@@ -3131,7 +3132,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
                 SECTION_IDS.opponentExploitation
               ] ?? SECTION_HEADINGS[SECTION_IDS.opponentExploitation]
             }","claims":[{"id":"C4a","text":"約90–120漢字，逐字引用實戰線至少兩步及對手應手，說明第一項盤面影響，避免必然論","evidenceIds":["${userEvidenceId}"],"findingIds":["K1"],"causal":{"cause":"含實戰主線中文著法的原因","mechanism":"具體棋子與線路機制","affected":"受影響棋子或線路","opponentUse":"${userLineMoves[1]} 後的合理應對","consequence":"實戰線具體盤面後果，含另一著法"}},{"id":"C4b","text":"約90–120漢字，逐字引用實戰線至少兩步，說明不同於第一項的另一盤面影響","evidenceIds":["${userEvidenceId}"],"findingIds":["K2"],"causal":{"cause":"含實戰主線中文著法的原因","mechanism":"另一具體棋子與線路機制","affected":"另一受影響棋子或線路","opponentUse":"${userLineMoves[1]} 後的另一合理應對","consequence":"另一實戰線具體盤面後果，含另一著法"}}]},
-      {"id":"practical_principle","heading":"實戰原則","claims":[{"id":"C5","text":"約70–100漢字的一條可操作原則，說明本局先檢查什麼、如何判斷與適用限制","evidenceIds":["${bestEvidenceId}"]}]}
+      {"id":"practical_principle","heading":"實戰原則","claims":[{"id":"C5","text":"約70–100漢字的一條可操作原則，說明本局先檢查什麼、如何判斷與適用限制","evidenceIds":["${bestEvidenceId}","${userEvidenceId}"]}]}
     ],
     "generalNotes":[],
     "warnings":[]
