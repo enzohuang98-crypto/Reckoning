@@ -1,10 +1,12 @@
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   writeFileSync
 } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { START_FEN } from '../../src/shared/types/BoardState'
@@ -425,6 +427,40 @@ const unsignedPromotionWorkflow = readFileSync(
   resolve('.github/workflows/promote-unsigned-candidate.yml'),
   'utf8'
 ).replace(/\r\n/g, '\n')
+// Run the actual promotion checksum gate against manifests written by the
+// PowerShell candidate workflow (uppercase), not a duplicate JS verifier.
+const manifestGate = unsignedPromotionWorkflow
+  .split('          if [[ "${actual_sha256,,}"')[1]
+  ?.split('          grep -Fx')[0]
+const manifestCheckDirectory = mkdtempSync(join(tmpdir(), 'reckoning-promotion-hash-'))
+try {
+  const bashPath = process.platform === 'win32' && existsSync('C:/Program Files/Git/bin/bash.exe')
+    ? 'C:/Program Files/Git/bin/bash.exe'
+    : 'bash'
+  const hash = 'abcdef0123456789'.repeat(4)
+  const setup = 'xiangqi-analyzer-0.4.15-setup.exe'
+  const runManifestGate = (manifest: string): number | null => {
+    writeFileSync(join(manifestCheckDirectory, 'SHA256SUMS.txt'), manifest)
+    const script = `set -euo pipefail\nif [[ "${'${actual_sha256,,}'}"${manifestGate ?? ''}`
+    return spawnSync(bashPath, ['--noprofile', '--norc', '-c', script], {
+      env: {
+        ...process.env,
+        work_dir: manifestCheckDirectory.replace(/\\/g, '/'),
+        actual_sha256: hash,
+        EXPECTED_SHA256: hash,
+        setup
+      }, encoding: 'utf8'
+    }).status
+  }
+  check('Latest promotion 接受 PowerShell 寫出的 uppercase SHA-256 與 CRLF',
+    runManifestGate(`${hash.toUpperCase()}  ${setup}\r\n`) === 0)
+  check('Latest promotion 接受 lowercase SHA-256，拒絕錯誤 hash 或檔名',
+    runManifestGate(`${hash}  ${setup}\n`) === 0 &&
+      runManifestGate(`${'0'.repeat(64)}  ${setup}\n`) !== 0 &&
+      runManifestGate(`${hash}  other-setup.exe\n`) !== 0)
+} finally {
+  rmSync(manifestCheckDirectory, { recursive: true, force: true })
+}
 const compileFakeEngineAction = readFileSync(
   resolve('.github/actions/compile-fake-engine/action.yml'),
   'utf8'

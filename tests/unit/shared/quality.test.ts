@@ -321,6 +321,54 @@ check(
   ).length > 0
 )
 check(
+  '不足聲明及分析需求不能吞掉同句其餘將軍斷言',
+  validateClaimCausalChain(
+    { id: 'mixed-analysis-request', text: '證據不足，需要進一步分析，炮二平五已經將軍。' },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '沒有逗號的不足聲明與分析需求也不能吞掉將軍斷言',
+  validateClaimCausalChain(
+    { id: 'mixed-analysis-no-comma', text: '證據不足需要進一步分析炮二平五已經將軍' },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '正文只有不足聲明時，另附的實質因果欄位仍須接受檢查',
+  validateClaimCausalChain(
+    {
+      id: 'insufficiency-with-causal-assertion', text: '目前引擎證據不足。',
+      causal: { cause: '炮二平五已經將軍', mechanism: '', affected: '', opponentUse: '', consequence: '' }
+    },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '僅指出證據不足與需要進一步分析仍可豁免',
+  validateClaimCausalChain(
+    { id: 'limited-analysis-request', text: '證據不足，需要進一步分析。' },
+    AVAILABLE_MOVES
+  ).length === 0
+)
+check(
+  '單純證據不足與無法確認不必填入虛構因果',
+  validateClaimCausalChain(
+    { id: 'limited-unconfirmed', text: '目前引擎證據不足，無法確認。' },
+    AVAILABLE_MOVES
+  ).length === 0
+)
+check(
+  '無法確認的純不足正文不能豁免另附的實質因果',
+  validateClaimCausalChain(
+    {
+      id: 'limited-unconfirmed-with-causal', text: '目前引擎證據不足，無法確認。',
+      causal: { cause: '炮二平五已經將軍', mechanism: '', affected: '', opponentUse: '', consequence: '' }
+    },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
   '單純指出缺少主線仍可免不適用的因果鏈',
   validateClaimCausalChain(
     { id: 'limited-insufficiency', text: '目前引擎證據不足，無法確認錯失的具體機會。' },

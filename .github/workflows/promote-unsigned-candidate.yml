@@ -125,7 +125,9 @@ jobs:
             echo 'Public installer SHA-256 does not match accepted candidate.' >&2
             exit 1
           fi
-          if [[ "$(tr -d '\r\n' < "$work_dir/SHA256SUMS.txt")" != "$actual_sha256  $setup" ]]; then
+          manifest="$(tr -d '\r\n' < "$work_dir/SHA256SUMS.txt")"
+          manifest_sha256="${manifest:0:64}"
+          if [[ "${manifest_sha256,,}" != "$actual_sha256" || "${manifest:64}" != "  $setup" ]]; then
             echo 'SHA256SUMS.txt does not match public installer.' >&2
             exit 1
           fi

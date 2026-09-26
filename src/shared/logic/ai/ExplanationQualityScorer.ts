@@ -158,45 +158,23 @@ export function acknowledgesInsufficiency(text: string): boolean {
 /** True only when the whole claim is a bounded statement of what is missing. */
 export function isLimitedInsufficiencyStatement(text: string): boolean {
   if (!acknowledgesInsufficiency(text)) return false
+  // Exempt only complete, bounded clauses. A limitation verb anywhere in a
+  // sentence must never erase the rest of that sentence's assertions.
+  const limitationOnly = /^(?:目前|現有|现有)?(?:引擎)?(?:證據不足|证据不足|資料不足|资料不足|主線(?:還)?不足|主线(?:还)?不足)$/
+  const missingConclusion = /^(?:目前|仍)?(?:尚不能|無法|无法|不能)(?:確認|确认|判斷|判断|證明|证明|完成)(?:錯失的具體機會|错失的具体机会|對手的具體利用方式|对手的具体利用方式|(?:這步之後的|这步之后的|後續|后续)?(?:具體變化|具体变化)|兩種著法的完整比較|两种着法的完整比较|(?:後續|后续)?(?:具體後果|具体后果|戰術|战术|優劣|优劣)|(?:是否|能否)(?:吃子|得子|失子|將軍|将军))?$/
+  const nextStepOnly = /^(?:需要進一步分析|需要进一步分析|(?:請|请)加深分析後再看結論|(?:請|请)加深分析后再看结论|暫時不下具體判斷|暂时不下具体判断)$/
   const residualParts = text
     .split(
-      /(?<=[。！？；.!?;])|(?:，|,)?(?=(?:但|但是|然而|可是|不過|不过|yet|but|however))/i
+      /[。！？；，,.!?;]+|(?=(?:但|但是|然而|可是|不過|不过|yet|but|however))/i
     )
     .map((part) => part.trim())
     .filter(Boolean)
-    .map((part) => {
-      const hadInsufficiencyMarker = acknowledgesInsufficiency(part)
-      const residual = part.replace(INSUFFICIENCY_PATTERNS, '').trim()
-      if (
-        hadInsufficiencyMarker &&
-        /(?:只能|僅能|仅能|缺少|需要|尚需|不能|無法|无法|未能|沒有|没有)/.test(
-          residual
-        ) &&
-        // Saying what is positively established is a substantive claim, even
-        // when the same sentence also says some other evidence is missing.
-        !/(?:能|可|只能|僅能|仅能)(?:夠)?(?:確定|确定|確認|确认)/.test(residual) &&
-        !/(必然|一定|被迫|導致|导致|造成|使得|讓|让|所以|因此|勝勢|胜势|敗勢|败势|丟|丢|得子|失子)/.test(
-          residual
-        )
-      ) {
-        return ''
-      }
-      return residual
-    })
-    .filter(Boolean)
-  const residual = residualParts.join(' ')
-  const compact = compactChineseText(residual)
-  if (!compact) return true
-  // A bounded next step (for example, asking to deepen the line) is still an
-  // insufficiency statement. A remaining chess/certainty/causal assertion is
-  // not, so it must pass the ordinary evidence and causal checks.
-  return (
-    compact.length <= 40 &&
-    !containsConcreteXiangqiTerm(residual) &&
-    !/(必然|一定|確定|确定|被迫|導致|导致|造成|使得|讓|让|所以|因此|結果|结果|勝勢|胜势|敗勢|败势|丟|丢|得子|失子)/.test(
-      residual
-    )
+    .filter((part) =>
+      !limitationOnly.test(part) &&
+      !missingConclusion.test(part) &&
+      !nextStepOnly.test(part)
   )
+  return residualParts.length === 0
 }
 
 /** 用於目的／問題描述：門檻較低（不強制逐字引用著法），只擋空泛帶過。 */
@@ -258,7 +236,7 @@ export function validateClaimCausalChain(
   claim: { id: string; text: string; causal?: CausalChain },
   availableMoves: string[]
 ): string[] {
-  if (isLimitedInsufficiencyStatement(claim.text)) return []
+  if (!claim.causal && isLimitedInsufficiencyStatement(claim.text)) return []
   const issues: string[] = []
   const causal = claim.causal
   if (!causal) {

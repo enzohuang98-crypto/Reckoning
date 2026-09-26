@@ -1077,7 +1077,13 @@ async function main(): Promise<void> {
     '首次比較 prompt 明確區分首選與實戰兩條主線且示意引用不誤導模型',
     provider.prompts[0]?.includes('E1 作 AI 首選主線、E2 作實戰步主線') &&
       provider.prompts[0]?.includes('"directAnswerEvidenceIds":["E1","E2"]') &&
-      provider.prompts[0]?.includes('"id":"C1","text":"與 directAnswer 相同的直接結論","evidenceIds":["E1","E2"]')
+      provider.prompts[0]?.includes('"evidenceIds":["E1","E2"]')
+  )
+  check(
+    '完整正文提示不把第一段限制成摘要，先寫正文再填審查欄位',
+    !provider.prompts[0]?.includes('與 directAnswer 相同的直接結論') &&
+      (provider.prompts[0]?.indexOf('"answer":{') ?? -1) <
+        (provider.prompts[0]?.indexOf('"audit":{') ?? -1)
   )
   check(
     '首次比較 prompt 禁止把跨引擎分歧或主線外後續寫成確定事實',
@@ -1824,7 +1830,7 @@ async function main(): Promise<void> {
       (shallowEvidenceTraces.at(-1)?.evidence[0]?.displayPrincipalVariation.length ?? 0) >= 2 &&
       shallowEvidenceProvider.prompts[0]?.includes(`${deepUserEvidence.id} 作實戰步主線`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"directAnswerEvidenceIds":["E1","${deepUserEvidence.id}"]`) &&
-      shallowEvidenceProvider.prompts[0]?.includes(`"id":"C4","text":"至少兩步主線、對手合理應對與盤面結果","evidenceIds":["${deepUserEvidence.id}"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K1","K2"]`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"opponentReplies":["${deepUserEvidence.displayPrincipalVariation[1]}"`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"supportingMoves":["${deepUserEvidence.displayPrincipalVariation[0]}","${deepUserEvidence.displayPrincipalVariation[1]}"],"evidenceIds":["${deepUserEvidence.id}"]`) &&
       !shallowEvidenceProvider.prompts[0]?.includes('"supportingMoves":["中文著法一"') &&
@@ -2473,7 +2479,9 @@ async function main(): Promise<void> {
     noUserMoveProgress.some(
       (item) =>
         item.phase === 'quality_check' &&
-        item.message.includes('引用關聯與可計算棋盤事實檢查')
+        item.message.includes('結構與引用關聯檢查') &&
+        item.message.includes('未經獨立證實') &&
+        !item.message.includes('可計算棋盤事實檢查')
     ) && !noUserMoveResult.finalText.includes('保守版問答')
   )
 
@@ -3297,6 +3305,45 @@ async function main(): Promise<void> {
     normalContractErrors.length === 0,
     normalContractErrors
   )
+  const fakeCaptureAnswer = JSON.parse(JSON.stringify(normalContractAnswer)) as HarnessAnswer
+  fakeCaptureAnswer.sections[2]!.claims[0]!.text = '紅方炮二平五吃掉黑卒並將軍，後續黑方馬8進7保護中路。'
+  fakeCaptureAnswer.sections[2]!.claims[0]!.evidenceIds = ['E1']
+  check(
+    '合法引用不能讓本步不存在的吃子與將軍斷言通過正文驗證',
+    validateAnswer(fakeCaptureAnswer, validatorEvidence, initialMoveRequirements)
+      .some((error) => error.includes('棋盤事實'))
+  )
+  const fakeCaptureAudit = JSON.parse(GOOD_AUDIT_JSON) as ConsequenceAudit
+  fakeCaptureAudit.consequences[0]!.summary = '黑方炮二平五立即在中路吃掉紅方車。'
+  fakeCaptureAudit.consequences[0]!.opponentUse = '紅方以馬8進7跳馬將軍並吃掉黑方炮。'
+  fakeCaptureAudit.consequences[0]!.supportingMoves = ['炮二平五', '馬8進7']
+  fakeCaptureAudit.consequences[0]!.evidenceIds = ['E1']
+  check(
+    '模型自填 verified 加合法 evidenceId 不能讓錯誤方別及假戰術通過審查',
+    validateConsequenceAudit(fakeCaptureAudit, validatorEvidence, true)
+      .some((error) => error.includes('棋盤事實'))
+  )
+  const sameVerdictAnswer = (JSON.parse(
+    (await new SameMoveProvider().generateExplanation({ prompt: '' })).text
+  ) as { answer: HarnessAnswer }).answer
+  const sameVerdictEvidence = validatorEvidence.slice(0, 2).map((item) => ({
+    ...item,
+    move: 'h2e2',
+    displayMove: '炮二平五',
+    displayPrincipalVariation: sameMoveSession.engineAnalysis.displayPrincipalVariation,
+    analysis: sameMoveSession.engineAnalysis
+  }))
+  const sameVerdictRequirements = { ...initialMoveRequirements, comparisonState: 'same_move' as const }
+  check('同首選完整正文可通過正式 validator',
+    validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements).length === 0)
+  sameVerdictAnswer.directAnswer = '炮二平五是較差著法，這步是失誤。'
+  check('同首選的負面矛盾不能藏在 directAnswer 避過正文檢查',
+    validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
+      .some((error) => error.includes('同一著法')))
+  sameVerdictAnswer.directAnswer = '炮二平五與首選一致，不能說這步是失誤。'
+  check('同首選澄清不是失誤不會被負評篩選誤擋',
+    !validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
+      .some((error) => error.includes('同一著法')))
 
   const wrongSideEvidence: HarnessEvidence = {
     ...validatorEvidence[1]!,
@@ -3897,6 +3944,12 @@ async function main(): Promise<void> {
       countHanCharacters(repairedResult.finalText) >= 400 &&
       repairedTraces[0]?.status === 'completed',
     JSON.stringify({ calls: repairSuccessProvider.calls, errors: repairedTraces[0]?.validationErrors })
+  )
+  check(
+    '修補保留失敗診斷與原局面但不回灌被拒絕的草稿斷言',
+    repairSuccessProvider.prompts[1]?.includes('錯誤：') &&
+      !repairSuccessProvider.prompts[1]?.includes('黑方大致有機會。') &&
+      repairSuccessProvider.prompts[1]?.includes('direct_conclusion')
   )
 
   const repairOutageProvider = {

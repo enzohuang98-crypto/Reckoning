@@ -57,3 +57,73 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
   }
   return { steps, warning: moves.length === 0 ? '沒有 UCI 主線，不能計算棋盤事實。' : null }
 }
+
+/**
+ * A bounded check for explicit statements attached to a literal PV move.
+ * This does not certify strategy, threats, or arbitrary natural language.
+ * Only this claim's cited variations are replayed; ambiguous move identities
+ * cannot establish a capture/check statement.
+ */
+export function validateVariationBoardStatements(
+  text: string,
+  evidence: HarnessEvidence[]
+): string[] {
+  const issues: string[] = []
+  const moves = [...new Set(evidence.flatMap((item) => item.displayPrincipalVariation))]
+    .filter(Boolean).sort((a, b) => b.length - a.length)
+  if (moves.length === 0) return issues
+  const escaped = moves.map((move) => move.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const movePattern = new RegExp(escaped.join('|'), 'g')
+  const facts = evidence.flatMap((item) => buildVariationBoardFacts(item).steps)
+  const pieceTypes: Record<string, PieceType> = {
+    帥: 'king', 帅: 'king', 將: 'king', 将: 'king',
+    仕: 'advisor', 士: 'advisor', 相: 'elephant', 象: 'elephant',
+    馬: 'horse', 马: 'horse', 車: 'rook', 车: 'rook',
+    炮: 'cannon', 砲: 'cannon', 兵: 'pawn', 卒: 'pawn'
+  }
+  const sideOf = (name: string): PieceColor => /紅|红/.test(name) ? 'red' : 'black'
+  for (const clause of text.split(/[。！？；，,.!?;\n]/)) {
+    const mentions = [...clause.matchAll(movePattern)]
+    for (const [index, mention] of mentions.entries()) {
+      const move = mention[0]
+      const before = clause.slice(index === 0 ? 0 : mentions[index - 1]!.index! + mentions[index - 1]![0].length, mention.index)
+      const after = clause.slice(mention.index! + move.length, mentions[index + 1]?.index ?? clause.length)
+      const side = /(紅方|红方|黑方)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*$/.exec(before)
+      const hypothetical = /如果|假如|若|可能|將來|将来|未來|未来|後續|后续|更遠|更远|是否|能否|無法確認|无法确认/.test(before + after)
+      const capture = /((?:沒有|没有|未|不)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方))?([兵卒車车炮砲馬马象相士仕將将帥帅])?/.exec(after)
+      const check = /((?:沒有|没有|未|不)?)(?:形成|構成|构成)?將軍|((?:沒有|没有|未|不)?)(?:形成|構成|构成)?将军/.exec(after)
+      if (!side && (hypothetical || (!capture && !check))) continue
+      const candidates = facts.filter((fact) => fact.move === move)
+      const signatures = new Set(candidates.map((fact) => JSON.stringify([fact.side, fact.captured, fact.givesCheck])))
+      const fact = candidates[0]
+      if (!fact || signatures.size !== 1) {
+        if (!hypothetical && (capture || check)) {
+          issues.push(`棋盤事實：${move} 的引用缺少可重播或無歧義的吃子／將軍事實。`)
+        }
+        continue
+      }
+      if (side && sideOf(side[1]!) !== fact.side) {
+        issues.push(`棋盤事實：${move} 的走子方與所引用變例不一致。`)
+      }
+      if (hypothetical) continue
+      if (capture) {
+        const denied = /^(沒有|没有|未|不)/.test(capture[1]!)
+        if (denied ? fact.captured !== null : fact.captured === null) {
+          issues.push(`棋盤事實：${move} 的吃子斷言與逐手棋盤不一致。`)
+        } else if (!denied && fact.captured && (
+          (capture[2] && sideOf(capture[2]) !== fact.captured.side) ||
+          (capture[3] && pieceTypes[capture[3]] !== fact.captured.piece)
+        )) {
+          issues.push(`棋盤事實：${move} 所吃棋子的方別或種類不一致。`)
+        }
+      }
+      if (check) {
+        const denied = Boolean(check[1] || check[2])
+        if (denied ? fact.givesCheck : !fact.givesCheck) {
+          issues.push(`棋盤事實：${move} 的將軍斷言與逐手棋盤不一致。`)
+        }
+      }
+    }
+  }
+  return [...new Set(issues)]
+}
