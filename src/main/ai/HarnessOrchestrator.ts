@@ -3032,7 +3032,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
                   : '目前可確定的比較與證據限制'
             }",
     "consequences":[
-      {"id":"K1","category":"${comparisonState === 'evidence_backed_difference' ? 'initiative_loss' : comparisonState === 'same_move' ? 'central_control' : 'piece_development'}","summary":"具體後果","opponentUse":"${userLineMoves[1]} 後的具體應對","boardImpact":"盤面結果","supportingMoves":["${userLineMoves[0]}","${userLineMoves[1]}"],"evidenceIds":["${userEvidenceId}"],"verified":true},
+      {"id":"K1","category":"${comparisonState === 'evidence_backed_difference' ? 'initiative_loss' : 'central_control'}","summary":"具體後果","opponentUse":"${userLineMoves[1]} 後的具體應對","boardImpact":"盤面結果","supportingMoves":["${userLineMoves[0]}","${userLineMoves[1]}"],"evidenceIds":["${userEvidenceId}"],"verified":true},
       {"id":"K2","category":"${comparisonState === 'evidence_backed_difference' ? 'opponent_development' : 'piece_development'}","summary":"另一項具體後果","opponentUse":"${userLineMoves[1]} 後的另一項盤面影響","boardImpact":"另一項盤面結果","supportingMoves":["${userLineMoves[1]}","${userLineMoves[2]}"],"evidenceIds":["${userEvidenceId}"],"verified":true}
     ],
     "contradictions":[],

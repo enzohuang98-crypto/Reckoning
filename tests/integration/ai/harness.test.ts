@@ -1275,6 +1275,11 @@ async function main(): Promise<void> {
   )
   const insufficientFollowUpPrompt = await probeFollowUpPrompt(insufficientSession)
   check(
+    '中性審查範例提供兩種不同後果類型，不要求模型照抄重複類型',
+    insufficientProvider.prompts[0]?.includes('"id":"K1","category":"central_control"') === true &&
+      insufficientProvider.prompts[0]?.includes('"id":"K2","category":"piece_development"') === true
+  )
+  check(
     '證據不足的範例不預填失去先手或讓對手獲利類型，有證據差異仍可正常比較',
     !insufficientProvider.prompts[0]?.includes('"category":"initiative_loss"') &&
       !insufficientProvider.prompts[0]?.includes('"category":"opponent_development"') &&
