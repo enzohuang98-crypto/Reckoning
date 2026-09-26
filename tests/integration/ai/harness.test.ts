@@ -1830,9 +1830,11 @@ async function main(): Promise<void> {
       (shallowEvidenceTraces.at(-1)?.evidence[0]?.displayPrincipalVariation.length ?? 0) >= 2 &&
       shallowEvidenceProvider.prompts[0]?.includes(`${deepUserEvidence.id} 作實戰步主線`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"directAnswerEvidenceIds":["E1","${deepUserEvidence.id}"]`) &&
-      shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K1","K2"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K1"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K2"]`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"opponentReplies":["${deepUserEvidence.displayPrincipalVariation[1]}"`) &&
-      shallowEvidenceProvider.prompts[0]?.includes(`"supportingMoves":["${deepUserEvidence.displayPrincipalVariation[0]}","${deepUserEvidence.displayPrincipalVariation[1]}"],"evidenceIds":["${deepUserEvidence.id}"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes('"claimId":"C4a"') &&
+      shallowEvidenceProvider.prompts[0]?.includes('"claimId":"C4b"') &&
       !shallowEvidenceProvider.prompts[0]?.includes('"supportingMoves":["中文著法一"') &&
       !shallowEvidenceProvider.prompts[0]?.includes('"id":"E2"'),
     JSON.stringify({
@@ -3951,6 +3953,74 @@ async function main(): Promise<void> {
       !repairSuccessProvider.prompts[1]?.includes('黑方大致有機會。') &&
       repairSuccessProvider.prompts[1]?.includes('direct_conclusion')
   )
+
+  const compactCombined = JSON.parse(validRepairText) as { audit: ConsequenceAudit; answer: HarnessAnswer }
+  const originalConsequenceClaim = compactCombined.answer.sections[3]!.claims[0]!
+  const secondFinding = compactCombined.audit.consequences[1]!
+  compactCombined.answer.sections[3]!.claims = [
+    { ...originalConsequenceClaim, id: 'C4a', findingIds: ['K1'] },
+    {
+      ...originalConsequenceClaim, id: 'C4b', findingIds: ['K2'],
+      text: `${secondFinding.supportingMoves.join('、')}：${secondFinding.summary}${secondFinding.boardImpact}`,
+      causal: { ...originalConsequenceClaim.causal!, opponentUse: secondFinding.opponentUse, consequence: secondFinding.boardImpact }
+    }
+  ]
+  const compactAudit = {
+    ...compactCombined.audit,
+    consequences: compactCombined.audit.consequences.map((finding, index) => ({
+      id: finding.id, category: finding.category, claimId: index === 0 ? 'C4a' : 'C4b', verified: true
+    }))
+  }
+  const compactProvider = {
+    id: 'openai' as const, displayName: 'Complete answer with compact audit references', calls: 0,
+    async generateExplanation() {
+      this.calls++
+      return { text: JSON.stringify({ answer: compactCombined.answer, audit: compactAudit }), provider: this.id,
+        model: 'fake-model', usage: { inputTokens: 100, outputTokens: 2000 } }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  let compactResult: Awaited<ReturnType<typeof runExplanationHarness>> | null = null
+  const compactTraces: HarnessTrace[] = []
+  const runCompactScenario = async (): Promise<void> => {
+    compactResult = null
+    compactProvider.calls = 0
+    compactTraces.length = 0
+    try {
+    compactResult = await runExplanationHarness({
+      requestId: 'compact-audit-full-body', analysisId: sameMoveSession.analysisId,
+      provider: 'openai', model: 'fake-model', userLevel: 'intermediate', explanationStyle: 'long_analytical',
+      language: 'zh-TW', answerMode: 'research', attachedMove: 'h2e2',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 8000 }
+    }, {
+      provider: compactProvider, apiKey: 'synthetic-test-key', model: 'fake-model', session: sameMoveSession,
+      registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+      traceStore: { save: (trace: HarnessTrace) => compactTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    })
+    } catch { /* The assertion exposes the actual validator verdict. */ }
+  }
+  await runCompactScenario()
+  check('完整正文可用 audit claim 引用通過同一正式審查，沒有補字或省略因果',
+    compactProvider.calls === 1 && compactResult !== null && countHanCharacters(compactResult.finalText) >= 400,
+    compactTraces.at(-1)?.validationErrors)
+  compactAudit.consequences[1]!.claimId = 'missing-claim'
+  await runCompactScenario()
+  check('不存在的 audit claim 引用不能填造後果或交付正文', compactResult === null && compactProvider.calls === 2)
+  compactAudit.consequences[1]!.claimId = 'C4a'
+  await runCompactScenario()
+  check('同一 claim 不能冒充兩個不同後果', compactResult === null && compactProvider.calls === 2)
+  compactAudit.consequences[1]!.claimId = 'C4b'
+  const originalCompactCausal = compactCombined.answer.sections[3]!.claims[1]!.causal
+  const originalCompactEvidenceIds = compactCombined.answer.sections[3]!.claims[1]!.evidenceIds
+  compactCombined.answer.sections[3]!.claims[1]!.evidenceIds = ['E404']
+  await runCompactScenario()
+  check('compact audit 不能用不在本次證據內的引用替實戰後果背書', compactResult === null && compactProvider.calls === 2)
+  compactCombined.answer.sections[3]!.claims[1]!.evidenceIds = originalCompactEvidenceIds
+  delete compactCombined.answer.sections[3]!.claims[1]!.causal
+  await runCompactScenario()
+  check('compact audit 不替缺少 causal 的正文補造因果', compactResult === null && compactProvider.calls === 2)
+  compactCombined.answer.sections[3]!.claims[1]!.causal = originalCompactCausal
 
   const repairOutageProvider = {
     id: 'openai' as const,

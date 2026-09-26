@@ -460,13 +460,54 @@ function normalizePlannerResult(
   }
 }
 
-function normalizeConsequenceAudit(raw: ConsequenceAudit): ConsequenceAudit {
+function normalizeConsequenceAudit(
+  raw: ConsequenceAudit,
+  combinedAnswer?: HarnessAnswer,
+  evidence: HarnessEvidence[] = []
+): ConsequenceAudit {
   const dual = raw.dualEngineAdjudication
+  const answerClaims = combinedAnswer
+    ? normalizeSections(combinedAnswer.sections)
+        .filter((section) => section.id === SECTION_IDS.opponentExploitation)
+        .flatMap((section) => section.claims)
+    : []
+  const usedClaimRefs = new Set<string>()
+  const userLineIds = new Set(evidence.filter((entry) =>
+    (entry.move !== undefined && entry.move === entry.analysis.userMove) ||
+    (entry.move === undefined && entry.analysis.userMove === entry.analysis.bestMove &&
+      entry.analysis.principalVariation[0] === entry.analysis.userMove)
+  ).map((entry) => entry.id))
+  const rawConsequences = Array.isArray(raw.consequences) ? raw.consequences.slice(0, 8) : []
+  const consequences = rawConsequences.map((item) => {
+    const claimId = (item as ConsequenceFinding & { claimId?: unknown }).claimId
+    if (claimId === undefined) return item
+    // A compact audit may reference model-authored prose, never manufacture it.
+    // Missing, duplicate, or unrelated references resolve to empty fields and
+    // are rejected by the same audit/answer validators below.
+    const matches = answerClaims.filter((claim) =>
+      claim.id === claimId && claim.findingIds?.includes(item.id) &&
+      claim.evidenceIds.length > 0 && claim.evidenceIds.every((id) => userLineIds.has(id))
+    )
+    const claim = typeof claimId === 'string' && !usedClaimRefs.has(claimId) && matches.length === 1
+      ? matches[0] : undefined
+    if (typeof claimId === 'string') usedClaimRefs.add(claimId)
+    const completeText = claim ? [claim.text, ...(claim.causal ? Object.values(claim.causal) : [])].join(' ') : ''
+    const scopedEvidence = evidence.filter((entry) => claim?.evidenceIds.includes(entry.id))
+    return {
+      ...item,
+      summary: claim?.text ?? '',
+      opponentUse: claim?.causal?.opponentUse ?? '',
+      boardImpact: claim?.causal?.consequence ?? '',
+      evidenceIds: claim?.evidenceIds ?? [],
+      supportingMoves: [...new Set(collectReferencedVariationMoves(scopedEvidence))]
+        .filter((move) => completeText.includes(move))
+    }
+  })
   return {
     bestMovePurpose: String(raw.bestMovePurpose ?? '').trim().slice(0, 2000),
     userMoveProblem: String(raw.userMoveProblem ?? '').trim().slice(0, 2000),
     consequences: Array.isArray(raw.consequences)
-      ? raw.consequences.slice(0, 8).map((item, index) => ({
+      ? consequences.slice(0, 8).map((item, index) => ({
           id: String(item.id || `K${index + 1}`).slice(0, 80),
           category: CONSEQUENCE_CATEGORIES.has(item.category)
             ? item.category
@@ -3014,7 +3055,7 @@ ${comparisonContract}
 - actual_move_problem 與 opponent_exploitation 的非「證據不足」claim 都附完整 causal 五段，並用 findingIds 連到 audit 中已驗證的 K 編號。
 - 每個 evidenceId 只能支持它自己列出的 principalVariation；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
 - 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
-- 寫完後先逐段核對：五段可見正文合計至少 400 漢字；summary、opponentUse、boardImpact 每項都要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
+- 寫完後先逐段核對：五段可見正文合計至少 400 漢字；C4a、C4b 的可見正文及 causal.opponentUse、causal.consequence 要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
 - 下方 JSON 只示範欄位與 id，所有「一句直接結論」「具體後果」「盤面機制」等佔位文字都必須換成本局完整敘述。每段 claims.text 要承擔該段字數，不可只在 causal 或 audit 欄位寫長文；寫完自行計算五段 claims.text 合計漢字，不足 400 就在同一次回答內補上由主線支持的棋盤變化。
 - practical_principle 只給一條可帶走、可操作的思考原則。
 ${
@@ -3033,11 +3074,12 @@ audit 規則：
                   ? '直接說明實戰步與首選之間有證據支持的問題差異。'
                   : '中性記錄目前可確定的差異與證據限制。'
             }
-- 至少提出兩項互不重複、由主線可查證的 consequences。
-- summary、opponentUse、boardImpact 合計至少逐字包含兩步不同中文主線著法，且說出棋子、線路、王區、陣形或威脅。
-- supportingMoves 只能使用 evidence 中真實出現的中文著法；禁止用評估分數當原因。
+- consequences 只輸出 id、category、claimId、verified；K1 指向 C4a、K2 指向 C4b。不要重寫 summary、opponentUse、boardImpact、supportingMoves 或 evidenceIds，程式僅從被引用 claim 的原文、causal 與所引用主線解析，缺少內容仍拒絕。
+- opponent_exploitation 中 C4a、C4b 各寫約90–120漢字並附完整 causal，描述互不重複的兩項後果。每個 claim 的可見正文與 causal.opponentUse、causal.consequence 合計逐字包含至少兩步實戰主線，以及具體棋子／線路關係。
+- 被引用的 C4a、C4b 各自要在 text、causal.opponentUse、causal.consequence 合計逐字包含兩步不同中文實戰主線著法，且說出棋子、線路、王區、陣形或威脅。
+- 只能引用 evidence 中真實出現的中文著法；禁止用評估分數當原因。程式不改寫或補足正文中的著法。
 - computedBoardFacts 是從該 evidence 起始局面逐手合法走子計算的輪走方、路數、吃子及將軍事實；只適用該變例已列出的步數。它不證明策略優劣，不代表對手必然照走；warning 之後的棋盤事實不得推測。
-- K1、K2 本次都描述實戰步主線，僅引用 ${userEvidenceId}；supportingMoves 逐字複製該線所列著法，opponentUse 逐字包含該線 opponentReplies 中的著法（例如 ${userLineMoves[1]}）。AI 首選另在 best_move_plan 引用 ${bestEvidenceId}，不要混入 K1、K2。不得自行把棋譜改寫成看似合理但不在該線的著法。
+- K1、K2 本次分別引用 C4a、C4b；這兩個 claim 都描述實戰步主線且僅引用 ${userEvidenceId}，各自逐字引用至少兩步該線著法，causal.opponentUse 逐字包含該線 opponentReplies 中的著法（例如 ${userLineMoves[1]}）。AI 首選另在 best_move_plan 引用 ${bestEvidenceId}，不要混入 K1、K2。不得自行把棋譜改寫成看似合理但不在該線的著法。
 - 若雙引擎分歧，audit.dualEngineAdjudication 比較兩條線的人類可控性、容錯與長期發展，不得平均分數；answer 把該比較放進 best_move_plan，不另增第六區。
 
 使用者程度：${payload.userLevel}
@@ -3088,7 +3130,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
               COMPARISON_SECTION_HEADINGS[comparisonState][
                 SECTION_IDS.opponentExploitation
               ] ?? SECTION_HEADINGS[SECTION_IDS.opponentExploitation]
-            }","claims":[{"id":"C4","text":"約180–240漢字，逐字引用實戰線至少兩步及對手應手，分別解釋兩項盤面影響，避免必然論","evidenceIds":["${userEvidenceId}"],"findingIds":["K1","K2"],"causal":{"cause":"含主線中文著法的原因","mechanism":"盤面機制","affected":"受影響棋子或線路","opponentUse":"對手實際應對","consequence":"具體後果"}}]},
+            }","claims":[{"id":"C4a","text":"約90–120漢字，逐字引用實戰線至少兩步及對手應手，說明第一項盤面影響，避免必然論","evidenceIds":["${userEvidenceId}"],"findingIds":["K1"],"causal":{"cause":"含實戰主線中文著法的原因","mechanism":"具體棋子與線路機制","affected":"受影響棋子或線路","opponentUse":"${userLineMoves[1]} 後的合理應對","consequence":"實戰線具體盤面後果，含另一著法"}},{"id":"C4b","text":"約90–120漢字，逐字引用實戰線至少兩步，說明不同於第一項的另一盤面影響","evidenceIds":["${userEvidenceId}"],"findingIds":["K2"],"causal":{"cause":"含實戰主線中文著法的原因","mechanism":"另一具體棋子與線路機制","affected":"另一受影響棋子或線路","opponentUse":"${userLineMoves[1]} 後的另一合理應對","consequence":"另一實戰線具體盤面後果，含另一著法"}}]},
       {"id":"practical_principle","heading":"實戰原則","claims":[{"id":"C5","text":"約70–100漢字的一條可操作原則，說明本局先檢查什麼、如何判斷與適用限制","evidenceIds":["${bestEvidenceId}"]}]}
     ],
     "generalNotes":[],
@@ -3104,8 +3146,8 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
                   : '目前可確定的比較與證據限制'
             }",
     "consequences":[
-      {"id":"K1","category":"${comparisonState === 'evidence_backed_difference' ? 'initiative_loss' : 'central_control'}","summary":"具體後果","opponentUse":"${userLineMoves[1]} 後的具體應對","boardImpact":"盤面結果","supportingMoves":["${userLineMoves[0]}","${userLineMoves[1]}"],"evidenceIds":["${userEvidenceId}"],"verified":true},
-      {"id":"K2","category":"${comparisonState === 'evidence_backed_difference' ? 'opponent_development' : 'piece_development'}","summary":"另一項具體後果","opponentUse":"${userLineMoves[1]} 後的另一項盤面影響","boardImpact":"另一項盤面結果","supportingMoves":["${userLineMoves[1]}","${userLineMoves[2]}"],"evidenceIds":["${userEvidenceId}"],"verified":true}
+      {"id":"K1","category":"${comparisonState === 'evidence_backed_difference' ? 'initiative_loss' : 'central_control'}","claimId":"C4a","verified":true},
+      {"id":"K2","category":"${comparisonState === 'evidence_backed_difference' ? 'opponent_development' : 'piece_development'}","claimId":"C4b","verified":true}
     ],
     "contradictions":[],
     "enoughEvidence":true${
@@ -3118,7 +3160,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
 }
 `, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS, timing.initialMoveFirstCallTimeoutMs, 'json', 'initial_combined')
           )
-          audit = normalizeConsequenceAudit(combined.audit)
+          audit = normalizeConsequenceAudit(combined.audit, combined.answer, evidence)
           auditErrors = validateConsequenceAudit(
             audit,
             evidence,
@@ -3644,7 +3686,7 @@ ${initialCombinedPrompt}
 首選證據：${JSON.stringify({ id: best.id, move: best.displayMove, principalVariation: best.displayPrincipalVariation.slice(0, 16), opponentReplies: best.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8), computedBoardFacts: buildVariationBoardFacts(best) })}
 實戰證據：${JSON.stringify({ id: user.id, move: user.displayMove, principalVariation: user.displayPrincipalVariation.slice(0, 16), opponentReplies: user.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8), computedBoardFacts: buildVariationBoardFacts(user) })}
 computedBoardFacts 只證明該變例已列出的輪走方、路數、吃子和將軍；不是策略優劣的證明，warning 之後不得推測棋盤事實。
-K1、K2 只能引用實戰證據 ${user.id}；supportingMoves 要逐字取自該線，summary、opponentUse、boardImpact 合計逐字寫出至少兩步，opponentUse 必須逐字包含該線對手應手。C3 只談首選主線 ${best.id}，若提實戰著法也須同時引用 ${user.id}。C4 只引用 ${user.id} 並只連到通過審核的 K1、K2。不得把可選主線寫成必然結果。
+K1、K2 的 claimId 分別引用 C4a、C4b；每個 claim 只引用實戰證據 ${user.id}，text、causal.opponentUse、causal.consequence 合計逐字寫出至少兩步該線著法，causal.opponentUse 必須逐字包含該線對手應手。audit 不重写這些欄位，程式不補造缺少的內容。C3 只談首選主線 ${best.id}，若提實戰著法也須同時引用 ${user.id}。C4a、C4b 只引用 ${user.id}，分別連到 K1、K2；audit 用 claimId 引用對應 claim，不重寫正文／causal 內容。不得把可選主線寫成必然結果。
 answer 保留原五個 section id 與比較狀態對應標題。五段 claims.text 合計至少 400 個繁體漢字，目標約 500–900；audit、causal、heading、directAnswer 不計入字數。請在五段可見正文完整解釋本局棋子、線路、合理應對及盤面影響，不重複空話。只用本局證據與可計算棋盤事實，不能用分數代替原因；保留每項必要的 evidenceIds、findingIds、causal。修補後重新檢查整份 JSON 的引用及字數。
 `, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS,
         Math.min(30_000, repairWindowMs), 'json', 'repair')
@@ -3653,7 +3695,7 @@ answer 保留原五個 section id 與比較狀態對應標題。五段 claims.te
           audit: ConsequenceAudit
           answer: HarnessAnswer
         }>(repairText)
-        const repairedAudit = normalizeConsequenceAudit(repaired.audit)
+        const repairedAudit = normalizeConsequenceAudit(repaired.audit, repaired.answer, evidence)
         const repairedAuditErrors = validateConsequenceAudit(
           repairedAudit, evidence, true, dualComparison, validationLanguage,
           comparisonState
