@@ -183,6 +183,8 @@ await withServer(
     await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
     const body = requests[0].body as Record<string, unknown>
     assert.deepEqual(body.reasoning, { max_tokens: 1_000, exclude: true })
+    assert.equal(body.response_format, undefined,
+      'The exact free Ultra endpoint does not advertise response_format support')
     assert.equal(body.max_tokens, 4_000)
   }
 )
@@ -215,6 +217,7 @@ await withServer(
     const response = await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
     const body = requests[0].body as Record<string, unknown>
     assert.deepEqual(body.reasoning, { effort: 'none', exclude: true })
+    assert.deepEqual(body.response_format, { type: 'json_object' })
     assert.equal(body.max_tokens, 4_000)
     assert.deepEqual(response.usage, {
       inputTokens: 20,

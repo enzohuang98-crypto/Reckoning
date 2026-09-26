@@ -20,7 +20,7 @@ import {
   readJsonResponseBounded,
   toAITransportError
 } from '../http'
-import { openRouterReasoningConfig } from '../OpenRouterRequestPolicy'
+import { OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL, openRouterReasoningConfig } from '../OpenRouterRequestPolicy'
 import {
   credentialTestRequest,
   credentialTestSucceeded
@@ -167,7 +167,9 @@ export class OpenRouterProvider implements AIProvider {
         max_tokens: request.maxOutputTokens ?? 4096,
         temperature: 0.2,
         stream: false,
-        ...(request.responseFormat === 'json'
+        // The exact free Ultra endpoint advertises reasoning but no JSON-mode
+        // parameter. Harness still requests and validates JSON in its prompt.
+        ...(request.responseFormat === 'json' && request.model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL
           ? { response_format: { type: 'json_object' } }
           : {}),
         ...(reasoningConfig ? { reasoning: reasoningConfig } : {}),
