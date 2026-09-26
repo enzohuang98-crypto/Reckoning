@@ -1,4 +1,5 @@
 import { buildBoardQuestionFacts } from './BoardQuestionFacts'
+import { buildVariationBoardFacts } from './VariationBoardFacts'
 import { buildQuestionRecoveryPrompt, extractDirectQuestionText, isFocusedQuestionAnswer } from './QuestionAnswerQuality'
 import { randomUUID } from 'node:crypto'
 import type { AIProvider, TokenUsage } from '@shared/types/AIProviderTypes'
@@ -2996,6 +2997,7 @@ audit 規則：
 - 至少提出兩項互不重複、由主線可查證的 consequences。
 - summary、opponentUse、boardImpact 合計至少逐字包含兩步不同中文主線著法，且說出棋子、線路、王區、陣形或威脅。
 - supportingMoves 只能使用 evidence 中真實出現的中文著法；禁止用評估分數當原因。
+- computedBoardFacts 是從該 evidence 起始局面逐手合法走子計算的輪走方、路數、吃子及將軍事實；只適用該變例已列出的步數。它不證明策略優劣，不代表對手必然照走；warning 之後的棋盤事實不得推測。
 - K1、K2 本次都描述實戰步主線，僅引用 ${userEvidenceId}；supportingMoves 逐字複製該線所列著法，opponentUse 逐字包含該線 opponentReplies 中的著法（例如 ${userLineMoves[1]}）。AI 首選另在 best_move_plan 引用 ${bestEvidenceId}，不要混入 K1、K2。不得自行把棋譜改寫成看似合理但不在該線的著法。
 - 若雙引擎分歧，audit.dualEngineAdjudication 比較兩條線的人類可控性、容錯與長期發展，不得平均分數；answer 把該比較放進 best_move_plan，不另增第六區。
 
@@ -3016,6 +3018,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
                 opponentReplies: item.displayPrincipalVariation
                   .filter((_, index) => index % 2 === 1)
                   .slice(0, 6),
+                computedBoardFacts: buildVariationBoardFacts(item),
                 warnings: item.analysis.warnings
               }))
             )}
@@ -3604,8 +3607,9 @@ ${
   sections: answer.sections
 } })}
 比較狀態：${comparisonContract}
-首選證據：${JSON.stringify({ id: best.id, move: best.displayMove, principalVariation: best.displayPrincipalVariation.slice(0, 16), opponentReplies: best.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8) })}
-實戰證據：${JSON.stringify({ id: user.id, move: user.displayMove, principalVariation: user.displayPrincipalVariation.slice(0, 16), opponentReplies: user.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8) })}
+首選證據：${JSON.stringify({ id: best.id, move: best.displayMove, principalVariation: best.displayPrincipalVariation.slice(0, 16), opponentReplies: best.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8), computedBoardFacts: buildVariationBoardFacts(best) })}
+實戰證據：${JSON.stringify({ id: user.id, move: user.displayMove, principalVariation: user.displayPrincipalVariation.slice(0, 16), opponentReplies: user.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8), computedBoardFacts: buildVariationBoardFacts(user) })}
+computedBoardFacts 只證明該變例已列出的輪走方、路數、吃子和將軍；不是策略優劣的證明，warning 之後不得推測棋盤事實。
 K1、K2 只能引用實戰證據 ${user.id}；supportingMoves 要逐字取自該線，summary、opponentUse、boardImpact 合計逐字寫出至少兩步，opponentUse 必須逐字包含該線對手應手。C3 只談首選主線 ${best.id}，若提實戰著法也須同時引用 ${user.id}。C4 只引用 ${user.id} 並只連到通過審核的 K1、K2。不得把可選主線寫成必然結果。
 answer 保留原五個 section id 與比較狀態對應標題。五段 claims.text 合計至少 400 個繁體漢字，目標約 500–900；audit、causal、heading、directAnswer 不計入字數。請在五段可見正文完整解釋本局棋子、線路、合理應對及盤面影響，不重複空話。只用本局證據與可計算棋盤事實，不能用分數代替原因；保留每項必要的 evidenceIds、findingIds、causal。修補後重新檢查整份 JSON 的引用及字數。
 `, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS,

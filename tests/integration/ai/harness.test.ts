@@ -17,6 +17,7 @@ import {
   validateConsequenceAudit
 } from '../../../src/main/ai/HarnessOrchestrator'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import { buildVariationBoardFacts } from '../../../src/main/ai/VariationBoardFacts'
 import { AIHttpError, AIResponseValidationError } from '../../../src/main/ai/http'
 import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
@@ -947,6 +948,36 @@ class StubbornVagueProvider implements AIProvider {
 }
 
 async function main(): Promise<void> {
+  const boardFactEvidence = (moves: string[], display: string[], fen = START_FEN): HarnessEvidence => ({
+    id: 'facts-fixture', engineId: 'engine-1', engineName: 'Fixture', purpose: 'Board facts',
+    positionFen: fen, depth: 12, score: null, displayPrincipalVariation: display,
+    analysis: { ...engineAnalysis, positionFen: fen, principalVariation: moves }
+  })
+  const legalFacts = buildVariationBoardFacts(boardFactEvidence(
+    ['h2e2', 'h9g7'], ['炮二平五', '馬8進7']
+  ))
+  check('逐手棋盤事實由正確方別計算炮的路數與對手應手',
+    legalFacts.warning === null && legalFacts.steps.length === 2 &&
+      legalFacts.steps[0]?.side === 'red' && legalFacts.steps[0]?.fromFile === 2 &&
+      legalFacts.steps[0]?.toFile === 5 && legalFacts.steps[0]?.captured === null &&
+      legalFacts.steps[1]?.side === 'black' && legalFacts.steps[1]?.piece === 'horse')
+  const captureCheckFacts = buildVariationBoardFacts(boardFactEvidence(
+    ['a1a9'], ['車九進八'], 'p3k4/9/9/9/4p4/9/9/9/R8/4K4 w - - 0 1'
+  ))
+  check('吃子與將軍從走後棋盤計算，沒有沿用模型 verified 欄位',
+    captureCheckFacts.warning === null && captureCheckFacts.steps[0]?.captured?.side === 'black' &&
+      captureCheckFacts.steps[0]?.captured?.piece === 'pawn' && captureCheckFacts.steps[0]?.givesCheck === true)
+  const wrongSideFacts = buildVariationBoardFacts(boardFactEvidence(['h9g7'], ['馬8進7']))
+  check('輪走方錯誤的主線不產生棋盤事實',
+    wrongSideFacts.steps.length === 0 && wrongSideFacts.warning !== null)
+  const otherVariationFacts = buildVariationBoardFacts(boardFactEvidence(['h2e2'], ['馬八進七']))
+  check('中文著法與另一條變例混用時不替它提供棋盤背書',
+    otherVariationFacts.steps.length === 0 && otherVariationFacts.warning !== null)
+  const invalidContinuationFacts = buildVariationBoardFacts(boardFactEvidence(
+    ['h2e2', 'h0g2'], ['炮二平五', '馬二進三']
+  ))
+  check('無效後續只保留合法前綴的事實，不推測後面走法',
+    invalidContinuationFacts.steps.length === 1 && invalidContinuationFacts.warning !== null)
   console.log('\n## AI 解說 Harness')
   const traces: HarnessTrace[] = []
   const provider = new FakeProvider()
@@ -1138,6 +1169,13 @@ async function main(): Promise<void> {
     '同首選正文配額與 causal 範例不預設實戰步有問題或可被利用',
     !sameMoveProvider.prompt.includes('實戰步問題約') &&
       !sameMoveProvider.prompt.includes('"opponentUse":"對手實際利用"')
+  )
+  check(
+    '正式完整比較提供各變例獨立計算的輪走方、吃子與將軍事實',
+    sameMoveProvider.prompt.includes('"computedBoardFacts"') &&
+      sameMoveProvider.prompt.includes('"move":"炮二平五","side":"red"') &&
+      sameMoveProvider.prompt.includes('"move":"馬8進7","side":"black"') &&
+      sameMoveProvider.prompt.includes('"captured":null,"givesCheck":false')
   )
   check(
     '實戰步等同首選時保留五段 id 並改用正向顯示標題',
@@ -3853,6 +3891,7 @@ async function main(): Promise<void> {
     '審核與正文修補後仍由正式 validator 驗收完整五段',
     repairSuccessProvider.calls === 2 &&
       repairSuccessProvider.prompts[1]?.includes('錯誤：') &&
+      repairSuccessProvider.prompts[1]?.includes('"computedBoardFacts"') &&
       repairedTraces[0]?.modelCallDiagnostics?.[1]?.stage === 'repair' &&
       repairedResult !== null &&
       countHanCharacters(repairedResult.finalText) >= 400 &&
