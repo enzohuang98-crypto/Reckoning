@@ -94,21 +94,23 @@ export function validateVariationBoardStatements(
       const check = /((?:沒有|没有|未|不)?)(?:形成|構成|构成)?將軍|((?:沒有|没有|未|不)?)(?:形成|構成|构成)?将军/.exec(after)
       if (!side && (hypothetical || (!capture && !check))) continue
       const candidates = facts.filter((fact) => fact.move === move)
-      const signatures = new Set(candidates.map((fact) => JSON.stringify([fact.side, fact.captured, fact.givesCheck])))
       const fact = candidates[0]
-      if (!fact || signatures.size !== 1) {
+      if (!fact) {
         if (!hypothetical && (capture || check)) {
           issues.push(`棋盤事實：${move} 的引用缺少可重播或無歧義的吃子／將軍事實。`)
         }
         continue
       }
-      if (side && sideOf(side[1]!) !== fact.side) {
+      if (side && candidates.some((candidate) => sideOf(side[1]!) !== candidate.side)) {
         issues.push(`棋盤事實：${move} 的走子方與所引用變例不一致。`)
       }
       if (hypothetical) continue
       if (capture) {
+        const captures = new Set(candidates.map((candidate) => JSON.stringify(candidate.captured)))
         const denied = /^(沒有|没有|未|不)/.test(capture[1]!)
-        if (denied ? fact.captured !== null : fact.captured === null) {
+        if (captures.size !== 1) {
+          issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同吃子結果，必須指明所述步數。`)
+        } else if (denied ? fact.captured !== null : fact.captured === null) {
           issues.push(`棋盤事實：${move} 的吃子斷言與逐手棋盤不一致。`)
         } else if (!denied && fact.captured && (
           (capture[2] && sideOf(capture[2]) !== fact.captured.side) ||
@@ -119,7 +121,9 @@ export function validateVariationBoardStatements(
       }
       if (check) {
         const denied = Boolean(check[1] || check[2])
-        if (denied ? fact.givesCheck : !fact.givesCheck) {
+        if (new Set(candidates.map((candidate) => candidate.givesCheck)).size !== 1) {
+          issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同將軍結果，必須指明所述步數。`)
+        } else if (denied ? fact.givesCheck : !fact.givesCheck) {
           issues.push(`棋盤事實：${move} 的將軍斷言與逐手棋盤不一致。`)
         }
       }
