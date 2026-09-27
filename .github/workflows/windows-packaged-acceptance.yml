@@ -1,0 +1,111 @@
+name: Isolated packaged Windows acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-packaged-acceptance.yml'
+      - 'tools/acceptance/windows-packaged-client.ps1'
+      - 'src/**'
+      - 'electron-builder*'
+      - 'package*.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-packaged-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build explicitly unsigned isolated test installer
+        shell: pwsh
+        run: |
+          $source = Get-Content -Raw electron-builder.yml
+          if ($source -notmatch '(?m)^forceCodeSigning:\s*true\s*$') {
+            throw 'Source must retain forceCodeSigning: true.'
+          }
+          try {
+            # Same explicit unsigned workflow exception as release.yml.
+            $unsigned = [regex]::Replace($source, '(?m)^forceCodeSigning:\s*true\s*$', 'forceCodeSigning: false')
+            Set-Content -NoNewline -Encoding utf8 electron-builder.yml $unsigned
+            # Only the test updater feed differs from the normal unsigned package.
+            @'
+          module.exports = {
+            extends: './electron-builder.yml',
+            publish: [{ provider: 'generic', url: 'http://127.0.0.1:18765/' }]
+          }
+          '@ | Set-Content -Encoding utf8 electron-builder.isolated.cjs
+            npm.cmd run build
+            if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
+            npx.cmd --no-install electron-builder --win nsis --x64 --config electron-builder.isolated.cjs --publish never
+            if ($LASTEXITCODE -ne 0) { throw 'Isolated installer build failed.' }
+          } finally {
+            Set-Content -NoNewline -Encoding utf8 electron-builder.yml $source
+          }
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $files = @("xiangqi-analyzer-$version-setup.exe", "xiangqi-analyzer-$version-setup.exe.blockmap", 'latest.yml')
+          $artifacts = foreach ($file in $files) {
+            $item = Get-Item -LiteralPath "release/$file"
+            if ($item.Length -le 0) { throw "Empty artifact: $file" }
+            @{ name = $file; size = $item.Length; sha256 = (Get-FileHash $item.FullName -Algorithm SHA256).Hash }
+          }
+          $signature = Get-AuthenticodeSignature "release/$($files[0])"
+          if ($signature.Status -ne 'NotSigned') { throw 'Expected explicitly unsigned test installer.' }
+          @{
+            sourceCommit = (git rev-parse HEAD).Trim(); version = $version
+            runId = $env:GITHUB_RUN_ID; artifacts = @($artifacts)
+            signature = [string]$signature.Status; productionRelease = $false
+            differences = @('Generic loopback updater feed http://127.0.0.1:18765/; never published')
+          } | ConvertTo-Json -Depth 5 | Set-Content release/isolated-package-manifest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: isolated-windows-package
+          path: |
+            release/*-setup.exe
+            release/*-setup.exe.blockmap
+            release/latest.yml
+            release/isolated-package-manifest.json
+          retention-days: 7
+          if-no-files-found: error
+  client:
+    needs: build
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          architecture: x64
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: isolated-windows-package
+          path: release
+      - name: Verify clean Windows client VM
+        shell: pwsh
+        run: ./tools/acceptance/windows-client-preflight.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-client-preflight.json"
+      - name: Install and inspect actual packaged application
+        shell: powershell
+        run: ./tools/acceptance/windows-packaged-client.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-packaged-client.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: isolated-windows-client-evidence
+          path: ${{ runner.temp }}/isolated-*.json
+          retention-days: 7
+          if-no-files-found: error
