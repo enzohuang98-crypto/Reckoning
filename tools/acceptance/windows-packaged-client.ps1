@@ -12,6 +12,7 @@ $report = [ordered]@{
   nativeArchitecture = $env:PROCESSOR_ARCHITECTURE
   architectureDifference = 'ARM64 client with x64 emulation; not native AMD64 hardware acceptance.'
   installer = 'not_run'; installedLaunch = 'not_run'; accessibleControls = @()
+  observations = @(); launchProcessExited = $false
   settingsPersistence = 'not_run'; candidateBinaryAcceptance = 'not_run'
   realProviderAcceptance = 'not_run'; updaterInstallationAcceptance = 'not_run'
   unsignedSmartScreenLimitation = 'Unsigned test package; SmartScreen trust is not established.'
@@ -52,21 +53,45 @@ try {
   $launched = Start-Process -FilePath $exe -ArgumentList '--force-renderer-accessibility' -WindowStyle Hidden -PassThru
   $deadline = [DateTime]::UtcNow.AddSeconds(45)
   $window = $null
+  $uiPassed = $false
+  $nextObservation = [DateTime]::MinValue
   do {
     $launched.Refresh()
-    if ($launched.HasExited) { throw "Installed application exited: $($launched.ExitCode)" }
-    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $launched.Id)
-    $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $condition)
-    if ($window) {
-      $controls = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-      $names = @($controls | ForEach-Object { $_.Current.Name } | Where-Object { $_ } | Select-Object -Unique -First 100)
-      if ($names.Count -gt 5) { break }
+    $report.launchProcessExited = $launched.HasExited
+    if ($launched.HasExited) { $report.launchProcessExitCode = $launched.ExitCode }
+    # NSIS may already have launched the single-instance application. Associate
+    # windows with verified executable paths, not only Start-Process's PID.
+    $appProcesses = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe })
+    $observedWindows = @()
+    foreach ($appProcess in $appProcesses) {
+      $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $appProcess.Id)
+      $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $condition)
+      foreach ($candidate in $windows) {
+        $controls = $candidate.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+        $names = @($controls | ForEach-Object { $_.Current.Name } | Where-Object { $_ } | Select-Object -Unique -First 150)
+        $observedWindows += @{ processId = $appProcess.Id; title = $candidate.Current.Name; className = $candidate.Current.ClassName; names = $names }
+        $report.accessibleControls = @($report.accessibleControls + $names | Select-Object -Unique -First 150)
+        # A crash dialog or empty Chromium frame cannot satisfy UI acceptance.
+        $hasAnalysis = @($names | Where-Object { $_ -match '分析' }).Count -gt 0
+        $hasSettings = @($names | Where-Object { $_ -match '設定' }).Count -gt 0
+        $hasStartupFailure = @($names | Where-Object { $_ -match '啟動失敗|無法啟動' }).Count -gt 0
+        if ($hasAnalysis -and $hasSettings -and -not $hasStartupFailure) {
+          $window = $candidate; $uiPassed = $true; $report.windowProcessId = $appProcess.Id
+        }
+      }
     }
+    if ([DateTime]::UtcNow -ge $nextObservation -or $uiPassed) {
+      $report.observations += @{
+        capturedAtUtc = [DateTime]::UtcNow.ToString('o')
+        processes = @($appProcesses | ForEach-Object { @{ id = $_.Id; path = $_.Path; mainWindowHandle = $_.MainWindowHandle.ToInt64(); mainWindowTitle = $_.MainWindowTitle; sessionId = $_.SessionId } })
+        windows = $observedWindows
+      }
+      $nextObservation = [DateTime]::UtcNow.AddSeconds(5)
+    }
+    if ($uiPassed) { break }
     Start-Sleep -Milliseconds 500
   } while ([DateTime]::UtcNow -lt $deadline)
-  if (-not $window -or $names.Count -le 5) { throw 'Native accessibility tree did not expose the installed UI within 45 seconds.' }
-  if ($launched.Path -ne $exe) { throw 'Launched process path differs from installed executable.' }
-  $report.accessibleControls = $names
+  if (-not $uiPassed) { throw 'Installed native UI did not expose analysis and settings controls within 45 seconds; see recorded process/window observations.' }
   $report.installedLaunch = 'passed'
   $report.nativeAccessibilityTree = 'passed'
   # Control discovery is recorded first; do not invent a settings click or count
@@ -75,7 +100,22 @@ try {
   $report.failure = $_.Exception.Message
   throw
 } finally {
-  $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+  # Fresh ephemeral VM only; no user credentials or data exist on this desktop.
+  # Capture once before closing the app, including failed startup evidence.
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $screen = [Windows.Forms.SystemInformation]::VirtualScreen
+    $bitmap = New-Object Drawing.Bitmap($screen.Width, $screen.Height)
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    try {
+      $graphics.CopyFromScreen($screen.Left, $screen.Top, 0, 0, $screen.Size)
+      $screenshotPath = [IO.Path]::ChangeExtension($OutputPath, '.png')
+      $bitmap.Save($screenshotPath, [Drawing.Imaging.ImageFormat]::Png)
+      $report.desktopScreenshot = [IO.Path]::GetFileName($screenshotPath)
+    } finally { $graphics.Dispose(); $bitmap.Dispose() }
+  } catch { $report.screenshotFailure = $_.Exception.Message }
+  $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
   if ($launched -and -not $launched.HasExited) {
     [void]$launched.CloseMainWindow()
     if (-not $launched.WaitForExit(10000)) { Stop-Process -Id $launched.Id -Force }

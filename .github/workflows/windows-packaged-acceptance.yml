@@ -106,6 +106,8 @@ jobs:
         if: always()
         with:
           name: isolated-windows-client-evidence
-          path: ${{ runner.temp }}/isolated-*.json
+          path: |
+            ${{ runner.temp }}/isolated-*.json
+            ${{ runner.temp }}/isolated-*.png
           retention-days: 7
           if-no-files-found: error
