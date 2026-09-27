@@ -19,6 +19,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-client-preflight:
+    name: Prepare isolated Windows 11 client VM
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify x64 execution on the isolated client
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          architecture: x64
+
+      - name: Record real VM prerequisites without touching user data
+        shell: pwsh
+        run: ./tools/acceptance/windows-client-preflight.ps1 -OutputPath "$env:RUNNER_TEMP/windows-client-preflight.json"
+
+      - name: Upload environment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-client-preflight
+          path: ${{ runner.temp }}/windows-client-preflight.json
+          retention-days: 7
+          if-no-files-found: error
+
   verify:
     name: Verify Windows desktop app
     runs-on: windows-2022
