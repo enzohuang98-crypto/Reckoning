@@ -351,10 +351,16 @@ export function countHanCharacters(text: string): number {
   return text.match(/\p{Script=Han}/gu)?.length ?? 0
 }
 
-/** renderAnswer 會略過 direct_conclusion claim，避免把 directAnswer 顯示兩次。 */
+/** Full explanations display the conclusion section; chat replies use directAnswer separately. */
+export function playerFacingConclusionText(answer: ScorableAnswer): string {
+  return answer.sections.find((section) => section.id === SECTION_IDS.directConclusion)
+    ?.claims.map((claim) => claim.text).filter((text) => text.trim()).join('\n') || answer.directAnswer
+}
+
+/** Count exactly the full explanation body rendered for the user, without duplicate summary text. */
 export function playerFacingAnswerText(answer: ScorableAnswer): string {
   return [
-    answer.directAnswer,
+    playerFacingConclusionText(answer),
     ...answer.sections
       .filter((section) => section.id !== SECTION_IDS.directConclusion)
       .flatMap((section) => section.claims.map((claim) => claim.text))

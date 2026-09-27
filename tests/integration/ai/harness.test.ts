@@ -1193,6 +1193,10 @@ async function main(): Promise<void> {
       !/(較差失誤|必然受到懲罰)/.test(sameMoveResult.finalText),
     sameMoveResult.finalText
   )
+  check(
+    '完整正文顯示第一段 claim，不以一句摘要丟掉完整結論',
+    sameMoveResult.finalText.includes('炮二平五就是引擎首選，兩者是同一著法。')
+  )
 
   const probeFollowUpPrompt = async (analysisSession: AnalysisSession): Promise<string> => {
     const prompts: string[] = []

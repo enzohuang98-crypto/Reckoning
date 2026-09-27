@@ -39,6 +39,7 @@ import {
   looksVagueConsequenceText,
   looksVaguePurposeText,
   playerFacingAnswerText,
+  playerFacingConclusionText,
   scoreExplanationAnswer,
   scoreUsedAsReason,
   SECTION_IDS,
@@ -2135,7 +2136,7 @@ function renderAnswer(
           `### ${copy.headings[SECTION_IDS.directConclusion] ?? '直接結論'}`,
           ''
         ]),
-    answer.directAnswer
+    compactQuestionAnswer ? answer.directAnswer : playerFacingConclusionText(answer)
   ]
   // A chat follow-up is rendered as the direct answer the user requested.
   // Its structured section remains available for validation, but repeating it
@@ -3068,7 +3069,7 @@ ${comparisonContract}
 - heading 只供顯示；section id 固定，但標題須符合上方比較狀態，不得用標題暗示不存在的失誤。
 - actual_move_problem 必須依比較狀態完整說明兩步關係；opponent_exploitation 必須包含對手合理應對、至少兩步主線與後續盤面結果。
 - 若棋手提供原本想法，actual_move_problem 必須正面檢驗該想法在兩條主線中是否成立；棋手自述不是引擎證據，不得直接當成事實。
-- actual_move_problem 與 opponent_exploitation 的非「證據不足」claim 都附完整 causal 五段，並用 findingIds 連到 audit 中已驗證的 K 編號。
+- actual_move_problem 與 opponent_exploitation 的非「證據不足」claim 都附完整 causal 五段，並用 findingIds 連到 audit 的 K 編號；K 編號只建立摘要引用，模型填寫 verified 不代表棋理解釋已獨立證實。
 - 每個 evidenceId 只能支持它自己列出的 principalVariation；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
 - 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
 - 寫完後先逐段核對：五段可見正文合計至少 400 漢字；C4a、C4b 的可見正文及 causal.opponentUse、causal.consequence 要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
