@@ -133,9 +133,14 @@ jobs:
           fi
           grep -Fx "version: $version" "$work_dir/latest.yml" >/dev/null
           grep -Fx "path: $setup" "$work_dir/latest.yml" >/dev/null
+          # The builder emits one x64 installer under files[]. Electron-updater
+          # consumes this entry, so verify it as well as the legacy top-level path.
+          test "$(grep -c '^  - url:' "$work_dir/latest.yml")" -eq 1
+          grep -Fx "  - url: $setup" "$work_dir/latest.yml" >/dev/null
           setup_size="$(stat -c '%s' "$work_dir/$setup")"
-          grep -Fx "size: $setup_size" "$work_dir/latest.yml" >/dev/null
+          grep -Fx "    size: $setup_size" "$work_dir/latest.yml" >/dev/null
           expected_sha512="$(openssl dgst -sha512 -binary "$work_dir/$setup" | base64 -w0)"
+          grep -Fx "    sha512: $expected_sha512" "$work_dir/latest.yml" >/dev/null
           grep -Fx "sha512: $expected_sha512" "$work_dir/latest.yml" >/dev/null
 
           gh release edit "$RELEASE_TAG" \

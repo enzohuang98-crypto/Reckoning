@@ -7,6 +7,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { START_FEN } from '../../src/shared/types/BoardState'
@@ -458,6 +459,26 @@ try {
     runManifestGate(`${hash}  ${setup}\n`) === 0 &&
       runManifestGate(`${'0'.repeat(64)}  ${setup}\n`) !== 0 &&
       runManifestGate(`${hash}  other-setup.exe\n`) !== 0)
+  const payload = Buffer.from('isolated promotion metadata fixture')
+  writeFileSync(join(manifestCheckDirectory, setup), payload)
+  const sha512 = createHash('sha512').update(payload).digest('base64')
+  const metadata = `version: 0.4.15\nfiles:\n  - url: ${setup}\n    sha512: ${sha512}\n    size: ${payload.length}\npath: ${setup}\nsha512: ${sha512}\nreleaseDate: '2026-09-27T00:00:00.000Z'\n`
+  const metadataGate = unsignedPromotionWorkflow
+    .split('          grep -Fx "version: $version"')[1]
+    ?.split('          gh release edit')[0]
+  const runMetadataGate = (value: string): number | null => {
+    writeFileSync(join(manifestCheckDirectory, 'latest.yml'), value)
+    return spawnSync(bashPath, ['--noprofile', '--norc', '-c',
+      `set -euo pipefail\ngrep -Fx "version: $version"${metadataGate ?? ''}`], {
+      env: { ...process.env, work_dir: manifestCheckDirectory.replace(/\\/g, '/'), setup, version: '0.4.15' },
+      encoding: 'utf8'
+    }).status
+  }
+  check('Latest promotion 接受 builder 真正的 files[].size metadata', runMetadataGate(metadata) === 0)
+  check('Latest promotion 拒絕檔案大小、下載 url 或 nested hash 不符',
+    runMetadataGate(metadata.replace(`size: ${payload.length}`, 'size: 1')) !== 0 &&
+      runMetadataGate(metadata.replace(`url: ${setup}`, 'url: other.exe')) !== 0 &&
+      runMetadataGate(metadata.replace(`    sha512: ${sha512}`, '    sha512: wrong')) !== 0)
 } finally {
   rmSync(manifestCheckDirectory, { recursive: true, force: true })
 }
