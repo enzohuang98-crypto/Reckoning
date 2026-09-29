@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/windows-packaged-acceptance.yml'
       - 'tools/acceptance/windows-packaged-client.ps1'
+      - 'tools/acceptance/windows-client-desktop.ps1'
       - 'src/**'
       - 'electron-builder*'
       - 'package*.json'
@@ -99,6 +100,9 @@ jobs:
       - name: Verify clean Windows client VM
         shell: pwsh
         run: ./tools/acceptance/windows-client-preflight.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-client-preflight.json"
+      - name: Complete observed hosted VM privacy first-run screen
+        shell: powershell
+        run: ./tools/acceptance/windows-client-desktop.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-client-desktop.json"
       - name: Install and inspect actual packaged application
         shell: powershell
         run: ./tools/acceptance/windows-packaged-client.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-packaged-client.json"
