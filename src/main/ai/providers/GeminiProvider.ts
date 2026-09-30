@@ -78,6 +78,12 @@ interface GeminiModelsResponse {
   }>
 }
 
+function reportedTokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined
+}
+
 export class GeminiProvider implements AIProvider {
   readonly id = 'gemini' as const
   readonly displayName = 'Google Gemini'
@@ -156,12 +162,18 @@ export class GeminiProvider implements AIProvider {
       )
     }
 
+    const inputTokens = reportedTokenCount(data.usageMetadata?.promptTokenCount)
+    const candidateTokens = reportedTokenCount(data.usageMetadata?.candidatesTokenCount)
+    const thoughtTokens = reportedTokenCount(data.usageMetadata?.thoughtsTokenCount)
+    // The output budget includes both candidate and thinking tokens. A missing
+    // component leaves that total unknown, rather than reporting a partial sum.
+    const outputTokens = candidateTokens !== undefined && thoughtTokens !== undefined
+      ? reportedTokenCount(candidateTokens + thoughtTokens)
+      : undefined
     const usage = data.usageMetadata
       ? {
-          inputTokens: data.usageMetadata.promptTokenCount ?? 0,
-          outputTokens:
-            (data.usageMetadata.candidatesTokenCount ?? 0) +
-            (data.usageMetadata.thoughtsTokenCount ?? 0)
+          ...(inputTokens === undefined ? {} : { inputTokens }),
+          ...(outputTokens === undefined ? {} : { outputTokens })
         }
       : undefined
 

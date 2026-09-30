@@ -21,6 +21,7 @@ import {
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
 import { buildVariationBoardFacts } from '../../../src/main/ai/VariationBoardFacts'
 import { AIHttpError, AIResponseValidationError } from '../../../src/main/ai/http'
+import { OpenRouterProvider } from '../../../src/main/ai/providers/OpenRouterProvider'
 import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
 import playOkAcceptanceCases from '../../fixtures/playok/acceptance-cases.json'
@@ -4414,6 +4415,103 @@ async function main(): Promise<void> {
       reportsUsage ? budgetResult.usage?.outputTokens === 10_000
         : budgetResult.usage === undefined && budgetTraces[0]?.modelCallDiagnostics?.every(call => call.outputTokens === undefined) === true)
   }
+
+  for (const budgetCase of [{ mode: 'quick' as const, tokens: 4000 }, { mode: 'research' as const, tokens: 6000 }]) {
+    const originalNetworkError = new TypeError('fetch failed')
+    let attemptedCalls = 0
+    let unavailableError: unknown
+    const unavailableTraces: HarnessTrace[] = []
+    const unavailableProgress: HarnessProgressPayload[] = []
+    const unavailableProvider: AIProvider = {
+      id: 'openai', displayName: 'Network failure with no remaining tokens',
+      async generateExplanation() { attemptedCalls += 1; throw originalNetworkError },
+      async *generateExplanationStream(): AsyncIterable<never> { return }
+    }
+    try {
+      await runExplanationHarness({
+        requestId: `network-budget-${budgetCase.mode}`, analysisId: sameMoveSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW', attachedMove: sameMoveAnalysis.userMove,
+        answerMode: budgetCase.mode,
+        budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: budgetCase.tokens }
+      }, {
+        provider: unavailableProvider, apiKey: 'synthetic-test-key', model: 'fake-model', session: sameMoveSession,
+        registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+        traceStore: { save: trace => unavailableTraces.push(trace) } as never,
+        signal: new AbortController().signal, onProgress: progress => unavailableProgress.push(progress)
+      })
+    } catch (error) { unavailableError = error }
+    check(`exhausted token reservation preserves the actual network failure (${budgetCase.mode})`,
+      unavailableError === originalNetworkError && unavailableTraces[0]?.providerDiagnostic?.category === 'network')
+    check(`exhausted token reservation does not promise or issue a retry (${budgetCase.mode})`,
+      attemptedCalls === 1 && !unavailableProgress.some(progress => progress.phase === 'provider_retry'))
+  }
+
+  const originalFetch = globalThis.fetch
+  const partialUsageRequests: number[] = []
+  const partialUsageTraces: HarnessTrace[] = []
+  const partialUsageModel = 'nvidia/nemotron-3-super-120b-a12b:free'
+  try {
+    globalThis.fetch = async (_input, init) => {
+      const requestBody = JSON.parse(String(init?.body)) as { max_tokens: number }
+      partialUsageRequests.push(requestBody.max_tokens)
+      return new Response(JSON.stringify({
+        model: partialUsageModel,
+        choices: [{ message: { content: partialUsageRequests.length === 1 ? JSON.stringify(invalidRepairDraft) : validRepairText }, finish_reason: 'stop' }],
+        usage: partialUsageRequests.length === 1 ? { prompt_tokens: 10 } : { prompt_tokens: 20, completion_tokens: 500 }
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    const partialUsageResult = await runExplanationHarness({
+      requestId: 'partial-provider-usage-budget', analysisId: sameMoveSession.analysisId,
+      provider: 'openrouter', model: partialUsageModel, userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW', attachedMove: sameMoveAnalysis.userMove,
+      answerMode: 'research',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: 10_000 }
+    }, {
+      provider: new OpenRouterProvider(), apiKey: 'synthetic-test-key', model: partialUsageModel, session: sameMoveSession,
+      registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+      traceStore: { save: trace => partialUsageTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    })
+    check('partial OpenRouter usage reserves unknown completion before a formally validated repair',
+      partialUsageRequests.join(',') === '6000,4000' && countHanCharacters(partialUsageResult.finalText) >= 400)
+    check('partial OpenRouter usage preserves reported input and finish but never invents aggregate output',
+      partialUsageResult.usage?.inputTokens === 30 && partialUsageResult.usage.outputTokens === undefined &&
+      partialUsageTraces[0]?.modelCallDiagnostics?.[0]?.outputTokens === undefined &&
+      partialUsageTraces[0]?.modelCallDiagnostics?.[0]?.finishReason === 'stop' &&
+      partialUsageTraces[0]?.modelCallDiagnostics?.[1]?.outputTokens === 500)
+  } finally { globalThis.fetch = originalFetch }
+
+  const reportedThenMissingRequests: number[] = []
+  const reportedThenMissingTraces: HarnessTrace[] = []
+  try {
+    globalThis.fetch = async (_input, init) => {
+      const requestBody = JSON.parse(String(init?.body)) as { max_tokens: number }
+      reportedThenMissingRequests.push(requestBody.max_tokens)
+      return new Response(JSON.stringify({
+        model: partialUsageModel,
+        choices: [{ message: { content: reportedThenMissingRequests.length === 1 ? JSON.stringify(invalidRepairDraft) : validRepairText } }],
+        ...(reportedThenMissingRequests.length === 1 ? { usage: { prompt_tokens: 10, completion_tokens: 500 } } : {})
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    const reportedThenMissingResult = await runExplanationHarness({
+      requestId: 'reported-then-missing-provider-usage', analysisId: sameMoveSession.analysisId,
+      provider: 'openrouter', model: partialUsageModel, userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW', attachedMove: sameMoveAnalysis.userMove,
+      answerMode: 'research',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: 10_000 }
+    }, {
+      provider: new OpenRouterProvider(), apiKey: 'synthetic-test-key', model: partialUsageModel, session: sameMoveSession,
+      registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+      traceStore: { save: trace => reportedThenMissingTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    })
+    check('missing repair usage clears apparent complete aggregate totals but retains first-call evidence',
+      reportedThenMissingResult.usage?.inputTokens === undefined && reportedThenMissingResult.usage?.outputTokens === undefined &&
+      reportedThenMissingTraces[0]?.modelCallDiagnostics?.[0]?.outputTokens === 500 &&
+      reportedThenMissingTraces[0]?.modelCallDiagnostics?.[1]?.outputTokens === undefined &&
+      countHanCharacters(reportedThenMissingResult.finalText) >= 400)
+  } finally { globalThis.fetch = originalFetch }
 
   const compactCombined = JSON.parse(validRepairText) as { audit: ConsequenceAudit; answer: HarnessAnswer }
   const originalConsequenceClaim = compactCombined.answer.sections[3]!.claims[0]!

@@ -103,6 +103,11 @@ assert.equal(
   '舊 trace 不得被推斷成 v2 isolated-input evidence'
 )
 
+const partialUsageTrace = { ...trace, usage: { inputTokens: 30, finishReason: 'stop', apiKey: 'should-never-export' } } as HarnessTrace
+const partialUsageStore = new HarnessTraceStore({ read: () => [partialUsageTrace] } as never)
+assert.deepEqual(partialUsageStore.listForExport()[0].usage, { inputTokens: 30, finishReason: 'stop' },
+  'Partial provider counts retain reported fields without inventing output or exporting unknown keys')
+
 store.save(trace)
 assert(written)
 assert.equal(JSON.stringify(written).includes('should-never-export'), false)

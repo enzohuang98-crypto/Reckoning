@@ -2218,6 +2218,8 @@ export async function runExplanationHarness(
   const phases: HarnessTrace['phases'] = []
   const modelCallDiagnostics: NonNullable<HarnessTrace['modelCallDiagnostics']> = []
   let usage: TokenUsage | undefined
+  let inputUsageComplete = true
+  let outputUsageComplete = true
   /** 提升到函式作用域，讓逾時自動收尾（catch 區塊）也能用目前已知的具體後果產生保守版答案。 */
   let audit: ConsequenceAudit = {
     bestMovePurpose: '',
@@ -2460,20 +2462,22 @@ export async function runExplanationHarness(
         // Missing usage is not evidence of zero consumption. Reserve this
         // call's maximum for later phases, without inventing provider usage.
         outputTokens += response.usage?.outputTokens ?? requestMaxOutputTokens
-        if (response.usage) {
+        inputUsageComplete = inputUsageComplete && response.usage?.inputTokens !== undefined
+        outputUsageComplete = outputUsageComplete && response.usage?.outputTokens !== undefined
+        if (usage || response.usage) {
           usage = {
-            inputTokens: (usage?.inputTokens ?? 0) + response.usage.inputTokens,
-            outputTokens: (usage?.outputTokens ?? 0) + response.usage.outputTokens,
+            ...(inputUsageComplete ? { inputTokens: (usage?.inputTokens ?? 0) + (response.usage?.inputTokens ?? 0) } : {}),
+            ...(outputUsageComplete ? { outputTokens: (usage?.outputTokens ?? 0) + (response.usage?.outputTokens ?? 0) } : {}),
             ...((usage?.reasoningTokens ?? 0) +
-                (response.usage.reasoningTokens ?? 0) >
+                (response.usage?.reasoningTokens ?? 0) >
               0
               ? {
                   reasoningTokens:
                     (usage?.reasoningTokens ?? 0) +
-                    (response.usage.reasoningTokens ?? 0)
+                    (response.usage?.reasoningTokens ?? 0)
                 }
               : {}),
-            ...(response.usage.finishReason
+            ...(response.usage?.finishReason
               ? { finishReason: response.usage.finishReason }
               : {})
           }
@@ -2539,9 +2543,10 @@ export async function runExplanationHarness(
         })
         rethrowAbortLikeError(error)
         if (attempt > 0 || !isTransientModelError(error)) throw error
-        // A retry needs another model call. Preserve the provider failure when
-        // this call has already consumed the last permitted slot.
-        if (modelCalls >= modelCallLimit) throw error
+        // A retry needs another call and token allowance. Preserve the original
+        // provider failure when the last slot or conservative token reservation
+        // leaves no capacity to issue another request.
+        if (modelCalls >= modelCallLimit || outputTokens >= budget.maxOutputTokens) throw error
         if (
           phaseDeadlineAt !== null &&
           phaseDeadlineAt - Date.now() <= INITIAL_MOVE_MIN_RETRY_WINDOW_MS

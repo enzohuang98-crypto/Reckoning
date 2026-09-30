@@ -392,10 +392,16 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
       .slice(-30),
     modelCalls: typeof trace.modelCalls === 'number' ? trace.modelCalls : 0,
     engineRounds: typeof trace.engineRounds === 'number' ? trace.engineRounds : 0,
-    ...(trace.usage &&
-    typeof trace.usage.inputTokens === 'number' &&
-    typeof trace.usage.outputTokens === 'number'
-      ? { usage: { ...trace.usage } }
+    ...(trace.usage && isRecord(trace.usage)
+      ? { usage: {
+          ...(typeof trace.usage.inputTokens === 'number' && Number.isFinite(trace.usage.inputTokens) && trace.usage.inputTokens >= 0
+            ? { inputTokens: trace.usage.inputTokens } : {}),
+          ...(typeof trace.usage.outputTokens === 'number' && Number.isFinite(trace.usage.outputTokens) && trace.usage.outputTokens >= 0
+            ? { outputTokens: trace.usage.outputTokens } : {}),
+          ...(typeof trace.usage.reasoningTokens === 'number' && Number.isFinite(trace.usage.reasoningTokens) && trace.usage.reasoningTokens >= 0
+            ? { reasoningTokens: trace.usage.reasoningTokens } : {}),
+          ...(typeof trace.usage.finishReason === 'string' ? { finishReason: trace.usage.finishReason.slice(0, 64) } : {})
+        } }
       : {}),
     ...(sanitizeModelCallDiagnostics(trace.modelCallDiagnostics).length > 0
       ? { modelCallDiagnostics: sanitizeModelCallDiagnostics(trace.modelCallDiagnostics) }

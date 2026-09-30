@@ -338,6 +338,22 @@ await withServer(
     )
   }
 )
+for (const reportedUsage of [{ prompt_tokens: 20 }, { completion_tokens: 0 }, { prompt_tokens: -1, completion_tokens: -1 }]) {
+  await withServer(
+    () => ({ model: 'nvidia/nemotron-3-super-120b-a12b:free',
+      choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }], usage: reportedUsage }),
+    async baseUrl => {
+      const response = await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model: 'nvidia/nemotron-3-super-120b-a12b:free',
+        apiKey: 'synthetic-test-key', prompt: 'Synthetic partial usage', maxOutputTokens: 6000,
+        metadata: { requestId: 'partial-usage', analysisId: 'partial-usage', userLevel: 'basic', explanationStyle: 'long_analytical' }
+      })
+      assert.equal(response.usage?.inputTokens, reportedUsage.prompt_tokens !== undefined && reportedUsage.prompt_tokens >= 0 ? reportedUsage.prompt_tokens : undefined)
+      assert.equal(response.usage?.outputTokens, reportedUsage.completion_tokens !== undefined && reportedUsage.completion_tokens >= 0 ? reportedUsage.completion_tokens : undefined)
+      assert.equal(response.usage?.finishReason, 'stop')
+    }
+  )
+}
 console.log('OpenRouter free-model binding, response-format, and reasoning-budget tests passed')
 }
 

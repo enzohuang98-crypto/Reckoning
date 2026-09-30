@@ -242,10 +242,12 @@ export class OpenRouterProvider implements AIProvider {
       text,
       provider: this.id,
       model: request.model,
-      usage: data.usage
+      usage: data.usage || finishReason !== undefined
         ? {
-            inputTokens: data.usage.prompt_tokens ?? 0,
-            outputTokens: data.usage.completion_tokens ?? 0,
+            ...(typeof data.usage?.prompt_tokens === 'number' && Number.isFinite(data.usage.prompt_tokens) && data.usage.prompt_tokens >= 0
+              ? { inputTokens: data.usage.prompt_tokens } : {}),
+            ...(typeof outputTokens === 'number' && Number.isFinite(outputTokens) && outputTokens >= 0
+              ? { outputTokens } : {}),
             ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
             ...(finishReason === undefined ? {} : { finishReason })
           }
