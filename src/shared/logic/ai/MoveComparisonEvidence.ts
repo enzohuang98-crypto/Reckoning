@@ -1,5 +1,5 @@
 import type { MoveComparisonResult } from '../../types/MoveComparisonResult'
-import { chineseMoveMentions } from '../board/ChineseNotation'
+import { canonicalChineseMoveNotation, chineseMoveMentions } from '../board/ChineseNotation'
 
 export type MoveComparisonEvidenceState =
   | 'same_move'
@@ -19,8 +19,8 @@ export function hasAssertedMoveCriticism(text: string, moveNames: string[]): boo
     for (const clause of sentence.split(/[，,]|但(?:是)?|然而|可是|卻|却/)) {
       const references = [
         ...Array.from(clause.matchAll(subjectPattern), (match) => ({ index: match.index!, user: true })),
-        ...chineseMoveMentions(clause).filter(({ move }) => !moveNames.includes(move))
-          .map(({ index }) => ({ index, user: false })),
+        ...chineseMoveMentions(clause).map(({ move, index }) => ({ index,
+          user: moveNames.some(name => canonicalChineseMoveNotation(name) === canonicalChineseMoveNotation(move)) })),
         ...Array.from(clause.matchAll(/對手(?:的)?(?:著法|着法|這步|这步)|黑方(?:的)?(?:著法|着法)|紅方(?:的)?(?:著法|着法)/g),
           (match) => ({ index: match.index!, user: false }))
       ].sort((a, b) => a.index - b.index)

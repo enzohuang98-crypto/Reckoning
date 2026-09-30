@@ -20,7 +20,7 @@ import {
   readJsonResponseBounded,
   toAITransportError
 } from '../http'
-import { OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL, openRouterReasoningConfig } from '../OpenRouterRequestPolicy'
+import { OPENROUTER_NEMOTRON_SUPER_FREE_MODEL, OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL, openRouterReasoningConfig } from '../OpenRouterRequestPolicy'
 import {
   credentialTestRequest,
   credentialTestSucceeded
@@ -158,6 +158,10 @@ export class OpenRouterProvider implements AIProvider {
       request.model,
       request.responseFormat === 'json' ? 'json' : 'text'
     )
+    // The exact Super free Nvidia endpoint advertises structured_outputs.
+    // Other model/phase contracts retain their existing response format.
+    const structured = request.model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL &&
+      request.responseFormat === 'json' && request.responseSchema !== undefined
     const response = await fetchOpenRouterResponse(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       signal,
@@ -169,7 +173,10 @@ export class OpenRouterProvider implements AIProvider {
         stream: false,
         // The exact free Ultra endpoint advertises reasoning but no JSON-mode
         // parameter. Harness still requests and validates JSON in its prompt.
-        ...(request.responseFormat === 'json' && request.model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL
+        ...(structured
+          ? { response_format: { type: 'json_schema', json_schema: { ...request.responseSchema!, strict: true } },
+              provider: { require_parameters: true } }
+          : request.responseFormat === 'json' && request.model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL
           ? { response_format: { type: 'json_object' } }
           : {}),
         ...(reasoningConfig ? { reasoning: reasoningConfig } : {}),

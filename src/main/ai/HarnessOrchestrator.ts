@@ -52,12 +52,14 @@ import {
   type MoveComparisonEvidenceState
 } from '@shared/logic/ai/MoveComparisonEvidence'
 import type { CausalChain } from '@shared/types/Harness'
+import { canonicalChineseMoveNotation, chineseMoveIsMentioned } from '@shared/logic/board/ChineseNotation'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../storage/HarnessTraceStore'
 import { aiErrorStatus, describeAIExecutionError } from './http'
 import type { PreparedExplanationExecution } from './prepareExplanationExecution'
-import { openRouterReasoningConfig } from './OpenRouterRequestPolicy'
+import { OPENROUTER_NEMOTRON_SUPER_FREE_MODEL, openRouterReasoningConfig } from './OpenRouterRequestPolicy'
+import { buildInitialMoveResponseSchema } from './InitialMoveResponseSchema'
 
 interface HarnessTask {
   kind: 'root' | 'evaluate_move'
@@ -502,7 +504,7 @@ function normalizeConsequenceAudit(
       boardImpact: claim?.causal?.consequence ?? '',
       evidenceIds: claim?.evidenceIds ?? [],
       supportingMoves: [...new Set(collectReferencedVariationMoves(scopedEvidence))]
-        .filter((move) => completeText.includes(move))
+        .filter((move) => chineseMoveIsMentioned(completeText, move))
     }
   })
   return {
@@ -1019,7 +1021,8 @@ export function validateConsequenceAudit(
       errors.push(`${consequence.id} 至少要指出兩步主線著法，不能只貼一個結果標籤。`)
     } else if (
       consequence.supportingMoves.some(
-        (move) => !availableMoves.has(move) || !referencedMoves.has(move)
+        (move) => !availableMoves.has(canonicalChineseMoveNotation(move) ?? move) ||
+          !referencedMoves.has(canonicalChineseMoveNotation(move) ?? move)
       )
     ) {
       errors.push(`${consequence.id} 使用了未出現在其引用變例中的著法。`)
@@ -1074,7 +1077,7 @@ export function validateConsequenceAudit(
         adjudication.decisionReason
       ].join(' ')
       for (const move of candidateDisplayMoves) {
-        if (move && !comparisonText.includes(move)) {
+        if (move && !chineseMoveIsMentioned(comparisonText, move)) {
           errors.push(`雙引擎比較沒有逐字對照候選著法 ${move}。`)
         }
       }
@@ -1175,7 +1178,8 @@ function hasAssertedForcedVariation(text: string): boolean {
     let previousAssertionEnd = 0
     for (const match of clause.matchAll(assertion)) {
       const prefix = clause.slice(previousAssertionEnd, match.index)
-      const denied = /(?:不是|並非|并非|不代表|不表示|不能(?:說|说|稱|称|認定|认定|當成|当成)|不可(?:說|说|稱|称|認定|认定|當成|当成)|不應(?:說|说|稱|称|認定|认定|當成|当成))[^。！？；，]{0,30}$/.test(prefix) ||
+      const denied = /(?:不(?:必|會|会|一定|可能)?|未必)\s*$/.test(prefix) ||
+        /(?:不是|並非|并非|不代表|不表示|不能(?:說|说|稱|称|認定|认定|當成|当成)|不可(?:說|说|稱|称|認定|认定|當成|当成)|不應(?:說|说|稱|称|認定|认定|當成|当成))[^。！？；，]{0,30}$/.test(prefix) ||
         /\b(?:not|never|cannot)(?:\s+(?:mean|imply|claim|say|that|Black|Red|the|opponent|is|was|a|to)){0,6}\s*$/i.test(prefix)
       if (!denied) return true
       previousAssertionEnd = match.index! + match[0].length
@@ -1310,7 +1314,7 @@ export function validateAnswer(
       collectReferencedVariationMoves(referencedEvidence)
     )
     const crossVariationMoves = explanationMoves.filter(
-      (move) => claimText.includes(move) && !scopedMoves.has(move)
+      (move) => chineseMoveIsMentioned(claimText, move) && !scopedMoves.has(move)
     )
     if (crossVariationMoves.length > 0) {
       errors.push(
@@ -1323,7 +1327,7 @@ export function validateAnswer(
       )
       if (
         opponentMoves.length > 0 &&
-        !opponentMoves.some((move) => claim.causal?.opponentUse.includes(move))
+        !opponentMoves.some((move) => chineseMoveIsMentioned(claim.causal!.opponentUse, move))
       ) {
         errors.push(
           `${claim.id} 的對手利用沒有引用所屬變例中輪到對手走的著法。`
@@ -1362,11 +1366,9 @@ export function validateAnswer(
         for (const finding of linkedFindings) {
           if (
             !finding.evidenceIds.some((id) => claim.evidenceIds.includes(id)) ||
-            !finding.supportingMoves.some((move) =>
-              [claim.text, ...(claim.causal ? Object.values(claim.causal) : [])]
-                .join(' ')
-                .includes(move)
-            )
+            !finding.supportingMoves.some((move) => chineseMoveIsMentioned(
+              [claim.text, ...(claim.causal ? Object.values(claim.causal) : [])].join(' '), move
+            ))
           ) {
             errors.push(
               `${claim.id} 雖引用 ${finding.id}，內容卻沒有連到該 finding 的變例與著法。`
@@ -1430,7 +1432,7 @@ export function validateAnswer(
   }
   if (requirements.hasUserMove && explanationMoves.length >= 2) {
     const mentionedMoveCount = explanationMoves.filter((move) =>
-      prose.includes(move)
+      chineseMoveIsMentioned(prose, move)
     ).length
     if (mentionedMoveCount < 2) {
       errors.push('回答沒有把棋理原因連回至少兩步引擎主線中的中文著法。')
@@ -2406,6 +2408,11 @@ export async function runExplanationHarness(
           // repair). Providers that support structured output can therefore
           // enforce valid JSON instead of relying on markdown extraction.
           responseFormat: responseFormat === 'json' ? 'json' as const : undefined,
+          ...(payload.provider === 'openrouter' && deps.model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL &&
+            responseFormat === 'json' && isInitialMoveComparison && dualComparison?.status !== 'disagreement' &&
+            (callStage === 'initial_combined' || callStage === 'repair')
+            ? { responseSchema: buildInitialMoveResponseSchema(mode, evidence.map(item => item.id)) }
+            : {}),
           metadata: {
             requestId: payload.requestId,
             analysisId: payload.analysisId,
@@ -2586,7 +2593,7 @@ export async function runExplanationHarness(
   }
   const recoverQuestion = async (raw: string | null) => {
     const question = payload.followUpQuestion ?? ''
-    const hasEngineAnchor = (text: string): boolean => collectDisplayMoves(evidence).some(move => text.includes(move))
+    const hasEngineAnchor = (text: string): boolean => collectDisplayMoves(evidence).some(move => chineseMoveIsMentioned(text, move))
     const passesQuestionChecks = (text: string): boolean => {
       const boardIssues = validateVariationBoardStatements(text, evidence)
       validationErrors.push(...boardIssues.map(issue => `追問回答未通過：${issue}`))
@@ -3056,6 +3063,7 @@ ${comparisonContract}
 - 除非主線直接出現將死或確定得子，避免「完全、全面、嚴重、必然」等誇大語氣；結論強度必須與可見主線相稱。
 - 使用者可讀正文不得少於 400 個漢字，以約 500–900 個中文字為目標；棋理深度優先，不以增加模型輪次換篇幅。
 - 字數只計五段 claims.text 的繁體漢字，不計 JSON、audit、causal 或 heading：直接結論約 90–120 漢字、實戰步比較約 150–190 漢字、AI 首選約 120–150 漢字、對手應對與後果約 180–240 漢字、實戰原則約 70–100 漢字。不可用重複句或內部欄位湊字數。
+- 每個 claim 都保留非空 evidenceIds（包括實戰原則 C5），只選本次提供的證據 id。不適用 findingIds 或 causal 的段落分別填 [] 或 null，仍必須交代本局正文；輸出 schema 只約束欄位，不替代棋盤與內容檢查。
 - answer 固定五個 section id，依序為 direct_conclusion、actual_move_problem、best_move_plan、opponent_exploitation、practical_principle。
 - heading 只供顯示；section id 固定，但標題須符合上方比較狀態，不得用標題暗示不存在的失誤。
 - actual_move_problem 必須依比較狀態完整說明兩步關係；opponent_exploitation 必須包含對手合理應對、至少兩步主線與後續盤面結果。

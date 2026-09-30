@@ -1,4 +1,6 @@
 import type { AIProvider } from '../../../src/shared/types/AIProviderTypes'
+import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
+import Ajv from 'ajv'
 import type { EngineAnalysis } from '../../../src/shared/types/EngineAnalysis'
 import { START_FEN } from '../../../src/shared/types/BoardState'
 import { convertCpScore } from '../../../src/main/engine/EngineOutputParser'
@@ -1208,6 +1210,18 @@ async function main(): Promise<void> {
     deniedCriticismAccepted = accepted.finalText.includes('這不是失誤，也沒有錯失機會。')
   } catch { /* The assertion below records a rejection as failure. */ }
   check('同首選的正常否定評價通過 scorer 與完整 Harness', deniedCriticismAccepted)
+  const mixedNotationProvider = new MutatedSameMoveProvider((answer) => {
+    answer.directAnswer = answer.directAnswer.replaceAll('馬8進7', '馬8進七')
+    for (const section of answer.sections) for (const claim of section.claims) {
+      claim.text = claim.text.replaceAll('馬8進7', '馬8進七')
+      if (claim.causal) for (const field of Object.keys(claim.causal) as Array<keyof typeof claim.causal>) {
+        claim.causal[field] = claim.causal[field].replaceAll('馬8進7', '馬8進七')
+      }
+    }
+  })
+  const mixedNotationResult = await runSameMoveVariant(mixedNotationProvider)
+  check('相同棋盤著法的目的數字字形差異能通過完整 Harness，正文不被改寫',
+    mixedNotationResult.finalText.includes('馬8進七'))
   let hiddenMetadataPreservesLength = false
   const hiddenConsequencesProvider = new MutatedSameMoveProvider((answer) => {
     const opponent = answer.sections.find((section) => section.id === HARNESS_SECTION_IDS.opponentExploitation)!
@@ -1611,6 +1625,44 @@ async function main(): Promise<void> {
       formalTraces[0]?.teacherCaseKey === frozenCase.caseKey &&
       formalTraces[0]?.evaluation?.externalReviewId === 'review-formal'
   )
+
+  let receivedInitialSchema = false
+  const strictFixtureProvider: AIProvider = {
+    id: 'openrouter', displayName: 'SYNTHETIC strict fixture provider',
+    async generateExplanation(request: AIExplanationRequest) {
+      receivedInitialSchema = request.responseSchema !== undefined
+      const strictAnswer = {
+        mode: formalAnswer.mode, title: formalAnswer.title,
+        directAnswer: formalAnswer.directAnswer, directAnswerEvidenceIds: formalAnswer.directAnswerEvidenceIds,
+        sections: formalAnswer.sections.map(section => ({ ...section,
+          claims: section.claims.map(claim => ({ ...claim, findingIds: claim.findingIds ?? [], causal: claim.causal ?? null })) })),
+        generalNotes: [], warnings: []
+      }
+      const strictAudit = { bestMovePurpose: formalAudit.bestMovePurpose, userMoveProblem: formalAudit.userMoveProblem,
+        consequences: formalAudit.consequences.map((finding, index) => ({ id: finding.id,
+          category: finding.category, claimId: index === 0 ? 'C4a' : 'C4b', verified: finding.verified })),
+        contradictions: [], enoughEvidence: true }
+      const combined = { answer: strictAnswer, audit: strictAudit }
+      const validateSchema = new Ajv({ strict: true }).compile(request.responseSchema!.schema)
+      check('正式五段引擎 fixture 符合實際 request 的 JSON schema', validateSchema(combined), validateSchema.errors)
+      return { text: JSON.stringify(combined), provider: this.id, model: request.model,
+        createdAt: Date.now(), groundedOnEngineData: true, usage: { inputTokens: 10, outputTokens: 2000 } }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
+  const strictFixtureResult = await runExplanationHarness({
+    requestId: 'schema-formal-fixture', analysisId: formalSession.analysisId, provider: 'openrouter',
+    model: 'nvidia/nemotron-3-super-120b-a12b:free', userLevel: 'intermediate', explanationStyle: 'long_analytical',
+    language: 'zh-TW', answerMode: 'research', attachedMove: formalSession.userMove
+  }, {
+    provider: strictFixtureProvider, apiKey: 'synthetic-test-key',
+    model: 'nvidia/nemotron-3-super-120b-a12b:free', session: formalSession,
+    registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+    traceStore: { save: () => undefined } as never, signal: new AbortController().signal, onProgress: () => undefined
+  })
+  check('schema 合格 JSON 仍通過同一正式 Harness／正文 validator，未走替代生成路徑',
+    receivedInitialSchema && strictFixtureResult.finalText.includes('士4進5') &&
+      countHanCharacters(strictFixtureResult.finalText) >= 400)
 
   const nominalTraces: HarnessTrace[] = []
   const nominalCatalog = getTeacherTestCatalog()
@@ -3690,6 +3742,8 @@ async function main(): Promise<void> {
     '主線顯示馬8進7，但不是唯一回應。',
     '不能說黑方被迫走馬8進7，主線只展示其中一種合理選擇。',
     '這不代表黑方只能走馬8進7。',
+    '黑方不必被迫走馬8進7。',
+    '黑方並不被迫走馬8進7。',
     'The principal variation does not mean Black must play this reply.'
   ]) {
     forcedLineAnswer.directAnswer = text

@@ -1,5 +1,6 @@
 import { validateVariationBoardStatements as validate } from '../../../src/main/ai/VariationBoardFacts'
 import { START_FEN } from '../../../src/shared/types/BoardState'
+import { canonicalChineseMoveNotation, chineseMoveIsMentioned } from '../../../src/shared/logic/board/ChineseNotation'
 import type { HarnessEvidence } from '../../../src/shared/types/Harness'
 
 let passed = 0
@@ -21,9 +22,27 @@ const opening = evidence(['h2e2', 'h9g7'], ['炮二平五', '馬8進7'])
 const capture = evidence(['a1a9'], ['車九進八'], 'p3k4/9/9/9/4p4/9/9/9/R8/4K4 w - - 0 1')
 const noCapture = evidence(['a1a9'], ['車九進八'], '4k4/9/9/9/4p4/9/9/9/R8/4K4 w - - 0 1')
 
+check('black file notation normalizes only its mixed destination', canonicalChineseMoveNotation('馬8進七') === '馬8進7')
+check('red file notation normalizes only its mixed destination', canonicalChineseMoveNotation('馬八進7') === '馬八進七')
+check('red and black file identities do not collapse', canonicalChineseMoveNotation('馬八進七') !== canonicalChineseMoveNotation('馬8進7'))
+check('fullwidth and simplified spelling normalize deterministically', canonicalChineseMoveNotation('马８进７') === '馬8進7')
+check('prefix moves retain the destination convention that distinguishes sides', canonicalChineseMoveNotation('后马进７') === '後馬進7' && canonicalChineseMoveNotation('後馬進7') !== canonicalChineseMoveNotation('後馬進七'))
+check('a recognized mixed spelling satisfies mention checks', chineseMoveIsMentioned('對手可走马８进七。', '馬8進7'))
+check('another side notation cannot satisfy mention checks', !chineseMoveIsMentioned('對手可走馬八進7。', '馬8進7'))
+check('non-notation fixture labels retain literal matching', chineseMoveIsMentioned('Reply is Black horse.', 'Black horse'))
+check('extra prose is not accepted as a canonical move', canonicalChineseMoveNotation('馬8進7吃車') === null)
+
 check('the opening cannon belongs to Red, not Black', validate('黑方炮二平五立即在中路吃掉紅方車。', [opening]).length > 0)
 check('the opening horse belongs to Black and does not check or capture', validate('紅方以馬8進7跳馬將軍並吃掉黑方炮。', [opening]).length > 0)
 check('correct opening side and deployment remain acceptable', validate('紅方炮二平五建立中炮，黑方以馬8進7發展右翼馬。', [opening]).length === 0)
+check('mixed destination numerals still bind to the same black horse fact', validate('黑方以馬8進七發展右翼馬。', [opening]).length === 0)
+check('mixed destination numerals still bind to the same red cannon fact', validate('紅方炮二平5建立中炮。', [opening]).length === 0)
+check('fullwidth numerals and simplified move characters bind to the same fact', validate('黑方马８进７沒有吃子也沒有將軍。', [opening]).length === 0)
+check('a red horse with a mixed destination binds to its actual red ply', validate('紅方馬二進3沒有吃子。', [evidence(['h2e2', 'h9g7', 'h0g2'], ['炮二平五', '馬8進7', '馬二進三'])]).length === 0)
+check('mixed notation does not waive the actual side', validate('紅方馬8進七沒有吃子。', [opening]).length > 0)
+check('fullwidth notation does not make a fabricated capture valid', validate('黑方马８进７吃掉紅方車。', [opening]).length > 0)
+check('red file notation cannot borrow facts from a black-file cited move', validate('黑方馬八進7沒有吃子。', [opening]).length > 0)
+check('mixed notation cannot borrow a fact from an uncited variation', validate('黑方馬8進七沒有吃子。', [capture]).length > 0)
 check('the opening moves do not capture or check', validate('炮二平五沒有吃子，馬8進7未將軍。', [opening]).length === 0)
 check('an invented move cannot evade facts by being absent from the cited PV', validate('紅方車九平五吃掉黑方炮並將軍。', [opening]).length > 0)
 check('a fact assertion without any replayable evidence fails closed', validate('紅方車九平五吃掉黑方炮並將軍。', []).length > 0)

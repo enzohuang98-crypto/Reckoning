@@ -30,6 +30,8 @@ export interface AIExplanationRequest {
   maxOutputTokens?: number
   /** 內部 Harness 需要可解析物件時，要求支援的 Provider 回傳 JSON。 */
   responseFormat?: 'text' | 'json'
+  /** Main-process output contract; only providers confirmed to support it send this schema. */
+  responseSchema?: { name: string; schema: Record<string, unknown> }
   metadata: {
     requestId: string
     analysisId: string

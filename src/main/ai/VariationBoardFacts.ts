@@ -1,6 +1,10 @@
 import { parseFen } from '@shared/logic/board/fen'
 import { applyUciMove, isKingInCheck, parseUciMove } from '@shared/logic/board/moves'
-import { chineseMoveMentions, formatChineseMove } from '@shared/logic/board/ChineseNotation'
+import {
+  canonicalChineseMoveNotation,
+  chineseMoveMentions,
+  formatChineseMove
+} from '@shared/logic/board/ChineseNotation'
 import type { PieceColor, PieceType } from '@shared/types/BoardState'
 import type { HarnessEvidence } from '@shared/types/Harness'
 
@@ -104,7 +108,8 @@ export function validateVariationBoardStatements(
       const checks = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?)(?:形成|構成|构成)?(?:將軍|将军)/g)]
         .filter((match) => !isHypothetical(before + after.slice(0, match.index)))
       if (!side && captures.length === 0 && checks.length === 0) continue
-      const candidates = facts.filter((fact) => fact.move === move)
+      const canonicalMove = canonicalChineseMoveNotation(move)
+      const candidates = facts.filter((fact) => canonicalChineseMoveNotation(fact.move) === canonicalMove)
       const fact = candidates[0]
       if (!fact) {
         if (captures.length > 0 || checks.length > 0 || (side && !isHypothetical(before))) {

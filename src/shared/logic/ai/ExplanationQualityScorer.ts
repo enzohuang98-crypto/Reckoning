@@ -25,6 +25,7 @@
  */
 
 import { containsConcreteXiangqiTerm } from './xiangqiTerms'
+import { chineseMoveIsMentioned } from '../board/ChineseNotation'
 import {
   HARNESS_SECTION_IDS,
   type CausalChain,
@@ -39,12 +40,12 @@ export function compactChineseText(text: string): string {
 }
 
 export function mentionsAnyMove(text: string, moves: string[]): boolean {
-  return moves.some((move) => move.trim() && text.includes(move))
+  return moves.some((move) => move.trim() && chineseMoveIsMentioned(text, move))
 }
 
-/** 正文中逐字出現的不同著法數：只提一步等於沒把因果沿主線走完。 */
+/** 正文中出現的不同主線著法數；記譜字形差異不改變棋盤或變例身分。 */
 export function distinctMentionedMoves(text: string, moves: string[]): number {
-  return new Set(moves.filter((move) => move.trim() && text.includes(move))).size
+  return new Set(moves.filter((move) => move.trim() && chineseMoveIsMentioned(text, move))).size
 }
 
 function characterBigrams(text: string): Map<string, number> {
@@ -600,8 +601,8 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
     if (!comparisonSection) {
       issues.push('缺少「兩種著法完整比較」區塊。')
     } else if (!isLimitedInsufficiencyStatement(text)) {
-      const mentionsBest = bestMoveDisplay ? text.includes(bestMoveDisplay) : false
-      const mentionsUser = userMoveDisplay ? text.includes(userMoveDisplay) : false
+      const mentionsBest = bestMoveDisplay ? chineseMoveIsMentioned(text, bestMoveDisplay) : false
+      const mentionsUser = userMoveDisplay ? chineseMoveIsMentioned(text, userMoveDisplay) : false
       if (
         comparisonState === 'same_move' &&
         bestMoveDisplay &&
