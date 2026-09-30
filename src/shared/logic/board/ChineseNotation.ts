@@ -11,6 +11,12 @@ import { applyUciMove, parseUciMove } from './moves'
 const RED_NUMERALS = ['九', '八', '七', '六', '五', '四', '三', '二', '一']
 const BLACK_NUMERALS = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 
+/** Recognize notation syntax independently of any evidence whitelist. */
+export function chineseMoveMentions(text: string): Array<{ move: string; index: number }> {
+  const notation = /(?:[帥帅將将仕士相象馬马車车炮砲兵卒][一二三四五六七八九1-9１-９]|[前中後后][帥帅將将仕士相象馬马車车炮砲兵卒])[進进退平][一二三四五六七八九1-9１-９]/g
+  return [...text.matchAll(notation)].map((match) => ({ move: match[0], index: match.index! }))
+}
+
 const PIECE_NAME: Record<PieceColor, Record<PieceType, string>> = {
   red: {
     king: '帥',

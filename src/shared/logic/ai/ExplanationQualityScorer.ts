@@ -30,7 +30,7 @@ import {
   type CausalChain,
   type HarnessSectionId
 } from '../../types/Harness'
-import type { MoveComparisonEvidenceState } from './MoveComparisonEvidence'
+import { hasAssertedMoveCriticism, type MoveComparisonEvidenceState } from './MoveComparisonEvidence'
 
 /* ---------- 共用文字工具（Harness 驗證與評分器共用，單一事實來源） ---------- */
 
@@ -452,7 +452,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
   // 1. 最佳著法目的
   {
     const issues: string[] = []
-    const text = sectionText(purposeSection)
+    const text = sectionPlainText(purposeSection)
     if (!purposeSection) {
       issues.push('缺少「最佳著法想做什麼」區塊。')
     } else if (looksVaguePurposeText(text)) {
@@ -475,7 +475,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
   // 2. 實戰步評價；只有引擎有差異證據時才要求「錯失什麼」。
   if (hasUserMove) {
     const issues: string[] = []
-    const text = sectionText(missedSection)
+    const text = sectionPlainText(missedSection)
     if (!missedSection) {
       issues.push('缺少「你的著法錯失什麼」區塊。')
     } else if (isLimitedInsufficiencyStatement(text)) {
@@ -484,7 +484,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       if (!/(一致|相同|同一|就是|首選|首选)/.test(text)) {
         issues.push('使用者著法與首選相同時，必須明說兩者一致。')
       }
-      if (/(錯失|失誤|敗著|懲罰|惩罚|較差|更差)/.test(text)) {
+      if (hasAssertedMoveCriticism(text, [userMoveDisplay ?? '', bestMoveDisplay ?? ''])) {
         issues.push('使用者著法與首選相同時，不得硬寫成失誤、較差或遭到懲罰。')
       }
     } else if (comparisonState === 'near_equivalent') {
@@ -515,7 +515,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
   // 3. 只有有差異證據時才要求「為什麼不好」。
   if (hasUserMove) {
     const issues: string[] = []
-    const text = `${sectionText(missedSection)} ${sectionText(comparisonSection)} ${answer.directAnswer}`
+    const text = `${sectionPlainText(missedSection)} ${sectionPlainText(comparisonSection)} ${answer.directAnswer}`
     if (
       requiresNegativeComparison &&
       !isLimitedInsufficiencyStatement(text) &&
@@ -537,7 +537,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
   // 4. 對手如何利用
   if (hasUserMove) {
     const issues: string[] = []
-    const text = sectionText(opponentSection)
+    const text = sectionPlainText(opponentSection)
     if (!opponentSection) {
       issues.push('缺少「對手如何利用」區塊。')
     } else if (isLimitedInsufficiencyStatement(text)) {
@@ -565,7 +565,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
   // 5. 後續具體盤面後果（主線不足時必須誠實說不足）
   {
     const issues: string[] = []
-    const text = sectionText(consequenceSection)
+    const text = sectionPlainText(consequenceSection)
     const pvSufficient = availableMoves.length >= 2
     if (!consequenceSection) {
       issues.push('缺少「後續主線與具體後果」區塊。')

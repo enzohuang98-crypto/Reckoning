@@ -47,6 +47,7 @@ import {
   type QualityReport
 } from '@shared/logic/ai/ExplanationQualityScorer'
 import {
+  hasAssertedMoveCriticism,
   moveComparisonEvidenceState,
   type MoveComparisonEvidenceState
 } from '@shared/logic/ai/MoveComparisonEvidence'
@@ -913,18 +914,8 @@ function consequenceTextIssues(
 }
 
 function contradictsSameMove(text: string, evidence: HarnessEvidence[]): boolean {
-  const moveNames = [...new Set(evidence.map((item) => item.displayMove).filter(Boolean))]
-    .map((move) => move!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  const subject = [...moveNames, '實戰步', '实战步', '實戰著法', '实战着法', '這步', '这步', '你的著法', '你的着法'].join('|')
-  const verdict = new RegExp(`(?:${subject})[^。！？；，,]{0,12}?(?:較差|较差|更差|失誤|失误|敗著|败着|錯失|错失|不好|懲罰|惩罚)`)
-  return text.split(/[。！？；，,]|但(?:是)?|然而|可是/).some((clause) => {
-    const match = verdict.exec(clause)
-    if (!match) return false
-    // A negated or conditional criticism is not an asserted verdict.
-    return !/(?:不是|並非|并非|不能說|不能说|不得|不應|不应|無法說|无法说|如果|假如|若)/.test(
-      clause.slice(0, match.index + match[0].length)
-    )
-  })
+  return hasAssertedMoveCriticism(text,
+    [...new Set(evidence.map((item) => item.displayMove).filter((move): move is string => Boolean(move)))])
 }
 
 export function validateConsequenceAudit(
@@ -3092,8 +3083,8 @@ audit 規則：
                   : '中性記錄目前可確定的差異與證據限制。'
             }
 - consequences 只輸出 id、category、claimId、verified；K1 指向 C4a、K2 指向 C4b。不要重寫 summary、opponentUse、boardImpact、supportingMoves 或 evidenceIds，程式僅從被引用 claim 的原文、causal 與所引用主線解析，缺少內容仍拒絕。
-- opponent_exploitation 中 C4a、C4b 各寫約90–120漢字並附完整 causal，描述互不重複的兩項後果。每個 claim 的可見正文與 causal.opponentUse、causal.consequence 合計逐字包含至少兩步實戰主線，以及具體棋子／線路關係。
-- 被引用的 C4a、C4b 各自要在 text、causal.opponentUse、causal.consequence 合計逐字包含兩步不同中文實戰主線著法，且說出棋子、線路、王區、陣形或威脅。
+- opponent_exploitation 中 C4a、C4b 各寫約90–120漢字並附完整 causal，描述互不重複的兩項後果。每個 claim 的可見 text 本身逐字包含至少兩步實戰主線、時序或因果連接，以及具體棋子／線路關係；隱藏 causal 不能代替玩家看得到的內容。
+- 被引用的 C4a、C4b 各自要在 text 本身逐字包含兩步不同中文實戰主線著法，且說出棋子、線路、王區、陣形或威脅；causal.opponentUse、causal.consequence 再連回同一主線，不另創著法或盤面事實。
 - 只能引用 evidence 中真實出現的中文著法；禁止用評估分數當原因。程式不改寫或補足正文中的著法。
 - 中文著法的走子方只能依它所屬 computedBoardFacts.steps 的 side：red=紅方，black=黑方；不要把紅方著法寫成黑方應手。opponentUse 要逐字使用該線 opponentReplies 列出的對手著法。
 - computedBoardFacts 是從該 evidence 起始局面逐手合法走子計算的輪走方、路數、吃子及將軍事實；只適用該變例已列出的步數。它不證明策略優劣，不代表對手必然照走；warning 之後的棋盤事實不得推測。
@@ -3704,7 +3695,7 @@ ${initialCombinedPrompt}
 首選證據：${JSON.stringify({ id: best.id, move: best.displayMove, principalVariation: best.displayPrincipalVariation.slice(0, 16), opponentReplies: best.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8), computedBoardFacts: buildVariationBoardFacts(best) })}
 實戰證據：${JSON.stringify({ id: user.id, move: user.displayMove, principalVariation: user.displayPrincipalVariation.slice(0, 16), opponentReplies: user.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8), computedBoardFacts: buildVariationBoardFacts(user) })}
 computedBoardFacts 只證明該變例已列出的輪走方、路數、吃子和將軍；不是策略優劣的證明，warning 之後不得推測棋盤事實。
-K1、K2 的 claimId 分別引用 C4a、C4b；每個 claim 只引用實戰證據 ${user.id}，text、causal.opponentUse、causal.consequence 合計逐字寫出至少兩步該線著法，causal.opponentUse 必須逐字包含該線對手應手。audit 不重写這些欄位，程式不補造缺少的內容。C3 只談首選主線 ${best.id}，若提實戰著法也須同時引用 ${user.id}。C4a、C4b 只引用 ${user.id}，分別連到 K1、K2；audit 用 claimId 引用對應 claim，不重寫正文／causal 內容。不得把可選主線寫成必然結果。
+K1、K2 的 claimId 分別引用 C4a、C4b；每個 claim 只引用實戰證據 ${user.id}，可見 text 本身逐字寫出至少兩步該線著法與盤面因果或時序，causal.opponentUse 必須逐字包含該線對手應手。隱藏 causal 不能補足缺少的正文。audit 不重写這些欄位，程式不補造缺少的內容。C3 只談首選主線 ${best.id}，若提實戰著法也須同時引用 ${user.id}。C4a、C4b 只引用 ${user.id}，分別連到 K1、K2；audit 用 claimId 引用對應 claim，不重寫正文／causal 內容。不得把可選主線寫成必然結果。
 answer 保留原五個 section id 與比較狀態對應標題。五段 claims.text 合計至少 400 個繁體漢字，目標約 500–900；audit、causal、heading、directAnswer 不計入字數。請在五段可見正文完整解釋本局棋子、線路、合理應對及盤面影響，不重複空話。只用本局證據與可計算棋盤事實，不能用分數代替原因；保留每項必要的 evidenceIds、findingIds、causal。修補後重新檢查整份 JSON 的引用及字數。
 `, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS,
         Math.min(30_000, repairWindowMs), 'json', 'repair')

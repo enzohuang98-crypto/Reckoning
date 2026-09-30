@@ -24,6 +24,7 @@ import {
 } from '../../../src/shared/logic/ai/ExplanationQualityScorer'
 import {
   moveComparisonEvidenceState,
+  hasAssertedMoveCriticism,
   type MoveComparisonEvidenceState
 } from '../../../src/shared/logic/ai/MoveComparisonEvidence'
 import type { MoveComparisonResult } from '../../../src/shared/types/MoveComparisonResult'
@@ -215,7 +216,7 @@ function buildSameMoveAnswer(): ScorableAnswer {
         heading: '對手合理應對',
         claims: [{
           id: 'C4',
-          text: '炮二平五後，黑方可走馬8進7，紅方再馬八進七；雙方依序發展子力並保持中路張力。',
+          text: '炮二平五之後，黑方可走馬8進7，紅方接著馬八進七；雙方依序發展子力並保持中路張力。',
           causal
         }]
       },
@@ -278,6 +279,25 @@ async function main(): Promise<void> {
     '炮二平五'
   )
   check('同首選可用正向計畫與合理應對通過，不強制負面解釋', sameMoveReport.pass, sameMoveReport.summary)
+  const hiddenConsequences = buildSameMoveAnswer()
+  const hiddenSection = hiddenConsequences.sections.find(section => section.id === 'opponent_exploitation')!
+  const removedBody = hiddenSection.claims[0]!.text
+  hiddenConsequences.sections.find(section => section.id === 'best_move_plan')!.claims[0]!.text += removedBody
+  hiddenSection.claims[0]!.text = '黑方馬8進7發展。'
+  check('其他段落移入長文且保留隱藏因果，仍不能代替後果段的可閱讀兩步主線',
+    criterionFailed(score(hiddenConsequences, AVAILABLE_MOVES, undefined, 'same_move', '炮二平五', '炮二平五'), 'concrete_consequences'))
+  const deniedCriticism = buildSameMoveAnswer()
+  deniedCriticism.sections[1]!.claims[0]!.text += '這不是失誤，也沒有錯失機會。'
+  check('同首選澄清不是失誤且沒有錯失不被 scorer 當成負評',
+    score(deniedCriticism, AVAILABLE_MOVES, undefined, 'same_move', '炮二平五', '炮二平五').pass)
+  check('否定一個負評不能豁免逗號後同一著法的實質負評',
+    hasAssertedMoveCriticism('炮二平五不是失誤，但仍是較差的著法。', ['炮二平五']))
+  check('同句逗號延續著法主詞時仍攔截負評',
+    hasAssertedMoveCriticism('炮二平五與首選相同，仍是較差失誤。', ['炮二平五']))
+  check('另一著法的負評不歸給使用者同首選著法',
+    !hasAssertedMoveCriticism('炮二平五與首選一致，但馬八進七較差。', ['炮二平五']))
+  check('明確否定的負評不變成實質負評',
+    !hasAssertedMoveCriticism('炮二平五不是失誤，也沒有錯失機會。', ['炮二平五']))
   const falselyNegativeSameMove = buildSameMoveAnswer()
   falselyNegativeSameMove.sections[1]!.claims[0]!.text =
     '炮二平五雖與首選相同，仍是較差失誤，必然受到懲罰。'

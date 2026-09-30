@@ -21,6 +21,7 @@ import { buildVariationBoardFacts } from '../../../src/main/ai/VariationBoardFac
 import { AIHttpError, AIResponseValidationError } from '../../../src/main/ai/http'
 import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
+import playOkAcceptanceCases from '../../fixtures/playok/acceptance-cases.json'
 import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
 import type {
   ConsequenceAudit,
@@ -304,6 +305,17 @@ class SameMoveProvider implements AIProvider {
 
   async *generateExplanationStream(): AsyncIterable<never> {
     return
+  }
+}
+
+class MutatedSameMoveProvider extends SameMoveProvider {
+  constructor(private readonly mutate: (answer: HarnessAnswer) => void) { super() }
+
+  async generateExplanation(request: { prompt: string }) {
+    const response = await super.generateExplanation(request)
+    const combined = JSON.parse(response.text) as { answer: HarnessAnswer }
+    this.mutate(combined.answer)
+    return { ...response, text: JSON.stringify(combined) }
   }
 }
 
@@ -1167,6 +1179,51 @@ async function main(): Promise<void> {
       onProgress: () => undefined
     }
   )
+  const runSameMoveVariant = (variant: AIProvider) => runExplanationHarness({
+    requestId: 'ai-contract-root-cause', analysisId: sameMoveSession.analysisId,
+    provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+    explanationStyle: 'long_analytical', language: 'zh-TW',
+    attachedMove: sameMoveAnalysis.userMove, answerMode: 'research',
+    budget: { engineTimeMs: 3_000, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 4_000 }
+  }, {
+    provider: variant, apiKey: 'synthetic-test-key', model: 'fake-model', session: sameMoveSession,
+    registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+    traceStore: { save: () => undefined } as never, signal: new AbortController().signal,
+    onProgress: () => undefined
+  })
+  const inventedMoveProvider = new MutatedSameMoveProvider((answer) => {
+    answer.sections[2]!.claims[0]!.text += '紅方車九平五吃掉黑方炮並將軍。'
+  })
+  let inventedMoveRejected = false
+  try { await runSameMoveVariant(inventedMoveProvider) } catch (error) {
+    inventedMoveRejected = error instanceof HarnessExplanationUnavailableError && error.reason === 'quality_validation_failed'
+  }
+  check('完整 Harness 不交付合法 ID 搭配主線外編造吃子與將軍', inventedMoveRejected)
+  const deniedCriticismProvider = new MutatedSameMoveProvider((answer) => {
+    answer.sections[1]!.claims[0]!.text += '這不是失誤，也沒有錯失機會。'
+  })
+  let deniedCriticismAccepted = false
+  try {
+    const accepted = await runSameMoveVariant(deniedCriticismProvider)
+    deniedCriticismAccepted = accepted.finalText.includes('這不是失誤，也沒有錯失機會。')
+  } catch { /* The assertion below records a rejection as failure. */ }
+  check('同首選的正常否定評價通過 scorer 與完整 Harness', deniedCriticismAccepted)
+  let hiddenMetadataPreservesLength = false
+  const hiddenConsequencesProvider = new MutatedSameMoveProvider((answer) => {
+    const opponent = answer.sections.find((section) => section.id === HARNESS_SECTION_IDS.opponentExploitation)!
+    const bestPlan = answer.sections.find((section) => section.id === HARNESS_SECTION_IDS.bestMovePlan)!
+    const originalHan = countHanCharacters(playerFacingAnswerText(answer))
+    bestPlan.claims[0]!.text += opponent.claims[0]!.text
+    opponent.claims[0]!.text = '黑方馬8進7發展。'
+    hiddenMetadataPreservesLength = countHanCharacters(playerFacingAnswerText(answer)) >= originalHan
+  })
+  let hiddenConsequencesRejected = false
+  try { await runSameMoveVariant(hiddenConsequencesProvider) } catch (error) {
+    hiddenConsequencesRejected = error instanceof HarnessExplanationUnavailableError &&
+      error.reason === 'quality_validation_failed'
+  }
+  check('完整 Harness 不讓 hidden causal/audit 補足缺少後果的可見段落',
+    hiddenMetadataPreservesLength && hiddenConsequencesRejected)
   check(
     '實戰步等同首選時，prompt 明確禁止硬寫失誤且一次完成',
     sameMoveProvider.calls === 1 &&
@@ -1346,21 +1403,110 @@ async function main(): Promise<void> {
   const frozenCase = getTeacherTestCatalog().cases[0]
   const formalQuestionMarker = frozenCase.question
   const excludedHistoryMarker = 'GENERIC-PRELUDE-MARKER-DO-NOT-SEND'
-  const formalProvider = new FakeProvider()
+  const formalFixture = playOkAcceptanceCases.cases[0]
+  check('正式老師案例使用同一凍結局面與實戰步的真實引擎 fixture',
+    formalFixture.preMoveFen === frozenCase.positionFen &&
+      formalFixture.actualMove.uci === frozenCase.attachedMove)
+  const formalBestScore = convertCpScore(formalFixture.primary.bestScore.cp!, 'score cp -1603')
+  const formalUserScore = convertCpScore(formalFixture.primary.actualScore.cp!, 'score cp -1683', 'candidate_move')
+  const formalAnalysis: EngineAnalysis = {
+    positionFen: formalFixture.preMoveFen,
+    sideToMove: 'black',
+    userMove: formalFixture.actualMove.uci,
+    displayUserMove: formalFixture.actualMove.chinese,
+    bestMove: formalFixture.primary.bestMove.uci,
+    displayBestMove: formalFixture.primary.bestMove.chinese,
+    scoreAfterBestMove: formalBestScore,
+    scoreAfterUserMove: formalUserScore,
+    evaluationAfterBestMove: formalBestScore.comparableValue,
+    evaluationAfterUserMove: formalUserScore.comparableValue,
+    userMoveEvaluationSource: 'candidate_move',
+    principalVariation: formalFixture.primary.bestLine.uci,
+    displayPrincipalVariation: formalFixture.primary.bestLine.chinese,
+    userMovePrincipalVariation: formalFixture.primary.actualLine.uci,
+    displayUserMovePrincipalVariation: formalFixture.primary.actualLine.chinese,
+    candidateMoves: [
+      { move: formalFixture.primary.bestMove.uci, score: formalBestScore,
+        evaluation: formalBestScore.comparableValue, depth: formalFixture.primary.depth,
+        principalVariation: formalFixture.primary.bestLine.uci,
+        displayPrincipalVariation: formalFixture.primary.bestLine.chinese },
+      { move: formalFixture.actualMove.uci, score: formalUserScore,
+        evaluation: formalUserScore.comparableValue, depth: formalFixture.primary.depth,
+        principalVariation: formalFixture.primary.actualLine.uci,
+        displayPrincipalVariation: formalFixture.primary.actualLine.chinese }
+    ],
+    depth: formalFixture.primary.depth,
+    incomplete: formalFixture.primary.incomplete,
+    warnings: formalFixture.primary.warnings,
+    engineId: 'engine-1',
+    engineName: formalFixture.primary.engineName
+  }
+  const formalCausal = {
+    cause: '因為黑方先走士4進5，這條主線接著是紅方車一平五',
+    mechanism: '紅車從一路轉至五路，黑車仍需要調整橫向位置',
+    affected: '紅方車與黑方車所在的中路和橫向線路',
+    opponentUse: '紅方以車一平五把車移至中央，再觀察黑車的位置',
+    consequence: '黑方車7平4後，雙方車已分別位在五路與四路'
+  }
+  const formalSecondCausal = {
+    cause: '因為士4進5後紅方車一平五，黑方續走車7平4',
+    mechanism: '車的位置改變後，紅方用退馬調整另一個子力的位置',
+    affected: '紅方馬、中央車與黑方四路車的部署',
+    opponentUse: '紅方接著馬八退六，把馬從八路調回六路',
+    consequence: '黑方象5進3後，紅馬與黑象都移到主線所列的新位置'
+  }
+  const formalAnswer: HarnessAnswer = {
+    mode: frozenCase.mode,
+    title: '實戰著法解析',
+    directAnswer: '士4進5先調整士，車7平6則先移動黑車；問題在於兩條主線的子力次序不同。',
+    directAnswerEvidenceIds: ['E1', 'E2'],
+    sections: [
+      { id: HARNESS_SECTION_IDS.directConclusion, heading: '直接結論', claims: [{ id: 'C1', evidenceIds: ['E1', 'E2'],
+        text: '士4進5與車7平6的差別，是黑方先調整士還是先移動車。實戰線接著紅方車一平五，黑車再走車7平4；首選線則先有紅方兵四平三，黑方再調整士。這些是兩條主線的具體次序，問題不能只用評估數字解釋，也不能把某條線說成對手唯一的應法。' }] },
+      { id: HARNESS_SECTION_IDS.actualMoveProblem, heading: '實戰步問題', claims: [{ id: 'C2', evidenceIds: ['E1', 'E2'], findingIds: ['K1'], causal: formalCausal,
+        text: '士4進5的問題應從黑車的調整次序看，而不是把士的移動直接當成丟子的原因。實戰線先讓紅方車一平五，黑方才走車7平4，把車移向四路；車7平6這條首選線則先改變黑車位置，紅方以兵四平三回應，黑方下一步才補士。比較時要分清士、車與紅兵各在哪一步移動，不能將兩條線拼成同一串棋譜，更遠的得失仍需另外的主線支持。' }] },
+      { id: HARNESS_SECTION_IDS.bestMovePlan, heading: 'AI 首選', claims: [{ id: 'C3', evidenceIds: ['E1'],
+        text: '車7平6先把黑車從七路移到六路，主線中的紅方兵四平三隨後橫移過河兵。黑方接著士4進5調整士，紅方再車一平五，把車放到中央。再往下是黑方車6平2，說明這條主線中車還會繼續橫向轉移。理解這步時可以追蹤黑車所在的路數，以及紅兵和紅車如何逐步換位；這裡只解釋可見的子力位置，沒有自行補算攻殺，也沒有把單一回應當作必走。' }] },
+      { id: HARNESS_SECTION_IDS.opponentExploitation, heading: '對手利用與後果', claims: [
+        { id: 'C4a', evidenceIds: ['E2'], findingIds: ['K1'], causal: formalCausal,
+          text: '士4進5後，紅方用車一平五將車從一路轉到中央，這是本條主線的合理應對。黑方車7平4再把車移到四路，因此雙方車的路數與原局面已經不同。閱讀後果時應核對這些可見的移動，區分紅車的中央位置與黑車的橫向調整；主線沒有在這幾步顯示直接吃子，不能額外宣稱已經得車或失車。' },
+        { id: 'C4b', evidenceIds: ['E2'], findingIds: ['K2'], causal: formalSecondCausal,
+          text: '車7平4之後，紅方接著馬八退六，將馬調回六路，再由黑方象5進3移象。這項後果關注馬與象的重新部署，與前面的雙車位置是不同面向。因為兩個子力都依主線改變位置，後續盤面應以新的馬、象位置繼續觀察；這不能直接推出強制戰術，也不能用一般殘局口訣替代本局已回傳的步序。' }
+      ] },
+      { id: HARNESS_SECTION_IDS.practicalPrinciple, heading: '實戰原則', claims: [{ id: 'C5', evidenceIds: ['E1', 'E2'],
+        text: '比較士4進5與車7平6時，先逐步核對車、士及對手子力的換位次序，再檢查每條主線實際呈現的盤面關係；同一步士的調整出現在不同時機，不能只憑著法名稱判斷整條線的好壞。' }] }
+    ],
+    generalNotes: [], evidence: [], warnings: []
+  }
+  const formalAudit: ConsequenceAudit = {
+    bestMovePurpose: '車7平6先調整黑車橫向位置，再觀察紅方兵與車的換位。',
+    userMoveProblem: '士4進5先調整士，問題在於黑車與紅車的位置改變順序不同。',
+    consequences: [
+      { id: 'K1', category: 'central_control', summary: '士4進5後車一平五讓紅車移到中央，黑車稍後橫向調整。',
+        opponentUse: formalCausal.opponentUse, boardImpact: formalCausal.consequence,
+        supportingMoves: ['士4進5', '車一平五', '車7平4'], evidenceIds: ['E2'], verified: true },
+      { id: 'K2', category: 'piece_development', summary: '車7平4後馬八退六與象5進3分別改變紅馬和黑象的位置。',
+        opponentUse: formalSecondCausal.opponentUse, boardImpact: formalSecondCausal.consequence,
+        supportingMoves: ['車7平4', '馬八退六', '象5進3'], evidenceIds: ['E2'], verified: true }
+    ],
+    contradictions: [], enoughEvidence: true
+  }
+  const formalProvider = {
+    id: 'openai' as const, displayName: 'Frozen teacher fixture', prompts: [] as string[],
+    async generateExplanation(request: { prompt: string }) {
+      this.prompts.push(request.prompt)
+      return { text: JSON.stringify({ audit: formalAudit, answer: formalAnswer }),
+        provider: this.id, model: 'fake-model', createdAt: Date.now(),
+        groundedOnEngineData: true as const, usage: { inputTokens: 10, outputTokens: 2000 } }
+    },
+    async *generateExplanationStream(): AsyncIterable<never> { return }
+  }
   const formalSession: AnalysisSession = {
     ...session,
     positionFen: frozenCase.positionFen,
     userMove: frozenCase.attachedMove,
-    engineAnalysis: {
-      ...session.engineAnalysis,
-      positionFen: frozenCase.positionFen,
-      userMove: frozenCase.attachedMove
-    },
-    moveComparison: {
-      ...session.moveComparison,
-      positionFen: frozenCase.positionFen,
-      userMove: frozenCase.attachedMove
-    }
+    engineAnalysis: formalAnalysis,
+    moveComparison: compareMove(formalAnalysis)
   }
   const formalRun = {
     getActiveManifest: () => ({
@@ -1495,21 +1641,106 @@ async function main(): Promise<void> {
     }
   } satisfies Parameters<typeof prepareExplanationExecution>[3]
   for (const [caseIndex, teacherCase] of nominalCatalog.cases.entries()) {
+    const nominalFixture = playOkAcceptanceCases.cases.find((item) =>
+      item.preMoveFen === teacherCase.positionFen && item.actualMove.uci === teacherCase.attachedMove
+    )!
+    const nominalBestScore = convertCpScore(nominalFixture.primary.bestScore.cp!, 'fixture best score')
+    const nominalActualScore = convertCpScore(nominalFixture.primary.actualScore.cp!, 'fixture actual score', 'candidate_move')
+    const nominalAnalysis: EngineAnalysis = {
+      ...formalAnalysis,
+      positionFen: nominalFixture.preMoveFen,
+      userMove: nominalFixture.actualMove.uci,
+      displayUserMove: nominalFixture.actualMove.chinese,
+      bestMove: nominalFixture.primary.bestMove.uci,
+      displayBestMove: nominalFixture.primary.bestMove.chinese,
+      scoreAfterBestMove: nominalBestScore,
+      scoreAfterUserMove: nominalActualScore,
+      evaluationAfterBestMove: nominalBestScore.comparableValue,
+      evaluationAfterUserMove: nominalActualScore.comparableValue,
+      principalVariation: nominalFixture.primary.bestLine.uci,
+      displayPrincipalVariation: nominalFixture.primary.bestLine.chinese,
+      userMovePrincipalVariation: nominalFixture.primary.actualLine.uci,
+      displayUserMovePrincipalVariation: nominalFixture.primary.actualLine.chinese,
+      depth: nominalFixture.primary.depth,
+      candidateMoves: [
+        { move: nominalFixture.primary.bestMove.uci, score: nominalBestScore,
+          evaluation: nominalBestScore.comparableValue, depth: nominalFixture.primary.depth,
+          principalVariation: nominalFixture.primary.bestLine.uci,
+          displayPrincipalVariation: nominalFixture.primary.bestLine.chinese },
+        { move: nominalFixture.actualMove.uci, score: nominalActualScore,
+          evaluation: nominalActualScore.comparableValue, depth: nominalFixture.primary.depth,
+          principalVariation: nominalFixture.primary.actualLine.uci,
+          displayPrincipalVariation: nominalFixture.primary.actualLine.chinese }
+      ]
+    }
+    const [best, bestReply] = nominalFixture.primary.bestLine.chinese
+    const [actual, reply, continuation, secondReply] = nominalFixture.primary.actualLine.chinese
+    const nominalBoardFacts = buildVariationBoardFacts({
+      id: 'E2', positionFen: nominalAnalysis.positionFen, engineId: 'engine-1',
+      engineName: nominalAnalysis.engineName, purpose: 'Nominal actual line',
+      depth: nominalAnalysis.depth, score: nominalActualScore,
+      move: nominalAnalysis.userMove, displayMove: nominalAnalysis.displayUserMove,
+      displayPrincipalVariation: nominalAnalysis.displayUserMovePrincipalVariation!,
+      analysis: nominalAnalysis
+    })
+    const nominalFileStep = nominalBoardFacts.steps.slice(0, 4).find((step) =>
+      step.toFile === 5 || step.toFile === 1 || step.toFile === 9
+    )!
+    const nominalFileFact = `${nominalFileStep.side === 'red' ? '紅方' : '黑方'}${nominalFileStep.move}把${nominalFileStep.fromFile}路棋子移到${nominalFileStep.toFile}路${nominalFileStep.toFile === 5 ? '中路' : '邊路'}。`
+    const nominalCausal = {
+      cause: `因為黑方先走${actual}，這條主線再由紅方${reply}回應`,
+      mechanism: '雙方棋子依照這條變例換位，核對中路與其他線路時也須使用新位置',
+      affected: '黑方實戰棋子與紅方回應棋子的路數和陣形',
+      opponentUse: `紅方以${reply}調整子力，接著還有${secondReply}的移動`,
+      consequence: `${continuation}之後雙方的棋子位置不同，應以新陣形繼續觀察`
+    }
+    const nominalSecondCausal = {
+      cause: `因為${continuation}延續本線，下一個回合紅方${secondReply}`,
+      mechanism: '後半段的子力換位需依照當時棋盤核對，不能沿用舊中路位置',
+      affected: '雙方後續棋子的路數與陣形關係',
+      opponentUse: `紅方的${secondReply}是這條主線下一個已提供的回應`,
+      consequence: `${reply}與${secondReply}出現在不同回合，不能混為同一步的盤面`
+    }
+    const nominalAnswer: HarnessAnswer = {
+      mode: teacherCase.mode, title: '實戰著法解析',
+      directAnswer: `${actual}與${best}的問題應用各自真實主線比較，不能只看分數。`,
+      directAnswerEvidenceIds: ['E1', 'E2'],
+      sections: [
+        { id: HARNESS_SECTION_IDS.directConclusion, heading: '直接結論', claims: [{ id: 'C1', evidenceIds: ['E1', 'E2'],
+          text: `${actual}是本局實戰步，${best}是引擎首選，兩者須分開按原局面核對。實戰線中的紅方回應是${reply}，首選線則有${bestReply}。問題應從每一步棋子的移動與陣形變化理解，不能以候選排名代替原因，也不能把不同變例中的棋子位置拼成同一個盤面。` }] },
+        { id: HARNESS_SECTION_IDS.actualMoveProblem, heading: '實戰步問題', claims: [{ id: 'C2', evidenceIds: ['E1', 'E2'], findingIds: ['K1'], causal: nominalCausal,
+          text: `${actual}後紅方${reply}，而${best}這條線接著是紅方${bestReply}，兩種著法因此具有不同的具體步序。這裡的問題要逐步核對黑方先動哪個棋子、紅方如何回應，再看後續${continuation}與${secondReply}的換位。${nominalFileFact}可見主線提供的是子力位置的變化，不能自行添加沒有列出的吃子或攻殺，也不能把棋手想法當成引擎已證實的戰術。` }] },
+        { id: HARNESS_SECTION_IDS.bestMovePlan, heading: 'AI 首選', claims: [{ id: 'C3', evidenceIds: ['E1'],
+          text: `${best}先移動黑方棋子，紅方在這條主線以${bestReply}回應。閱讀首選計畫時，應從這兩步的實際棋子位置繼續看陣形，並確認每一步是誰走子。這條主線只顯示引擎提供的一組後續，不能據此宣稱其他回應都不合法，也不能假定更遠的中路、先手或王區後果已經確定。` }] },
+        { id: HARNESS_SECTION_IDS.opponentExploitation, heading: '對手利用與後果', claims: [
+          { id: 'C4a', evidenceIds: ['E2'], findingIds: ['K1'], causal: nominalCausal,
+            text: `${actual}後紅方${reply}，接著黑方${continuation}，這些是實戰線的前三步。${nominalFileFact}因為雙方依序換位，應在每一步後重新核對棋子所在的路數與陣形關係。對手的合理應對由主線給出，不需要再補造另一手棋；現有步序也不能自動證明某個攻殺必定成立。` },
+          { id: 'C4b', evidenceIds: ['E2'], findingIds: ['K2'], causal: nominalSecondCausal,
+            text: `${continuation}後紅方還有${secondReply}，它與前面的${reply}是不同回合的移動。這項後果關注後續棋子重新部署，應在該回合的棋盤上核對相關路數，而非沿用最初的棋子位置。主線有提供的變化可以逐步說清楚，未提供的其他後續則保持未知，不能由一般棋理口訣替代。` }
+        ] },
+        { id: HARNESS_SECTION_IDS.practicalPrinciple, heading: '實戰原則', claims: [{ id: 'C5', evidenceIds: ['E1', 'E2'],
+          text: `比較${actual}與${best}時，先區分兩條主線，再逐步核對棋子位置和輪走方；同一個著法出現在另一回合時，必須以當時盤面重新理解，不能用表面字樣替代本局的棋盤關係。` }] }
+      ], generalNotes: [], evidence: [], warnings: []
+    }
+    const nominalAudit: ConsequenceAudit = {
+      bestMovePurpose: `${best}先調整黑方棋子的位置，再以該線的紅方回應核對陣形。`,
+      userMoveProblem: `${actual}與首選的問題應從各自的棋子換位次序觀察。`,
+      consequences: [
+        { id: 'K1', category: 'central_control', summary: `${actual}後${reply}再${continuation}，雙方棋子依這條主線換位。`,
+          opponentUse: nominalCausal.opponentUse, boardImpact: `${nominalCausal.consequence}；核對中路時不能沿用舊棋盤。`,
+          supportingMoves: [actual, reply, continuation], evidenceIds: ['E2'], verified: true },
+        { id: 'K2', category: 'piece_development', summary: `${continuation}後${secondReply}延續子力的重新部署，需核對各回合位置。`,
+          opponentUse: nominalSecondCausal.opponentUse, boardImpact: `${nominalSecondCausal.consequence}；中路關係也須按新盤面核對。`,
+          supportingMoves: [continuation, secondReply], evidenceIds: ['E2'], verified: true }
+      ], contradictions: [], enoughEvidence: true
+    }
     const nominalSession: AnalysisSession = {
       ...session,
       analysisId: `nominal-analysis-${caseIndex + 1}`,
       positionFen: teacherCase.positionFen,
       userMove: teacherCase.attachedMove,
-      engineAnalysis: {
-        ...session.engineAnalysis,
-        positionFen: teacherCase.positionFen,
-        userMove: teacherCase.attachedMove
-      },
-      moveComparison: {
-        ...session.moveComparison,
-        positionFen: teacherCase.positionFen,
-        userMove: teacherCase.attachedMove
-      }
+      engineAnalysis: nominalAnalysis,
+      moveComparison: compareMove(nominalAnalysis)
     }
     const basePayload: GenerateExplanationStartPayload = {
       requestId: `nominal-prelude-${caseIndex + 1}`,
@@ -1527,7 +1758,15 @@ async function main(): Promise<void> {
       execution: ReturnType<typeof prepareExplanationExecution>
     ): Promise<void> => {
       await runPreparedExplanationHarness(execution, {
-        provider: new FakeProvider(),
+        provider: {
+          id: 'openai', displayName: 'Nominal frozen fixture',
+          async generateExplanation() {
+            return { text: JSON.stringify({ audit: nominalAudit, answer: nominalAnswer }),
+              provider: 'openai', model: 'fake-model', createdAt: Date.now(),
+              groundedOnEngineData: true, usage: { inputTokens: 10, outputTokens: 2000 } }
+          },
+          async *generateExplanationStream(): AsyncIterable<never> { return }
+        },
         apiKey: 'not-stored-in-trace',
         registry: {
           list: () => ({

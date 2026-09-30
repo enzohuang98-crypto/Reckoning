@@ -1,6 +1,6 @@
 import { parseFen } from '@shared/logic/board/fen'
 import { applyUciMove, isKingInCheck, parseUciMove } from '@shared/logic/board/moves'
-import { formatChineseMove } from '@shared/logic/board/ChineseNotation'
+import { chineseMoveMentions, formatChineseMove } from '@shared/logic/board/ChineseNotation'
 import type { PieceColor, PieceType } from '@shared/types/BoardState'
 import type { HarnessEvidence } from '@shared/types/Harness'
 
@@ -69,11 +69,8 @@ export function validateVariationBoardStatements(
   evidence: HarnessEvidence[]
 ): string[] {
   const issues: string[] = []
-  const moves = [...new Set(evidence.flatMap((item) => item.displayPrincipalVariation))]
-    .filter(Boolean).sort((a, b) => b.length - a.length)
-  if (moves.length === 0) return issues
-  const escaped = moves.map((move) => move.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  const movePattern = new RegExp(escaped.join('|'), 'g')
+  // Discover assertions before looking up their evidence. A whitelist matcher
+  // would silently discard invented moves, rather than reject unbound facts.
   const facts = evidence.flatMap((item) => buildVariationBoardFacts(item).steps)
   const pieceTypes: Record<string, PieceType> = {
     帥: 'king', 帅: 'king', 將: 'king', 将: 'king',
@@ -96,11 +93,11 @@ export function validateVariationBoardStatements(
     return /如果|假如|若|可能|將來|将来|未來|未来|後續|后续|更遠|更远|是否|能否|無法確認|无法确认/.test(scope)
   }
   for (const clause of text.split(/[。！？；，,.!?;\n]/)) {
-    const mentions = [...clause.matchAll(movePattern)]
+    const mentions = chineseMoveMentions(clause)
     for (const [index, mention] of mentions.entries()) {
-      const move = mention[0]
-      const before = clause.slice(index === 0 ? 0 : mentions[index - 1]!.index! + mentions[index - 1]![0].length, mention.index)
-      const after = clause.slice(mention.index! + move.length, mentions[index + 1]?.index ?? clause.length)
+      const move = mention.move
+      const before = clause.slice(index === 0 ? 0 : mentions[index - 1]!.index + mentions[index - 1]!.move.length, mention.index)
+      const after = clause.slice(mention.index + move.length, mentions[index + 1]?.index ?? clause.length)
       const side = /(紅方|红方|黑方)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*$/.exec(before)
       const captures = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方))?([兵卒車车炮砲馬马象相士仕將将帥帅])?/g)]
         .filter((match) => !isHypothetical(before + after.slice(0, match.index)))
@@ -110,7 +107,7 @@ export function validateVariationBoardStatements(
       const candidates = facts.filter((fact) => fact.move === move)
       const fact = candidates[0]
       if (!fact) {
-        if (captures.length > 0 || checks.length > 0) {
+        if (captures.length > 0 || checks.length > 0 || (side && !isHypothetical(before))) {
           issues.push(`棋盤事實：${move} 的引用缺少可重播或無歧義的吃子／將軍事實。`)
         }
         continue
