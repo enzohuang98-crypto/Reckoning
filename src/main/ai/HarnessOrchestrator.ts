@@ -864,18 +864,9 @@ function hasCausalConnectorForLanguage(
 
 function scoreUsedAsReasonForLanguage(
   text: string,
-  language: ExplanationLanguage
+  _language: ExplanationLanguage
 ): boolean {
-  if (scoreUsedAsReason(text)) return true
-  if (language !== 'en') return false
-  return (
-    /\b(?:because|since|therefore|thus|so)\b[^.!?]{0,50}\b(?:score|evaluation|centipawns?|cp)\b[^.!?]{0,30}\b(?:higher|lower|better|worse|ahead|behind)\b/i.test(
-      text
-    ) ||
-    /\b(?:score|evaluation)\b[^.!?]{0,30}\b(?:higher|lower|better|worse)\b[^.!?]{0,30}\b(?:therefore|thus|so|means?)\b/i.test(
-      text
-    )
-  )
+  return scoreUsedAsReason(text)
 }
 
 /**

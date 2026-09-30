@@ -79,6 +79,26 @@ check('English decimal evaluations obey the same causal policy',
   scoreUsedAsReason('Pikafish gives 炮八平五 4.5 points versus 馬二進三 2.0 points, therefore the first move is better.'))
 check('centipawn score values obey the same causal policy',
   scoreUsedAsReason('Pikafish gives 炮八平五 800cp versus 馬二進三 200cp, so the first move is better.'))
+check('denying score causation cannot exempt a later asserted score conclusion',
+  scoreUsedAsReason('不能只因為分數決定走法，首選100分而實戰20分，所以實戰一定較差。'))
+check('semicolon separates reported score from an actual board cause',
+  !scoreUsedAsReason('Pikafish評估100分；選擇炮二平五是因為中炮瞄準中卒，並為兩翼子力爭取協同。'))
+check('a board cause is not replaced by a score reported in the preceding clause',
+  !scoreUsedAsReason('Pikafish評估100分，選擇炮二平五是因為中炮瞄準中卒，並為兩翼子力爭取協同。'))
+check('a later negation cannot erase an earlier asserted score cause',
+  scoreUsedAsReason('因為炮八平五的評估800分，所以這步好，不能用空泛詞代替解釋。'))
+check('local negation of a qualitative score cause remains a valid correction',
+  !scoreUsedAsReason('不能因為評分較高就稱它更好，還需說明炮的位置與對手應手。'))
+check('a reason introducing a numeric evaluation is still score causation',
+  scoreUsedAsReason('選擇炮八平五的理由是Pikafish評估800分。'))
+check('reporting a higher reference evaluation alone does not assert its cause',
+  !scoreUsedAsReason('這條線的參考評分較高。盤面理由是炮轉到中路後瞄準中卒。'))
+check('English qualitative score cause shares the same policy',
+  scoreUsedAsReason('The evaluation is higher, therefore this move is better.'))
+check('English local score denial shares the same scope',
+  !scoreUsedAsReason('This is not because the evaluation is higher; the cannon targets the central pawn.'))
+check('English score reporting does not taint a separate board cause',
+  !scoreUsedAsReason('The evaluation is higher; the cannon move is useful because it targets the central pawn.'))
 
 const GOOD_CAUSAL: CausalChain = {
   cause: '因為先走馬八進七而不是炮二平五',

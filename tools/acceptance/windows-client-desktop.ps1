@@ -168,10 +168,12 @@ function Get-ObservedPrivacyOption($Snapshot, $Switch, [string]$OptionName = '')
   # These are headings seen in actual hosted screenshots, not inferred account
   # actions. Description text changes height when a switch changes state, so an
   # option's fresh heading/next heading are the stable association, not old Y.
+  # Windows PowerShell 5 cannot reliably resolve a hashtable key as a named
+  # Sort-Object property. Sort its numeric value explicitly, as captured at runtime.
   $headings = @($Snapshot.lineBounds | Where-Object {
     $_.text -cin @('Location', 'Find my device', 'Inking & typing', 'Personalized offers') -and
       $_.x -ge $Snapshot.screen.Width * 0.45 -and $_.y -ge 250
-  } | Sort-Object y)
+  } | Sort-Object -Property { [double]$_.y })
   if ($OptionName) {
     $matching = @($headings | Where-Object { $_.text -ceq $OptionName })
   } else {

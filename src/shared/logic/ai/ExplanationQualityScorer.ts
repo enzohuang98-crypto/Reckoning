@@ -75,27 +75,36 @@ export function textSimilarity(a: string, b: string): number {
 
 /** 以分數高低當理由的敘述（含直述句型，不只「因為…分數高」）。 */
 export function scoreUsedAsReason(text: string): boolean {
-  if (
-    /(因為|理由|所以|代表).{0,30}(分數|評分|數值).{0,20}(較高|較低|比較高|比較低|領先|落後)/.test(
-      text
-    )
-  ) {
-    return true
-  }
-  // 直述句型：「分數較高所以較好」「評分比較低，因此不好」「差了 0.35 個兵」
-  if (/(分數|評分|評估值?|數值)(明顯)?(較|更|比較)(高|低|好|差)/.test(text)) return true
-  if (/(高|低)出?\s*[0-9.]+\s*(分|个兵|個兵|cp)/i.test(text)) return true
-  // Numeric comparisons can omit "higher/lower" entirely. Screen an asserted
-  // causal link between two score values, not mere reporting of the values in
-  // a separate sentence. This remains a wording screen, not semantic proof.
-  for (const sentence of text.split(/[。！？!?\n]|\.(?!\d)/)) {
-    for (const assertion of sentence.split(/但是|然而|可是|不過|不过|但|\bbut\b|\bhowever\b/i)) {
-      const values = assertion.match(/(?:[+-]?\d+(?:\.\d+)?|[零〇一二兩两三四五六七八九十百千]+)\s*(?:分|cp\b|centipawns?\b|points?\b)/gi) ?? []
-      const scoreContext = /引擎|Pikafish|評估|评估|評分|评分|分數|分数|首選|首选|\bscore\b|\bevaluation\b/i.test(assertion)
-      if (values.length === 0 || (!scoreContext && (values.length < 2 || chineseMoveMentions(assertion).length < 2))) continue
-      if (!/因為|因为|所以|因此|理由|\bbecause\b|\btherefore\b|\bthus\b|\breason\b|\bso\b/i.test(assertion)) continue
-      if (/(?:不能|不可|不是|並非|并非|不應|不应)(?:只)?(?:因為|因为|以|用)|\b(?:not|cannot|can't)\s+(?:just\s+)?(?:because|use)\b/i.test(assertion)) continue
-      return true
+  const numericScore = /(?:[+-]?\d+(?:\.\d+)?|[零〇一二兩两三四五六七八九十百千]+)\s*(?:分|cp\b|centipawns?\b|points?\b)/gi
+  const scoreContext = /引擎|Pikafish|評估|评估|評分|评分|分數|分数|首選|首选|\bscore\b|\bevaluation\b/i
+  const qualitativeScore = /(分數|分数|評分|评分|評估值?|评估值?|數值|数值)(明顯|明显)?(較|较|更|比較|比较)(高|低|好|差)|(?:高|低)出?\s*[0-9.]+\s*(?:分|个兵|個兵|cp)|\b(?:score|evaluation)\b.{0,30}\b(?:higher|lower|better|worse|ahead|behind)\b/i
+  // Track the stated cause through adjacent clauses. A correction/denial only
+  // scopes its own causal marker; a later assertion is checked independently.
+  // Scores reported beside a board cause are not themselves that cause. This
+  // is a wording screen, not proof of arbitrary chess explanations.
+  for (const assertion of text.split(/[。！？!?；;\n]|\.(?!\d)|但是|然而|可是|不過|不过|但|\bbut\b|\bhowever\b/i)) {
+    const values = assertion.match(numericScore) ?? []
+    const numericContext = scoreContext.test(assertion) ||
+      (values.length >= 2 && chineseMoveMentions(assertion).length >= 2)
+    const hasScore = (part: string): boolean => qualitativeScore.test(part) ||
+      (numericContext && (part.match(numericScore)?.length ?? 0) > 0)
+    let previousCauseIsScore = false
+    for (const clause of assertion.split(/[，,]/)) {
+      let explicitCause = false
+      let clauseCauseIsScore = hasScore(clause)
+      for (const marker of clause.matchAll(/因為|因为|\bbecause\b|\bsince\b|所以|因此|代表|理由|\btherefore\b|\bthus\b|\breason\b|\bso\b|\bmeans?\b/gi)) {
+        const prefix = clause.slice(0, marker.index)
+        const negated = /(?:不能|不可|不是|並非|并非|不應|不应)(?:只)?$|\b(?:not|cannot|can't)\s+(?:just\s+)?$/i.test(prefix)
+        const startsCause = /^(?:因為|因为|because|since|理由|reason)$/i.test(marker[0])
+        if (startsCause) {
+          explicitCause = true
+          clauseCauseIsScore = !negated && hasScore(clause.slice(marker.index! + marker[0].length))
+          if (clauseCauseIsScore || (!negated && hasScore(prefix) && /^(?:理由|reason)$/i.test(marker[0]))) return true
+        } else if (!negated && (hasScore(prefix) || previousCauseIsScore)) {
+          return true
+        }
+      }
+      previousCauseIsScore = explicitCause ? clauseCauseIsScore : hasScore(clause)
     }
   }
   return false
