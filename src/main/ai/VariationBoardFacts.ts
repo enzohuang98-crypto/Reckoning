@@ -102,9 +102,9 @@ export function validateVariationBoardStatements(
       const before = clause.slice(index === 0 ? 0 : mentions[index - 1]!.index! + mentions[index - 1]![0].length, mention.index)
       const after = clause.slice(mention.index! + move.length, mentions[index + 1]?.index ?? clause.length)
       const side = /(紅方|红方|黑方)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*$/.exec(before)
-      const captures = [...after.matchAll(/((?:沒有|没有|未|不)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方))?([兵卒車车炮砲馬马象相士仕將将帥帅])?/g)]
+      const captures = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方))?([兵卒車车炮砲馬马象相士仕將将帥帅])?/g)]
         .filter((match) => !isHypothetical(before + after.slice(0, match.index)))
-      const checks = [...after.matchAll(/((?:沒有|没有|未|不)?)(?:形成|構成|构成)?將軍|((?:沒有|没有|未|不)?)(?:形成|構成|构成)?将军/g)]
+      const checks = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?)(?:形成|構成|构成)?(?:將軍|将军)/g)]
         .filter((match) => !isHypothetical(before + after.slice(0, match.index)))
       if (!side && captures.length === 0 && checks.length === 0) continue
       const candidates = facts.filter((fact) => fact.move === move)
@@ -125,7 +125,7 @@ export function validateVariationBoardStatements(
           (!capture[3] || pieceTypes[capture[3]] === candidate.captured.piece)
         )
         const captureOutcomes = new Set(candidates.map(matchingCapture))
-        const denied = /^(沒有|没有|未|不)/.test(capture[1]!)
+        const denied = /^(沒有|没有|未|不|非)/.test(capture[1]!)
         if (captureOutcomes.size !== 1) {
           issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同吃子結果，必須指明所述步數。`)
         } else if (denied ? matchingCapture(fact) : !matchingCapture(fact)) {
@@ -133,7 +133,7 @@ export function validateVariationBoardStatements(
         }
       }
       for (const check of checks) {
-        const denied = Boolean(check[1] || check[2])
+        const denied = Boolean(check[1])
         if (new Set(candidates.map((candidate) => candidate.givesCheck)).size !== 1) {
           issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同將軍結果，必須指明所述步數。`)
         } else if (denied ? fact.givesCheck : !fact.givesCheck) {
