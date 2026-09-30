@@ -168,8 +168,9 @@ const MAX_RESEARCH_ROUND_MS = 60_000
 const CONTINUATION_TIMEOUT_MS = 120_000
 const INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS = 100_000
 const INITIAL_MOVE_MIN_RETRY_WINDOW_MS = 30_000
-/** Combined audit + five-section answer needs JSON overhead beyond the visible 500-900 characters. */
-const INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS = 4_000
+/** Live Super returned length at 4000 with zero reasoning on 2026-09-30.
+ * Allocate bounded JSON overhead inside the unchanged shared 10000-token research budget. */
+const INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS = 6_000
 const INITIAL_MOVE_EVIDENCE_RESEARCH_MAX_MS = 5_000
 const INITIAL_MOVE_MIN_BEST_LINE_PLIES = 2
 const INITIAL_MOVE_MIN_USER_LINE_PLIES = 3
@@ -2456,8 +2457,10 @@ export async function runExplanationHarness(
             deps.signal.removeEventListener('abort', forwardAbort)
           }
         }
+        // Missing usage is not evidence of zero consumption. Reserve this
+        // call's maximum for later phases, without inventing provider usage.
+        outputTokens += response.usage?.outputTokens ?? requestMaxOutputTokens
         if (response.usage) {
-          outputTokens += response.usage.outputTokens
           usage = {
             inputTokens: (usage?.inputTokens ?? 0) + response.usage.inputTokens,
             outputTokens: (usage?.outputTokens ?? 0) + response.usage.outputTokens,
@@ -2504,9 +2507,14 @@ export async function runExplanationHarness(
         if (
           typeof diagnostic.outputTokens === 'number' &&
           Number.isFinite(diagnostic.outputTokens) &&
-          diagnostic.outputTokens > 0
+          diagnostic.outputTokens >= 0
         ) {
           outputTokens += Math.min(requestMaxOutputTokens, diagnostic.outputTokens)
+        } else if (aiErrorStatus(error) === undefined) {
+          // A transport/timeout failure may have reached generation. HTTP
+          // error responses have no successful completion; uncertain failures
+          // share the same conservative reservation as missing success usage.
+          outputTokens += requestMaxOutputTokens
         }
         modelCallDiagnostics.push({
           callIndex,
@@ -3083,6 +3091,7 @@ ${comparisonContract}
 - actual_move_problem 必須依比較狀態完整說明兩步關係；opponent_exploitation 必須包含對手合理應對、至少兩步主線與後續盤面結果。
 - 若棋手提供原本想法，actual_move_problem 必須正面檢驗該想法在兩條主線中是否成立；棋手自述不是引擎證據，不得直接當成事實。
 - actual_move_problem 與 opponent_exploitation 的非「證據不足」claim 都附完整 causal 五段，並用 findingIds 連到 audit 的 K 編號；K 編號只建立摘要引用，模型填寫 verified 不代表棋理解釋已獨立證實。
+- causal 每欄只用一個具體短句保留正文的因果與主線關聯，不重寫整段正文；directAnswer 只作一句摘要，完整結論仍放在 C1。節省內部重複不能減少五段可見正文、必要著法或棋盤原因。
 - 每個 evidenceId 只能支持它自己列出的 principalVariation；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
 - 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
 - 寫完後先逐段核對：五段可見正文合計至少 400 漢字；C4a、C4b 的可見正文及 causal.opponentUse、causal.consequence 要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
@@ -3097,6 +3106,7 @@ ${
 }
 
 audit 規則：
+- bestMovePurpose、userMoveProblem 各用一句簡短摘要；具體原因、應對及後果在 answer 正文完整解釋，不重複整段。
 - bestMovePurpose 說明 AI 首選的具體目的；userMoveProblem ${
               comparisonState === 'same_move'
                 ? '說明實戰步與首選一致及其具體價值，不得杜撰問題。'

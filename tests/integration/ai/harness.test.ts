@@ -4380,6 +4380,41 @@ async function main(): Promise<void> {
       repairSuccessProvider.prompts[1]?.includes('direct_conclusion')
   )
 
+  for (const budgetScenario of ['reported_usage', 'missing_usage', 'transport_failure'] as const) {
+    const reportsUsage = budgetScenario === 'reported_usage'
+    const requests: number[] = []
+    const budgetTraces: HarnessTrace[] = []
+    const budgetProvider: AIProvider = {
+      id: 'openai', displayName: 'Combined response budget boundary fixture',
+      async generateExplanation(request) {
+        requests.push(request.maxOutputTokens ?? -1)
+        if (budgetScenario === 'transport_failure' && requests.length === 1) throw new TypeError('fetch failed')
+        return { text: requests.length === 1 ? JSON.stringify(invalidRepairDraft) : validRepairText,
+          provider: 'openai', model: 'fake-model', createdAt: Date.now(), groundedOnEngineData: true,
+          ...(reportsUsage ? { usage: { inputTokens: 10, outputTokens: requests.length === 1 ? 6_000 : 4_000 } } : {}) }
+      },
+      async *generateExplanationStream(): AsyncIterable<never> { return }
+    }
+    const budgetResult = await runExplanationHarness({
+      requestId: `combined-budget-${budgetScenario}`, analysisId: sameMoveSession.analysisId,
+      provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW', attachedMove: sameMoveAnalysis.userMove,
+      answerMode: 'research',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: 10_000 }
+    }, {
+      provider: budgetProvider, apiKey: 'synthetic-test-key', model: 'fake-model', session: sameMoveSession,
+      registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+      traceStore: { save: trace => budgetTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    })
+    check(`combined JSON has a bounded allocation and repair/retry shares the 10000 total (${budgetScenario})`,
+      requests.join(',') === '6000,4000' && countHanCharacters(budgetResult.finalText) >= 400 &&
+      budgetTraces[0]?.modelCalls === 2)
+    check(`budget accounting never invents unreported provider token usage (${budgetScenario})`,
+      reportsUsage ? budgetResult.usage?.outputTokens === 10_000
+        : budgetResult.usage === undefined && budgetTraces[0]?.modelCallDiagnostics?.every(call => call.outputTokens === undefined) === true)
+  }
+
   const compactCombined = JSON.parse(validRepairText) as { audit: ConsequenceAudit; answer: HarnessAnswer }
   const originalConsequenceClaim = compactCombined.answer.sections[3]!.claims[0]!
   const secondFinding = compactCombined.audit.consequences[1]!
