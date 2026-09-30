@@ -61,6 +61,57 @@ function Get-ProbeControls {
   return $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
 }
 function Get-ProbeNames { return @(Get-ProbeControls | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) }
+function Get-ProbeUiVersionObservation {
+  $heading = '版本與自動更新'
+  $versionPattern = 'v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)'
+  $versions = @(); $diagnostics = @(); $headingPresent = $false
+  foreach ($control in Get-ProbeControls) {
+    $current = $control.Current
+    if ($current.IsOffscreen -or $current.ControlType -notin @([System.Windows.Automation.ControlType]::Text, [System.Windows.Automation.ControlType]::Group)) { continue }
+    $name = ([string]$current.Name).Trim()
+    $isBadge = [string]$current.ClassName -ceq 'badge plain'
+    $isHeading = $name -ceq $heading -or $name -match ('^(?:APPLICATION UPDATE\s+)?' + [regex]::Escape($heading) + '(?:\s*' + $versionPattern + ')?$')
+    if ($isHeading) { $headingPresent = $true }
+    $version = $null; $source = $null
+    if (($current.ControlType -eq [System.Windows.Automation.ControlType]::Text -or $isBadge) -and $name -cmatch ('^' + $versionPattern + '$')) {
+      $version = $name; $source = 'exact_static_text_name'
+    } elseif ($isHeading -and $name -cmatch ('^(?:APPLICATION UPDATE\s+)?' + [regex]::Escape($heading) + '\s*(' + $versionPattern + ')$')) {
+      $version = $Matches[1]; $source = 'exact_combined_update_heading'
+    } elseif ($isBadge) {
+      # Only the source-defined version badge may expose its read-only text.
+      # Do not read arbitrary document or input values.
+      $textPattern = $null
+      if ($control.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$textPattern)) {
+        $badgeText = ([string]$textPattern.DocumentRange.GetText(128)).Trim()
+        if ($badgeText -cmatch ('^' + $versionPattern + '$')) { $version = $badgeText; $source = 'exact_badge_text_pattern' }
+      }
+    }
+    if ($version) { $versions += $version }
+    $tokens = @([regex]::Matches($name, '(?<![A-Za-z0-9.])v[0-9]+\.[0-9]+\.[0-9]+(?:[A-Za-z0-9.+-]*)') | ForEach-Object { $_.Value } | Select-Object -First 4)
+    if ($isBadge -or $isHeading -or $tokens.Count) {
+      $diagnostics += @{
+        type = $current.ControlType.ProgrammaticName; className = $current.ClassName
+        nameLength = $name.Length; containsUpdateHeading = $name.Contains($heading)
+        versionNames = $tokens; recognizedVersion = $version; source = $source
+      }
+    }
+  }
+  return @{ headingPresent = $headingPresent; versions = @($versions | Select-Object -Unique); controls = @($diagnostics | Select-Object -First 12) }
+}
+function Assert-ProbeUiVersion([string]$Version, [string]$Stage) {
+  if ($Version -cnotmatch '^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$') { throw 'Expected package version is not an exact patch version.' }
+  Assert-ProbeForeground
+  $action = @{ at = [DateTime]::UtcNow.ToString('o'); requestedName = $Stage; method = 'UIA_TextVersion'; result = 'not_run'; observations = @() }
+  $script:probeUiActions += $action
+  try {
+    [void](Wait-Probe {
+      $observation = Get-ProbeUiVersionObservation
+      $action.observations = @($action.observations | Select-Object -Last 3) + @($observation)
+      return $observation.headingPresent -and $observation.versions.Count -eq 1 -and $observation.versions[0] -ceq "v$Version"
+    } "$Stage UI did not expose one exact current version v$Version in the update section; see version observations." 10)
+    $action.result = 'completed'
+  } catch { $action.result = 'failed'; $action.failure = $_.Exception.Message; throw }
+}
 function Assert-ProbeForeground {
   $window = Wait-Probe { Get-ProbeWindow } 'Installed application window is missing.'
   if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -ne [long]$window.Current.NativeWindowHandle) {

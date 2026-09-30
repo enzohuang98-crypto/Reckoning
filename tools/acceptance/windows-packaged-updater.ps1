@@ -93,7 +93,7 @@ try {
   # Controlled HTTP failures apply to the actual installer, not a fake provider.
   Set-FeedPhase 'download-failure' 'fail-payload'
   Open-ProbeSystemSettings
-  if ((Get-ProbeNames) -cnotcontains "v$($predecessor.version)") { throw 'Packaged predecessor UI reports a different version identity.' }
+  Assert-ProbeUiVersion $predecessor.version 'Packaged predecessor'
   $report.predecessorUiVersion = $predecessor.version
   Invoke-ProbeAction '立即檢查'
   [void](Wait-Probe { (Get-ProbeNames -join ' ') -match '更新下載失敗|更新失敗' } 'Controlled installer download failure was not surfaced by App.' 120)
@@ -171,7 +171,7 @@ try {
   $report.savedDataPreserved = 'passed'
   $report.finalInstalledVersion = (Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion
   Open-ProbeSystemSettings
-  if ((Get-ProbeNames) -cnotcontains "v$($candidate.version)") { throw 'Updated packaged UI reports a different version identity.' }
+  Assert-ProbeUiVersion $candidate.version 'Updated packaged candidate'
   $report.candidateUiVersion = $candidate.version
   Invoke-ProbeAction '分析'
   $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) '象棋AI分析講解.lnk'
