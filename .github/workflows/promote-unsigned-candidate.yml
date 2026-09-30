@@ -15,6 +15,14 @@ on:
         description: Successful Release workflow run that published and checked this candidate
         required: true
         type: string
+      acceptance_evidence_url:
+        description: Immutable raw.githubusercontent.com repository commit URL for actual installed candidate and packaged updater acceptance JSON
+        required: true
+        type: string
+      acceptance_evidence_sha256:
+        description: SHA-256 of the exact acceptance JSON bytes, recorded after actual product gates pass
+        required: true
+        type: string
       acknowledgement:
         description: Type PUBLISH UNSIGNED LATEST after all Windows acceptance gates pass
         required: true
@@ -55,6 +63,8 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
           EXPECTED_SHA256: ${{ inputs.expected_setup_sha256 }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          ACCEPTANCE_EVIDENCE_URL: ${{ inputs.acceptance_evidence_url }}
+          ACCEPTANCE_EVIDENCE_SHA256: ${{ inputs.acceptance_evidence_sha256 }}
           UNSIGNED_ACK: ${{ inputs.acknowledgement }}
         run: |
           set -euo pipefail
@@ -87,7 +97,16 @@ jobs:
             echo 'Candidate Release workflow did not finish successfully for this exact tag commit.' >&2
             exit 1
           fi
-          candidate_jobs="$(gh api "repos/${{ github.repository }}/actions/runs/$CANDIDATE_RUN_ID/jobs?per_page=100")"
+          candidate_jobs="$(gh api --paginate --slurp "repos/${{ github.repository }}/actions/runs/$CANDIDATE_RUN_ID/jobs?per_page=100" | jq '{jobs: [.[].jobs[]]}')"
+          if ! jq -e '
+            [.jobs[] | select(.name == "Build unsigned-release Windows x64 artifact once")] as $build |
+            [.jobs[] | select(.name == "Publish unsigned-release candidate")] as $publish |
+            ($build | length) == 1 and ($publish | length) == 1 and
+            $build[0].conclusion == "success" and $publish[0].conclusion == "success"
+          ' <<< "$candidate_jobs" >/dev/null; then
+            echo 'Exact successful unsigned-release build and publish jobs are required; teacher-candidate cannot be promoted.' >&2
+            exit 1
+          fi
           if ! jq -e '[.jobs[] | select(.name | startswith("Public installer check ("))] | length == 2 and all(.[]; .conclusion == "success")' <<< "$candidate_jobs" >/dev/null; then
             echo 'Both public installer Server proxy checks must succeed before Latest promotion.' >&2
             exit 1
@@ -142,6 +161,16 @@ jobs:
           expected_sha512="$(openssl dgst -sha512 -binary "$work_dir/$setup" | base64 -w0)"
           grep -Fx "    sha512: $expected_sha512" "$work_dir/latest.yml" >/dev/null
           grep -Fx "sha512: $expected_sha512" "$work_dir/latest.yml" >/dev/null
+
+          node tools/release/validate-unsigned-candidate-evidence.mjs \
+            --url "$ACCEPTANCE_EVIDENCE_URL" \
+            --evidence-sha256 "$ACCEPTANCE_EVIDENCE_SHA256" \
+            --repository "${{ github.repository }}" \
+            --tag "$RELEASE_TAG" \
+            --commit "$candidate_commit" \
+            --run-id "$CANDIDATE_RUN_ID" \
+            --setup-sha256 "$actual_sha256" \
+            --version "$version"
 
           gh release edit "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \

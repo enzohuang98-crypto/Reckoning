@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { START_FEN } from '../../src/shared/types/BoardState'
 import {
   assertJsonSize,
@@ -465,7 +466,7 @@ try {
   const metadata = `version: 0.4.15\nfiles:\n  - url: ${setup}\n    sha512: ${sha512}\n    size: ${payload.length}\npath: ${setup}\nsha512: ${sha512}\nreleaseDate: '2026-09-27T00:00:00.000Z'\n`
   const metadataGate = unsignedPromotionWorkflow
     .split('          grep -Fx "version: $version"')[1]
-    ?.split('          gh release edit')[0]
+    ?.split('          node tools/release/validate-unsigned-candidate-evidence.mjs')[0]
   const runMetadataGate = (value: string): number | null => {
     writeFileSync(join(manifestCheckDirectory, 'latest.yml'), value)
     return spawnSync(bashPath, ['--noprofile', '--norc', '-c',
@@ -482,6 +483,131 @@ try {
 } finally {
   rmSync(manifestCheckDirectory, { recursive: true, force: true })
 }
+// These are SYNTHETIC offline schema tests, never actual candidate acceptance.
+// Spawn the shipped Node CLI so promotion and tests execute the same validator.
+const evidenceTestDirectory = mkdtempSync(join(tmpdir(), 'reckoning-synthetic-evidence-'))
+try {
+  const bodySections = Array.from({ length: 5 }, (_, i) => `${i + 1} ${'棋局分析證據'.repeat(16)}`)
+  const bodySha256 = createHash('sha256').update(bodySections.join('\n\n')).digest('hex')
+  const os = { family: 'Windows 11', productType: 'client', build: '26100', architecture: 'x64', appArchitecture: 'x64', executionMode: 'native' }
+  const gates = (fields: string): Record<string, boolean> => Object.fromEntries(fields.split(' ').map(field => [field, true]))
+  const synthetic = {
+    schemaVersion: 1, result: 'pass', releaseMode: 'unsigned-release',
+    repository: 'enzohuang98-crypto/Reckoning', releaseTag: 'v0.4.15', version: '0.4.15',
+    commitSha: 'a'.repeat(40), candidateReleaseRunId: '12345', installerSha256: 'b'.repeat(64),
+    testRunId: '12345678-1234-4123-8123-123456789abc', testedAt: new Date().toISOString(),
+    installerUrl: 'https://github.com/enzohuang98-crypto/Reckoning/releases/download/v0.4.15/xiangqi-analyzer-0.4.15-setup.exe',
+    authenticodeStatus: 'NotSigned', limitations: { unsigned: true, smartScreenMayWarnOrBlock: true },
+    candidate: {
+      evidenceClass: 'installed-windows-client-ui', os,
+      savedModelBefore: 'synthetic/previous-fixture:free', savedModelAfter: 'synthetic/schema-fixture:free',
+      gates: gates('installed settingsUiUsed sameSavedKeyFreeModelSwitch settingsReopenPreservesModel appRestartPreservesModel failedSwitchPreservesModel normalInstallerLaunched installPathsVerified shortcutsVerified pikafishUciReady pikafishSearchCompleted userDataPreserved draftProtected'),
+      analysis: {
+        evidenceClass: 'installed-candidate-analysis', provider: 'openrouter', model: 'synthetic/schema-fixture:free',
+        promptPrice: 0, completionPrice: 0, sameSavedCredential: true, complete: true, truncated: false,
+        finishReason: 'stop', bodySections, bodySha256,
+        validator: { result: 'pass', bodySha256, grounded: true, fiveBodySections: true },
+        independentReview: { result: 'pass', bodySha256, grounded: true, independent: true, reviewer: 'SYNTHETIC offline fixture reviewer' }
+      }
+    },
+    updater: {
+      evidenceClass: 'isolated-packaged-predecessor-to-candidate', os,
+      gates: gates('isolated packagedPredecessorInstalled newUpdaterPresent normalInstallCompleted backgroundDownloadUiUsable noAutomaticQuit cacheReopenVerified cacheRestartVerified cacheCorruptionRejected downloadFailureRecovered earlyPrepareSafe installRetryPassed userDataPreserved draftProtected exactCandidateInstalled candidateLaunched'),
+      targetVersion: '0.4.15', targetInstallerSha256: 'b'.repeat(64), predecessorVersion: '0.4.14',
+      predecessorInstallerSha256: 'c'.repeat(64), predecessorCommitSha: 'd'.repeat(40),
+      installerPayloadBytesOnCacheReuse: 0, testedAt: new Date().toISOString()
+    }
+  }
+  const runEvidence = (mutate?: (value: any) => void, digestOverride?: string): number | null => {
+    const value = JSON.parse(JSON.stringify(synthetic))
+    mutate?.(value)
+    const bytes = Buffer.from(JSON.stringify(value))
+    const file = join(evidenceTestDirectory, 'SYNTHETIC-offline.json')
+    writeFileSync(file, bytes)
+    return spawnSync(process.execPath, [resolve('tools/release/validate-unsigned-candidate-evidence.mjs'),
+      '--file', file, '--evidence-sha256', digestOverride ?? createHash('sha256').update(bytes).digest('hex'),
+      '--repository', synthetic.repository, '--tag', synthetic.releaseTag, '--commit', synthetic.commitSha,
+      '--run-id', synthetic.candidateReleaseRunId, '--setup-sha256', synthetic.installerSha256,
+      '--version', synthetic.version], { encoding: 'utf8' }).status
+  }
+  check('SYNTHETIC offline unsigned evidence schema passes actual Node CLI (no real acceptance)', runEvidence() === 0)
+  check('Unsigned evidence rejects altered bytes digest', runEvidence(undefined, '0'.repeat(64)) !== 0)
+  check('Unsigned evidence binds exact commit, run, setup hash, repository, tag and version',
+    ['commitSha', 'candidateReleaseRunId', 'installerSha256', 'repository', 'releaseTag', 'version'].every(field =>
+      runEvidence(value => { value[field] = field === 'installerSha256' ? '0'.repeat(64) : 'wrong' }) !== 0))
+  check('Unsigned evidence rejects teacher-candidate mode and NOT_RUN samples',
+    runEvidence(value => { value.releaseMode = 'teacher-candidate' }) !== 0 &&
+    runEvidence(value => { value.result = 'NOT_RUN' }) !== 0)
+  check('Every candidate and updater gate requires typed explicit true',
+    ['candidate', 'updater'].every(section => Object.keys(synthetic[section as 'candidate' | 'updater'].gates).every(field =>
+      [false, 'true', undefined].every(replacement => runEvidence(value => { value[section].gates[field] = replacement }) !== 0))))
+  check('Unsigned evidence rejects source runner and SDK fixture substitutions',
+    runEvidence(value => { value.candidate.evidenceClass = 'source-runner' }) !== 0 &&
+    runEvidence(value => { value.candidate.analysis.evidenceClass = 'sdk-fixture' }) !== 0 &&
+    runEvidence(value => { value.updater.evidenceClass = 'offline-update-policy-test' }) !== 0)
+  check('Unsigned evidence rejects paid model, nonzero pricing and changed saved credential',
+    runEvidence(value => { value.candidate.analysis.model = 'vendor/paid-model' }) !== 0 &&
+    runEvidence(value => { value.candidate.analysis.promptPrice = '0' }) !== 0 &&
+    runEvidence(value => { value.candidate.analysis.completionPrice = 0.001 }) !== 0 &&
+    runEvidence(value => { value.candidate.analysis.sameSavedCredential = false }) !== 0)
+  check('Unsigned UI switch binds a different saved model to exact actual analysis model',
+    runEvidence(value => { value.candidate.savedModelBefore = value.candidate.savedModelAfter }) !== 0 &&
+    runEvidence(value => { value.candidate.savedModelAfter = 'synthetic/other-free:free' }) !== 0 &&
+    runEvidence(value => { delete value.candidate.savedModelBefore }) !== 0)
+  check('Unsigned evidence rejects incomplete, short, wrong body hash or missing independent review',
+    runEvidence(value => { value.candidate.analysis.truncated = true }) !== 0 &&
+    runEvidence(value => { value.candidate.analysis.bodySections = ['棋', '棋', '棋', '棋', '棋'] }) !== 0 &&
+    runEvidence(value => { value.candidate.analysis.bodySha256 = '0'.repeat(64) }) !== 0 &&
+    runEvidence(value => { delete value.candidate.analysis.independentReview }) !== 0)
+  check('Unsigned updater evidence requires zero installer payload on cache reuse',
+    runEvidence(value => { value.updater.installerPayloadBytesOnCacheReuse = 1 }) !== 0 &&
+    runEvidence(value => { value.updater.installerPayloadBytesOnCacheReuse = '0' }) !== 0)
+  check('Unsigned evidence rejects stale or future timestamps for either run',
+    runEvidence(value => { value.testedAt = new Date(Date.now() - 73 * 3600000).toISOString() }) !== 0 &&
+    runEvidence(value => { value.updater.testedAt = new Date(Date.now() - 73 * 3600000).toISOString() }) !== 0 &&
+    runEvidence(value => { value.testedAt = new Date(Date.now() + 3600000).toISOString() }) !== 0)
+  check('Unsigned evidence requires native candidate client and disclosed ARM64 updater emulation',
+    runEvidence(value => { value.candidate.os.productType = 'server' }) !== 0 &&
+    runEvidence(value => { value.updater.os = { ...os, architecture: 'arm64', executionMode: 'x64-emulation', emulationDisclosed: true } }) === 0 &&
+    runEvidence(value => { value.updater.os = { ...os, architecture: 'arm64', executionMode: 'x64-emulation' } }) !== 0)
+  check('Unsigned client OS build accepts actual Win10/Win11 numbers and full version format',
+    runEvidence(value => { value.candidate.os.build = '10.0.26200' }) === 0 &&
+    runEvidence(value => { value.candidate.os = { ...os, family: 'Windows 10', build: '10240' } }) === 0 &&
+    runEvidence(value => { value.updater.os = { ...os, family: 'Windows 10', build: '10.0.19045.1' } }) === 0)
+  check('Unsigned client OS build rejects fake or mismatched Windows family',
+    runEvidence(value => { value.candidate.os.build = '1' }) !== 0 &&
+    runEvidence(value => { value.updater.os.build = '10.0.19045' }) !== 0 &&
+    runEvidence(value => { value.candidate.os = { ...os, family: 'Windows 10', build: '22000' } }) !== 0 &&
+    runEvidence(value => { value.updater.os = { ...os, family: 'Windows 10', build: '10239' } }) !== 0)
+  check('Unsigned updater predecessor semver must be older, rejecting equal and downgrade paths',
+    runEvidence(value => { value.updater.predecessorVersion = '0.3.99' }) === 0 &&
+    runEvidence(value => { value.updater.predecessorVersion = '0.4.15' }) !== 0 &&
+    runEvidence(value => { value.updater.predecessorVersion = '0.4.16' }) !== 0 &&
+    runEvidence(value => { value.updater.predecessorVersion = '0.5.0' }) !== 0 &&
+    runEvidence(value => { value.updater.predecessorVersion = '1.0.0' }) !== 0)
+  check('Unsigned evidence records NotSigned and SmartScreen limitations',
+    runEvidence(value => { value.authenticodeStatus = 'Valid' }) !== 0 &&
+    runEvidence(value => { value.limitations.smartScreenMayWarnOrBlock = false }) !== 0)
+  check('Unsigned evidence enforces 128 KiB bound', runEvidence(value => { value.padding = 'x'.repeat(128 * 1024) }) !== 0)
+  const urlCases = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import { validateEvidenceUrl } from ${JSON.stringify(pathToFileURL(resolve('tools/release/validate-unsigned-candidate-evidence.mjs')).href)};
+    validateEvidenceUrl('https://raw.githubusercontent.com/enzohuang98-crypto/Reckoning/${'a'.repeat(40)}/docs/acceptance.json');
+    for (const url of ['http://raw.githubusercontent.com/enzohuang98-crypto/Reckoning/${'a'.repeat(40)}/a.json', 'https://raw.githubusercontent.com/enzohuang98-crypto/Reckoning/main/a.json', 'https://evil.example/a.json', 'https://raw.githubusercontent.com/other/Reckoning/${'a'.repeat(40)}/a.json', 'https://raw.githubusercontent.com/enzohuang98-crypto/Reckoning/${'a'.repeat(40)}/a.json?token=secret']) {
+      let rejected = false; try { validateEvidenceUrl(url) } catch { rejected = true } if (!rejected) process.exit(1);
+    }`], { encoding: 'utf8' })
+  check('Unsigned evidence URL requires immutable exact repository HTTPS raw JSON', urlCases.status === 0)
+} finally {
+  rmSync(evidenceTestDirectory, { recursive: true, force: true })
+}
+check('Unsigned promotion requires exact unsigned-release jobs and evidence before release edit',
+  unsignedPromotionWorkflow.includes('Build unsigned-release Windows x64 artifact once') &&
+  unsignedPromotionWorkflow.includes('Publish unsigned-release candidate') &&
+  unsignedPromotionWorkflow.includes('$build[0].conclusion == "success"') &&
+  unsignedPromotionWorkflow.includes('$publish[0].conclusion == "success"') &&
+  unsignedPromotionWorkflow.includes('--paginate --slurp') &&
+  unsignedPromotionWorkflow.includes('acceptance_evidence_url:') &&
+  unsignedPromotionWorkflow.includes('acceptance_evidence_sha256:') &&
+  unsignedPromotionWorkflow.indexOf('node tools/release/validate-unsigned-candidate-evidence.mjs') < unsignedPromotionWorkflow.indexOf('gh release edit'))
 const compileFakeEngineAction = readFileSync(
   resolve('.github/actions/compile-fake-engine/action.yml'),
   'utf8'

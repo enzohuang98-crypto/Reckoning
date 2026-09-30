@@ -12,6 +12,8 @@ $report = [ordered]@{
   nativeArchitecture = $env:PROCESSOR_ARCHITECTURE
   architectureDifference = 'ARM64 client with x64 emulation; not native AMD64 hardware acceptance.'
   installer = 'not_run'; installedLaunch = 'not_run'; accessibleControls = @()
+  firstRunEngineTest = 'not_run'; firstRunCompletion = 'not_run'
+  nativeAccessibilityTree = 'not_run'; foregroundWindowAcceptance = 'not_run'
   observations = @(); launchProcessExited = $false
   settingsPersistence = 'not_run'; candidateBinaryAcceptance = 'not_run'
   realProviderAcceptance = 'not_run'; updaterInstallationAcceptance = 'not_run'
@@ -50,13 +52,42 @@ try {
   }
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class PackagedProbeWindow {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+}
+'@
+  function Find-VisibleButton($Controls, [string]$Name) {
+    foreach ($control in $Controls) {
+      $current = $control.Current
+      if ($current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and
+          $current.Name -ceq $Name -and $current.IsEnabled -and -not $current.IsOffscreen) {
+        return $control
+      }
+    }
+    return $null
+  }
+  function Invoke-ProbeButton($Button) {
+    $pattern = $null
+    if (-not $Button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+      throw 'Required native button does not expose the UI Automation Invoke pattern.'
+    }
+    ([System.Windows.Automation.InvokePattern]$pattern).Invoke()
+  }
   # This is the interactive application under UI test, not a background helper.
   # SW_HIDE can suppress its first ShowWindow call and invalidate UI discovery.
   $launched = Start-Process -FilePath $exe -ArgumentList '--force-renderer-accessibility' -WindowStyle Normal -PassThru
-  $deadline = [DateTime]::UtcNow.AddSeconds(45)
+  $deadline = [DateTime]::UtcNow.AddSeconds(90)
   $window = $null
   $uiPassed = $false
   $nextObservation = [DateTime]::MinValue
+  $focusAttempted = $false
+  $engineTestInvoked = $false
+  $finishInvoked = $false
   do {
     $launched.Refresh()
     $report.launchProcessExited = $launched.HasExited
@@ -71,14 +102,52 @@ try {
       foreach ($candidate in $windows) {
         $controls = $candidate.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
         $names = @($controls | ForEach-Object { $_.Current.Name } | Where-Object { $_ } | Select-Object -Unique -First 150)
-        $observedWindows += @{ processId = $appProcess.Id; title = $candidate.Current.Name; className = $candidate.Current.ClassName; names = $names }
+        $buttons = @($controls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button } | ForEach-Object {
+          @{ name = $_.Current.Name; enabled = $_.Current.IsEnabled; offscreen = $_.Current.IsOffscreen }
+        })
+        $observedWindows += @{ processId = $appProcess.Id; title = $candidate.Current.Name; className = $candidate.Current.ClassName; names = $names; buttons = $buttons }
         $report.accessibleControls = @($report.accessibleControls + $names | Select-Object -Unique -First 150)
-        # A crash dialog or empty Chromium frame cannot satisfy UI acceptance.
-        $hasAnalysis = @($names | Where-Object { $_ -match '分析' }).Count -gt 0
-        $hasSettings = @($names | Where-Object { $_ -match '設定' }).Count -gt 0
+        if (-not $focusAttempted -and $candidate.Current.NativeWindowHandle -ne 0) {
+          $focusAttempted = $true
+          [void][PackagedProbeWindow]::SetForegroundWindow([IntPtr]$candidate.Current.NativeWindowHandle)
+          try { $candidate.SetFocus() } catch { $report.focusAttemptFailure = $_.Exception.Message }
+        }
+        $foregroundHandle = [PackagedProbeWindow]::GetForegroundWindow()
+        [uint32]$foregroundProcessId = 0
+        [void][PackagedProbeWindow]::GetWindowThreadProcessId($foregroundHandle, [ref]$foregroundProcessId)
+        $foregroundProcess = Get-Process -Id $foregroundProcessId -ErrorAction SilentlyContinue
+        $isAppForeground = $null -ne $foregroundProcess -and $foregroundProcess.Path -eq $exe
+        $isWindowForeground = $isAppForeground -and $candidate.Current.NativeWindowHandle -ne 0 -and
+          $foregroundHandle.ToInt64() -eq [long]$candidate.Current.NativeWindowHandle
+        $report.foregroundObservation = @{
+          processId = $foregroundProcessId; title = $foregroundProcess.MainWindowTitle
+          appIsForeground = $isAppForeground; observedWindowIsForeground = $isWindowForeground
+        }
+        # A setup paragraph mentioning analysis/settings is not the workspace.
+        $hasAnalysis = $null -ne (Find-VisibleButton $controls '分析')
+        $hasSettings = $null -ne (Find-VisibleButton $controls '設定')
         $hasStartupFailure = @($names | Where-Object { $_ -match '啟動失敗|無法啟動' }).Count -gt 0
-        if ($hasAnalysis -and $hasSettings -and -not $hasStartupFailure) {
+        if ($hasAnalysis -and $hasSettings -and -not $hasStartupFailure -and $isWindowForeground) {
           $window = $candidate; $uiPassed = $true; $report.windowProcessId = $appProcess.Id
+        } elseif (-not $hasStartupFailure -and $isWindowForeground) {
+          # Fresh isolated profile only. Exercise the real first-run UI with an
+          # empty key; SetupWizard's normal save/complete route makes no AI call.
+          $engineButton = Find-VisibleButton $controls '測試引擎'
+          $finishButton = Find-VisibleButton $controls '完成設定 →'
+          if ($engineButton -and $finishButton -and -not $engineTestInvoked) {
+            Invoke-ProbeButton $engineButton
+            $engineTestInvoked = $true
+            $report.firstRunEngineTest = 'invoked'
+          }
+          $engineSuccess = ($names -join ' ') -match '連線成功：\s*Pikafish[^。]*（UCI）'
+          if ($engineTestInvoked -and $engineSuccess) {
+            $report.firstRunEngineTest = 'passed'
+            if ($finishButton -and -not $finishInvoked) {
+              Invoke-ProbeButton $finishButton
+              $finishInvoked = $true
+              $report.firstRunCompletion = 'invoked'
+            }
+          }
         }
       }
     }
@@ -93,9 +162,11 @@ try {
     if ($uiPassed) { break }
     Start-Sleep -Milliseconds 500
   } while ([DateTime]::UtcNow -lt $deadline)
-  if (-not $uiPassed) { throw 'Installed native UI did not expose analysis and settings controls within 45 seconds; see recorded process/window observations.' }
+  if (-not $uiPassed) { throw 'Installed workspace did not expose enabled visible analysis/settings navigation buttons in the foreground within 90 seconds; first-run/OOBE observations are recorded.' }
   $report.installedLaunch = 'passed'
   $report.nativeAccessibilityTree = 'passed'
+  $report.foregroundWindowAcceptance = 'passed'
+  if ($finishInvoked) { $report.firstRunCompletion = 'passed' }
   # Control discovery is recorded first; do not invent a settings click or count
   # a process start as model switching, persistence, AI, or updater acceptance.
 } catch {
