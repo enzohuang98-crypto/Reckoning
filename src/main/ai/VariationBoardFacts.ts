@@ -8,6 +8,8 @@ import {
 import type { PieceColor, PieceType } from '@shared/types/BoardState'
 import type { HarnessEvidence } from '@shared/types/Harness'
 
+export const VARIATION_BOARD_FACT_MAX_PLIES = 12
+
 export interface VariationStepFact {
   ply: number
   move: string
@@ -33,7 +35,7 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
   let board = parsed.board
   const steps: VariationStepFact[] = []
   // Match the initial writer's visible PV limit and keep repair input bounded.
-  for (const [index, uci] of moves.slice(0, 12).entries()) {
+  for (const [index, uci] of moves.slice(0, VARIATION_BOARD_FACT_MAX_PLIES).entries()) {
     const coordinates = parseUciMove(uci)
     const display = formatChineseMove(board, uci)
     const applied = applyUciMove(board, uci)
@@ -60,6 +62,60 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
     board = applied.board
   }
   return { steps, warning: moves.length === 0 ? '沒有 UCI 主線，不能計算棋盤事實。' : null }
+}
+
+/**
+ * Capture observations for prompt input, never a material or strategic verdict.
+ * Shared categories mean the same captured side/type, not the same piece.
+ * Only verified prefixes from exactly the same starting FEN are compared.
+ */
+export function summarizeVariationCaptures(evidence: readonly HarnessEvidence[]): string[] {
+  if (evidence.length === 0) return []
+  const names: Record<PieceColor, Record<PieceType, string>> = {
+    red: { king: '帥', advisor: '仕', elephant: '相', horse: '馬', rook: '車', cannon: '炮', pawn: '兵' },
+    black: { king: '將', advisor: '士', elephant: '象', horse: '馬', rook: '車', cannon: '炮', pawn: '卒' }
+  }
+  const pieceName = (side: PieceColor, piece: PieceType): string =>
+    `${side === 'red' ? '紅方' : '黑方'}${names[side][piece]}`
+  const summaries = [
+    `吃子摘要只涵蓋各變例最多前 ${VARIATION_BOARD_FACT_MAX_PLIES} 手的已重播前綴，不是終局子力或優劣判定。共同事件只比較被吃方與棋子類別，不表示同一枚棋子。`
+  ]
+  const sharedByFen = new Map<string, Map<string, {
+    captured: NonNullable<VariationStepFact['captured']>
+    pliesById: Map<string, number[]>
+  }>>()
+  for (const item of evidence) {
+    const facts = buildVariationBoardFacts(item)
+    const captures = facts.steps.filter((step) => step.captured !== null)
+    summaries.push(`${item.id}：已重播 ${facts.steps.length} 手${facts.steps.length > 0 && captures.length === 0 ? '，此已重播前綴未觀察到吃子' : ''}。`)
+    if (facts.warning) summaries.push(`${item.id}：${facts.warning}`)
+    for (const step of captures) {
+      const captured = step.captured!
+      summaries.push(`${item.id} 第 ${step.ply} 手：${pieceName(step.side, step.piece)}走${step.move}，吃掉${pieceName(captured.side, captured.piece)}。`)
+      let categories = sharedByFen.get(item.positionFen)
+      if (!categories) {
+        categories = new Map()
+        sharedByFen.set(item.positionFen, categories)
+      }
+      const categoryKey = `${captured.side}:${captured.piece}`
+      let category = categories.get(categoryKey)
+      if (!category) {
+        category = { captured, pliesById: new Map() }
+        categories.set(categoryKey, category)
+      }
+      const plies = category.pliesById.get(item.id) ?? []
+      if (!plies.includes(step.ply)) plies.push(step.ply)
+      category.pliesById.set(item.id, plies)
+    }
+  }
+  for (const categories of sharedByFen.values()) {
+    for (const { captured, pliesById } of categories.values()) {
+      if (pliesById.size < 2) continue
+      const locations = [...pliesById].map(([id, plies]) => `${id} 第 ${plies.join('、')} 手`).join('；')
+      summaries.push(`相同起始局面的已重播前綴共同出現被吃${pieceName(captured.side, captured.piece)}：${locations}。不能據此稱為某一條變例獨有的損失，也不能據此判定走法優劣。`)
+    }
+  }
+  return summaries
 }
 
 /**

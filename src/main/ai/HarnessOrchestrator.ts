@@ -1,5 +1,5 @@
 import { buildBoardQuestionFacts } from './BoardQuestionFacts'
-import { buildVariationBoardFacts, validateVariationBoardStatements } from './VariationBoardFacts'
+import { buildVariationBoardFacts, summarizeVariationCaptures, validateVariationBoardStatements, VARIATION_BOARD_FACT_MAX_PLIES } from './VariationBoardFacts'
 import { buildQuestionRecoveryPrompt, extractDirectQuestionText, isFocusedQuestionAnswer } from './QuestionAnswerQuality'
 import { randomUUID } from 'node:crypto'
 import type { AIProvider, TokenUsage } from '@shared/types/AIProviderTypes'
@@ -400,13 +400,13 @@ function makeEvidence(
   }
 }
 
-/** Each model-visible ID exposes exactly the variation the validator replays. */
+/** Each model-visible ID exposes only its bounded replayed variation. */
 function publicScopedEvidence(item: HarnessEvidence): object {
   return {
     id: item.id, purpose: item.purpose, engineName: item.engineName,
     positionFen: item.positionFen, move: item.displayMove, depth: item.depth,
     score: item.score?.displayText ?? null,
-    principalVariation: item.displayPrincipalVariation,
+    principalVariation: item.displayPrincipalVariation.slice(0, VARIATION_BOARD_FACT_MAX_PLIES),
     computedBoardFacts: buildVariationBoardFacts(item)
   }
 }
@@ -1186,7 +1186,7 @@ function hasNoUserMoveFraming(text: string): boolean {
 
 /** Screen explicit forced-line assertions, preserving local negations only. */
 function hasAssertedForcedVariation(text: string): boolean {
-  const assertion = /(?:被迫|必然(?:會|会|導致|导致|發生|发生)|唯一(?:著法|着法|走法|回應|回应|選擇|选择)|只能(?:走|下|應|应|回應|回应|選擇|选择|防守|撤退|棄|弃|退|補|补|跟著|跟着))|\b(?:forced|only (?:move|reply|response)|must (?:play|reply|respond))\b/gi
+  const assertion = /(?:被迫|必然(?:會|会|導致|导致|發生|发生)|唯一(?:著法|着法|走法|回應|回应|選擇|选择)|只能(?:被動|被动)?(?:走|下|應|应|回應|回应|選擇|选择|防守|撤退|棄|弃|退|補|补|跟著|跟着))|\b(?:forced|only (?:move|reply|response)|must (?:play|reply|respond))\b/gi
   for (const clause of text.split(/[。！？；，,.!?;\n]|但(?:是)?|然而|卻|却|\bbut\b/i)) {
     let previousAssertionEnd = 0
     for (const match of clause.matchAll(assertion)) {
@@ -1400,6 +1400,12 @@ export function validateAnswer(
   const isPlayerFacingMoveComparison = requiredSectionIds.includes(
     SECTION_IDS.actualMoveProblem
   )
+  const allClaimProse = [prose, ...claims.flatMap((claim) =>
+    claim.causal ? Object.values(claim.causal) : [])].join(' ')
+  // A conversation turn retains the same PV certainty rule as a full lesson.
+  if (hasAssertedForcedVariation(allClaimProse)) {
+    errors.push('回答不得把單一引擎主線誇大為被迫、必然或唯一回應。')
+  }
   if (
     requirements.comparisonState === 'same_move' &&
     contradictsSameMove([prose, ...claims.flatMap((claim) => claim.causal ? Object.values(claim.causal) : [])].join(' '), evidence)
@@ -1424,9 +1430,6 @@ export function validateAnswer(
       )
     ) {
       errors.push('一鍵解說含有棋手不需要的內部格式或診斷資訊。')
-    }
-    if (hasAssertedForcedVariation(playerFacingProse)) {
-      errors.push('一鍵解說不得把單一引擎主線誇大為被迫、必然或唯一回應。')
     }
   }
   if (!requirements.hasUserMove) {
@@ -2610,6 +2613,9 @@ export async function runExplanationHarness(
     const hasEngineAnchor = (text: string): boolean => collectDisplayMoves(evidence).some(move => chineseMoveIsMentioned(text, move))
     const passesQuestionChecks = (text: string): boolean => {
       const boardIssues = validateVariationBoardStatements(text, evidence)
+      if (hasAssertedForcedVariation(text)) {
+        boardIssues.push('回答不得把單一引擎主線誇大為被迫、必然或唯一回應。')
+      }
       validationErrors.push(...boardIssues.map(issue => `追問回答未通過：${issue}`))
       return hasEngineAnchor(text) && isFocusedQuestionAnswer(question, text) &&
         followsRequestedSentenceCount(text, question, validationLanguage) && boardIssues.length === 0
@@ -2622,6 +2628,7 @@ export async function runExplanationHarness(
     const response = await callModel(buildQuestionRecoveryPrompt({
       question, language: payload.language, fen: deps.session.positionFen,
       boardFacts: boardQuestion.facts,
+      variationCaptureFacts: summarizeVariationCaptures(evidence),
       engineFacts: JSON.stringify(evidence.map(publicScopedEvidence)),
       context: deps.explanationPrompt
     }), 1_200, 30_000, 'text', 'question_recovery')
@@ -3428,7 +3435,10 @@ ${
 使用者若指定句數、長度、語氣或格式，必須遵守；答案保持直接、精簡，但仍要引用 evidenceIds。
 只輸出一個 id 固定為 follow_up、heading 為「追問」的區塊。不得新增使用者沒有問的完整課程。
 若本次未提供使用者著法，仍不得補造、批評或比較不存在的著法。
-claim 不需要 findingIds 或 causal 物件。棋規及已計算棋盤事實可以直接回答；不得以模型自行推論的一般棋理替代皮卡魚結果，generalNotes 保持空陣列。只有引用具體引擎變例時才需要逐字使用 evidence 中的中文著法，不得以主線或「證據不足」取代對問題的回答。`
+claim 不需要 findingIds 或 causal 物件。棋規及已計算棋盤事實可以直接回答；不得以模型自行推論的一般棋理替代皮卡魚結果，generalNotes 保持空陣列。只有引用具體引擎變例時才需要逐字使用 evidence 中的中文著法，不得以主線或「證據不足」取代對問題的回答。
+如果問題是「為何實戰步不如首選／Pikafish 為何這樣走」，先核對兩條線共有與不同的盤面變化，再用差異解釋棋手想法；兩線都發生的吃子／失子不能寫成只有實戰線才有的缺點。吃子敘述要明說哪一方、哪種棋子吃掉哪一方的哪種棋子，不能把被吃的馬與炮混為一談。
+PV 只展示這條變例的選擇，不證明對手被迫、只能被動應對或無法反擊。若具體優劣原因尚未證實，指出可見的差別與欠缺的證據，不把主線差異自動寫成戰略優勢。
+逐線吃子比較（只描述已重播前綴，不能單獨證明優劣）：${JSON.stringify(summarizeVariationCaptures(evidence))}`
     : hasUserMove
       ? `先用 directAnswer 寫一段符合比較證據狀態的短結論：${comparisonState === 'same_move'
   ? '明說實戰步與首選一致，解釋這步的好處與對手合理應對。'

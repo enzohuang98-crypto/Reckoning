@@ -2871,6 +2871,29 @@ async function main(): Promise<void> {
 
   const invalidFollowUpProvider = new LocalizedNoUserMoveProvider(['not-json', '目前最需要注意中路的控制，炮二平五把炮移到中路。接下來出子前先檢查對手能否直接將軍或吃掉無根子。不要只顧進攻而讓自己的將帥失去保護。'])
   for (const scenario of [
+    { name: '短追問不能將主線誇大為被迫', outputs: [JSON.stringify({ mode: 'research', title: '追問',
+      directAnswer: '炮二平五建立中炮後，黑方被迫走馬8進7。', directAnswerEvidenceIds: ['E1'],
+      sections: [{ id: 'follow_up', heading: '追問', claims: [{ id: 'FQ1', text: '炮二平五建立中炮後，黑方被迫走馬8進7。', evidenceIds: ['E1'] }] }], generalNotes: [], warnings: [] }), '炮二平五建立中炮後，黑方被迫走馬8進7。'], accepted: false },
+    { name: '文字 recovery 不能聲稱只能被動應對', outputs: ['not-json', '炮二平五建立中炮後，黑方馬8進7只能被動應對。'], accepted: false },
+    { name: 'salvage 不能豁免唯一回應斷言', outputs: [JSON.stringify({ directAnswer: '炮二平五建立中炮後，黑方馬8進7是唯一回應。' }), '炮二平五建立中炮後，黑方馬8進7是唯一回應。'], accepted: false },
+    { name: '短追問可明確否定強迫主線', outputs: ['not-json', '炮二平五建立中炮後，主線選擇黑方馬8進7，但不是唯一回應。'], accepted: true }
+  ]) {
+    const provider = new LocalizedNoUserMoveProvider(scenario.outputs)
+    let accepted = false
+    let errorName: string | undefined
+    try {
+      const result = await runExplanationHarness({ requestId: scenario.name, analysisId: noMoveSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate', explanationStyle: 'long_analytical',
+        language: 'zh-TW', answerMode: 'research', followUpQuestion: '炮二平五後黑方怎麼應對？',
+        conversationHistory: [{ id: 'certainty-context', role: 'user', text: '正在復盤這盤棋。', createdAt: new Date().toISOString() }] },
+        { provider, apiKey: 'synthetic-test-key', model: 'fake-model', session: noMoveSession,
+          registry: { list: () => ({ activeEngineId: 'engine-1' }), getAdapter: () => null } as never,
+          traceStore: { save: () => undefined } as never, signal: new AbortController().signal, onProgress: () => undefined })
+      accepted = result.finalText.includes('炮二平五')
+    } catch (error) { errorName = error instanceof Error ? error.name : String(error) }
+    check(scenario.name, accepted === scenario.accepted && (scenario.accepted || errorName === 'HarnessExplanationUnavailableError'), JSON.stringify({ accepted, calls: provider.calls, errorName }))
+  }
+  for (const scenario of [
     { name: '具體短答不強制兩步變例或後果', evidenceId: 'E2',
       text: '紅方馬八進七沒有吃子，只把左翼馬從底線移出發展。', accepted: true },
     { name: '短答仍拒絕跨變例引用', evidenceId: 'E1',

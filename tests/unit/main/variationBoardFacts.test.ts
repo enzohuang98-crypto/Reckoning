@@ -1,6 +1,12 @@
-import { validateVariationBoardStatements as validate } from '../../../src/main/ai/VariationBoardFacts'
+import {
+  buildVariationBoardFacts,
+  summarizeVariationCaptures,
+  VARIATION_BOARD_FACT_MAX_PLIES,
+  validateVariationBoardStatements as validate
+} from '../../../src/main/ai/VariationBoardFacts'
 import { START_FEN } from '../../../src/shared/types/BoardState'
-import { canonicalChineseMoveNotation, chineseMoveIsMentioned } from '../../../src/shared/logic/board/ChineseNotation'
+import { canonicalChineseMoveNotation, chineseMoveIsMentioned, formatChineseVariation } from '../../../src/shared/logic/board/ChineseNotation'
+import { parseFen } from '../../../src/shared/logic/board/fen'
 import type { HarnessEvidence } from '../../../src/shared/types/Harness'
 
 let passed = 0
@@ -72,6 +78,49 @@ check('capture ambiguity does not erase a check fact agreed by both replays', va
 check('missing UCI facts cannot establish a specific capture', validate('炮二平五吃掉黑方車。', [evidence([], ['炮二平五'])]).length > 0)
 check('an illegal line cannot establish a check', validate('馬8進7將軍。', [evidence(['h9g7'], ['馬8進7'])]).length > 0)
 check('a plain strategic explanation is not independently certified or rejected', validate('炮二平五有助於中央子力協調。', [evidence([], ['炮二平五'])]).length === 0)
+
+// The real ply-18 alternatives both lose a black cannon to a red horse.
+// A material prompt must expose that common event without inventing a verdict.
+const ply18Fen = 'r1bakab1r/9/2n3c1n/p3p3p/2P3p2/1N3NP2/P3c3P/1C2B2C1/4A4/R1BAK3R b - - 1 9'
+function replayEvidence(id: string, moves: string[], fen = ply18Fen): HarnessEvidence {
+  return { ...evidence(moves, formatChineseVariation(parseFen(fen).board, moves), fen), id }
+}
+const bestPly18 = replayEvidence('E1', ['g5g4', 'c5c6', 'g4f4', 'b4d5', 'i9h9', 'd5e3'])
+const actualPly18 = replayEvidence('E2', ['g7g4', 'c5c6', 'g4b4', 'f4d5', 'c7b9', 'd5e3'])
+const summarize = summarizeVariationCaptures
+const ply18Summary = summarize([bestPly18, actualPly18])
+check('capture summaries expose the shared twelve-ply replay limit', VARIATION_BOARD_FACT_MAX_PLIES === 12 && ply18Summary[0]?.includes('最多前 12 手') === true)
+check('real best line identifies the pawn and red horse captures exactly', ply18Summary.includes('E1 第 1 手：黑方卒走卒7進1，吃掉紅方兵。') && ply18Summary.includes('E1 第 3 手：黑方卒走卒7平6，吃掉紅方馬。'))
+check('real actual line identifies its cannon as the capturing piece', ply18Summary.includes('E2 第 1 手：黑方炮走炮7進3，吃掉紅方兵。') && ply18Summary.includes('E2 第 3 手：黑方炮走炮7平2，吃掉紅方馬。'))
+check('both real lines identify the red horse capturing the black cannon', ['E1', 'E2'].every((id) => ply18Summary.includes(`${id} 第 6 手：紅方馬走馬六退五，吃掉黑方炮。`)))
+check('the common cannon loss cannot be presented as exclusive to E2', ply18Summary.some((line) => line.includes('共同出現被吃黑方炮') && line.includes('E1 第 6 手') && line.includes('E2 第 6 手') && line.includes('不能據此稱為某一條變例獨有')))
+check('shared capture categories include the red pawn and horse', ['兵', '馬'].every((piece) => ply18Summary.some((line) => line.includes(`共同出現被吃紅方${piece}`))))
+const oneCaptureFen = capture.positionFen
+const uniqueCaptureSummary = summarize([replayEvidence('E1', ['a1a9'], oneCaptureFen), replayEvidence('E2', ['a1a2'], oneCaptureFen)])
+check('a genuinely single-line capture is not aggregated as shared', uniqueCaptureSummary.includes('E1 第 1 手：紅方車走車九進八，吃掉黑方卒。') && uniqueCaptureSummary.some((line) => line.startsWith('E2：') && line.includes('未觀察到吃子')) && !uniqueCaptureSummary.some((line) => line.includes('共同出現')))
+check('capture categories from different starting boards are never aggregated', !summarize([bestPly18, { ...actualPly18, positionFen: ply18Fen.replace('1 9', '2 9') }]).some((line) => line.includes('共同出現')))
+check('duplicate evidence IDs do not establish cross-line common captures', !summarize([bestPly18, { ...actualPly18, id: 'E1' }]).some((line) => line.includes('共同出現')))
+const invalidTail = { ...bestPly18, analysis: { ...bestPly18.analysis, principalVariation: ['g5g4', 'a0a9'] } }
+const invalidSummary = summarize([invalidTail])
+check('illegal tails retain confirmed captures and report the replay boundary', invalidSummary.includes('E1 第 1 手：黑方卒走卒7進1，吃掉紅方兵。') && invalidSummary.some((line) => line.includes('第 2 手未通過合法性檢查')) && !invalidSummary.some((line) => line.includes('黑方炮')))
+check('missing PV reports lack of facts without claiming the whole line has no captures', summarize([evidence([], [])]).some((line) => line.includes('沒有 UCI 主線')) && !summarize([evidence([], [])]).some((line) => line.includes('未觀察到吃子')))
+check('bad notation cannot leak unverified capture events into summaries', !summarize([{ ...capture, displayPrincipalVariation: ['車九平五'] }]).some((line) => line.includes('吃掉')) && summarize([{ ...capture, displayPrincipalVariation: ['車九平五'] }]).some((line) => line.includes('中文記譜與本變例棋盤不一致')))
+const sixteenPlies = Array.from({ length: 4 }, () => ['b0c2', 'b9c7', 'c2b0', 'c7b9']).flat()
+const longLine = replayEvidence('E1', sixteenPlies, START_FEN)
+check('facts and capture summaries stop at the same twelve-ply prefix', buildVariationBoardFacts(longLine).steps.length === 12 && summarize([longLine]).some((line) => line.includes('已重播 12 手') && line.includes('未觀察到吃子')))
+const selectedUserLine = {
+  ...actualPly18,
+  move: 'g7g4',
+  analysis: {
+    ...actualPly18.analysis,
+    principalVariation: bestPly18.analysis.principalVariation,
+    userMove: 'g7g4',
+    userMovePrincipalVariation: actualPly18.analysis.principalVariation
+  }
+}
+check('user-move evidence summarizes its own PV rather than the best PV', summarize([selectedUserLine]).includes('E2 第 1 手：黑方炮走炮7進3，吃掉紅方兵。') && !summarize([selectedUserLine]).some((line) => line.includes('卒7進1')))
+check('an invalid starting FEN reports the replay failure without captures', summarize([{ ...capture, positionFen: 'invalid' }]).some((line) => line.includes('證據起始局面無效')) && !summarize([{ ...capture, positionFen: 'invalid' }]).some((line) => line.includes('吃掉')))
+check('empty evidence has no purported capture summary', summarize([]).length === 0)
 
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1
