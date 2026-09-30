@@ -110,13 +110,21 @@ function Read-PrivacyScreenshot([int]$Page, [string]$Step) {
     if (-not $engine) { throw 'No offline Windows OCR language is installed.' }
     $result = Wait-WinRt ($engine.RecognizeAsync($software)) ([Windows.Media.Ocr.OcrResult])
     $lines = @($result.Lines | ForEach-Object { $_.Text })
+    $lineBounds = @($result.Lines | ForEach-Object {
+      $rectangles = @($_.Words | ForEach-Object { $_.BoundingRect })
+      if ($rectangles.Count -gt 0) {
+        @{ text = $_.Text; x = ($rectangles | Measure-Object -Property X -Minimum).Minimum / 2;
+           y = ($rectangles | Measure-Object -Property Y -Minimum).Minimum / 2;
+           bottom = (@($rectangles | ForEach-Object { $_.Y + $_.Height }) | Measure-Object -Maximum).Maximum / 2 }
+      }
+    })
     $words = @($result.Lines | ForEach-Object { $_.Words } | ForEach-Object {
       @{ text = $_.Text; x = $_.BoundingRect.X / 2; y = $_.BoundingRect.Y / 2;
          width = $_.BoundingRect.Width / 2; height = $_.BoundingRect.Height / 2 }
     })
     $report.observations += @{ page = $Page; step = $Step; method = 'offline_windows_ocr';
-      screenshot = [IO.Path]::GetFileName($path); ocrScale = 2; lines = $lines; enabledSwitches = $enabledSwitches }
-    return @{ screen = $screen; words = $words; text = ($lines -join ' '); enabledSwitches = $enabledSwitches }
+      screenshot = [IO.Path]::GetFileName($path); ocrScale = 2; lines = $lines; lineBounds = $lineBounds; enabledSwitches = $enabledSwitches }
+    return @{ screen = $screen; words = $words; text = ($lines -join ' '); lineBounds = $lineBounds; enabledSwitches = $enabledSwitches }
   } finally { if ($software) { $software.Dispose() }; $stream.Dispose() }
 }
 function Assert-PrivacyScreen($Snapshot) {
@@ -156,26 +164,60 @@ public static class HostedPrivacyInput {
   $y = [int]($Snapshot.screen.Top + $Word.y + $Word.height / 2)
   if (-not [HostedPrivacyInput]::Click($x, $y)) { throw 'Observed privacy input failed.' }
 }
+function Get-ObservedPrivacyOption($Snapshot, $Switch, [string]$OptionName = '') {
+  # These are headings seen in actual hosted screenshots, not inferred account
+  # actions. Description text changes height when a switch changes state, so an
+  # option's fresh heading/next heading are the stable association, not old Y.
+  $headings = @($Snapshot.lineBounds | Where-Object {
+    $_.text -cin @('Location', 'Find my device', 'Inking & typing', 'Personalized offers') -and
+      $_.x -ge $Snapshot.screen.Width * 0.45 -and $_.y -ge 250
+  } | Sort-Object y)
+  if ($OptionName) {
+    $matching = @($headings | Where-Object { $_.text -ceq $OptionName })
+  } else {
+    $matching = @($headings | Where-Object { $_.bottom -lt $Switch.y } | Select-Object -Last 1)
+  }
+  if ($matching.Count -ne 1) { throw 'Cannot uniquely associate the observed privacy switch with its option heading.' }
+  $heading = $matching[0]
+  $next = @($headings | Where-Object { $_.y -gt $heading.y } | Select-Object -First 1)
+  $bottom = if ($next.Count -eq 1) { $next[0].y } else { $Snapshot.screen.Height * 0.8 }
+  return @{ name = $heading.text; top = $heading.bottom; bottom = $bottom }
+}
+function Test-ObservedPrivacyOff($Snapshot, $Option, $OriginalSwitch) {
+  try { $current = Get-ObservedPrivacyOption $Snapshot $null $Option.name } catch { return $false }
+  $enabled = @($Snapshot.enabledSwitches | Where-Object { $_.y -gt $current.top -and $_.y -lt $current.bottom })
+  $no = @($Snapshot.words | Where-Object {
+    $_.text -ceq 'No' -and $_.y -gt $current.top -and $_.y -lt $current.bottom -and
+      $_.x -ge $OriginalSwitch.x + $OriginalSwitch.width -and $_.x -lt $OriginalSwitch.x + $OriginalSwitch.width + 25
+  })
+  return $enabled.Count -eq 0 -and $no.Count -eq 1
+}
 function Complete-OcrPrivacyPage([int]$Page) {
   $snapshot = Read-PrivacyScreenshot $Page 'before'
   if (-not (Assert-PrivacyScreen $snapshot)) { return $false }
   for ($toggle = 0; $toggle -lt 6; $toggle++) {
     $yes = @($snapshot.enabledSwitches)
     if ($yes.Count -eq 0) { break }
+    $option = Get-ObservedPrivacyOption $snapshot $yes[0]
     Click-ObservedPrivacyWord $snapshot $yes[0]
-    Start-Sleep -Milliseconds 500
-    $after = Read-PrivacyScreenshot $Page "toggle-$toggle"
-    if (-not (Assert-PrivacyScreen $after)) { throw 'Privacy screen changed unexpectedly during optional toggle.' }
-    $remaining = @($after.enabledSwitches)
-    $changedToNo = @($after.words | Where-Object {
-      $_.text -ceq 'No' -and [Math]::Abs($_.y - $yes[0].y) -lt 12 -and
-        $_.x -ge $yes[0].x + $yes[0].width -and $_.x -lt $yes[0].x + $yes[0].width + 25
-    })
-    if ($remaining.Count -ne $yes.Count - 1 -or $changedToNo.Count -ne 1) {
+    $verified = $false
+    # Reobserve bounded render/OCR settling. Never click an uncertain state a
+    # second time: that could switch an already-disabled privacy option back on.
+    for ($observation = 0; $observation -lt 3; $observation++) {
+      Start-Sleep -Milliseconds 500
+      $after = Read-PrivacyScreenshot $Page "toggle-$toggle-observe-$observation"
+      if (-not (Assert-PrivacyScreen $after)) { throw 'Privacy screen changed unexpectedly during optional toggle.' }
+      $remaining = @($after.enabledSwitches)
+      if ($remaining.Count -eq $yes.Count - 1 -and (Test-ObservedPrivacyOff $after $option $yes[0])) {
+        $verified = $true
+        break
+      }
+    }
+    if (-not $verified) {
       throw 'Optional privacy toggle did not visibly change Yes to No; no navigation was performed.'
     }
     $report.actions += @{ page = $Page; control = 'observed_blue_privacy_switch'; action = 'optional_privacy_off';
-      bounds = $yes[0]; method = 'screenshot_switch_and_ocr_no' }
+      option = $option.name; bounds = $yes[0]; method = 'same_option_screenshot_switch_and_ocr_no' }
     $snapshot = $after
   }
   if (@($snapshot.enabledSwitches).Count -gt 0 -or
