@@ -24,6 +24,18 @@ public static class UpdateProbeWindow {
 }
 '@
 $script:probeFocusClicks = 0
+$script:probeUiActions = @()
+function Get-ProbeControlDiagnostic($Control) {
+  try {
+    $current = $Control.Current
+    return @{
+      name = $current.Name; type = $current.ControlType.ProgrammaticName
+      automationId = $current.AutomationId; className = $current.ClassName
+      enabled = $current.IsEnabled; offscreen = $current.IsOffscreen
+      supportedPatterns = @($Control.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName })
+    }
+  } catch { return @{ diagnosticFailure = $_.Exception.Message } }
+}
 function Wait-Probe([scriptblock]$Condition, [string]$Message, [int]$Seconds = 30) {
   $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
   do {
@@ -85,9 +97,37 @@ function Invoke-ProbeAction([string]$Name, [switch]$Prefix) {
     $scroll.ScrollIntoView()
     [void](Wait-Probe { -not $button.Current.IsOffscreen } "Action '$Name' remained offscreen." 5)
   }
-  $pattern = $null
-  if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { throw "Action '$Name' lacks UIA Invoke support." }
-  $pattern.Invoke()
+  $action = @{
+    at = [DateTime]::UtcNow.ToString('o'); requestedName = $Name
+    control = Get-ProbeControlDiagnostic $button; method = 'not_run'; result = 'not_run'
+  }
+  $script:probeUiActions += $action
+  try {
+    $pattern = $null
+    if ($button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+      $action.method = 'UIA_Invoke'
+      $pattern.Invoke()
+    } elseif ($button.Current.Name -ceq '局面工具' -and
+              $button.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {
+      # Source ToolbarMenu uses <details><summary>, whose native action is
+      # expansion. Only this exact observed source-backed menu may use it.
+      $action.method = 'UIA_ExpandCollapse'
+      if ($pattern.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Collapsed) {
+        $pattern.Expand()
+      } elseif ($pattern.Current.ExpandCollapseState -ne [System.Windows.Automation.ExpandCollapseState]::Expanded) {
+        throw "Observed menu '$Name' is not a supported collapsed/expanded summary."
+      }
+      [void](Wait-Probe {
+        $pattern.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Expanded
+      } "Observed menu '$Name' did not become expanded." 5)
+    } else {
+      throw "Action '$Name' lacks a supported source-matched UIA action; see recorded control patterns."
+    }
+    $action.result = 'completed'
+  } catch {
+    $action.result = 'failed'; $action.failure = $_.Exception.Message
+    throw
+  }
 }
 function Set-ProbeInput([string]$Name, [string]$Value) {
   Assert-ProbeForeground

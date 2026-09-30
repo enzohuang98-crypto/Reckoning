@@ -17,6 +17,7 @@ $report = [ordered]@{
   draftBlocksRestart = 'not_run'; savedDataPreserved = 'not_run'; normalInstallationRestart = 'not_run'
   installPayloadBytes = $null; installFailureRetry = 'not_run'; earlyPrepareRecovery = 'not_run'
   draftAddedDuringSave = 'not_run'; observations = @(); screenshots = @()
+  uiActions = @(); finalControlDiagnostics = @()
 }
 $server = $null
 function Set-FeedPhase([string]$Phase, [string]$Mode) {
@@ -191,6 +192,12 @@ try {
   $report.failure = $_.Exception.Message
   throw
 } finally {
+  $report.uiActions = @($script:probeUiActions)
+  try {
+    $report.finalControlDiagnostics = @(Get-ProbeControls | Where-Object {
+      $_.Current.ControlType -in @([System.Windows.Automation.ControlType]::Button, [System.Windows.Automation.ControlType]::MenuItem, [System.Windows.Automation.ControlType]::Edit)
+    } | Select-Object -First 80 | ForEach-Object { Get-ProbeControlDiagnostic $_ })
+  } catch { $report.controlDiagnosticFailure = $_.Exception.Message }
   try { $report.screenshots += Save-ProbeScreen 'final' } catch { $report.screenshotFailure = $_.Exception.Message }
   $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
   if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
