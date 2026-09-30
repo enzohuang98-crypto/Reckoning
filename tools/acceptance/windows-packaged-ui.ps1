@@ -1,0 +1,138 @@
+﻿# Dot-sourced only by the isolated packaged updater exercise. Normal UIA input;
+# no remote-debugging port, renderer evaluation, IPC injection or user secrets.
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class UpdateProbeWindow {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+  [StructLayout(LayoutKind.Sequential)] public struct Mouse { public int dx, dy; public uint data, flags, time; public UIntPtr extra; }
+  [StructLayout(LayoutKind.Explicit)] public struct Union { [FieldOffset(0)] public Mouse mouse; }
+  [StructLayout(LayoutKind.Sequential)] public struct Input { public uint type; public Union data; }
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, Input[] inputs, int size);
+  public static bool Click(int x, int y) {
+    if (!SetCursorPos(x, y)) return false;
+    var down = new Input(); down.data.mouse.flags = 2;
+    var up = new Input(); up.data.mouse.flags = 4;
+    return SendInput(2, new [] { down, up }, Marshal.SizeOf(typeof(Input))) == 2;
+  }
+}
+'@
+$script:probeFocusClicks = 0
+function Wait-Probe([scriptblock]$Condition, [string]$Message, [int]$Seconds = 30) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+  do {
+    $result = & $Condition
+    if ($result) { return $result }
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $deadline)
+  throw $Message
+}
+function Get-ProbeWindow {
+  foreach ($process in @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $script:probeExe })) {
+    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)
+    $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $condition)
+    foreach ($window in $windows) {
+      if ($window.Current.Name -ceq '象棋 AI 分析講解' -and $window.Current.NativeWindowHandle -ne 0) { return $window }
+    }
+  }
+  return $null
+}
+function Get-ProbeControls {
+  $window = Get-ProbeWindow
+  if (-not $window) { return @() }
+  return $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+}
+function Get-ProbeNames { return @(Get-ProbeControls | ForEach-Object { $_.Current.Name } | Where-Object { $_ }) }
+function Assert-ProbeForeground {
+  $window = Wait-Probe { Get-ProbeWindow } 'Installed application window is missing.'
+  if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -ne [long]$window.Current.NativeWindowHandle) {
+    [void][UpdateProbeWindow]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
+    try { $window.SetFocus() } catch { }
+    if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -ne [long]$window.Current.NativeWindowHandle) {
+      $bounds = $window.Current.BoundingRectangle
+      if ($script:probeFocusClicks -ge 3 -or $bounds.Left -lt 0 -or $bounds.Top -lt 0 -or $bounds.Width -lt 400 -or $bounds.Height -lt 300) {
+        throw 'The verified application window cannot be brought into the foreground.'
+      }
+      $script:probeFocusClicks++
+      if (-not [UpdateProbeWindow]::Click([int]($bounds.Left + 80), [int]($bounds.Top + 12))) { throw 'App title-bar focus input failed.' }
+    }
+  }
+  [void](Wait-Probe {
+    $current = Get-ProbeWindow
+    $current -and [UpdateProbeWindow]::GetForegroundWindow().ToInt64() -eq [long]$current.Current.NativeWindowHandle
+  } 'An OS overlay still owns the foreground; no background UI acceptance is allowed.' 10)
+}
+function Find-ProbeAction([string]$Name, [switch]$Prefix) {
+  foreach ($control in Get-ProbeControls) {
+    $current = $control.Current
+    if ($current.ControlType -notin @([System.Windows.Automation.ControlType]::Button, [System.Windows.Automation.ControlType]::MenuItem)) { continue }
+    if ($current.IsEnabled -and (($Prefix -and $current.Name.StartsWith($Name, [StringComparison]::Ordinal)) -or (-not $Prefix -and $current.Name -ceq $Name))) { return $control }
+  }
+  return $null
+}
+function Invoke-ProbeAction([string]$Name, [switch]$Prefix) {
+  Assert-ProbeForeground
+  $button = Wait-Probe { Find-ProbeAction $Name -Prefix:$Prefix } "Required action '$Name' is missing or disabled."
+  if ($button.Current.IsOffscreen) {
+    $scroll = $null
+    if (-not $button.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scroll)) { throw "Offscreen action '$Name' cannot be scrolled into view." }
+    $scroll.ScrollIntoView()
+    [void](Wait-Probe { -not $button.Current.IsOffscreen } "Action '$Name' remained offscreen." 5)
+  }
+  $pattern = $null
+  if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { throw "Action '$Name' lacks UIA Invoke support." }
+  $pattern.Invoke()
+}
+function Set-ProbeInput([string]$Name, [string]$Value) {
+  Assert-ProbeForeground
+  $input = Wait-Probe {
+    @(Get-ProbeControls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and $_.Current.Name -ceq $Name -and $_.Current.IsEnabled }) | Select-Object -First 1
+  } "Required input '$Name' is missing."
+  $pattern = $null
+  if (-not $input.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern) -or $pattern.Current.IsReadOnly) { throw "Input '$Name' is not editable through UIA." }
+  $pattern.SetValue($Value)
+  if ($pattern.Current.Value -cne $Value) { throw "Input '$Name' did not retain its entered value." }
+}
+function Confirm-ProbeRestart {
+  [void](Wait-Probe { (Get-ProbeNames -join ' ') -match '更新已準備完成。現在要先保存資料，再重新啟動 Reckoning 完成更新嗎' } 'Normal restart confirmation did not appear.' 10)
+  $ok = Find-ProbeAction 'OK'
+  if (-not $ok) { $ok = Find-ProbeAction '確定' }
+  if (-not $ok) { throw 'Recognized normal restart dialog has no enabled confirmation button.' }
+  $pattern = $null
+  if (-not $ok.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { throw 'Restart confirmation lacks UIA Invoke support.' }
+  $pattern.Invoke()
+}
+function Open-ProbeSystemSettings {
+  Invoke-ProbeAction '設定'
+  Invoke-ProbeAction '資料與系統' -Prefix
+  [void](Wait-Probe { (Get-ProbeNames -join ' ') -match '版本與自動更新' } 'System update settings did not appear.')
+}
+function Start-ProbeApplication {
+  $script:probeFocusClicks = 0
+  if (-not (Get-ProbeWindow)) { [void](Start-Process -FilePath $script:probeExe -ArgumentList '--force-renderer-accessibility' -WindowStyle Normal -PassThru) }
+  [void](Wait-Probe { Find-ProbeAction '分析' } 'Reopened packaged workspace did not become ready.' 60)
+  Assert-ProbeForeground
+}
+function Close-ProbeApplication {
+  foreach ($process in @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $script:probeExe -and $_.MainWindowHandle -ne 0 })) {
+    [void]$process.CloseMainWindow()
+  }
+  [void](Wait-Probe { -not @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $script:probeExe }).Count } 'Normal application exit did not complete.' 30)
+}
+function Save-ProbeScreen([string]$Label) {
+  $screen = [Windows.Forms.SystemInformation]::VirtualScreen
+  $bitmap = New-Object Drawing.Bitmap($screen.Width, $screen.Height)
+  $graphics = [Drawing.Graphics]::FromImage($bitmap)
+  try {
+    $graphics.CopyFromScreen($screen.Left, $screen.Top, 0, 0, $screen.Size)
+    $path = [IO.Path]::ChangeExtension($script:probeOutputPath, $null) + "-$Label.png"
+    $bitmap.Save($path, [Drawing.Imaging.ImageFormat]::Png)
+    return [IO.Path]::GetFileName($path)
+  } finally { $graphics.Dispose(); $bitmap.Dispose() }
+}
