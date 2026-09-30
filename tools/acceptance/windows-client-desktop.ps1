@@ -29,7 +29,7 @@ try {
       }
     }
     if (-not $privacyWindow) {
-      $report.status = if ($page -eq 0) { 'privacy_wizard_not_present' } else { 'privacy_wizard_dismissed' }
+      $report.status = if ($page -eq 0) { 'privacy_wizard_not_exposed_to_uia' } else { 'privacy_wizard_dismissed' }
       break
     }
     $changes = 0

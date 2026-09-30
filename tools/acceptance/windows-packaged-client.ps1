@@ -50,7 +50,9 @@ try {
   }
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
-  $launched = Start-Process -FilePath $exe -ArgumentList '--force-renderer-accessibility' -WindowStyle Hidden -PassThru
+  # This is the interactive application under UI test, not a background helper.
+  # SW_HIDE can suppress its first ShowWindow call and invalidate UI discovery.
+  $launched = Start-Process -FilePath $exe -ArgumentList '--force-renderer-accessibility' -WindowStyle Normal -PassThru
   $deadline = [DateTime]::UtcNow.AddSeconds(45)
   $window = $null
   $uiPassed = $false
