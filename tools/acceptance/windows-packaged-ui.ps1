@@ -131,13 +131,41 @@ function Invoke-ProbeAction([string]$Name, [switch]$Prefix) {
 }
 function Set-ProbeInput([string]$Name, [string]$Value) {
   Assert-ProbeForeground
-  $input = Wait-Probe {
-    @(Get-ProbeControls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and $_.Current.Name -ceq $Name -and $_.Current.IsEnabled }) | Select-Object -First 1
+  $field = Wait-Probe {
+    $matches = @(Get-ProbeControls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and $_.Current.Name -ceq $Name -and $_.Current.IsEnabled })
+    if ($matches.Count -gt 1) { throw "Input '$Name' is ambiguous." }
+    if ($matches.Count -eq 1) { return $matches[0] }
   } "Required input '$Name' is missing."
   $pattern = $null
-  if (-not $input.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern) -or $pattern.Current.IsReadOnly) { throw "Input '$Name' is not editable through UIA." }
-  $pattern.SetValue($Value)
-  if ($pattern.Current.Value -cne $Value) { throw "Input '$Name' did not retain its entered value." }
+  if (-not $field.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern) -or $pattern.Current.IsReadOnly) { throw "Input '$Name' is not editable through UIA." }
+  $runtimeId = $field.GetRuntimeId() -join '.'
+  $action = @{
+    at = [DateTime]::UtcNow.ToString('o'); requestedName = $Name
+    control = Get-ProbeControlDiagnostic $field; method = 'UIA_Value'; result = 'not_run'
+  }
+  $script:probeUiActions += $action
+  $started = [DateTime]::UtcNow
+  try {
+    $pattern.SetValue($Value)
+    $action.immediatelyMatched = $pattern.Current.Value -ceq $Value
+    # Chromium's accessibility value may lag the displayed controlled input.
+    # Reacquire the same element/pattern; do not retry input or accept another field.
+    [void](Wait-Probe {
+      foreach ($candidate in Get-ProbeControls) {
+        $current = $candidate.Current
+        if ($current.ControlType -ne [System.Windows.Automation.ControlType]::Edit -or $current.Name -cne $Name -or
+            -not $current.IsEnabled -or ($candidate.GetRuntimeId() -join '.') -cne $runtimeId) { continue }
+        $freshPattern = $null
+        if ($candidate.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$freshPattern) -and
+            -not $freshPattern.Current.IsReadOnly -and $freshPattern.Current.Value -ceq $Value) { return $true }
+      }
+      return $false
+    } "Input '$Name' did not retain its entered value on the same control." 5)
+    $action.result = 'completed'
+  } catch {
+    $action.result = 'failed'; $action.failure = $_.Exception.Message
+    throw
+  } finally { $action.verificationMs = [int]([DateTime]::UtcNow - $started).TotalMilliseconds }
 }
 function Confirm-ProbeRestart {
   [void](Wait-Probe { (Get-ProbeNames -join ' ') -match '更新已準備完成。現在要先保存資料，再重新啟動 Reckoning 完成更新嗎' } 'Normal restart confirmation did not appear.' 10)
