@@ -14,13 +14,15 @@ export function openRouterReasoningConfig(
   model: string,
   responseFormat: 'json' | 'text'
 ): OpenRouterReasoningConfig | undefined {
-  if (responseFormat !== 'json') return undefined
   if (model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL) {
     // The catalog marks reasoning as optional. Live fixed-case calls returned
     // 3,877 tokens with max_tokens: 1,000 and 3,822 with effort: low, exhausting
-    // the 4,000-token response budget. Request reasoning off explicitly.
+    // the 4,000-token response budget. Text question recovery also consumed
+    // 890 of 1,200 tokens in reasoning and ended with length on 2026-09-30.
+    // The same exact endpoint supports effort=none for both output formats.
     return { effort: 'none', exclude: true }
   }
+  if (responseFormat !== 'json') return undefined
   if (model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL) return undefined
   return {
     max_tokens: OPENROUTER_NEMOTRON_JSON_REASONING_MAX_TOKENS,

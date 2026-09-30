@@ -59,6 +59,17 @@ public static class PackagedProbeWindow {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+  [StructLayout(LayoutKind.Sequential)] public struct Mouse { public int dx, dy; public uint data, flags, time; public UIntPtr extra; }
+  [StructLayout(LayoutKind.Explicit)] public struct Union { [FieldOffset(0)] public Mouse mouse; }
+  [StructLayout(LayoutKind.Sequential)] public struct Input { public uint type; public Union data; }
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, Input[] inputs, int size);
+  public static bool Click(int x, int y) {
+    if (!SetCursorPos(x, y)) return false;
+    var down = new Input(); down.data.mouse.flags = 2;
+    var up = new Input(); up.data.mouse.flags = 4;
+    return SendInput(2, new [] { down, up }, Marshal.SizeOf(typeof(Input))) == 2;
+  }
 }
 '@
   function Find-VisibleButton($Controls, [string]$Name) {
@@ -86,8 +97,10 @@ public static class PackagedProbeWindow {
   $uiPassed = $false
   $nextObservation = [DateTime]::MinValue
   $focusAttempted = $false
+  $titleBarClicked = $false
   $engineTestInvoked = $false
   $finishInvoked = $false
+  $finishScrollInvoked = $false
   do {
     $launched.Refresh()
     $report.launchProcessExited = $launched.HasExited
@@ -123,6 +136,21 @@ public static class PackagedProbeWindow {
           processId = $foregroundProcessId; title = $foregroundProcess.MainWindowTitle
           appIsForeground = $isAppForeground; observedWindowIsForeground = $isWindowForeground
         }
+        # SetForegroundWindow can be denied to the background Actions process.
+        # The actual screenshot of run 36672426290 shows the app's caption above
+        # the Start menu and a WSL terminal; click only that verified app caption,
+        # never either overlay. A fresh next iteration must prove real focus.
+        if (-not $isAppForeground -and -not $titleBarClicked -and
+            $candidate.Current.Name -ceq '象棋 AI 分析講解' -and $candidate.Current.NativeWindowHandle -ne 0) {
+          $bounds = $candidate.Current.BoundingRectangle
+          if ($bounds.Width -gt 400 -and $bounds.Height -gt 300 -and $bounds.Top -ge 0 -and $bounds.Left -ge 0) {
+            $report.titleBarFocusAction = @{ left = $bounds.Left; top = $bounds.Top; width = $bounds.Width; height = $bounds.Height }
+            $titleBarClicked = $true
+            if (-not [PackagedProbeWindow]::Click([int]($bounds.Left + 80), [int]($bounds.Top + 12))) {
+              throw 'Verified application title-bar input failed.'
+            }
+          }
+        }
         # A setup paragraph mentioning analysis/settings is not the workspace.
         $hasAnalysis = $null -ne (Find-VisibleButton $controls '分析')
         $hasSettings = $null -ne (Find-VisibleButton $controls '設定')
@@ -134,7 +162,7 @@ public static class PackagedProbeWindow {
           # empty key; SetupWizard's normal save/complete route makes no AI call.
           $engineButton = Find-VisibleButton $controls '測試引擎'
           $finishButton = Find-VisibleButton $controls '完成設定 →'
-          if ($engineButton -and $finishButton -and -not $engineTestInvoked) {
+          if ($engineButton -and -not $engineTestInvoked) {
             Invoke-ProbeButton $engineButton
             $engineTestInvoked = $true
             $report.firstRunEngineTest = 'invoked'
@@ -142,6 +170,20 @@ public static class PackagedProbeWindow {
           $engineSuccess = ($names -join ' ') -match '連線成功：\s*Pikafish[^。]*（UCI）'
           if ($engineTestInvoked -and $engineSuccess) {
             $report.firstRunEngineTest = 'passed'
+            if (-not $finishButton -and -not $finishScrollInvoked) {
+              $hiddenFinish = @($controls | Where-Object {
+                $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and
+                  $_.Current.Name -ceq '完成設定 →' -and $_.Current.IsEnabled
+              })
+              if ($hiddenFinish.Count -eq 1) {
+                $scrollItem = $null
+                if ($hiddenFinish[0].TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scrollItem)) {
+                  $scrollItem.ScrollIntoView()
+                  $finishScrollInvoked = $true
+                  $report.firstRunScrollToFinish = 'invoked'
+                }
+              }
+            }
             if ($finishButton -and -not $finishInvoked) {
               Invoke-ProbeButton $finishButton
               $finishInvoked = $true

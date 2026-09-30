@@ -116,6 +116,8 @@ type ExplanationLanguage = GenerateExplanationStartPayload['language']
 
 export interface AnswerRequirements {
   hasUserMove: boolean
+  /** The prepared conversation strategy answers this question, not a full lesson. */
+  focusedQuestion?: boolean
   comparisonState?: MoveComparisonEvidenceState
   requiredSectionIds: HarnessSectionId[]
   /** 明確點擊實戰步後的完整一鍵解說：正好五段、單一原則、至少 400 漢字。 */
@@ -395,6 +397,17 @@ function makeEvidence(
           []
         : analysis.displayPrincipalVariation ?? analysis.principalVariation,
     analysis
+  }
+}
+
+/** Each model-visible ID exposes exactly the variation the validator replays. */
+function publicScopedEvidence(item: HarnessEvidence): object {
+  return {
+    id: item.id, purpose: item.purpose, engineName: item.engineName,
+    positionFen: item.positionFen, move: item.displayMove, depth: item.depth,
+    score: item.score?.displayText ?? null,
+    principalVariation: item.displayPrincipalVariation,
+    computedBoardFacts: buildVariationBoardFacts(item)
   }
 }
 
@@ -1430,7 +1443,7 @@ export function validateAnswer(
       )
     }
   }
-  if (requirements.hasUserMove && explanationMoves.length >= 2) {
+  if (!requirements.focusedQuestion && requirements.hasUserMove && explanationMoves.length >= 2) {
     const mentionedMoveCount = explanationMoves.filter((move) =>
       chineseMoveIsMentioned(prose, move)
     ).length
@@ -1454,7 +1467,7 @@ export function validateAnswer(
     }
   }
   if (
-    !answer.sections.some(
+    !requirements.focusedQuestion && !answer.sections.some(
       (section) => section.id === SECTION_IDS.opponentExploitation
     ) &&
     !mentionsContinuationForLanguage(prose, language)
@@ -1462,7 +1475,7 @@ export function validateAnswer(
     errors.push('回答缺少後續主線與具體後果。')
   }
   if (
-    requirements.hasUserMove &&
+    !requirements.focusedQuestion && requirements.hasUserMove &&
     requirements.comparisonState === 'evidence_backed_difference' &&
     !/(錯失|不好|問題|不對)/.test(prose)
   ) {
@@ -2288,6 +2301,7 @@ export async function runExplanationHarness(
   }
   const answerRequirements: AnswerRequirements = {
     hasUserMove,
+    focusedQuestion: isFollowUp,
     comparisonState,
     requiredSectionIds,
     enforceInitialMoveContract: isInitialMoveComparison,
@@ -2608,7 +2622,7 @@ export async function runExplanationHarness(
     const response = await callModel(buildQuestionRecoveryPrompt({
       question, language: payload.language, fen: deps.session.positionFen,
       boardFacts: boardQuestion.facts,
-      engineFacts: JSON.stringify(evidence.map(item => ({ purpose: item.purpose, analysis: publicAnalysis(item.analysis, hasUserMove) }))),
+      engineFacts: JSON.stringify(evidence.map(publicScopedEvidence)),
       context: deps.explanationPrompt
     }), 1_200, 30_000, 'text', 'question_recovery')
     const text = extractDirectQuestionText(response)
@@ -3469,7 +3483,7 @@ ${
 模式：${mode}
 已通過結構與引用檢查的模型後果摘要：${JSON.stringify(writerAudit)}
 證據：${JSON.stringify(
-      evidence.map((item) => ({
+      isFollowUp ? evidence.map(publicScopedEvidence) : evidence.map((item) => ({
         id: item.id,
         purpose: item.purpose,
         engineName: item.engineName,

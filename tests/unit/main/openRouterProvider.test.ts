@@ -296,7 +296,7 @@ await withServer(
       }
     })
     const body = requests[0].body as Record<string, unknown>
-    assert.equal(body.reasoning, undefined, '非 JSON 路徑不得誤套用模型專屬 reasoning 設定')
+    assert.deepEqual(body.reasoning, { effort: 'none', exclude: true }, '已確認的 Super 文字 recovery 也必須保留正文預算')
     assert.equal(body.response_format, undefined, '短文字路徑不得誤套用完整講解 schema')
     assert.equal(body.provider, undefined)
   }

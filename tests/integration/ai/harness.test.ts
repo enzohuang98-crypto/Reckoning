@@ -2870,6 +2870,39 @@ async function main(): Promise<void> {
   )
 
   const invalidFollowUpProvider = new LocalizedNoUserMoveProvider(['not-json', '目前最需要注意中路的控制，炮二平五把炮移到中路。接下來出子前先檢查對手能否直接將軍或吃掉無根子。不要只顧進攻而讓自己的將帥失去保護。'])
+  for (const scenario of [
+    { name: '具體短答不強制兩步變例或後果', evidenceId: 'E2',
+      text: '紅方馬八進七沒有吃子，只把左翼馬從底線移出發展。', accepted: true },
+    { name: '短答仍拒絕跨變例引用', evidenceId: 'E1',
+      text: '紅方馬八進七沒有吃子，只把左翼馬從底線移出發展。', accepted: false },
+    { name: '短答仍拒絕錯誤方別', evidenceId: 'E2',
+      text: '黑方馬八進七沒有吃子，只把左翼馬從底線移出發展。', accepted: false }
+  ]) {
+    const provider = new LocalizedNoUserMoveProvider([JSON.stringify({
+      mode: 'research', title: '追問', directAnswer: scenario.text,
+      directAnswerEvidenceIds: [scenario.evidenceId], sections: [{ id: 'follow_up', heading: '追問',
+        claims: [{ id: 'FQ1', text: scenario.text, evidenceIds: [scenario.evidenceId] }] }], generalNotes: [], warnings: []
+    }), '無法提供有效回答。'])
+    let accepted = false
+    let focusedTrace: HarnessTrace | undefined
+    let failure: string | undefined
+    try {
+      const result = await runExplanationHarness({
+        requestId: `focused-question-${scenario.name}`, analysisId: session.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW', answerMode: 'research',
+        attachedMove: 'b0c2', reuseEvidence: true,
+        followUpQuestion: '紅方馬八進七是否吃子？請只用一句話回答。',
+        conversationHistory: [{ id: 'focused-context', role: 'user', text: '正在復盤已走出的實戰著法。', createdAt: new Date().toISOString() }]
+      }, { provider, apiKey: 'synthetic-test-key', model: 'fake-model', session,
+        registry: { list: () => ({ activeEngineId: 'engine-1' }),
+          getAdapter: () => ({ analyzePosition: async () => engineAnalysis }) } as never,
+        traceStore: { save: (trace: HarnessTrace) => { focusedTrace = trace } } as never,
+        signal: new AbortController().signal, onProgress: () => undefined })
+      accepted = result.finalText.includes(scenario.text) && provider.calls === 1
+    } catch (error) { accepted = false; failure = error instanceof Error ? error.message : String(error) }
+    check(scenario.name, accepted === scenario.accepted, JSON.stringify({ failure, calls: provider.calls, errors: focusedTrace?.validationErrors }))
+  }
   const invalidFollowUpResult = await runExplanationHarness(
     {
       requestId: 'ai-request-follow-up-invalid-json',
