@@ -25,7 +25,7 @@
  */
 
 import { containsConcreteXiangqiTerm } from './xiangqiTerms'
-import { chineseMoveIsMentioned } from '../board/ChineseNotation'
+import { chineseMoveIsMentioned, chineseMoveMentions } from '../board/ChineseNotation'
 import {
   HARNESS_SECTION_IDS,
   type CausalChain,
@@ -85,6 +85,19 @@ export function scoreUsedAsReason(text: string): boolean {
   // 直述句型：「分數較高所以較好」「評分比較低，因此不好」「差了 0.35 個兵」
   if (/(分數|評分|評估值?|數值)(明顯)?(較|更|比較)(高|低|好|差)/.test(text)) return true
   if (/(高|低)出?\s*[0-9.]+\s*(分|个兵|個兵|cp)/i.test(text)) return true
+  // Numeric comparisons can omit "higher/lower" entirely. Screen an asserted
+  // causal link between two score values, not mere reporting of the values in
+  // a separate sentence. This remains a wording screen, not semantic proof.
+  for (const sentence of text.split(/[。！？!?\n]|\.(?!\d)/)) {
+    for (const assertion of sentence.split(/但是|然而|可是|不過|不过|但|\bbut\b|\bhowever\b/i)) {
+      const values = assertion.match(/(?:[+-]?\d+(?:\.\d+)?|[零〇一二兩两三四五六七八九十百千]+)\s*(?:分|cp\b|centipawns?\b|points?\b)/gi) ?? []
+      const scoreContext = /引擎|Pikafish|評估|评估|評分|评分|分數|分数|首選|首选|\bscore\b|\bevaluation\b/i.test(assertion)
+      if (values.length === 0 || (!scoreContext && (values.length < 2 || chineseMoveMentions(assertion).length < 2))) continue
+      if (!/因為|因为|所以|因此|理由|\bbecause\b|\btherefore\b|\bthus\b|\breason\b|\bso\b/i.test(assertion)) continue
+      if (/(?:不能|不可|不是|並非|并非|不應|不应)(?:只)?(?:因為|因为|以|用)|\b(?:not|cannot|can't)\s+(?:just\s+)?(?:because|use)\b/i.test(assertion)) continue
+      return true
+    }
+  }
   return false
 }
 

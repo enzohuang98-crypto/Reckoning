@@ -23,7 +23,7 @@ import {
 } from '@shared/types/EngineAnalysis'
 import { formatCentipawnDisplay } from '@shared/logic/analysis/EngineScoreDisplay'
 
-const MAX_PV_MOVES = 256
+export const MAX_PV_MOVES = 256
 
 /** cp 分數轉 EngineScore（§2.14.2） */
 export function convertCpScore(

@@ -7,8 +7,11 @@ import {
 } from '@shared/logic/board/ChineseNotation'
 import type { PieceColor, PieceType } from '@shared/types/BoardState'
 import type { HarnessEvidence } from '@shared/types/Harness'
+import { MAX_PV_MOVES } from '../engine/EngineOutputParser'
 
-export const VARIATION_BOARD_FACT_MAX_PLIES = 12
+// Replay the provided engine line rather than hiding its decisive tail. The
+// parser's existing bound still protects against oversized untrusted evidence.
+export const VARIATION_BOARD_FACT_MAX_PLIES = MAX_PV_MOVES
 
 export interface VariationStepFact {
   ply: number
@@ -34,7 +37,7 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
     : evidence.analysis.principalVariation
   let board = parsed.board
   const steps: VariationStepFact[] = []
-  // Match the initial writer's visible PV limit and keep repair input bounded.
+  // Use the same existing parser bound in prompt projection and validation.
   for (const [index, uci] of moves.slice(0, VARIATION_BOARD_FACT_MAX_PLIES).entries()) {
     const coordinates = parseUciMove(uci)
     const display = formatChineseMove(board, uci)
@@ -61,7 +64,10 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
     })
     board = applied.board
   }
-  return { steps, warning: moves.length === 0 ? '沒有 UCI 主線，不能計算棋盤事實。' : null }
+  return { steps, warning: moves.length === 0 ? '沒有 UCI 主線，不能計算棋盤事實。'
+    : moves.length > VARIATION_BOARD_FACT_MAX_PLIES
+      ? `主線超過引擎解析上限 ${VARIATION_BOARD_FACT_MAX_PLIES} 手，其後沒有可計算事實。`
+      : null }
 }
 
 /**

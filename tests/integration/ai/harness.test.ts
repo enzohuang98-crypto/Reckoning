@@ -1014,6 +1014,17 @@ async function main(): Promise<void> {
   })
   check('PromptBuilder 實際納入目標語言', explanationPrompt.includes('English'))
   check('PromptBuilder 實際納入既有對話', explanationPrompt.includes('Previous coach context marker'))
+  check('精準追問上下文不要求長篇或固定完整課程',
+    !/長篇、仔細|500–900|逐點引用/.test(explanationPrompt) &&
+    explanationPrompt.includes('Why does that previous point matter?'))
+  const fullComparisonPrompt = buildExplanationPrompt({
+    engineAnalysis: session.engineAnalysis, moveComparison: session.moveComparison,
+    userLevel: 'intermediate', explanationStyle: 'long_analytical', language: 'zh-TW',
+    followUpQuestion: '請完整說明這一步的作用與對手應對。', answerStrategy: 'move-comparison'
+  })
+  check('有問題的首次完整比較仍保留正文契約，不被誤分成短追問',
+    fullComparisonPrompt.includes('500–900') && fullComparisonPrompt.includes('practical_principle') &&
+    fullComparisonPrompt.includes('請完整說明這一步的作用與對手應對。'))
   const result = await runExplanationHarness(
     {
       requestId: 'ai-request-1',
@@ -2838,7 +2849,7 @@ async function main(): Promise<void> {
       } as never,
       signal: new AbortController().signal,
       onProgress: () => undefined,
-      explanationPrompt: 'Previous coach context marker'
+      explanationPrompt
     }
   )
   check(
@@ -2858,6 +2869,8 @@ async function main(): Promise<void> {
     '追問仍保留 PromptBuilder 的既有對話上下文',
     followUpProvider.prompts[0]?.includes('Previous coach context marker')
   )
+  check('正式追問的最終請求沒有共用提示的長文要求',
+    !/長篇、仔細|逐點引用/.test(followUpProvider.prompts[0] ?? ''))
   check(
     '追問保留原問題並遵守三句話要求，不重複完整教學模板',
     followUpResult.finalText.includes(
@@ -2871,6 +2884,9 @@ async function main(): Promise<void> {
 
   const invalidFollowUpProvider = new LocalizedNoUserMoveProvider(['not-json', '目前最需要注意中路的控制，炮二平五把炮移到中路。接下來出子前先檢查對手能否直接將軍或吃掉無根子。不要只顧進攻而讓自己的將帥失去保護。'])
   for (const scenario of [
+    { name: '數字分數比較也不能回答決策原因', outputs: [JSON.stringify({ directAnswer: '炮二平五引擎評估400分，其他走法200分，所以這步更好。' }), '炮二平五引擎評估400分，其他走法200分，所以這步更好。'], accepted: false },
+    { name: 'salvage 不能用分數高低回答決策原因', outputs: [JSON.stringify({ directAnswer: '炮二平五的評分較高，所以這步比其他著法更好。' }), '炮二平五的評分較高，所以這步比其他著法更好。'], accepted: false },
+    { name: '文字 recovery 不能用分數高低回答決策原因', outputs: ['not-json', '炮二平五的評分較高，所以這步比其他著法更好。'], accepted: false },
     { name: '短追問不能將主線誇大為被迫', outputs: [JSON.stringify({ mode: 'research', title: '追問',
       directAnswer: '炮二平五建立中炮後，黑方被迫走馬8進7。', directAnswerEvidenceIds: ['E1'],
       sections: [{ id: 'follow_up', heading: '追問', claims: [{ id: 'FQ1', text: '炮二平五建立中炮後，黑方被迫走馬8進7。', evidenceIds: ['E1'] }] }], generalNotes: [], warnings: [] }), '炮二平五建立中炮後，黑方被迫走馬8進7。'], accepted: false },

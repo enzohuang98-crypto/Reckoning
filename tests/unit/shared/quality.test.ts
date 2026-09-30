@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import {
   scoreExplanationAnswer,
   screenExplanationText,
+  scoreUsedAsReason,
   validateClaimCausalChain,
   type ScorableAnswer,
   type ScorableSection
@@ -56,6 +57,28 @@ const AVAILABLE_MOVES = [
   '車九平八',
   '卒3進1'
 ]
+check('numeric score comparison cannot stand in for the reason for a move',
+  scoreUsedAsReason('炮二平五引擎評估400分，你的馬八進七只有200分，所以炮二平五更好。'))
+check('Chinese numeric score comparison cannot stand in for the reason for a move',
+  scoreUsedAsReason('因為炮二平五有四百分，馬八進七只有兩百分，這就是不能這樣走的理由。'))
+check('reported scores do not condemn a separate concrete board explanation',
+  !scoreUsedAsReason('兩條線的參考評估分別為400分與200分。炮二平五把炮移到中路，所以中兵的防守要重新檢查。'))
+check('explicitly denying a numeric score as the reason is not a score-based reason',
+  !scoreUsedAsReason('不能因為炮二平五400分、馬八進七200分就說前者更好，還要比較黑方的應手與中路棋子。'))
+for (const [best, actual, bestScore, actualScore] of [
+  ['炮八平五', '兵三進一', '800', '200'],
+  ['車九平八', '馬二進三', '+1500', '-300'],
+  ['炮8平5', '馬2進3', '八百', '兩百']
+]) {
+  check(`same causal policy applies to other moves and values: ${best}/${actual}`,
+    scoreUsedAsReason(`因為${best}有${bestScore}分，${actual}只有${actualScore}分，所以前者比較好。`))
+}
+check('a single numeric evaluation is also not a board mechanism',
+  scoreUsedAsReason('因為炮八平五的引擎評估是800分，所以這一步好。'))
+check('English decimal evaluations obey the same causal policy',
+  scoreUsedAsReason('Pikafish gives 炮八平五 4.5 points versus 馬二進三 2.0 points, therefore the first move is better.'))
+check('centipawn score values obey the same causal policy',
+  scoreUsedAsReason('Pikafish gives 炮八平五 800cp versus 馬二進三 200cp, so the first move is better.'))
 
 const GOOD_CAUSAL: CausalChain = {
   cause: '因為先走馬八進七而不是炮二平五',

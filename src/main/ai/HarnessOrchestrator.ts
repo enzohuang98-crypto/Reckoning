@@ -405,7 +405,6 @@ function publicScopedEvidence(item: HarnessEvidence): object {
   return {
     id: item.id, purpose: item.purpose, engineName: item.engineName,
     positionFen: item.positionFen, move: item.displayMove, depth: item.depth,
-    score: item.score?.displayText ?? null,
     principalVariation: item.displayPrincipalVariation.slice(0, VARIATION_BOARD_FACT_MAX_PLIES),
     computedBoardFacts: buildVariationBoardFacts(item)
   }
@@ -2616,6 +2615,9 @@ export async function runExplanationHarness(
       if (hasAssertedForcedVariation(text)) {
         boardIssues.push('回答不得把單一引擎主線誇大為被迫、必然或唯一回應。')
       }
+      if (scoreUsedAsReasonForLanguage(text, validationLanguage)) {
+        boardIssues.push('回答以分數高低代替棋理原因。')
+      }
       validationErrors.push(...boardIssues.map(issue => `追問回答未通過：${issue}`))
       return hasEngineAnchor(text) && isFocusedQuestionAnswer(question, text) &&
         followsRequestedSentenceCount(text, question, validationLanguage) && boardIssues.length === 0
@@ -3133,10 +3135,10 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
                 engineName: item.engineName,
                 move: item.displayMove,
                 depth: item.depth,
-                principalVariation: item.displayPrincipalVariation.slice(0, 12),
+                principalVariation: item.displayPrincipalVariation.slice(0, VARIATION_BOARD_FACT_MAX_PLIES),
                 opponentReplies: item.displayPrincipalVariation
                   .filter((_, index) => index % 2 === 1)
-                  .slice(0, 6),
+                  .slice(0, Math.ceil(VARIATION_BOARD_FACT_MAX_PLIES / 2)),
                 computedBoardFacts: buildVariationBoardFacts(item),
                 warnings: item.analysis.warnings
               }))
@@ -3437,6 +3439,7 @@ ${
 若本次未提供使用者著法，仍不得補造、批評或比較不存在的著法。
 claim 不需要 findingIds 或 causal 物件。棋規及已計算棋盤事實可以直接回答；不得以模型自行推論的一般棋理替代皮卡魚結果，generalNotes 保持空陣列。只有引用具體引擎變例時才需要逐字使用 evidence 中的中文著法，不得以主線或「證據不足」取代對問題的回答。
 如果問題是「為何實戰步不如首選／Pikafish 為何這樣走」，先核對兩條線共有與不同的盤面變化，再用差異解釋棋手想法；兩線都發生的吃子／失子不能寫成只有實戰線才有的缺點。吃子敘述要明說哪一方、哪種棋子吃掉哪一方的哪種棋子，不能把被吃的馬與炮混為一談。
+閱讀整條已提供主線後，只挑對問題有解釋力的關鍵步：著法目的 → 對手合理應對 → 棋子或線路怎麼變 → 與另一走法的差異。不要逐手轉錄棋譜或靠篇幅填滿答案。可以提出由這些盤面變化支持的計畫解釋，但須交代推論依據，不把推論說成引擎已證明。
 PV 只展示這條變例的選擇，不證明對手被迫、只能被動應對或無法反擊。若具體優劣原因尚未證實，指出可見的差別與欠缺的證據，不把主線差異自動寫成戰略優勢。
 逐線吃子比較（只描述已重播前綴，不能單獨證明優劣）：${JSON.stringify(summarizeVariationCaptures(evidence))}`
     : hasUserMove

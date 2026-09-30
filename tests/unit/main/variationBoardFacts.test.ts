@@ -89,7 +89,7 @@ const bestPly18 = replayEvidence('E1', ['g5g4', 'c5c6', 'g4f4', 'b4d5', 'i9h9', 
 const actualPly18 = replayEvidence('E2', ['g7g4', 'c5c6', 'g4b4', 'f4d5', 'c7b9', 'd5e3'])
 const summarize = summarizeVariationCaptures
 const ply18Summary = summarize([bestPly18, actualPly18])
-check('capture summaries expose the shared twelve-ply replay limit', VARIATION_BOARD_FACT_MAX_PLIES === 12 && ply18Summary[0]?.includes('最多前 12 手') === true)
+check('capture summaries expose the existing bounded engine PV limit', VARIATION_BOARD_FACT_MAX_PLIES === 256 && ply18Summary[0]?.includes('最多前 256 手') === true)
 check('real best line identifies the pawn and red horse captures exactly', ply18Summary.includes('E1 第 1 手：黑方卒走卒7進1，吃掉紅方兵。') && ply18Summary.includes('E1 第 3 手：黑方卒走卒7平6，吃掉紅方馬。'))
 check('real actual line identifies its cannon as the capturing piece', ply18Summary.includes('E2 第 1 手：黑方炮走炮7進3，吃掉紅方兵。') && ply18Summary.includes('E2 第 3 手：黑方炮走炮7平2，吃掉紅方馬。'))
 check('both real lines identify the red horse capturing the black cannon', ['E1', 'E2'].every((id) => ply18Summary.includes(`${id} 第 6 手：紅方馬走馬六退五，吃掉黑方炮。`)))
@@ -107,7 +107,12 @@ check('missing PV reports lack of facts without claiming the whole line has no c
 check('bad notation cannot leak unverified capture events into summaries', !summarize([{ ...capture, displayPrincipalVariation: ['車九平五'] }]).some((line) => line.includes('吃掉')) && summarize([{ ...capture, displayPrincipalVariation: ['車九平五'] }]).some((line) => line.includes('中文記譜與本變例棋盤不一致')))
 const sixteenPlies = Array.from({ length: 4 }, () => ['b0c2', 'b9c7', 'c2b0', 'c7b9']).flat()
 const longLine = replayEvidence('E1', sixteenPlies, START_FEN)
-check('facts and capture summaries stop at the same twelve-ply prefix', buildVariationBoardFacts(longLine).steps.length === 12 && summarize([longLine]).some((line) => line.includes('已重播 12 手') && line.includes('未觀察到吃子')))
+check('decision analysis retains the whole provided legal variation beyond twelve plies', buildVariationBoardFacts(longLine).steps.length === 16 && summarize([longLine]).some((line) => line.includes('已重播 16 手') && line.includes('未觀察到吃子')))
+const lateDecision = replayEvidence('E1', [...sixteenPlies.slice(0, 12), 'h2e2', 'h9g7'], START_FEN)
+check('a correct late-line fact is not rejected because the decisive move follows ply twelve', validate('紅方炮二平五沒有吃子，黑方馬8進7沒有將軍。', [lateDecision]).length === 0)
+check('a wrong side in a late-line fact is still rejected', validate('紅方馬8進7沒有將軍。', [lateDecision]).length > 0)
+const oversizedLine = replayEvidence('E1', Array.from({ length: 66 }, () => ['b0c2', 'b9c7', 'c2b0', 'c7b9']).flat(), START_FEN)
+check('untrusted oversized evidence remains bounded and reports the omitted tail', buildVariationBoardFacts(oversizedLine).steps.length === 256 && buildVariationBoardFacts(oversizedLine).warning !== null)
 const selectedUserLine = {
   ...actualPly18,
   move: 'g7g4',
