@@ -23,6 +23,7 @@ import {
 import type { AppDataSnapshot } from '@shared/types/AppData'
 import type { HarnessProgressPayload } from '@shared/types/Harness'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
+import { ISOLATED_PROBE_CHANNEL } from '@shared/types/IsolatedUpdaterProbe'
 
 /** 包裝 main→renderer 事件為「訂閱 + 取消訂閱」形式 */
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -32,6 +33,9 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const api: RendererApi = {
+  ...(typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__
+    ? { isolatedUpdaterProbe: { record: (stage: import('@shared/types/IsolatedUpdaterProbe').IsolatedProbeStage) => ipcRenderer.invoke(ISOLATED_PROBE_CHANNEL, stage) } }
+    : {}),
   engine: {
     startAnalysis: (payload: AnalyzePositionStartPayload) =>
       ipcRenderer.send(IPC.ENGINE_ANALYZE_POSITION_START, payload),

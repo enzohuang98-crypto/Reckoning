@@ -100,12 +100,20 @@ export function App(): JSX.Element {
 
   const downloadUpdate = useCallback((): void => {
     setUpdateError(null)
+    if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+      void window.api.isolatedUpdaterProbe?.record('prepare-start')
+    }
     void withTimeout(
       window.api.update.download(),
       UPDATE_PREPARATION_TIMEOUT_MS,
       '更新背景準備逾時，請確認網路後再試。'
     )
-      .then(setUpdateStatus)
+      .then((status) => {
+        setUpdateStatus(status)
+        if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+          void window.api.isolatedUpdaterProbe?.record('prepare-complete')
+        }
+      })
       .catch(() => {
         setUpdateError('更新背景準備失敗，請確認網路後再試。')
         setUpdateStatus((current) =>
@@ -121,14 +129,29 @@ export function App(): JSX.Element {
   }, [])
 
   const installUpdate = useCallback(async (): Promise<AppUpdateStatus> => {
+    let draftChecks = 0
     const result = await installPreparedUpdateSafely(
       flushCurrentData,
-      () => withTimeout(
+      () => {
+        if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+          void window.api.isolatedUpdaterProbe?.record('install-dispatch')
+        }
+        return withTimeout(
         window.api.update.install(),
         UPDATE_OPERATION_TIMEOUT_MS,
         '啟動更新安裝逾時。'
-      ),
-      () => hasUnsavedAnalysisDraftRef.current
+        )
+      },
+      () => {
+        const hasDraft = hasUnsavedAnalysisDraftRef.current
+        if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+          const stage = draftChecks++ === 0
+            ? (hasDraft ? 'first-draft-present' : 'first-draft-clear')
+            : (hasDraft ? 'after-save-draft-present' : 'after-save-draft-clear')
+          void window.api.isolatedUpdaterProbe?.record(stage)
+        }
+        return hasDraft
+      }
     )
     if (!result) throw new Error('資料尚未成功保存，已取消重新啟動更新。')
     setUpdateStatus(result)
@@ -328,6 +351,12 @@ export function App(): JSX.Element {
         }
       }}
     >
+      {typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__ && (
+        <div className="card" aria-label="Isolated updater acceptance controls">
+          <p>Unpublished VM test package: save acknowledgement barrier and one-shot installer fault.</p>
+          <button className="btn" onClick={downloadUpdate}>Test: prepare before discovery</button>
+        </div>
+      )}
       <AnalysisWorkspace
         hidden={activeTab !== 'analyze'}
         headerCommandMount={analysisCommandMount}

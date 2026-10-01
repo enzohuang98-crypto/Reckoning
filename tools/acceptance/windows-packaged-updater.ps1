@@ -14,17 +14,60 @@ $report = [ordered]@{
   unsignedSmartScreenLimitation = 'Unsigned test packages; SmartScreen trust is not established.'
   downloadFailureRecovery = 'not_run'; backgroundUsable = 'not_run'; noAutoQuit = 'not_run'
   cacheCorruptionRecovery = 'not_run'; validCacheReopen = 'not_run'
-  draftBlocksRestart = 'not_run'; savedDataPreserved = 'not_run'; normalInstallationRestart = 'not_run'
+  draftBlocksRestart = 'not_run'; savedDataPreserved = 'not_run'; savedDataFilePreserved = 'not_run'
+  savedPositionUiRestored = 'not_run'; normalInstallationRestart = 'not_run'
   installPayloadBytes = $null; installFailureRetry = 'not_run'; earlyPrepareRecovery = 'not_run'
   draftAddedDuringSave = 'not_run'; observations = @(); screenshots = @()
   uiActions = @(); finalControlDiagnostics = @()
 }
 $server = $null
+$installerExitSource = $null
 function Set-FeedPhase([string]$Phase, [string]$Mode) {
   $body = @{ phase = $Phase; mode = $Mode } | ConvertTo-Json -Compress
   [void](Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:18765/__probe/control' -ContentType 'application/json' -Body $body -TimeoutSec 5)
 }
 function Read-Feed { return Invoke-RestMethod -Uri 'http://127.0.0.1:18765/__probe/status' -TimeoutSec 5 }
+function Get-ProbeActiveTransfer($Network, [string]$Phase, [long]$InstallerSize) {
+  if ([long]$Network.installerSize -ne $InstallerSize) { throw 'Live feed installer size differs from actual candidate manifest.' }
+  $matches = @($Network.requests | Where-Object {
+    $_.phase -ceq $Phase -and $_.kind -eq 'installer' -and $_.method -eq 'GET' -and
+    $_.status -in @(200, 206) -and $_.active -eq $true -and $_.completed -eq $false -and
+    [long]$_.expectedBodyBytes -gt 0 -and [long]$_.expectedBodyBytes -le $InstallerSize -and
+    [long]$_.bodyBytes -gt 0 -and [long]$_.bodyBytes -lt [long]$_.expectedBodyBytes
+  })
+  if ($matches.Count) { return $matches[0] }
+  return $null
+}
+function Get-ProbeEvents {
+  $path = Join-Path $script:probeFaultRoot 'events.jsonl'
+  if (Test-Path -LiteralPath $path) {
+    return @(Get-Content -LiteralPath $path -Encoding UTF8 | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
+  }
+  return @()
+}
+function Get-ProbeVisibleFen {
+  # BoardEditor renders the actual board state in this exact source-defined
+  # <code> element. No renderer evaluation, storage injection or inferred FEN.
+  $observations = @()
+  foreach ($control in Get-ProbeControls) {
+    $current = $control.Current
+    if ($current.IsOffscreen -or [string]$current.ClassName -cne 'fen-output') { continue }
+    $text = ([string]$current.Name).Trim()
+    $source = 'exact_fen_output_name'
+    if (-not $text) {
+      $pattern = $null
+      if (-not $control.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) { continue }
+      $text = ([string]$pattern.DocumentRange.GetText(256)).Trim()
+      $source = 'exact_fen_output_text_pattern'
+    }
+    if ($text -cmatch '^[rnbakcpRNBAKCP1-9/]+ [wb] - - [0-9]+ [1-9][0-9]*$') {
+      $observations += @{ fen = $text; source = $source; control = Get-ProbeControlDiagnostic $control }
+    }
+  }
+  if ($observations.Count -gt 1) { throw 'Visible current board FEN is ambiguous.' }
+  if ($observations.Count -eq 1) { return $observations[0] }
+  return $null
+}
 function Record-Probe([string]$Stage) {
   $names = Get-ProbeNames
   $report.observations += @{
@@ -63,6 +106,12 @@ try {
   $setupEntry = @($candidate.artifacts | Where-Object { $_.name -ceq "xiangqi-analyzer-$($candidate.version)-setup.exe" })
   if ($setupEntry.Count -ne 1) { throw 'Candidate manifest lacks a unique actual installer.' }
   $report.candidateInstallerSha256 = $setupEntry[0].sha256
+  $report.candidateInstallerSize = [long]$setupEntry[0].size
+  if ($predecessor.probeRunId -cne $env:GITHUB_RUN_ID -or $candidate.probeRunId -cne $env:GITHUB_RUN_ID -or
+      $env:GITHUB_RUN_ID -notmatch '^[1-9][0-9]{0,19}$') { throw 'Compile-time probe identity mismatch.' }
+  $script:probeFaultRoot = Join-Path ([IO.Path]::GetTempPath()) "reckoning-updater-probe-$($env:GITHUB_RUN_ID)"
+  [void](New-Item -ItemType Directory -Path $script:probeFaultRoot -Force)
+  $report.probeDifferences = @($predecessor.differences) + @($candidate.differences)
   $report.installedPath = $script:probeExe
   . "$PSScriptRoot/windows-packaged-ui.ps1"
   $serverEvidence = [IO.Path]::ChangeExtension($OutputPath, $null) + '-network.json'
@@ -78,9 +127,18 @@ try {
   $server = Start-Process -FilePath $node -ArgumentList $serverArguments -WindowStyle Hidden -RedirectStandardOutput $serverOut -RedirectStandardError $serverError -PassThru
   [void](Wait-Probe { try { Read-Feed } catch { $false } } 'Isolated instrumented update server did not start.' 15)
   Start-ProbeApplication
+  # Source-defined test-only UI calls the existing download handler before the
+  # real loopback feed has revealed any version. The SDK remains unchanged.
+  Invoke-ProbeAction 'Test: prepare before discovery'
+  [void](Wait-Probe { @(Get-ProbeEvents | Where-Object stage -eq 'prepare-complete').Count -gt 0 } 'Early prepare did not complete through normal trusted UI IPC.' 10)
+  if (@((Read-Feed).requests | Where-Object { $_.kind -eq 'installer' -or ($_.kind -eq 'metadata' -and $_.status -ne 503) }).Count) {
+    throw 'Early prepare did not precede version discovery.'
+  }
+  $report.earlyPrepareMode = 'declared-test-UI-before-version-discovery'
   # Create real persisted test data through the application UI, not AppData edits.
   Invoke-ProbeAction '局面工具'
   Invoke-ProbeAction '擺棋與保存局面' -Prefix
+  $savedFenObservation = Wait-Probe { Get-ProbeVisibleFen } 'Actual saved board FEN is not available through normal UI.' 10
   $marker = "Isolated updater data $($env:GITHUB_RUN_ID)"
   Set-ProbeInput '局面名稱（選填）' $marker
   Invoke-ProbeAction '保存'
@@ -88,6 +146,8 @@ try {
   $dataPath = Join-Path $env:APPDATA 'xiangqi-analyzer\app-data.json'
   [void](Wait-Probe { (Test-Path -LiteralPath $dataPath) -and (Get-Content -Raw -LiteralPath $dataPath).Contains($marker) } 'Actual saved position was not persisted.')
   $report.testDataMarker = $marker
+  $report.savedPositionFen = $savedFenObservation.fen
+  $report.savedPositionUiBefore = $savedFenObservation
   $report.savedDataSha256Before = (Get-FileHash -LiteralPath $dataPath -Algorithm SHA256).Hash
 
   # Controlled HTTP failures apply to the actual installer, not a fake provider.
@@ -102,12 +162,20 @@ try {
   Record-Probe 'download-failure'
   Set-FeedPhase 'background-recovery' 'throttled'
   Invoke-ProbeAction '立即檢查'
-  [void](Wait-Probe { (Read-Feed).phases.'background-recovery'.installerBytes -gt 0 } 'Installer download never began.' 90)
+  $transferBefore = Wait-Probe { Get-ProbeActiveTransfer (Read-Feed) 'background-recovery' $report.candidateInstallerSize } 'Installer active transfer never began.' 90
   $backgroundProcessId = (Get-ProbeWindow).Current.ProcessId
   Invoke-ProbeAction '分析'
   Invoke-ProbeAction '猜著'
   Set-ProbeInput '你選這一步的原因' 'Background download remains usable'
-  if ((Get-ProbeNames -join ' ') -notmatch '下载更新\s*\d+%|正在背景準備更新') { throw 'The usable App input was not exercised during an in-progress download.' }
+  $transferAfter = Get-ProbeActiveTransfer (Read-Feed) 'background-recovery' $report.candidateInstallerSize
+  $inputAction = $script:probeUiActions[-1]
+  if (-not $transferAfter -or $transferAfter.at -cne $transferBefore.at -or
+      [long]$transferAfter.bodyBytes -le [long]$transferBefore.bodyBytes -or
+      $inputAction.method -cne 'UIA_Value' -or $inputAction.result -cne 'completed' -or
+      (Get-ProbeWindow).Current.ProcessId -ne $backgroundProcessId) {
+    throw 'Verified input and same App PID did not overlap one real incomplete installer transfer.'
+  }
+  $report.backgroundTransferEvidence = @{ before = $transferBefore; after = $transferAfter; input = $inputAction; processId = $backgroundProcessId }
   $report.backgroundUsable = 'passed'
   Set-ProbeInput '你選這一步的原因' ''
   Open-ProbeSystemSettings
@@ -115,6 +183,7 @@ try {
   if ((Get-ProbeWindow).Current.ProcessId -ne $backgroundProcessId) { throw 'App exited or relaunched during background preparation.' }
   $report.downloadFailureRecovery = 'passed'
   $report.noAutoQuit = 'passed'
+  $report.earlyPrepareRecovery = 'passed'
   $cachedInstaller = Get-ValidatedPendingInstaller $report.candidateInstallerSha256
   $report.cachedInstallerPath = $cachedInstaller
   Record-Probe 'prepared'
@@ -160,6 +229,76 @@ try {
   Set-ProbeInput '你選這一步的原因' ''
   Open-ProbeSystemSettings
 
+  # Hold only the acknowledgement of an already completed actual atomic write.
+  # Navigation stays normal UI; the passive observations distinguish the
+  # pre-save clear state from a draft entered while the save promise is pending.
+  $eventOffset = @(Get-ProbeEvents).Count
+  Set-Content -LiteralPath (Join-Path $script:probeFaultRoot 'save-arm') -Value 'one-shot' -Encoding ASCII
+  Invoke-ProbeAction '重新啟動完成更新'
+  Confirm-ProbeRestart
+  [void](Wait-Probe { Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-entered') } 'Real save acknowledgement barrier was not entered.' 10)
+  $raceProcessId = (Get-ProbeWindow).Current.ProcessId
+  Invoke-ProbeAction '分析'
+  Invoke-ProbeAction '猜著'
+  Set-ProbeInput '你選這一步的原因' 'Draft entered while actual save acknowledgement is pending'
+  Set-Content -LiteralPath (Join-Path $script:probeFaultRoot 'save-release') -Value 'release' -Encoding ASCII
+  [void](Wait-Probe { @(Get-ProbeEvents | Select-Object -Skip $eventOffset | Where-Object stage -eq 'after-save-draft-present').Count -gt 0 } 'Actual post-save draft check did not reject the newly entered draft.' 5)
+  $raceEvents = @(Get-ProbeEvents | Select-Object -Skip $eventOffset)
+  if (-not @($raceEvents | Where-Object stage -eq 'first-draft-clear').Count -or
+      @($raceEvents | Where-Object stage -eq 'install-dispatch').Count -or
+      (Get-ProbeWindow).Current.ProcessId -ne $raceProcessId -or
+      (Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion -notin @($predecessor.version, "$($predecessor.version).0")) {
+    throw 'Save-race evidence did not preserve the old App without installer dispatch.'
+  }
+  $report.draftAddedDuringSave = 'passed'
+  $report.draftRaceEvidence = @{ events = $raceEvents; writeBarrier = (Get-Content -Raw -LiteralPath (Join-Path $script:probeFaultRoot 'save-entered') | ConvertFrom-Json); processId = $raceProcessId }
+  Record-Probe 'draft-added-during-save'
+  Set-ProbeInput '你選這一步的原因' ''
+  Open-ProbeSystemSettings
+
+  # SDK owns launching the actual hash-validated NSIS executable. Its one-shot
+  # customInit fault exits before installation. SDK quits the App on spawn,
+  # so the real recovery mode is normal reopening, not an in-process retry.
+  Set-FeedPhase 'install' 'healthy'
+  # Subscribe before SDK launch so even a fast customInit failure is retained.
+  # Only the matching NSIS PID's OS stop event is recorded, never other processes.
+  $installerExitSource = "Reckoning-Isolated-Installer-Exit-$($env:GITHUB_RUN_ID)-$PID"
+  [void](Register-WmiEvent -Namespace 'root\cimv2' -Class Win32_ProcessStopTrace -SourceIdentifier $installerExitSource)
+  Set-Content -LiteralPath (Join-Path $script:probeFaultRoot 'install-fail-next') -Value 'one-shot' -Encoding ASCII
+  Invoke-ProbeAction '重新啟動完成更新'
+  Confirm-ProbeRestart
+  [void](Wait-Probe { (Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'install-failed.json')) -and -not (Get-ProbeWindow) } 'Real NSIS one-shot failure and App exit were not observed.' 45)
+  $installFault = Get-Content -Raw -LiteralPath (Join-Path $script:probeFaultRoot 'install-failed.json') | ConvertFrom-Json
+  if ($installFault.configuredExitCode -ne 73 -or $installFault.failureKind -cne 'one-shot-customInit' -or
+      [long]$installFault.processId -le 0 -or [long]$installFault.processId -gt [uint32]::MaxValue) { throw 'NSIS fault marker lacks a valid actual process identity.' }
+  $installerStop = Wait-Probe {
+    $matching = @(Get-Event -SourceIdentifier $installerExitSource -ErrorAction SilentlyContinue | Where-Object {
+      [uint32]$_.SourceEventArgs.NewEvent.ProcessID -eq [uint32]$installFault.processId
+    })
+    if ($matching.Count -gt 1) { throw 'NSIS process-stop observation is ambiguous.' }
+    if ($matching.Count -eq 1) { return $matching[0].SourceEventArgs.NewEvent }
+  } 'Matching NSIS PID did not produce an actual OS process-stop event.' 15
+  $actualInstallerExit = @{
+    source = 'Win32_ProcessStopTrace'; processId = [uint32]$installerStop.ProcessID
+    processName = [string]$installerStop.ProcessName; exitStatus = [uint32]$installerStop.ExitStatus
+    atUtc = [DateTime]::FromFileTimeUtc([long]$installerStop.TIME_CREATED).ToString('o')
+  }
+  if ($actualInstallerExit.exitStatus -ne 73 -or
+      @(Get-Process -Id $actualInstallerExit.processId -ErrorAction SilentlyContinue).Count -gt 0 -or
+      (Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'install-fail-next')) -or
+      (Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion -notin @($predecessor.version, "$($predecessor.version).0") -or
+      (Get-FileHash -LiteralPath $dataPath -Algorithm SHA256).Hash -ne $report.savedDataSha256Before) { throw 'Installer failure altered old App/data or did not consume the real one-shot fault.' }
+  Set-FeedPhase 'install-failure-recovery' 'healthy'
+  Start-ProbeApplication
+  Open-ProbeSystemSettings
+  Assert-Prepared
+  [void](Get-ValidatedPendingInstaller $report.candidateInstallerSha256)
+  $retryNetwork = Read-Feed
+  if ($retryNetwork.phases.'install-failure-recovery'.metadataBytes -le 0 -or
+      $retryNetwork.phases.'install-failure-recovery'.installerBytes -gt 0 -or
+      $retryNetwork.phases.'install-failure-recovery'.installerRequests -gt 0) { throw 'Installer failure recovery did not revalidate and reuse the actual cached installer.' }
+  $report.installFailureRecoveryMode = 'normal-reopen-and-UI-retry-after-real-NSIS-exit-73'
+  $report.installFailureEvidence = @{ configuredFault = $installFault; actualOsExit = $actualInstallerExit }
   Set-FeedPhase 'install' 'healthy'
   Invoke-ProbeAction '重新啟動完成更新'
   Confirm-ProbeRestart
@@ -168,12 +307,33 @@ try {
   } 'Normal updater did not install the expected candidate version.' 180)
   Start-ProbeApplication
   if ((Get-FileHash -LiteralPath $dataPath -Algorithm SHA256).Hash -ne $report.savedDataSha256Before) { throw 'Actual saved application data changed during install.' }
-  $report.savedDataPreserved = 'passed'
+  $report.savedDataFilePreserved = 'passed'
   $report.finalInstalledVersion = (Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion
   Open-ProbeSystemSettings
   Assert-ProbeUiVersion $candidate.version 'Updated packaged candidate'
   $report.candidateUiVersion = $candidate.version
   Invoke-ProbeAction '分析'
+  Invoke-ProbeAction '局面工具'
+  Invoke-ProbeAction '擺棋與保存局面' -Prefix
+  [void](Wait-Probe { Find-ProbeAction $marker } 'Updated App did not expose the actual saved position marker.' 10)
+  # Deliberately change the actual current position through the normal UI
+  # before loading. A no-op saved-position action cannot pass this assertion.
+  $savedSide = ($report.savedPositionFen -split ' ')[1]
+  $differentSide = if ($savedSide -ceq 'w') { 'b' } else { 'w' }
+  Invoke-ProbeAction $(if ($differentSide -ceq 'b') { '黑方先' } else { '紅方先' })
+  $differentFen = $report.savedPositionFen -replace ' [wb] - - ', " $differentSide - - "
+  $changedFenObservation = Wait-Probe {
+    $observed = Get-ProbeVisibleFen
+    if ($observed -and $observed.fen -ceq $differentFen) { return $observed }
+  } 'Normal UI did not change the current position before the saved-position reload.' 10
+  Invoke-ProbeAction $marker
+  $restoredFenObservation = Wait-Probe {
+    $observed = Get-ProbeVisibleFen
+    if ($observed -and $observed.fen -ceq $report.savedPositionFen) { return $observed }
+  } 'Updated App did not restore the saved position FEN through its real UI.' 10
+  $report.savedPositionUiEvidence = @{ marker = $marker; changed = $changedFenObservation; restored = $restoredFenObservation }
+  $report.savedPositionUiRestored = 'passed'
+  $report.savedDataPreserved = 'passed'
   $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) '象棋AI分析講解.lnk'
   $shell = New-Object -ComObject WScript.Shell
   if ($shell.CreateShortcut($shortcut).TargetPath -ne $script:probeExe) { throw 'Updated desktop shortcut points at a different executable.' }
@@ -184,14 +344,19 @@ try {
   $report.installPayloadRequests = if ($installPhase) { [long]$installPhase.installerRequests } else { 0 }
   if ($report.installPayloadBytes -ne 0 -or $report.installPayloadRequests -ne 0) { throw 'Restart/install phase requested installer payload again.' }
   $report.normalInstallationRestart = 'passed'
+  $report.installFailureRetry = 'passed'
   Record-Probe 'updated-workspace'
-  $report.result = 'partial'
-  $report.remainingPackagedGates = @('Installer failure retry without UAC/elevation injection', 'Early prepare not exposed as a UI action before version discovery', 'A draft added during asynchronous save needs a deterministic actual UI race exercise')
+  $report.result = 'passed'
+  $report.remainingPackagedGates = @()
 } catch {
   $report.result = 'failed'
   $report.failure = $_.Exception.Message
   throw
 } finally {
+  if ($installerExitSource) {
+    Unregister-Event -SourceIdentifier $installerExitSource -ErrorAction SilentlyContinue
+    Get-Event -SourceIdentifier $installerExitSource -ErrorAction SilentlyContinue | Remove-Event -ErrorAction SilentlyContinue
+  }
   $report.uiActions = @($script:probeUiActions)
   try {
     $report.finalControlDiagnostics = @(Get-ProbeControls | Where-Object {

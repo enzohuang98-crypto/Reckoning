@@ -36,7 +36,7 @@ function createFeed(directory, evidencePath) {
   let mode = 'withhold'
   let failuresLeft = 0
   let evidenceClosed = false
-  const report = { sourceCommit: manifest.sourceCommit, version: manifest.version, installerSha256: setup.sha256, differences: manifest.differences, requests: [], phases: {} }
+  const report = { sourceCommit: manifest.sourceCommit, version: manifest.version, installerSha256: setup.sha256, installerSize: setup.size, differences: manifest.differences, requests: [], phases: {} }
   function persist() { if (!evidenceClosed) writeFileSync(evidencePath, JSON.stringify(report, null, 2)) }
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1:18765')
@@ -60,7 +60,7 @@ function createFeed(directory, evidencePath) {
     const artifact = assets.get(url.pathname)
     if (!artifact || !['GET', 'HEAD'].includes(request.method)) { response.writeHead(404).end(); return }
     const kind = url.pathname === '/latest.yml' ? 'metadata' : url.pathname.endsWith('.blockmap') ? 'blockmap' : 'installer'
-    const entry = { phase, kind, path: artifact.name, method: request.method, range: request.headers.range ?? null, status: 200, bodyBytes: 0, completed: false, at: new Date().toISOString() }
+    const entry = { phase, kind, path: artifact.name, method: request.method, range: request.headers.range ?? null, status: 200, bodyBytes: 0, expectedBodyBytes: 0, active: false, completed: false, at: new Date().toISOString() }
     report.requests.push(entry)
     const totals = report.phases[phase] ??= { metadataBytes: 0, blockmapBytes: 0, installerBytes: 0, installerRequests: 0 }
     if (kind === 'installer') totals.installerRequests++
@@ -78,20 +78,27 @@ function createFeed(directory, evidencePath) {
       entry.status = 206
     }
     const headers = { 'content-type': kind === 'metadata' ? 'text/yaml' : 'application/octet-stream', 'content-length': end - start + 1, 'accept-ranges': 'bytes' }
+    entry.expectedBodyBytes = end - start + 1
     if (entry.status === 206) headers['content-range'] = `bytes ${start}-${end}/${artifact.size}`
     response.writeHead(entry.status, headers)
     if (request.method === 'HEAD') { entry.completed = true; persist(); response.end(); return }
+    entry.active = true
+    persist()
     const stream = createReadStream(artifact.path, { start, end, highWaterMark: 256 * 1024 })
-    response.on('close', () => { stream.destroy(); persist() })
+    response.on('close', () => { entry.active = false; stream.destroy(); persist() })
     try {
       for await (const chunk of stream) {
         if (response.destroyed) break
         entry.bodyBytes += chunk.length
         totals[kind + 'Bytes'] += chunk.length
-        if (!response.write(chunk)) await new Promise((resolve) => { response.once('drain', resolve); response.once('close', resolve) })
+        persist()
+        if (!response.write(chunk)) await new Promise((resolve) => {
+          const done = () => { response.removeListener('drain', done); response.removeListener('close', done); resolve() }
+          response.once('drain', done); response.once('close', done)
+        })
         if (kind === 'installer' && mode === 'throttled') await new Promise((resolve) => setTimeout(resolve, 40))
       }
-      if (!response.destroyed) { entry.completed = true; response.end() }
+      if (!response.destroyed) { entry.completed = true; entry.active = false; response.end() }
     } catch (error) { entry.error = error.code ?? 'stream_error'; response.destroy() }
     persist()
   })

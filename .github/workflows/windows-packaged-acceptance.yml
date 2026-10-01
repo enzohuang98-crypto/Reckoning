@@ -6,7 +6,10 @@ on:
     paths:
       - '.github/workflows/windows-packaged-acceptance.yml'
       - 'tools/acceptance/windows-*'
+      - 'tools/acceptance/isolated-*'
+      - 'tools/acceptance/verify-no-updater-hooks.cjs'
       - 'src/**'
+      - 'electron.vite.config.ts'
       - 'electron-builder*'
       - 'package*.json'
 

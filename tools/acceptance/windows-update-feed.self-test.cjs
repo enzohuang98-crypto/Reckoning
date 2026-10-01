@@ -41,7 +41,13 @@ async function run() {
     const controller = new AbortController()
     const interrupted = await fetch(base + '/' + setupName, { signal: controller.signal })
     await interrupted.body.getReader().read()
-    controller.abort()
+    try {
+      const live = await (await fetch(base + '/__probe/status')).json()
+      const transfer = live.requests.find((request) => request.phase === 'aborted-download')
+      assert.equal(transfer.active, true, 'live installer transfer must be observable before completion')
+      assert.equal(transfer.expectedBodyBytes, payload.length)
+      assert(transfer.bodyBytes > 0 && transfer.bodyBytes < transfer.expectedBodyBytes)
+    } finally { controller.abort() }
     await new Promise((resolve) => setTimeout(resolve, 120))
     await control('install', 'healthy')
     await (await fetch(base + '/latest.yml')).arrayBuffer()
@@ -55,6 +61,7 @@ async function run() {
     assert.equal(evidence.phases.install.metadataBytes, metadata.length)
     const aborted = evidence.requests.find((request) => request.phase === 'aborted-download')
     assert.equal(aborted.completed, false)
+    assert.equal(aborted.active, false, 'aborted transfer must not remain active')
     assert(aborted.bodyBytes > 0 && aborted.bodyBytes < payload.length)
     assert.equal((await control('../../unsafe', 'healthy')).status, 400)
     assert.equal((await fetch(base + '/unknown.exe')).status, 404)

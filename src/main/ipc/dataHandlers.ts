@@ -1,4 +1,8 @@
-import { dialog, ipcMain } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
+import { appendFileSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { ISOLATED_PROBE_CHANNEL, ISOLATED_PROBE_STAGES } from '@shared/types/IsolatedUpdaterProbe'
 import {
   IPC,
   type DataExportResult,
@@ -22,6 +26,25 @@ import {
 } from '../security/InputValidation'
 
 export function registerDataHandlers(storage: StorageService): void {
+  let probeRoot: string | null = null
+  let saveBarrierUsed = false
+  if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+    if (!app.isPackaged || process.platform !== 'win32' || process.env.GITHUB_ACTIONS !== 'true' ||
+        process.env.RUNNER_ENVIRONMENT !== 'github-hosted' || process.env.GITHUB_RUN_ID !== __ISOLATED_UPDATER_PROBE_ID__) {
+      throw new Error('Isolated updater package may only execute in its hosted VM run.')
+    }
+    probeRoot = join(tmpdir(), `reckoning-updater-probe-${__ISOLATED_UPDATER_PROBE_ID__}`)
+    mkdirSync(probeRoot, { recursive: true })
+    const eventPath = join(probeRoot, 'events.jsonl')
+    let eventCount = 0
+    ipcMain.handle(ISOLATED_PROBE_CHANNEL, (event, stage: unknown): void => {
+      assertTrustedIpcSender(event)
+      if (typeof stage !== 'string' || !ISOLATED_PROBE_STAGES.includes(stage as typeof ISOLATED_PROBE_STAGES[number]) || ++eventCount > 128) {
+        throw new Error('Invalid isolated updater observation.')
+      }
+      appendFileSync(eventPath, JSON.stringify({ stage, at: new Date().toISOString(), pid: process.pid }) + '\n')
+    })
+  }
   ipcMain.handle(IPC.DATA_LOAD, async (event): Promise<DataLoadResult> => {
     assertTrustedIpcSender(event)
     try {
@@ -42,6 +65,19 @@ export function registerDataHandlers(storage: StorageService): void {
       try {
         assertJsonSize(snapshot, MAX_APP_DATA_BYTES, '應用程式資料')
         await storage.writeAppDataAsync(sanitizeAppData(snapshot) as AppDataSnapshot)
+        if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__ &&
+            probeRoot && !saveBarrierUsed && existsSync(join(probeRoot, 'save-arm'))) {
+          saveBarrierUsed = true
+          unlinkSync(join(probeRoot, 'save-arm'))
+          writeFileSync(join(probeRoot, 'save-entered'), JSON.stringify({ at: new Date().toISOString(), pid: process.pid, actualWriteCompleted: true }))
+          const deadline = Date.now() + 12_000
+          while (!existsSync(join(probeRoot, 'save-release'))) {
+            if (Date.now() >= deadline) throw new Error('Isolated save acknowledgement barrier timed out.')
+            await new Promise((resolve) => setTimeout(resolve, 50))
+          }
+          unlinkSync(join(probeRoot, 'save-release'))
+          writeFileSync(join(probeRoot, 'save-completed'), new Date().toISOString())
+        }
         return { ok: true }
       } catch (error) {
         logger.error('儲存永久資料失敗', error)

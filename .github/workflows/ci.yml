@@ -98,6 +98,12 @@ jobs:
       - name: Build production bundles
         run: npm run build
 
+      - name: Verify isolated updater build boundary
+        run: npx --no-install tsx --tsconfig tsconfig.node.json tools/acceptance/isolated-build-policy.self-test.ts
+
+      - name: Verify isolated updater hooks are excluded from ordinary builds
+        run: node tools/acceptance/verify-no-updater-hooks.cjs
+
       - name: Verify renderer viewport and scaling matrix
         run: npm run test:layout -- --artifact-dir "${{ runner.temp }}/renderer-layout"
 

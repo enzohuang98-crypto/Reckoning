@@ -45,6 +45,7 @@ import type {
 } from './Harness'
 import type { AppUpdateStatus, LegacyUpdatePreferences } from './AppUpdate'
 import type { DualEngineComparison } from './DualEngine'
+import type { IsolatedUpdaterProbeApi } from './IsolatedUpdaterProbe'
 
 /** IPC 通道名稱常數 */
 export const IPC = {
@@ -428,6 +429,8 @@ export type TeacherTestActionResult =
 /* ---------- preload API 形狀 ---------- */
 
 export interface RendererApi {
+  /** Absent from ordinary builds; metadata-only instrumentation in unpublished VM packages. */
+  isolatedUpdaterProbe?: IsolatedUpdaterProbeApi
   engine: {
     /** 開始分析（事件式）；結果經 onAnalysisResult / onAnalysisError 回傳 */
     startAnalysis(payload: AnalyzePositionStartPayload): void
