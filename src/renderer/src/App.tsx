@@ -10,12 +10,10 @@ import {
   loadLegacyUpdatePreferences,
   type AppTab
 } from './app/AppShell'
-import { LICENSE_GATE_DISABLED } from './app/productFlags'
 import { StartupScreen } from './app/StartupScreen'
 import { AnalysisWorkspace } from './features/workspace/AnalysisWorkspace'
 import { useAppDataStore } from './features/app-data/useAppDataStore'
 import { useBoardWorkspace } from './features/board/useBoardWorkspace'
-import { LicensePage } from './pages/LicensePage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SetupWizard } from './pages/SetupWizard'
 import {
@@ -27,7 +25,6 @@ import {
 import { withTimeout } from './utils/withTimeout'
 
 type SetupState = 'checking' | 'wizard' | 'done'
-type LicenseState = 'checking' | 'locked' | 'ok'
 const UPDATE_OPERATION_TIMEOUT_MS = 15_000
 const UPDATE_PREPARATION_TIMEOUT_MS = 20 * 60 * 1000
 export const UNSAVED_UPDATE_DRAFT_MESSAGE =
@@ -54,7 +51,6 @@ export function App(): JSX.Element {
   const [setupState, setSetupState] = useState<SetupState>(() =>
     isSetupCompleted() ? 'done' : 'checking'
   )
-  const [licenseState, setLicenseState] = useState<LicenseState>('checking')
   const pendingConversationId = useRef<string | null>(null)
   const hasUnsavedAnalysisDraftRef = useRef(false)
 
@@ -214,20 +210,6 @@ export function App(): JSX.Element {
   }, [setupState, setDataError])
 
   useEffect(() => {
-    let cancelled = false
-    void withTimeout(window.api.license.status(), 10_000, '授權狀態查詢逾時')
-      .then((status) => {
-        if (!cancelled) setLicenseState(status.activated ? 'ok' : 'locked')
-      })
-      .catch(() => {
-        if (!cancelled) setLicenseState('locked')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
     const conversationId = pendingConversationId.current
     pendingConversationId.current = null
     setActiveConversation(
@@ -293,13 +275,8 @@ export function App(): JSX.Element {
     [board.fen, updateAppData]
   )
 
-  if (licenseState === 'checking') return <StartupScreen phase="license" />
   if (setupState === 'checking') return <StartupScreen phase="setup" />
   if (!dataReady) return <StartupScreen phase="data" />
-
-  if (licenseState === 'locked' && !LICENSE_GATE_DISABLED) {
-    return <LicensePage onActivated={() => setLicenseState('ok')} />
-  }
 
   if (setupState === 'wizard') {
     return (

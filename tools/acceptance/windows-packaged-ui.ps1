@@ -67,13 +67,15 @@ function Get-ProbeUiVersionObservation {
   $versions = @(); $diagnostics = @(); $headingPresent = $false
   foreach ($control in Get-ProbeControls) {
     $current = $control.Current
-    if ($current.IsOffscreen -or $current.ControlType -notin @([System.Windows.Automation.ControlType]::Text, [System.Windows.Automation.ControlType]::Group)) { continue }
+    if ($current.IsOffscreen -or $current.ControlType -notin @([System.Windows.Automation.ControlType]::Text, [System.Windows.Automation.ControlType]::Group, [System.Windows.Automation.ControlType]::Pane, [System.Windows.Automation.ControlType]::StatusBar)) { continue }
     $name = ([string]$current.Name).Trim()
     $isBadge = [string]$current.ClassName -ceq 'badge plain'
     $isHeading = $name -ceq $heading -or $name -match ('^(?:APPLICATION UPDATE\s+)?' + [regex]::Escape($heading) + '(?:\s*' + $versionPattern + ')?$')
     if ($isHeading) { $headingPresent = $true }
     $version = $null; $source = $null
-    if (($current.ControlType -eq [System.Windows.Automation.ControlType]::Text -or $isBadge) -and $name -cmatch ('^' + $versionPattern + '$')) {
+    if ($name -cmatch ('^目前版本 (' + $versionPattern + ')$')) {
+      $version = $Matches[1]; $source = 'exact_accessible_current_version'
+    } elseif (($current.ControlType -eq [System.Windows.Automation.ControlType]::Text -or $isBadge) -and $name -cmatch ('^' + $versionPattern + '$')) {
       $version = $name; $source = 'exact_static_text_name'
     } elseif ($isHeading -and $name -cmatch ('^(?:APPLICATION UPDATE\s+)?' + [regex]::Escape($heading) + '\s*(' + $versionPattern + ')$')) {
       $version = $Matches[1]; $source = 'exact_combined_update_heading'

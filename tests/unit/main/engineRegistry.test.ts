@@ -114,6 +114,33 @@ try {
   check('自訂引擎選擇不因安裝路徑搬家而改寫',
     new EngineRegistryService(customStorage as never, newBundle)
       .getInstallation()?.executablePath === oldBundle)
+
+  const baselineBundle = join(relocationRoot, 'new', 'resources', 'engine', 'pikafish-sse41-popcnt.exe')
+  writeFileSync(baselineBundle, 'same-distribution compatible test engine')
+  const avxStorage = new FakeStorage()
+  avxStorage.values.set('engine-registry.json', {
+    installations: [{ ...pikafish, displayName: 'Pikafish（內建）', executablePath: newBundle, verified: true }],
+    activeEngineId: pikafish.id, verificationEngineId: 'legacy-second-engine'
+  })
+  const compatible = new EngineRegistryService(avxStorage as never, baselineBundle)
+  check('存在的舊 AVX2 內建引擎也會遷移至同版本相容引擎',
+    compatible.getInstallation()?.executablePath === baselineBundle &&
+    compatible.getInstallation()?.verified === false &&
+    compatible.list().activeEngineId === pikafish.id)
+  check('相容引擎路徑與停用複核選擇保存後可重開',
+    new EngineRegistryService(avxStorage as never).getInstallation()?.executablePath === baselineBundle &&
+    new EngineRegistryService(avxStorage as never).list().verificationEngineId === null)
+  const existingCustomStorage = new FakeStorage()
+  existingCustomStorage.values.set('engine-registry.json', {
+    installations: [{ ...pikafish, displayName: '我選的引擎', executablePath: newBundle }],
+    activeEngineId: pikafish.id, verificationEngineId: null
+  })
+  check('已存在的使用者自選引擎不被相容預設覆蓋',
+    new EngineRegistryService(existingCustomStorage as never, baselineBundle)
+      .getInstallation()?.executablePath === newBundle)
+  check('相容引擎檔案遺失時不改寫有效的既有選擇',
+    new EngineRegistryService(existingCustomStorage as never, join(relocationRoot, 'missing.exe'))
+      .getInstallation()?.executablePath === newBundle)
 } finally {
   rmSync(relocationRoot, { recursive: true, force: true })
 }
@@ -135,7 +162,8 @@ check(
 )
 
 registry.select(cyclone.id, pikafish.id)
-check('可分別選擇主引擎與複核引擎', registry.list().verificationEngineId === pikafish.id)
+check('只選擇一個引擎，舊的複核引擎要求不會啟用雙引擎', registry.list().activeEngineId === cyclone.id && registry.list().verificationEngineId === null)
+check('重開登錄仍停用舊的複核引擎', new EngineRegistryService(storage as never).list().verificationEngineId === null)
 
 registry.updateDetected(cyclone.id, {
   verified: true,

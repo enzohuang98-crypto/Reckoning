@@ -2175,7 +2175,9 @@ export async function runExplanationHarness(
   const deps = {
     ...runtimeDeps,
     model: payload.model,
-    session: payload.session as AnalysisSession,
+    session: { ...payload.session, verificationEngineId: undefined,
+      verificationEngineAnalysis: undefined, engineDisagreement: undefined,
+      dualEngineComparison: undefined, verificationWarning: undefined } as AnalysisSession,
     evaluation: execution.evaluation
   }
   const mode = payload.answerMode ?? 'research'
@@ -2238,8 +2240,7 @@ export async function runExplanationHarness(
     deps.session.primaryEngineId ??
     deps.registry.list().activeEngineId ??
     'unknown-engine'
-  const verificationEngineId =
-    payload.verificationEngineId ?? deps.session.verificationEngineId
+  const verificationEngineId: string | undefined = undefined
   const dualComparison =
     deps.session.dualEngineComparison ??
     buildDualEngineComparison(

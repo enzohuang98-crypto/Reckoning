@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 
 interface Props {
-  phase: 'license' | 'setup' | 'data'
+  phase: 'setup' | 'data'
 }
 
 const phaseText: Record<Props['phase'], string> = {
-  license: '正在確認應用程式狀態',
   setup: '正在載入引擎與安全設定',
   data: '正在讀取你的棋局資料'
 }

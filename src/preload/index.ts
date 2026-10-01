@@ -108,11 +108,6 @@ const api: RendererApi = {
     delete: (credential) => ipcRenderer.invoke(IPC.SECRET_DELETE, credential),
     isAvailable: () => ipcRenderer.invoke(IPC.SECRET_IS_AVAILABLE)
   },
-  license: {
-    status: () => ipcRenderer.invoke(IPC.LICENSE_STATUS),
-    activate: (licenseKey: string) => ipcRenderer.invoke(IPC.LICENSE_ACTIVATE, licenseKey),
-    deactivate: () => ipcRenderer.invoke(IPC.LICENSE_DEACTIVATE)
-  },
   update: {
     status: () => ipcRenderer.invoke(IPC.APP_UPDATE_STATUS),
     check: () => ipcRenderer.invoke(IPC.APP_UPDATE_CHECK),

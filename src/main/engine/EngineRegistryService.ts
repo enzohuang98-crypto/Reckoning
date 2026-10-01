@@ -129,22 +129,19 @@ function sanitizeRegistry(value: unknown): EngineRegistrySnapshot {
       ids.has(candidate.activeEngineId)
         ? candidate.activeEngineId
         : installations[0]?.id ?? null,
-    verificationEngineId:
-      typeof candidate.verificationEngineId === 'string' &&
-      ids.has(candidate.verificationEngineId)
-        ? candidate.verificationEngineId
-        : null
+    verificationEngineId: null
   }
 }
 
-function isStaleBundledPikafish(installation: EngineInstallation): boolean {
+function isStaleBundledPikafish(installation: EngineInstallation, currentPath: string): boolean {
   const path = installation.executablePath
   return installation.profileId === 'pikafish' &&
     installation.displayName === 'Pikafish（內建）' &&
-    basename(path).toLowerCase() === 'pikafish.exe' &&
+    ['pikafish.exe', 'pikafish-sse41-popcnt.exe'].includes(basename(path).toLowerCase()) &&
     basename(dirname(path)).toLowerCase() === 'engine' &&
     basename(dirname(dirname(path))).toLowerCase() === 'resources' &&
-    !existsSync(path)
+    (!existsSync(path) || (basename(path).toLowerCase() === 'pikafish.exe' &&
+      basename(currentPath).toLowerCase() === 'pikafish-sse41-popcnt.exe'))
 }
 
 export class EngineRegistryService {
@@ -165,7 +162,7 @@ export class EngineRegistryService {
         const currentBundledPath = normalizeEnginePath(bundledEnginePath)
         if (currentBundledPath && existsSync(currentBundledPath)) {
           const installations = this.snapshot.installations.map((installation) =>
-            isStaleBundledPikafish(installation)
+            isStaleBundledPikafish(installation, currentBundledPath)
               ? {
                   ...installation,
                   executablePath: currentBundledPath,
@@ -325,23 +322,14 @@ export class EngineRegistryService {
     return this.list()
   }
 
-  select(activeEngineId: string, verificationEngineId?: string | null): EngineRegistrySnapshot {
+  select(activeEngineId: string, _legacyVerificationEngineId?: string | null): EngineRegistrySnapshot {
     if (!this.snapshot.installations.some((item) => item.id === activeEngineId)) {
       throw new Error('找不到指定的主引擎。')
-    }
-    if (
-      verificationEngineId &&
-      (!this.snapshot.installations.some(
-        (item) => item.id === verificationEngineId
-      ) ||
-        verificationEngineId === activeEngineId)
-    ) {
-      throw new Error('複核引擎必須是另一個已安裝的引擎。')
     }
     this.snapshot = {
       ...this.snapshot,
       activeEngineId,
-      verificationEngineId: verificationEngineId ?? null
+      verificationEngineId: null
     }
     this.persist()
     return this.list()

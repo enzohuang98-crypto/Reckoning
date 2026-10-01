@@ -12,7 +12,6 @@ import {
   type EngineProfileId,
   type EngineRegistrySnapshot
 } from '@shared/types/EngineRegistry'
-import type { LicenseStatus } from '@shared/types/License'
 import type { AppSettings } from '@shared/types/Settings'
 import type { AIModelInfo } from '@shared/types/AIProviderTypes'
 import type {
@@ -20,7 +19,6 @@ import type {
   SecretCredentialRef,
   SecretStatus
 } from '@shared/types/ipc'
-import { LICENSE_GATE_DISABLED } from '../app/productFlags'
 import { AiSettingsSection } from '../features/settings/AiSettingsSection'
 import type { AiConnectionStage } from '../features/settings/AiConnectionStatus'
 import { EngineSettingsSection } from '../features/settings/EngineSettingsSection'
@@ -91,7 +89,6 @@ export function SettingsPage({
   const [testingEngineId, setTestingEngineId] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
-  const [license, setLicense] = useState<LicenseStatus | null>(null)
   const connectAttemptRef = useRef(0)
   const savedModelAttemptRef = useRef(0)
   const mountedRef = useRef(true)
@@ -136,7 +133,6 @@ export function SettingsPage({
       })
       .catch(() => setOperationError('無法查詢 API Key 狀態。'))
     void refreshEngine()
-    window.api.license.status().then(setLicense).catch(() => setLicense(null))
     withTimeout(
       window.api.update.status(),
       UPDATE_OPERATION_TIMEOUT_MS,
@@ -479,20 +475,18 @@ export function SettingsPage({
   }
 
   const selectEngines = async (
-    activeEngineId: string,
-    verificationEngineId: string | null = engineRegistry.verificationEngineId
+    activeEngineId: string
   ): Promise<void> => {
     if (!activeEngineId) return
     try {
       setEngineRegistry(
         await window.api.engine.selectInstallation(
-          activeEngineId,
-          verificationEngineId === activeEngineId ? null : verificationEngineId
+          activeEngineId
         )
       )
       setEngineMessage(null)
     } catch {
-      setEngineMessage('主引擎與複核引擎必須是不同的已加入引擎。')
+      setEngineMessage('無法切換引擎，請重新測試後再試。')
     }
   }
 
@@ -547,14 +541,6 @@ export function SettingsPage({
       )
     } finally {
       setUpdateBusy(false)
-    }
-  }
-
-  const deactivateLicense = async (): Promise<void> => {
-    try {
-      setLicense(await window.api.license.deactivate())
-    } catch {
-      setOperationError('解除授權失敗，請稍後再試。')
     }
   }
 
@@ -617,8 +603,6 @@ export function SettingsPage({
 
           {activeCategory === 'engines' && (
             <EngineSettingsSection
-              settings={settings}
-              update={update}
               registry={engineRegistry}
               newProfile={newEngineProfile}
               onNewProfileChange={setNewEngineProfile}
@@ -633,8 +617,8 @@ export function SettingsPage({
               onRefresh={() => void refreshEngine()}
               onTest={(id) => void testEngine(id)}
               onRemove={(id) => void removeEngine(id)}
-              onSelect={(activeId, verificationId) =>
-                void selectEngines(activeId, verificationId)
+              onSelect={(activeId) =>
+                void selectEngines(activeId)
               }
             />
           )}
@@ -643,8 +627,6 @@ export function SettingsPage({
             <SystemSettingsSection
               updateStatus={updateStatus}
               updateBusy={updateBusy}
-              license={license}
-              licenseGateDisabled={LICENSE_GATE_DISABLED}
               onExportBackup={() => void exportBackup()}
               canExportBackup={!dataRecoveryRequired}
               onImportBackup={() => void importBackup()}
@@ -663,7 +645,6 @@ export function SettingsPage({
                   window.api.update.setBackgroundPreparation(enabled)
                 )
               }
-              onDeactivateLicense={() => void deactivateLicense()}
             />
           )}
         </div>

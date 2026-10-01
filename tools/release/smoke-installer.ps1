@@ -98,6 +98,7 @@ function Invoke-InstallValidation {
 
   Wait-Until { Test-Path -LiteralPath $mainExe } 'Installed application did not appear.'
   Assert-Path (Join-Path $installDir 'resources\engine\pikafish.exe') 'Bundled Pikafish'
+  Assert-Path (Join-Path $installDir 'resources\engine\pikafish-sse41-popcnt.exe') 'Compatible bundled Pikafish'
   Assert-Path (Join-Path $installDir 'resources\engine\pikafish.nnue') 'Bundled NNUE'
   Assert-Path (Join-Path $installDir 'resources\app-update.yml') 'Updater configuration'
   Assert-Path $uninstaller 'Uninstaller'

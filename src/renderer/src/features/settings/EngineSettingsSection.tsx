@@ -3,13 +3,9 @@ import {
   type EngineProfileId,
   type EngineRegistrySnapshot
 } from '@shared/types/EngineRegistry'
-import type { AppSettings } from '@shared/types/Settings'
 import type { EngineTestResult } from '@shared/types/ipc'
-import type { SettingsUpdater } from './types'
 
 interface Props {
-  settings: AppSettings
-  update: SettingsUpdater
   registry: EngineRegistrySnapshot
   newProfile: EngineProfileId
   onNewProfileChange: (profile: EngineProfileId) => void
@@ -24,12 +20,10 @@ interface Props {
   onRefresh: () => void
   onTest: (id: string) => void
   onRemove: (id: string) => void
-  onSelect: (activeId: string, verificationId?: string | null) => void
+  onSelect: (activeId: string) => void
 }
 
 export function EngineSettingsSection({
-  settings,
-  update,
   registry,
   newProfile,
   onNewProfileChange,
@@ -63,7 +57,7 @@ export function EngineSettingsSection({
         </div>
 
         <p className="muted">
-          軟體不附帶第三方引擎。只有完成握手與短搜尋測試的項目才會標示「已驗證」。
+          使用內建 Pikafish，或選擇一個已加入的引擎。完成握手與短搜尋測試後才會標示「已驗證」。
         </p>
 
         <div className="engine-install-list">
@@ -122,25 +116,6 @@ export function EngineSettingsSection({
                 ))}
               </select>
             </div>
-            {registry.installations.length > 1 && (
-              <div className="field">
-                <label className="field-label">預設複核引擎（選用）</label>
-                <select
-                  className="select"
-                  value={registry.verificationEngineId ?? ''}
-                  onChange={(event) =>
-                    onSelect(registry.activeEngineId ?? '', event.target.value || null)
-                  }
-                >
-                  <option value="">不使用複核引擎</option>
-                  {registry.installations
-                    .filter((engine) => engine.id !== registry.activeEngineId)
-                    .map((engine) => (
-                      <option value={engine.id} key={engine.id}>{engine.displayName}</option>
-                    ))}
-                </select>
-              </div>
-            )}
           </div>
         )}
       </section>
@@ -213,55 +188,7 @@ export function EngineSettingsSection({
           )}
         </section>
 
-        <section className="card">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">SEARCH BUDGET</span>
-              <h3>引擎參數</h3>
-            </div>
-          </div>
 
-          <div className="field">
-            <label className="field-label">
-              局面分析時間：{(settings.rootAnalysisMovetimeMs / 1000).toFixed(1)} 秒
-            </label>
-            <input
-              type="range"
-              min={1000}
-              max={10000}
-              step={500}
-              value={settings.rootAnalysisMovetimeMs}
-              onChange={(event) =>
-                update({ rootAnalysisMovetimeMs: Number(event.target.value) })
-              }
-            />
-          </div>
-          <div className="field">
-            <label className="field-label">
-              猜測著法評估：{(settings.userMoveEvalMovetimeMs / 1000).toFixed(1)} 秒
-            </label>
-            <input
-              type="range"
-              min={500}
-              max={3000}
-              step={100}
-              value={settings.userMoveEvalMovetimeMs}
-              onChange={(event) =>
-                update({ userMoveEvalMovetimeMs: Number(event.target.value) })
-              }
-            />
-          </div>
-          <div className="field">
-            <label className="field-label">候選著法數量：{settings.multiPv}</label>
-            <input
-              type="range"
-              min={1}
-              max={5}
-              value={settings.multiPv}
-              onChange={(event) => update({ multiPv: Number(event.target.value) })}
-            />
-          </div>
-        </section>
       </div>
     </div>
   )

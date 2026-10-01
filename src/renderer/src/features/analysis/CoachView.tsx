@@ -134,15 +134,6 @@ export function CoachView({
         />
       )}
 
-      {actualMove &&
-        result?.verificationWarning &&
-        !explanation &&
-        !conversation && (
-          <div className="notice-text small" role="status">
-            {result.verificationWarning}
-          </div>
-        )}
-
       {!result && (submittedGuess || actualMove) && (
         <div className="panel-empty-state">
           <span className="empty-state-mark">AI</span>

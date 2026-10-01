@@ -72,6 +72,13 @@ jobs:
       - name: Compile the test engine
         uses: ./.github/actions/compile-fake-engine
 
+      - name: Verify exact Windows accessibility version observations
+        shell: powershell
+        run: ./tools/acceptance/windows-ui-version.self-test.ps1
+
+      - name: Exercise the compatible bundled Pikafish and NNUE
+        run: npx --no-install tsx --tsconfig tsconfig.node.json tools/acceptance/bundled-engine-compatibility.ts --output "${{ runner.temp }}/compatible-engine.json"
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -86,3 +93,15 @@ jobs:
 
       - name: Build production bundles
         run: npm run build
+
+      - name: Verify renderer viewport and scaling matrix
+        run: npm run test:layout -- --artifact-dir "${{ runner.temp }}/renderer-layout"
+
+      - name: Upload renderer layout evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: renderer-layout
+          path: ${{ runner.temp }}/renderer-layout
+          retention-days: 7
+          if-no-files-found: warn

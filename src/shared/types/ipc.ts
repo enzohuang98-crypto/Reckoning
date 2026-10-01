@@ -26,7 +26,6 @@ import type {
 } from './AIProviderTypes'
 import type { ExplanationLanguage, ExplanationStyle } from './AIExplanationTypes'
 import type { UserLevel } from './Settings'
-import type { LicenseStatus } from './License'
 import type {
   AppDataImportSummary,
   AppDataSnapshot,
@@ -96,10 +95,6 @@ export const IPC = {
   SECRET_ACTIVATE: 'secret:activate',
   SECRET_DELETE: 'secret:delete',
   SECRET_IS_AVAILABLE: 'secret:isAvailable',
-  // 買斷授權 (License Key，SDS Q5)
-  LICENSE_STATUS: 'license:status',
-  LICENSE_ACTIVATE: 'license:activate',
-  LICENSE_DEACTIVATE: 'license:deactivate',
   // 應用程式更新
   APP_UPDATE_STATUS: 'app-update:status',
   APP_UPDATE_CHECK: 'app-update:check',
@@ -526,12 +521,6 @@ export interface RendererApi {
     activate(credential: SecretCredentialRef): Promise<SecretMutationResult>
     delete(credential: SecretCredentialRef): Promise<SecretMutationResult>
     isAvailable(): Promise<boolean>
-  }
-  license: {
-    status(): Promise<LicenseStatus>
-    /** 驗證並啟用 License Key；失敗時回傳 activated=false + message */
-    activate(licenseKey: string): Promise<LicenseStatus>
-    deactivate(): Promise<LicenseStatus>
   }
   update: {
     status(): Promise<AppUpdateStatus>
