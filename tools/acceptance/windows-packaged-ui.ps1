@@ -160,6 +160,22 @@ function Invoke-ProbeAction([string]$Name, [switch]$Prefix) {
     if ($button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
       $action.method = 'UIA_Invoke'
       $pattern.Invoke()
+    } elseif ($button.Current.Name -ceq '猜著' -and
+              $button.Current.AutomationId -ceq 'analysis-tab-guess' -and
+              $button.Current.ClassName -cmatch '(?:^|\s)inspector-tab(?:\s|$)' -and
+              $button.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+      # AnalysisInspectorTabs uses aria-pressed. Chromium exposes this exact
+      # source button as TogglePattern, not InvokePattern. Open the guessing
+      # view without toggling an already selected view back to the coach.
+      $action.method = 'UIA_Toggle'
+      if ($pattern.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::Off) {
+        $pattern.Toggle()
+      } elseif ($pattern.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) {
+        throw "Observed action '$Name' has an unsupported pressed state."
+      }
+      [void](Wait-Probe {
+        $pattern.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On
+      } "Observed action '$Name' did not become selected." 5)
     } elseif ($button.Current.Name -ceq '局面工具' -and
               $button.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {
       # Source ToolbarMenu uses <details><summary>, whose native action is
