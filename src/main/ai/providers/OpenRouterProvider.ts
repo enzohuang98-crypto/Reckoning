@@ -171,8 +171,9 @@ export class OpenRouterProvider implements AIProvider {
         // parameter. Harness still requests and validates JSON in its prompt.
         // Super advertises schema support, but the live fixed-case comparison
         // exhausted 6,000 output tokens with strict schema and zero reasoning;
-        // JSON object finished within 1,900. Keep local content validation,
-        // rather than forcing the regressed constrained decoder.
+        // JSON object finished within 1,900. This observed format difference
+        // selects JSON object; it does not establish the decoder's root cause.
+        // All local content validation remains required.
         ...(request.responseFormat === 'json' && request.model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL
           ? { response_format: { type: 'json_object' } }
           : {}),

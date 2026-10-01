@@ -207,6 +207,36 @@ for (const format of ['json', 'text', undefined] as const) {
   })
 }
 
+for (const model of ['dots-studio/dots-3-note-preview:free', 'dots-studio/dots-3-note-preview', 'test/other:free']) {
+  for (const responseFormat of ['json', 'text'] as const) {
+    await withServer(() => ({ model, choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }] }), async (baseUrl, requests) => {
+      await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model, apiKey: 'synthetic-test-key', prompt: 'Offline protocol contract',
+        responseFormat, maxOutputTokens: 6000,
+        metadata: { requestId: 'dots-exact-policy', analysisId: 'dots-exact-policy', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+      })
+      const body = requests[0].body as Record<string, unknown>
+      assert.deepEqual(body.reasoning,
+        model === 'dots-studio/dots-3-note-preview:free' && responseFormat === 'json'
+          ? { enabled: false, exclude: true } : undefined,
+        'Only the confirmed exact free Dots JSON endpoint gets its own optional-reasoning control')
+      assert.equal(body.max_tokens, 6000, 'The policy must preserve the requested output cap')
+    })
+  }
+}
+
+await withServer(() => ({ model: 'dots-studio/dots-3-note-preview:free',
+  choices: [{ message: { content: '{"partial":true}' }, finish_reason: 'length' }],
+  usage: { completion_tokens: 6000, completion_tokens_details: { reasoning_tokens: 0 } }
+}), async baseUrl => {
+  await assert.rejects(new OpenRouterProvider({ baseUrl }).generateExplanation({
+    provider: 'openrouter', model: 'dots-studio/dots-3-note-preview:free', apiKey: 'synthetic-test-key',
+    prompt: 'Offline truncated response', responseFormat: 'json', maxOutputTokens: 6000,
+    metadata: { requestId: 'dots-length', analysisId: 'dots-length', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+  }), error => error instanceof AIResponseValidationError && error.category === 'generation_incomplete' &&
+    error.details.finishReason === 'length' && error.details.outputTokens === 6000)
+})
+
 await withServer(
   () => ({
     model: 'nvidia/nemotron-3-ultra-550b-a55b:free',

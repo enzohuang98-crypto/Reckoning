@@ -2411,10 +2411,10 @@ export async function runExplanationHarness(
       const callIndex = modelCalls
       const callStartedAt = Date.now()
       const requestMaxOutputTokens = Math.min(remainingTokens, preferredMaxTokens)
-      const reasoningPolicy =
-        payload.provider === 'openrouter' &&
-        openRouterReasoningConfig(deps.model, responseFormat)
-          ? deps.model === 'nvidia/nemotron-3-super-120b-a12b:free'
+      const reasoningConfig = payload.provider === 'openrouter'
+        ? openRouterReasoningConfig(deps.model, responseFormat) : undefined
+      const reasoningPolicy = reasoningConfig
+          ? reasoningConfig.effort === 'none' || reasoningConfig.enabled === false
             ? 'reasoning_disabled' as const
             : 'bounded_1000_excluded' as const
           : 'provider_managed' as const

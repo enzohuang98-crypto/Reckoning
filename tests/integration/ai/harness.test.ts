@@ -1161,6 +1161,25 @@ async function main(): Promise<void> {
     engineAnalysis: sameMoveAnalysis,
     moveComparison: compareMove(sameMoveAnalysis)
   }
+  const dotsTraces: HarnessTrace[] = []
+  const dotsProvider = new FakeProvider()
+  await runExplanationHarness({
+    requestId: 'dots-policy-trace', analysisId: session.analysisId,
+    provider: 'openrouter', model: 'dots-studio/dots-3-note-preview:free',
+    userLevel: 'intermediate', explanationStyle: 'long_analytical', language: 'zh-TW',
+    userMoveReason: '先出馬可以讓子力調度更靈活', answerMode: 'research',
+    budget: { engineTimeMs: 3000, maxEngineRounds: 3, maxModelCalls: 4, maxOutputTokens: 6000 }
+  }, {
+    provider: dotsProvider, apiKey: 'synthetic-trace-key', model: 'dots-studio/dots-3-note-preview:free', session,
+    registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+    traceStore: { save: (trace: HarnessTrace) => dotsTraces.push(trace) } as never,
+    signal: new AbortController().signal, onProgress: () => undefined, explanationPrompt
+  })
+  check('Dots 完整合格 fixture 通過正式 validator 且 trace 正確標示其獨立推理策略',
+    dotsProvider.calls === 1 && dotsProvider.requestedMaxTokens[0] === 6000 &&
+    dotsTraces.at(-1)?.modelCallDiagnostics?.[0]?.reasoningPolicy === 'reasoning_disabled' &&
+    dotsTraces.at(-1)?.modelCallDiagnostics?.[0]?.stage === 'initial_combined')
+
   const sameMoveProvider = new SameMoveProvider()
   const sameMoveResult = await runExplanationHarness(
     {
