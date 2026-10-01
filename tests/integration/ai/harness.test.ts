@@ -1015,6 +1015,8 @@ async function main(): Promise<void> {
     followUpQuestion: 'Why does that previous point matter?'
   })
   check('PromptBuilder 實際納入目標語言', explanationPrompt.includes('English'))
+  check('共用提示的短追問仍提供必需棋規，不依問題有沒有規則關鍵字',
+    ['象眼', '馬腿', '炮架', '將帥', '不能後退'].every(rule => explanationPrompt.includes(rule)))
   check('PromptBuilder 實際納入既有對話', explanationPrompt.includes('Previous coach context marker'))
   check('精準追問上下文不要求長篇或固定完整課程',
     !/長篇、仔細|500–900|逐點引用/.test(explanationPrompt) &&
@@ -1027,6 +1029,8 @@ async function main(): Promise<void> {
   check('有問題的首次完整比較仍保留正文契約，不被誤分成短追問',
     fullComparisonPrompt.includes('500–900') && fullComparisonPrompt.includes('practical_principle') &&
     fullComparisonPrompt.includes('請完整說明這一步的作用與對手應對。'))
+  check('共用完整比較與短追問使用同一份棋規基礎',
+    ['象眼', '馬腿', '炮架', '將帥', '不能後退'].every(rule => fullComparisonPrompt.includes(rule)))
   const result = await runExplanationHarness(
     {
       requestId: 'ai-request-1',
@@ -1074,6 +1078,9 @@ async function main(): Promise<void> {
   )
 
   check('首次實戰步比較以一次結構化模型呼叫同時完成審查與寫作', provider.calls === 1)
+  check('真正一鍵完整講解收到固定棋規、相關術語及逐線吃子摘要',
+    ['象眼', '馬腿', '恰好一枚', '不能後退', '吃子摘要只涵蓋', '不得冒充引擎證據']
+      .every(rule => provider.prompts[0]?.includes(rule)))
   check(
     '首次合併審查與五段正文提供足夠 JSON 輸出預算',
     provider.requestedMaxTokens[0] === 4_000,
@@ -1443,10 +1450,11 @@ async function main(): Promise<void> {
       insufficientProvider.prompts[0]?.includes('"id":"K2","category":"piece_development"') === true
   )
   check(
-    '證據不足的範例不預填失去先手或讓對手獲利類型，有證據差異仍可正常比較',
+    '比較分差不預填失先或讓對手獲利的原因，所有狀態都由實際主線選類型',
     !insufficientProvider.prompts[0]?.includes('"category":"initiative_loss"') &&
       !insufficientProvider.prompts[0]?.includes('"category":"opponent_development"') &&
-      provider.prompts[0]?.includes('"category":"initiative_loss"') === true
+      !provider.prompts[0]?.includes('"category":"initiative_loss"') &&
+      provider.prompts[0]?.includes('分類只標示正文已描述的盤面影響') === true
   )
   check(
     '比較證據不足的短追問提示要求區分已知與未知',
@@ -2903,6 +2911,8 @@ async function main(): Promise<void> {
   )
   check('正式追問的最終請求沒有共用提示的長文要求',
     !/長篇、仔細|逐點引用/.test(followUpProvider.prompts[0] ?? ''))
+  check('正式追問也收到共同棋規，問原因不需要先問規則才能啟用',
+    ['象眼', '馬腿', '恰好一枚', '不能後退'].every(rule => followUpProvider.prompts[0]?.includes(rule)))
   check(
     '追問保留原問題並遵守三句話要求，不重複完整教學模板',
     followUpResult.finalText.includes(
@@ -3802,6 +3812,23 @@ async function main(): Promise<void> {
   const sameVerdictRequirements = { ...initialMoveRequirements, comparisonState: 'same_move' as const }
   check('同首選完整正文可通過正式 validator',
     validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements).length === 0)
+  const replayedExchangeAnswer = JSON.parse(JSON.stringify(sameVerdictAnswer)
+    .replaceAll('馬八進七', '馬二進三').replaceAll('馬2進3', '車9平8')) as HarnessAnswer
+  const replayedExchangeEvidence = [{ ...realExchangeEvidence, id: 'E1' }]
+  replayedExchangeAnswer.sections[3]!.claims[0]!.text =
+    '炮二平五先把紅炮移到中線，黑方以馬8進7發展右翼馬；紅方接著馬二進三，黑方再走車9平8。這幾步反映雙方都在把後排棋子帶入可用線路，不能只看第一手的評分便認定對手沒有辦法應對。紅方後續車一平二，並在黑方卒7進1後走車二進六，將二路車送到較前的位置；黑方也有卒3進1與象3進5等部署。這段棋譜可以支持出子和調整線路的描述，但單一變例沒有窮盡其他應手，因此不能稱為對手必然會照走的完整攻防。紅方炮八平七、馬八進九、車九平八，也把另一翼的炮、馬和車逐步調整；黑方馬2進4、炮8平9則是這條線中可見的回應。理解這步的目的，需要沿這些具體著法觀察子力位置如何改變，再說明自己的計畫能否接上對方的應對，不能用得分替代原因。沿主線走到紅方車二進三吃黑車，黑方緊接馬7退8吃紅車，雙方各少一車，不能只把第一手吃車算成紅方淨多一車。最後黑馬停在剛完成交換的位置，兩方的車都已被移除；這是已重播主線的棋盤事實。至於交換後誰的子力更協調、攻勢能否延續，還需要更多變例和局面分析；這裡的吃子帳本只計算棋子數量，不替整體優劣作判定。實戰上應把移炮控制中路、雙方出子與後續換車連起來理解，同時保留對其他合理回應的觀察。'
+  const replayedExchangeErrors = validateAnswer(
+    replayedExchangeAnswer, replayedExchangeEvidence, sameVerdictRequirements)
+  check('完整五段正文的真實吃車及反吃交換可通過正式 validator',
+    replayedExchangeErrors.length === 0, replayedExchangeErrors)
+  const falseNetMaterialAnswer = JSON.parse(JSON.stringify(replayedExchangeAnswer)) as HarnessAnswer
+  falseNetMaterialAnswer.sections[3]!.claims[0]!.text =
+    falseNetMaterialAnswer.sections[3]!.claims[0]!.text.replace(
+      '雙方各少一車，不能只把第一手吃車算成紅方淨多一車', '紅方淨多一車')
+  const falseNetMaterialErrors = validateAnswer(
+    falseNetMaterialAnswer, replayedExchangeEvidence, sameVerdictRequirements)
+  check('合格五段正文只改成錯誤淨多一車，即使保留真實吃子與有效引用也拒絕',
+    falseNetMaterialErrors.some(error => error.includes('棋盤事實')), falseNetMaterialErrors)
   sameVerdictAnswer.directAnswer = '炮二平五是較差著法，這步是失誤。'
   check('同首選的負面矛盾不能藏在 directAnswer 避過正文檢查',
     validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
@@ -4440,6 +4467,9 @@ async function main(): Promise<void> {
   check('修補只使用一份首選與實戰逐手來源，避免重複主線造成混淆',
     (repairSuccessProvider.prompts[1]?.match(/"role":"best_move"/g)?.length ?? 0) === 1 &&
       (repairSuccessProvider.prompts[1]?.match(/"role":"user_move"/g)?.length ?? 0) === 1)
+  check('正式整份修補沿用棋規與交換摘要，無第二套省略規則的提示',
+    ['象眼', '馬腿', '恰好一枚', '不能後退', '吃子摘要只涵蓋']
+      .every(rule => repairSuccessProvider.prompts[1]?.includes(rule)))
   check('中性比較的提示與修補診斷不再強迫描述變差',
     !repairSuccessProvider.prompts[1]?.includes('後續具體變差在哪裡') &&
       !repairSuccessProvider.prompts[1]?.includes('必須說出具體變差在哪裡'))

@@ -329,46 +329,6 @@ function hasAdequateInitialMoveEvidence(
   })
 }
 
-function publicAnalysis(
-  analysis: EngineAnalysis,
-  includeUserMove = true
-): object {
-  return {
-    engineId: analysis.engineId,
-    engineName: analysis.engineName,
-    bestMove: analysis.bestMove,
-    displayBestMove: analysis.displayBestMove,
-    score: analysis.scoreAfterBestMove?.displayText ?? null,
-    rawScore: analysis.scoreAfterBestMove?.raw ?? null,
-    userMove: includeUserMove ? analysis.userMove : undefined,
-    displayUserMove: includeUserMove ? analysis.displayUserMove : undefined,
-    userMoveScore: includeUserMove
-      ? analysis.scoreAfterUserMove?.displayText ?? null
-      : undefined,
-    rawUserMoveScore: includeUserMove
-      ? analysis.scoreAfterUserMove?.raw ?? null
-      : undefined,
-    userMovePrincipalVariation: includeUserMove
-      ? analysis.displayUserMovePrincipalVariation ??
-        analysis.userMovePrincipalVariation ??
-        []
-      : undefined,
-    depth: analysis.depth,
-    candidates: analysis.candidateMoves.map((candidate) => ({
-      move: candidate.move,
-      displayMove: candidate.displayMove,
-      score: candidate.score?.displayText ?? null,
-      rawScore: candidate.score?.raw ?? null,
-      depth: candidate.depth,
-      principalVariation:
-        candidate.displayPrincipalVariation ?? candidate.principalVariation
-    })),
-    principalVariation:
-      analysis.displayPrincipalVariation ?? analysis.principalVariation,
-    warnings: analysis.warnings
-  }
-}
-
 function makeEvidence(
   id: string,
   analysis: EngineAnalysis,
@@ -2707,7 +2667,7 @@ export async function runExplanationHarness(
         {
           kind: 'evaluate_move',
           move: canonicalMove,
-          purpose: '比較最佳著法與使用者著法，追查錯失機會、對手利用方式與具體後果'
+          purpose: '比較最佳著法與使用者著法的目的、對手合理應對及具體盤面影響'
         },
         deps.session
       )
@@ -2800,7 +2760,7 @@ export async function runExplanationHarness(
         : []),
       ...(dualComparison?.candidateLines.map((line) => line.displayMove) ?? []),
       hasUserMove
-        ? '最佳著法目的 錯失機會 對手利用 後續局面 人類可控性'
+        ? '著法目的 對手合理應對 後續局面 子力與線路 交換與反吃'
         : '目前局面 最佳著法目的 對手最佳回應 後續局面 人類可控性'
     ].join(' ')
     const knowledgeContext = formatXiangqiKnowledgeForPrompt(
@@ -3086,6 +3046,8 @@ export async function runExplanationHarness(
 ${languageRule}
 ${comparisonContract}
 
+${knowledgeContext}
+
 內容規則：
 - ${
               comparisonState === 'same_move'
@@ -3125,6 +3087,7 @@ ${
 }
 
 audit 規則：
+- category 可用值為 central_control、piece_development、initiative_loss、piece_restriction、king_safety、structure_damage、opponent_development、material_or_tactical。分類只標示正文已描述的盤面影響，不是原因證據；下方分類是欄位範例，須依本次主線選擇。評估有差異不代表一定失先、受限或讓對手獲利。
 - bestMovePurpose、userMoveProblem 各用一句簡短摘要；具體原因、應對及後果在 answer 正文完整解釋，不重複整段。
 - bestMovePurpose 說明 AI 首選的具體目的；userMoveProblem ${
               comparisonState === 'same_move'
@@ -3152,6 +3115,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
               publicComparisonEvidence(bestEvidence, 'best_move'),
               publicComparisonEvidence(userEvidence, 'user_move')
             ])}
+逐線吃子摘要（僅描述已重播前綴，須同時查看反吃與交換）：${JSON.stringify(summarizeVariationCaptures([bestEvidence, userEvidence]))}
 
 輸出格式：
 {
@@ -3195,8 +3159,8 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
                   : '目前可確定的比較與證據限制'
             }",
     "consequences":[
-      {"id":"K1","category":"${comparisonState === 'evidence_backed_difference' ? 'initiative_loss' : 'central_control'}","claimId":"C4a","verified":true},
-      {"id":"K2","category":"${comparisonState === 'evidence_backed_difference' ? 'opponent_development' : 'piece_development'}","claimId":"C4b","verified":true}
+      {"id":"K1","category":"central_control","claimId":"C4a","verified":true},
+      {"id":"K2","category":"piece_development","claimId":"C4b","verified":true}
     ],
     "contradictions":[],
     "enoughEvidence":true${
@@ -3295,12 +3259,13 @@ ${
 - piece_development：子力發展與協調
 - initiative_loss：失去先手
 - piece_restriction：棋子受限
-- king_safety：王區變弱
+- king_safety：將帥安全的具體變化，不預設哪一方變弱
 - structure_damage：陣形變差
 - opponent_development：讓對手完成部署
 - material_or_tactical：可驗證的失子、將軍或戰術後果
 
 至少提出兩項互不重複的後果。supportingMoves 必須逐字使用 evidence 主線中的中文著法。
+分類只標示正文已描述的盤面影響，不是原因證據；不得從分差預設失先或受限，也不得把相同後果換分類冒充第二項。
 summary、opponentUse、boardImpact 都不能只寫「失去先手」「棋子受限」「王區變弱」「陣形變差」「讓對手完成部署」這類標籤；必須說出哪幾步主線如何造成該後果。
 summary、opponentUse、boardImpact 三段合起來必須逐字出現至少兩步不同的主線著法，
 並至少使用一個具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）指出位置、棋子關係或威脅。
@@ -3328,22 +3293,18 @@ ${
 ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove ?? canonicalMove}` : '本次未提供使用者著法；禁止推測。'}
 最佳著法：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
 證據：${JSON.stringify(
-              evidence.map((item) => ({
-                id: item.id,
-                purpose: item.purpose,
-                engineName: item.engineName,
-                analysis: publicAnalysis(item.analysis, hasUserMove)
-              }))
+              evidence.map(publicScopedEvidence)
             )}
+逐線吃子摘要（僅描述已重播前綴）：${JSON.stringify(summarizeVariationCaptures(evidence))}
 
 輸出格式：
 {
   "bestMovePurpose":"最佳著法要達成的具體目的",
-  "userMoveProblem":${hasUserMove ? '"使用者著法錯失什麼，以及為什麼不好"' : '""'},
+  "userMoveProblem":${hasUserMove ? '"依比較狀態說明實戰步的作用、主線差異與證據限制"' : '""'},
   "consequences":[
     {
       "id":"K1",
-      "category":"initiative_loss",
+      "category":"central_control",
       "summary":"具體後果",
       "opponentUse":"對手如何利用",
       "boardImpact":"後面盤面受到什麼影響",
@@ -3508,13 +3469,9 @@ ${
 模式：${mode}
 已通過結構與引用檢查的模型後果摘要：${JSON.stringify(writerAudit)}
 證據：${JSON.stringify(
-      isFollowUp ? evidence.map(publicScopedEvidence) : evidence.map((item) => ({
-        id: item.id,
-        purpose: item.purpose,
-        engineName: item.engineName,
-        analysis: publicAnalysis(item.analysis, hasUserMove)
-      }))
+      evidence.map(publicScopedEvidence)
     )}
+${isFollowUp ? '' : `逐線吃子摘要（僅描述已重播前綴）：${JSON.stringify(summarizeVariationCaptures(evidence))}`}
 
 輸出格式：
 ${
@@ -3540,7 +3497,7 @@ ${
   "directAnswerEvidenceIds":["E1"],
   "sections":[
     {"id":"direct_conclusion","heading":"直接結論","claims":[
-      {"id":"C1","text":"實戰步較差的直接因果。","evidenceIds":["E1"]}
+      {"id":"C1","text":"依比較狀態直接說明主線支持的結論與限制。","evidenceIds":["E1"]}
     ]},
     {"id":"actual_move_problem","heading":"實戰步問題","claims":[
       {"id":"C2","text":"按比較狀態說明實戰步的具體計畫與差異。","evidenceIds":["E1"],"findingIds":["K1"],
@@ -3933,6 +3890,8 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
 可用 evidenceIds：${JSON.stringify(evidence.map((item) => item.id))}
 可用 findingIds：${JSON.stringify(concreteConsequences.map((item) => item.id))}
 可引用的主線中文著法：${JSON.stringify(availableMoves.slice(0, 60))}
+逐手棋盤證據：${JSON.stringify(evidence.map(publicScopedEvidence))}
+逐線吃子摘要（僅描述已重播前綴）：${JSON.stringify(summarizeVariationCaptures(evidence))}
 本機術語知識（只協助用詞，不是證據）：${knowledgeContext}
 輸出格式：${
   hasUserMove

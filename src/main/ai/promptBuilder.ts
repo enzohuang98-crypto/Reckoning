@@ -17,6 +17,7 @@ import type { ConversationMessage } from '@shared/types/AppData'
 import type { ExplanationAnswerStrategy } from '@shared/types/Harness'
 import { MAX_PV_MOVES } from '../engine/EngineOutputParser'
 import { moveComparisonEvidenceState } from '@shared/logic/ai/MoveComparisonEvidence'
+import { formatXiangqiKnowledgeForPrompt } from '@shared/logic/ai/xiangqiKnowledge'
 
 const LANGUAGE_NAME: Record<ExplanationLanguage, string> = {
   'zh-TW': '繁體中文',
@@ -76,6 +77,8 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
   lines.push('3. 若數據不足以支持某結論，必須明說資料不足，不可假裝確定。')
   lines.push('4. 禁止用分數高低、評估差距或可信度代替棋理與盤面因果。')
   lines.push(`5. ${USER_LEVEL_GUIDANCE[userLevel]}`)
+  lines.push('')
+  lines.push(formatXiangqiKnowledgeForPrompt([]))
   lines.push('')
 
   lines.push('【引擎分析數據】')

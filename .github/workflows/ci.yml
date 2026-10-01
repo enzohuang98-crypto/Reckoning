@@ -80,6 +80,10 @@ jobs:
         shell: powershell
         run: ./tools/acceptance/windows-ui-action.self-test.ps1
 
+      - name: Verify visible saved-board observations and scrolling
+        shell: powershell
+        run: ./tools/acceptance/windows-ui-fen.self-test.ps1
+
       - name: Exercise the compatible bundled Pikafish and NNUE
         run: npx --no-install tsx --tsconfig tsconfig.node.json tools/acceptance/bundled-engine-compatibility.ts --output "${{ runner.temp }}/compatible-engine.json"
 

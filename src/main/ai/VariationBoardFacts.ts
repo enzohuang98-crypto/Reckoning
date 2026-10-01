@@ -36,6 +36,81 @@ const CHINESE_PIECE_NAMES: Record<PieceColor, Record<PieceType, string>> = {
 const chineseSide = (side: PieceColor): string => side === 'red' ? '紅方' : '黑方'
 const chinesePiece = (side: PieceColor, piece: PieceType): string =>
   `${chineseSide(side)}${CHINESE_PIECE_NAMES[side][piece]}`
+const PIECE_TYPES = Object.keys(CHINESE_PIECE_NAMES.red) as PieceType[]
+type PieceCounts = Record<PieceType, number>
+const emptyPieceCounts = (): PieceCounts =>
+  ({ king: 0, advisor: 0, elephant: 0, horse: 0, rook: 0, cannon: 0, pawn: 0 })
+
+/** Counts only: no exchange values, score, strategy, or unprovided future moves. */
+export interface VariationCaptureLedger {
+  throughPly: number
+  initialCounts: Record<PieceColor, PieceCounts>
+  currentCounts: Record<PieceColor, PieceCounts>
+  captured: Record<PieceColor, PieceCounts>
+  lost: Record<PieceColor, PieceCounts>
+  netCaptureChange: Record<PieceColor, PieceCounts>
+  currentCountDifference: Record<PieceColor, PieceCounts>
+  immediateRecaptures: { capturePly: number; recapturePly: number; square: string }[]
+  warning: string | null
+}
+
+function captureLedger(positionFen: string, steps: readonly VariationStepFact[], warning: string | null): VariationCaptureLedger | null {
+  const parsed = parseFen(positionFen)
+  if (!parsed.valid) return null
+  const initialCounts = { red: emptyPieceCounts(), black: emptyPieceCounts() }
+  for (const row of parsed.board.grid) {
+    for (const piece of row) if (piece) initialCounts[piece.color][piece.type] += 1
+  }
+  const currentCounts = { red: { ...initialCounts.red }, black: { ...initialCounts.black } }
+  const captured = { red: emptyPieceCounts(), black: emptyPieceCounts() }
+  const lost = { red: emptyPieceCounts(), black: emptyPieceCounts() }
+  const immediateRecaptures: VariationCaptureLedger['immediateRecaptures'] = []
+  for (const [index, step] of steps.entries()) {
+    if (!step.captured) continue
+    captured[step.side][step.captured.piece] += 1
+    lost[step.captured.side][step.captured.piece] += 1
+    currentCounts[step.captured.side][step.captured.piece] -= 1
+    const previous = steps[index - 1]
+    if (previous?.captured && previous.toSquare === step.toSquare &&
+      step.captured.side === previous.side && step.captured.piece === previous.piece) {
+      immediateRecaptures.push({ capturePly: previous.ply, recapturePly: step.ply, square: step.toSquare })
+    }
+  }
+  const netCaptureChange = { red: emptyPieceCounts(), black: emptyPieceCounts() }
+  const currentCountDifference = { red: emptyPieceCounts(), black: emptyPieceCounts() }
+  for (const side of ['red', 'black'] as const) {
+    const opponent = side === 'red' ? 'black' : 'red'
+    for (const piece of PIECE_TYPES) {
+      netCaptureChange[side][piece] = captured[side][piece] - lost[side][piece]
+      currentCountDifference[side][piece] = currentCounts[side][piece] - currentCounts[opponent][piece]
+    }
+  }
+  return { throughPly: steps.at(-1)?.ply ?? 0, initialCounts, currentCounts, captured, lost,
+    netCaptureChange, currentCountDifference, immediateRecaptures, warning }
+}
+
+/** An explicit ply can inspect a verified prefix even if the supplied tail fails replay. */
+export function buildVariationCaptureLedger(evidence: HarnessEvidence, throughPly?: number): VariationCaptureLedger | null {
+  const facts = buildVariationBoardFacts(evidence)
+  if (throughPly !== undefined && (!Number.isInteger(throughPly) || throughPly < 1 || throughPly > facts.steps.length)) return null
+  return captureLedger(evidence.positionFen, facts.steps.slice(0, throughPly), facts.warning)
+}
+
+// Canonical decimal/Chinese counts only; do not interpret rounds, side-relative
+// move numbers, omitted units such as 一百二, or financial/colloquial shorthand.
+function explicitBoardCount(token: string): number | null {
+  if (/^[0-9]+$/.test(token)) {
+    const value = Number(token)
+    return Number.isSafeInteger(value) && value <= VARIATION_BOARD_FACT_MAX_PLIES ? value : null
+  }
+  const digits = '零一二三四五六七八九'
+  const number = /^(?:([一二三四五六七八九])百(?:零([一二三四五六七八九])|([一二三四五六七八九])十([一二三四五六七八九])?)?|([一二三四五六七八九])?十([一二三四五六七八九])?|([零一二三四五六七八九]))$/.exec(token)
+  if (!number) return null
+  const digit = (value: string | undefined): number => value ? digits.indexOf(value) : 0
+  const value = number[1] ? digit(number[1]) * 100 + digit(number[2]) + digit(number[3]) * 10 + digit(number[4])
+    : number[7] ? digit(number[7]) : (number[5] ? digit(number[5]) : 1) * 10 + digit(number[6])
+  return value <= VARIATION_BOARD_FACT_MAX_PLIES ? value : null
+}
 
 /**
  * A pure per-step prompt projection; replay and validation retain typed facts.
@@ -122,14 +197,15 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
 }
 
 /**
- * Capture observations for prompt input, never a material or strategic verdict.
+ * Capture and same-type count observations for prompt input, never weighted
+ * material values or a strategic verdict.
  * Shared categories mean the same captured side/type, not the same piece.
  * Only verified prefixes from exactly the same starting FEN are compared.
  */
 export function summarizeVariationCaptures(evidence: readonly HarnessEvidence[]): string[] {
   if (evidence.length === 0) return []
   const summaries = [
-    `吃子摘要只涵蓋各變例最多前 ${VARIATION_BOARD_FACT_MAX_PLIES} 手的已重播前綴，不是終局子力或優劣判定。共同事件只比較被吃方與棋子類別，不表示同一枚棋子。`
+    `吃子摘要只涵蓋各變例最多前 ${VARIATION_BOARD_FACT_MAX_PLIES} 手的已重播前綴，不是終局子力或優劣判定。第N手僅指本變例從起始FEN起算的一基手序，不是棋譜回合或某方第N步。共同事件只比較被吃方與棋子類別，不表示同一枚棋子。`
   ]
   const sharedByFen = new Map<string, Map<string, {
     captured: NonNullable<VariationStepFact['captured']>
@@ -140,6 +216,21 @@ export function summarizeVariationCaptures(evidence: readonly HarnessEvidence[])
     const captures = facts.steps.filter((step) => step.captured !== null)
     summaries.push(`${item.id}：已重播 ${facts.steps.length} 手${facts.steps.length > 0 && captures.length === 0 ? '，此已重播前綴未觀察到吃子' : ''}。`)
     if (facts.warning) summaries.push(`${item.id}：${facts.warning}`)
+    const ledger = facts.steps.length > 0 ? captureLedger(item.positionFen, facts.steps, facts.warning) : null
+    if (ledger) {
+      const counts = (tally: PieceCounts, side: PieceColor, includeZero = false): string =>
+        PIECE_TYPES.filter((piece) => includeZero || tally[piece] !== 0)
+          .map((piece) => `${CHINESE_PIECE_NAMES[side][piece]}${tally[piece]}枚`).join('、') || '0枚'
+      for (const side of ['red', 'black'] as const) {
+        const opponent = side === 'red' ? 'black' : 'red'
+        summaries.push(`${item.id} 截至第 ${ledger.throughPly} 手${chineseSide(side)}棋子帳本：起始${counts(ledger.initialCounts[side], side, true)}；目前${counts(ledger.currentCounts[side], side, true)}；吃到${chineseSide(opponent)}${counts(ledger.captured[side], opponent)}；己方損失${counts(ledger.lost[side], side)}；目前同類子數差（己方減對方）${counts(ledger.currentCountDifference[side], side, true)}。數差不是棋子價值或整體優劣，不能把吃到數當成淨多數。`)
+      }
+      for (const pair of ledger.immediateRecaptures) {
+        const first = facts.steps[pair.capturePly - 1]!
+        const reply = facts.steps[pair.recapturePly - 1]!
+        summaries.push(`${item.id} 第 ${pair.capturePly}、${pair.recapturePly} 手在 ${pair.square} 立即吃回：${chinesePiece(first.side, first.piece)}先吃${chinesePiece(first.captured!.side, first.captured!.piece)}，${chinesePiece(reply.side, reply.piece)}隨即吃掉剛到該格的${chinesePiece(first.side, first.piece)}。雙方損失已計入帳本，不能單看後一手吃子。`)
+      }
+    }
     for (const step of captures) {
       const captured = step.captured!
       summaries.push(`${item.id} 第 ${step.ply} 手：${chinesePiece(step.side, step.piece)}走${step.move}，吃掉${chinesePiece(captured.side, captured.piece)}。`)
@@ -170,10 +261,11 @@ export function summarizeVariationCaptures(evidence: readonly HarnessEvidence[])
 }
 
 /**
- * A bounded check for explicit statements attached to a literal PV move.
+ * A bounded check for explicit capture/check statements attached to a literal
+ * PV move, and numerical same-type counts scoped to a verified replay prefix.
  * This does not certify strategy, threats, or arbitrary natural language.
  * Only this claim's cited variations are replayed; ambiguous move identities
- * cannot establish a capture/check statement.
+ * cannot establish a capture/check or numerical material-count statement.
  */
 export function validateVariationBoardStatements(
   text: string,
@@ -209,7 +301,35 @@ function inspectVariationBoardStatements(
   const checkPattern = /((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?)(?:形成|構成|构成)?(?:將軍|将军)/g
   // Discover assertions before looking up their evidence. A whitelist matcher
   // would silently discard invented moves, rather than reject unbound facts.
-  const facts = evidence.flatMap((item) => buildVariationBoardFacts(item).steps)
+  // Keep each replay separate: adjacent moves must share this exact variation
+  // and its starting FEN, never borrow their neighbours from another line.
+  const replays = evidence.map((item) => ({ item, ...buildVariationBoardFacts(item) }))
+  const textMentions = chineseMoveMentions(text)
+  const mentionIndices = new Map(textMentions.map((mention, index) => [mention.index, index]))
+  const moveBindings = new Map<number, { replay: typeof replays[number]; step: VariationStepFact }[]>()
+  const movePredicatePrefixes = new Map<number, string>()
+  // Parse each explicit cutoff once, independently of intervening predicates.
+  // It remains active through the sentence, until another clause-leading
+  // cutoff replaces it. A malformed/unsupported declaration remains invalid;
+  // neither move binding nor count validation may fall back past it.
+  const snapshots: { start: number; end: number; ply: number | null; valid: boolean }[] = []
+  let sentenceOffset = 0
+  for (const sentence of text.split(/(?<=[。！？；.!?;\r\n])/)) {
+    for (const marker of sentence.matchAll(/截至|到\s*第/g)) {
+      const declaration = /^(?:截至|到)\s*第\s*([0-9零一二三四五六七八九十百]+)\s*(手|步|回合)(?:後|后)?/.exec(sentence.slice(marker.index))
+      const ply = declaration ? explicitBoardCount(declaration[1]!) : null
+      const clauseStart = Math.max(sentence.lastIndexOf('，', marker.index), sentence.lastIndexOf(',', marker.index)) + 1
+      const remainder = declaration ? sentence.slice(marker.index! + declaration[0].length).trimStart() : ''
+      const valid = Boolean(declaration && declaration[2] === '手' && ply !== null && ply > 0 &&
+        !/^(?:之前|以前|前)/.test(remainder) && !/\S/.test(sentence.slice(clauseStart, marker.index)) &&
+        replays.length > 0 && replays.every((replay) => replay.steps[ply! - 1]) &&
+        new Set(replays.map((replay) => replay.item.positionFen)).size === 1)
+      snapshots.push({ start: sentenceOffset + marker.index!, end: sentenceOffset + sentence.length, ply, valid })
+    }
+    sentenceOffset += sentence.length
+  }
+  const snapshotAt = (index: number): typeof snapshots[number] | undefined =>
+    snapshots.filter((snapshot) => snapshot.start <= index && index < snapshot.end).at(-1)
   const pieceTypes: Record<string, PieceType> = {
     帥: 'king', 帅: 'king', 將: 'king', 将: 'king',
     仕: 'advisor', 士: 'advisor', 相: 'elephant', 象: 'elephant',
@@ -235,7 +355,15 @@ function inspectVariationBoardStatements(
   const isHedged = (prefix: string): boolean =>
     /未必|不一定|或許|或许|也許|也许|似乎|大概/.test(predicateScope(prefix))
   const literalListGap = /^\s*[」』”"'’]?\s*、\s*[「『“"'‘]?\s*$/
+  // Only explicit local chronology can resolve repeated notation. Lists,
+  // comparisons and remote narrative do not identify a replay ply.
+  const temporalGap = /^\s*[」』”"'’]?\s*(?:(?:之?後|之?后)\s*[，,]?\s*(?:接著|接着|隨即|随即)?|[，,]?\s*(?:接著|接着|隨即|随即|然後|然后))\s*(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?)?\s*[「『“"'‘]?\s*$/
+  const isTemporalGap = (gap: string): boolean =>
+    !/[。！？；.!?;\r\n]/.test(gap) && temporalGap.test(gap)
+  let segmentStart = 0
   for (const segment of text.split(/(?<=[。！？；，,.!?;\n])/)) {
+    const clauseStart = segmentStart
+    segmentStart += segment.length
     const clause = segment.replace(/[。！？；，,.!?;\n]+$/, '')
     const affirmativeClause = !/[？?]/.test(segment) &&
       !/可否|會不會|会不会|有沒有|有没有|嗎|吗/.test(clause)
@@ -252,6 +380,28 @@ function inspectVariationBoardStatements(
       const move = mention.move
       const before = clause.slice(index === 0 ? 0 : mentions[index - 1]!.index + mentions[index - 1]!.move.length, mention.index)
       const after = clause.slice(mention.index + move.length, mentions[index + 1]?.index ?? clause.length)
+      const textIndex = mentionIndices.get(clauseStart + mention.index)!
+      const previousMention = textMentions[textIndex - 1]
+      const nextMention = textMentions[textIndex + 1]
+      const precedingMove = previousMention && isTemporalGap(text.slice(
+        previousMention.index + previousMention.move.length, clauseStart + mention.index))
+        ? canonicalChineseMoveNotation(previousMention.move) : null
+      // Chronology also carries a local conditional/hedge: "if A, then B"
+      // cannot turn B into an affirmative fact just because a comma intervenes.
+      const predicateBefore = precedingMove
+        ? (text.slice(0, previousMention!.index).split(/[。！？；，,.!?;\n]/).at(-1) ?? '') + before
+        : before
+      // The following anchor starts a separate clause. Its connector must be
+      // the entire gap after the current clause; capture/check prose remains
+      // attached to the current move rather than being used to select it.
+      const followingMove = nextMention && nextMention.index >= clauseStart + clause.length &&
+        isTemporalGap(text.slice(clauseStart + clause.length, nextMention.index))
+        ? canonicalChineseMoveNotation(nextMention.move) : null
+      // A standalone 第N手 means the one-based ply of this cited variation.
+      // Actor-relative 第N步/回合 and a side before the ordinal are not guesses.
+      const plyQualification = /^\s*(?:在|本變例(?:的)?)?第\s*([0-9零一二三四五六七八九十百]+)\s*手\s*(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走)?)?\s*[「『“"'‘]?\s*$/.exec(before)
+      const qualifiedPly = plyQualification ? explicitBoardCount(plyQualification[1]!) : null
+      const snapshot = snapshotAt(clauseStart + mention.index)
       const explicitActor = /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)
       // Only adjacent literal list members inherit an actor. Narrative and
       // comparison words break the list; a named next actor starts a new one.
@@ -268,7 +418,7 @@ function inspectVariationBoardStatements(
       const side = listActor?.side
       const captures = [...after.matchAll(capturePattern)]
         .flatMap((match) => {
-          const prefix = before + after.slice(0, match.index)
+          const prefix = predicateBefore + after.slice(0, match.index)
           const modal = /((?:(?:沒有|没有|沒|没|未|不|非)(?:是)?)?(?:可(?:以)?|能(?:夠|够)?|可能)|無法|无法|沒有機會|没有机会|沒機會|没机会|有機會|有机会)(?:直接|立即|立刻)?$/.exec(prefix)
           // A bare possibility can concern a later, changed board. An explicit
           // current possibility instead has to match this move's resulting board.
@@ -285,10 +435,19 @@ function inspectVariationBoardStatements(
           return [{ match, opportunity, denied }]
         })
       const checks = [...after.matchAll(checkPattern)]
-        .filter((match) => !isHypothetical(before + after.slice(0, match.index)))
-      if (!side && captures.length === 0 && checks.length === 0) continue
+        .filter((match) => !isHypothetical(predicateBefore + after.slice(0, match.index)))
       const canonicalMove = canonicalChineseMoveNotation(move)
-      const candidates = facts.filter((fact) => canonicalChineseMoveNotation(fact.move) === canonicalMove)
+      const bindings = replays.flatMap((replay) => replay.steps.flatMap((fact, stepIndex) =>
+        canonicalChineseMoveNotation(fact.move) === canonicalMove &&
+        (!snapshot || (snapshot.valid && fact.ply <= snapshot.ply!)) &&
+        (!plyQualification || (qualifiedPly !== null && qualifiedPly > 0 && fact.ply === qualifiedPly)) &&
+        (!precedingMove || canonicalChineseMoveNotation(replay.steps[stepIndex - 1]?.move ?? '') === precedingMove) &&
+        (!followingMove || canonicalChineseMoveNotation(replay.steps[stepIndex + 1]?.move ?? '') === followingMove)
+          ? [{ replay, step: fact }] : []))
+      moveBindings.set(clauseStart + mention.index, bindings)
+      movePredicatePrefixes.set(clauseStart + mention.index, predicateBefore)
+      if (!side && captures.length === 0 && checks.length === 0) continue
+      const candidates = bindings.map((binding) => binding.step)
       const fact = candidates[0]
       if (!fact) {
         if (captures.length > 0 || checks.length > 0 || (side && !isHypothetical(listActor!.prefix))) {
@@ -316,7 +475,7 @@ function inspectVariationBoardStatements(
         } else if (denied ? matchingCapture(fact) : !matchingCapture(fact)) {
           issues.push(`棋盤事實：${move} 的${kind}斷言與逐手棋盤不一致。`)
         } else if (affirmativeClause && !denied && (capture[3] || capture[4]) &&
-          !isHedged(before + after.slice(0, capture.index))) {
+          !isHedged(predicateBefore + after.slice(0, capture.index))) {
           affirmations += 1
         }
       }
@@ -326,10 +485,62 @@ function inspectVariationBoardStatements(
           issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同將軍結果，必須指明所述步數。`)
         } else if (denied ? fact.givesCheck : !fact.givesCheck) {
           issues.push(`棋盤事實：${move} 的將軍斷言與逐手棋盤不一致。`)
-        } else if (affirmativeClause && !denied && !isHedged(before + after.slice(0, check.index))) {
+        } else if (affirmativeClause && !denied && !isHedged(predicateBefore + after.slice(0, check.index))) {
           affirmations += 1
         }
       }
+    }
+  }
+  // Numerical same-type material statements use the current board count, not
+  // capture totals or weighted values. A local literal move scopes the count
+  // through that exact ply; otherwise require an explicit prefix or one fully
+  // replayed cited line. Never pick whichever line matches the claimed number.
+  const netCountPattern = /(?:(紅方|红方|黑方|紅|红|黑)\s*)?(淨多|净多|淨少|净少|淨賺|净赚)\s*([0-9零一二三四五六七八九十百]+)\s*(?:枚|個|个|顆|颗)?\s*([兵卒車车炮砲馬马象相士仕將将帥帅])/g
+  for (const net of text.matchAll(netCountPattern)) {
+    const sentencePrefix = text.slice(0, net.index).split(/[。！？；.!?;\r\n]/).at(-1) ?? ''
+    const clausePrefix = sentencePrefix.split(/[，,]/).at(-1) ?? ''
+    const sentenceStart = net.index! - sentencePrefix.length
+    const priorMove = textMentions.filter((mention) => mention.index >= sentenceStart && mention.index < net.index!).at(-1)
+    const localMovePrefix = priorMove && text.slice(priorMove.index + priorMove.move.length, net.index).split(/[，,]/).length <= 2
+      ? movePredicatePrefixes.get(priorMove.index) ?? '' : ''
+    if (isHypothetical(localMovePrefix + clausePrefix)) continue
+    // "Cannot count X as [a net gain]" mentions a rejected interpretation;
+    // it does not assert either that number or its arithmetic inverse. Keep
+    // this frame local: a contrast or new coordinated assertion ends it.
+    const interpretationPrefix = predicateScope(clausePrefix)
+    if (/(?:不能|不可|不應|不应|不要|無法|无法)(?:只|僅|仅)?(?:(?:把|將|将)(?:(?!並|并|而且)[^，,。！？；.!?;\r\n])*)?(?:算成|視為|视为|稱為|称为)\s*[「『“"'‘]?\s*$/.test(interpretationPrefix)) continue
+    if (/淨賺|净赚/.test(net[2]!)) {
+      issues.push('棋盤事實：數量收益須明示目前同類棋子數差，不能以淨賺替代棋子帳本。')
+      continue
+    }
+    const count = explicitBoardCount(net[3]!)
+    const explicitSide = net[1] ?? /(紅方|红方|黑方|紅|红|黑)\s*(?:並非|并非|不是|沒有|没有|未|不)\s*$/.exec(clausePrefix)?.[1]
+    const snapshot = snapshotAt(net.index!)
+    const priorBindings = priorMove ? moveBindings.get(priorMove.index) ?? [] : []
+    const scopes = snapshot
+      ? snapshot.valid ? replays.map((replay) => ({ replay, step: replay.steps[snapshot.ply! - 1]! })) : []
+      : priorMove ? priorBindings
+        : replays.length === 1 && explicitSide && replays[0]!.warning === null && replays[0]!.steps.length > 0
+          ? [{ replay: replays[0]!, step: replays[0]!.steps.at(-1)! }] : []
+    const sides = explicitSide ? new Set([sideOf(explicitSide)]) : new Set(priorBindings.map((binding) => binding.step.side))
+    const fens = new Set(scopes.map((scope) => scope.replay.item.positionFen))
+    if (count === null || scopes.length === 0 || (!explicitSide && !priorMove) || sides.size !== 1 || fens.size !== 1 ||
+      (snapshot && (!snapshot.valid || scopes.length !== replays.length))) {
+      issues.push('棋盤事實：淨多／淨少數量缺少同一起始局面、明確方別及可重播的步數範圍。')
+      continue
+    }
+    const side = [...sides][0]!
+    const piece = pieceTypes[net[4]!]!
+    const balances = new Set(scopes.map(({ replay, step }) => {
+      const ledger = captureLedger(replay.item.positionFen, replay.steps.slice(0, step.ply), replay.warning)!
+      return ledger.currentCountDifference[side][piece]
+    }))
+    const expected = /淨少|净少/.test(net[2]!) ? -count : count
+    const denied = /(?:並非|并非|不是|沒有|没有|未|不)\s*$/.test(clausePrefix)
+    if (balances.size !== 1) {
+      issues.push('棋盤事實：引用變例在所述範圍的同類棋子數差不同，不能合併為一個淨多／淨少數量。')
+    } else if (denied ? [...balances][0] === expected : [...balances][0] !== expected) {
+      issues.push(`棋盤事實：${net[0]} 與所述重播範圍目前紅黑同類棋子數差不一致。`)
     }
   }
   return { issues: [...new Set(issues)], affirmations, unboundPredicates }

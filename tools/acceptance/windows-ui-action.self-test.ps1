@@ -5,7 +5,7 @@ Add-Type -AssemblyName UIAutomationTypes
 $tokens = $null; $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($SourcePath, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'Source parse failed' }
-foreach ($name in @('Get-ProbeControlDiagnostic', 'Find-ProbeAction', 'Invoke-ProbeAction')) {
+foreach ($name in @('Get-ProbeControlDiagnostic', 'Find-ProbeAction', 'Show-ProbeControl', 'Invoke-ProbeAction')) {
   $function = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
   if (-not $function) { throw "Source missing $name" }
   Invoke-Expression $function.Extent.Text

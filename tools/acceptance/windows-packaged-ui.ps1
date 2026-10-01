@@ -141,15 +141,27 @@ function Find-ProbeAction([string]$Name, [switch]$Prefix) {
   }
   return $null
 }
+function Show-ProbeControl($Control, [string]$Name) {
+  if (-not $Control.Current.IsOffscreen) { return }
+  Assert-ProbeForeground
+  $action = @{
+    at = [DateTime]::UtcNow.ToString('o'); requestedName = $Name
+    control = Get-ProbeControlDiagnostic $Control; method = 'UIA_ScrollItem'; result = 'not_run'
+  }
+  $script:probeUiActions += $action
+  try {
+    $scroll = $null
+    if (-not $Control.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scroll)) { throw "Offscreen control '$Name' cannot be scrolled into view." }
+    $scroll.ScrollIntoView()
+    [void](Wait-Probe { -not $Control.Current.IsOffscreen } "Control '$Name' remained offscreen." 5)
+    $action.visibleControl = Get-ProbeControlDiagnostic $Control
+    $action.result = 'completed'
+  } catch { $action.result = 'failed'; $action.failure = $_.Exception.Message; throw }
+}
 function Invoke-ProbeAction([string]$Name, [switch]$Prefix) {
   Assert-ProbeForeground
   $button = Wait-Probe { Find-ProbeAction $Name -Prefix:$Prefix } "Required action '$Name' is missing or disabled."
-  if ($button.Current.IsOffscreen) {
-    $scroll = $null
-    if (-not $button.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scroll)) { throw "Offscreen action '$Name' cannot be scrolled into view." }
-    $scroll.ScrollIntoView()
-    [void](Wait-Probe { -not $button.Current.IsOffscreen } "Action '$Name' remained offscreen." 5)
-  }
+  Show-ProbeControl $button $Name
   $action = @{
     at = [DateTime]::UtcNow.ToString('o'); requestedName = $Name
     control = Get-ProbeControlDiagnostic $button; method = 'not_run'; result = 'not_run'
@@ -205,6 +217,7 @@ function Set-ProbeInput([string]$Name, [string]$Value) {
     if ($matches.Count -gt 1) { throw "Input '$Name' is ambiguous." }
     if ($matches.Count -eq 1) { return $matches[0] }
   } "Required input '$Name' is missing."
+  Show-ProbeControl $field $Name
   $pattern = $null
   if (-not $field.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern) -or $pattern.Current.IsReadOnly) { throw "Input '$Name' is not editable through UIA." }
   $runtimeId = $field.GetRuntimeId() -join '.'

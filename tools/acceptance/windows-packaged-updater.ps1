@@ -18,7 +18,7 @@ $report = [ordered]@{
   savedPositionUiRestored = 'not_run'; normalInstallationRestart = 'not_run'
   installPayloadBytes = $null; installFailureRetry = 'not_run'; earlyPrepareRecovery = 'not_run'
   draftAddedDuringSave = 'not_run'; observations = @(); screenshots = @()
-  uiActions = @(); finalControlDiagnostics = @()
+  uiActions = @(); finalControlDiagnostics = @(); finalFenControlDiagnostics = @()
 }
 $server = $null
 $installerExitSource = $null
@@ -51,7 +51,12 @@ function Get-ProbeVisibleFen {
   $observations = @()
   foreach ($control in Get-ProbeControls) {
     $current = $control.Current
-    if ($current.IsOffscreen -or [string]$current.ClassName -cne 'fen-output') { continue }
+    if ([string]$current.ClassName -cne 'fen-output') { continue }
+    # The editor's FEN follows the saved-position controls and can be below
+    # a small VM viewport. Reveal this observed source-defined element first.
+    Show-ProbeControl $control 'current board FEN'
+    $current = $control.Current
+    if ($current.IsOffscreen) { continue }
     $text = ([string]$current.Name).Trim()
     $source = 'exact_fen_output_name'
     if (-not $text) {
@@ -362,6 +367,10 @@ try {
     $report.finalControlDiagnostics = @(Get-ProbeControls | Where-Object {
       $_.Current.ControlType -in @([System.Windows.Automation.ControlType]::Button, [System.Windows.Automation.ControlType]::MenuItem, [System.Windows.Automation.ControlType]::Edit)
     } | Select-Object -First 80 | ForEach-Object { Get-ProbeControlDiagnostic $_ })
+    $report.finalFenControlDiagnostics = @(Get-ProbeControls | Where-Object {
+      [string]$_.Current.ClassName -ceq 'fen-output' -or [string]$_.Current.Name -ceq '目前 FEN' -or
+      ([string]$_.Current.Name).Trim() -cmatch '^[rnbakcpRNBAKCP1-9/]+ [wb] - - [0-9]+ [1-9][0-9]*$'
+    } | Select-Object -First 12 | ForEach-Object { Get-ProbeControlDiagnostic $_ })
   } catch { $report.controlDiagnosticFailure = $_.Exception.Message }
   try { $report.screenshots += Save-ProbeScreen 'final' } catch { $report.screenshotFailure = $_.Exception.Message }
   $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutputPath -Encoding UTF8

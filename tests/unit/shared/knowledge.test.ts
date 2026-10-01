@@ -62,6 +62,19 @@ check(
   'prompt 包含證據使用規則',
   selected.every((entry) => prompt.includes(entry.evidenceRule))
 )
+const baseline = formatXiangqiKnowledgeForPrompt([])
+check('無相關術語時仍提供固定棋規，不依查詢字詞猜模型是否需要',
+  ['九宮', '象眼', '馬腿', '炮架', '過河', '將帥', '輪流'].every(rule => baseline.includes(rule)))
+check('基本棋規分清炮移動與吃子，不能把西洋棋或將棋規則套進來',
+  baseline.includes('不吃子') && baseline.includes('恰好一枚') && baseline.includes('不能後退'))
+check('棋規輸入要求沿主線檢查反吃與交換，單步吃子不等於淨得子',
+  baseline.includes('反吃') && baseline.includes('淨得子'))
+check('象棋術語檢索上限不會排除必需棋規',
+  ['馬腿', '象眼', '炮架', '將帥'].every(rule => prompt.includes(rule)))
+const cycleRule = findXiangqiKnowledgeEntry('禁止著法')
+check('循環判決依採用規例與完整歷史，不把長殺一律宣告違規',
+  cycleRule?.evidenceRule.includes('採用規例') === true &&
+  !cycleRule.definition.includes('長殺、長捉及其攻擊性組合所形成的禁例'))
 check(
   '緩手、失先、陣形變差等評價標籤不能冒充具體機制',
   !containsConcreteXiangqiTerm('這步是緩手，會失去先手，陣形也會變差。')

@@ -1,5 +1,6 @@
 import {
   buildVariationBoardFacts,
+  buildVariationCaptureLedger,
   hasAffirmedConcreteVariationRelation,
   modelFacingVariationStep,
   summarizeVariationCaptures,
@@ -355,6 +356,259 @@ modelFacingVariationStep(exchangeCapture)
 check('prompt translation leaves typed replay facts unchanged for validation',
   JSON.stringify(exchangeCapture) === captureFactBeforeTranslation && exchangeCapture.captured?.piece === 'rook' &&
   exchangeCapture.movedPieceCaptureTargets[0]?.piece === 'elephant')
+
+const repeatedPawn = replayEvidence('E3', [
+  'h2e2', 'h9g7', 'h0g2', 'i9h9', 'i0h0', 'b9c7', 'c3c4', 'g6g5',
+  'b0c2', 'b7b3', 'g3g4', 'g5g4', 'h0h6', 'a9a8', 'h6g6', 'g4g3',
+  'c2d4', 'g3g2', 'b2g2', 'a8d8', 'd4f5', 'h7h0', 'f5g7', 'h9h7'
+], START_FEN)
+check('the repeated pawn fixture has distinct noncapture pawn-capture and horse-capture plies',
+  JSON.stringify(buildVariationBoardFacts(repeatedPawn).steps.filter((step) => step.move === '卒7進1')
+    .map((step) => [step.ply, step.captured?.piece ?? null])) ===
+  JSON.stringify([[8, null], [12, 'pawn'], [16, null], [18, 'horse']]))
+check('a literal immediately preceding move with an explicit after connector binds the pawn capture',
+  validate('兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length === 0 &&
+  concreteRelation('兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+check('the same preceding-move binding works within one clause and with quoted mixed notation',
+  validate('紅方「兵三進一」後黑方「卒7進一」吃掉紅方兵。', [repeatedPawn]).length === 0)
+check('an explicit next connector binds the horse capture using its immediately preceding move',
+  validate('紅方馬七進六，接著黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length === 0)
+check('a literal immediately following move with a next connector binds the pawn capture',
+  validate('黑方卒7進1吃掉紅方兵，接著紅方車二進六。', [repeatedPawn]).length === 0 &&
+  concreteRelation('黑方卒7進1吃掉紅方兵，接著紅方車二進六。', [repeatedPawn]))
+check('the following move separately binds the horse capture',
+  validate('黑方卒7進1吃掉紅方馬，然後紅方炮八平三。', [repeatedPawn]).length === 0)
+check('the preceding noncapture identity cannot borrow the later pawn or horse capture',
+  validate('兵七進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('車二平三之後，黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length > 0)
+check('an anchored actual pawn capture cannot change its captured type side or square',
+  ['紅方馬', '黑方卒', '紅方g2兵'].every((target) =>
+    validate(`兵三進一之後，黑方卒7進1吃掉${target}。`, [repeatedPawn]).length > 0))
+check('an anchored capture cannot be denied and a noncapture can be correctly denied',
+  validate('兵三進一之後，黑方卒7進1沒有吃子。', [repeatedPawn]).length > 0 &&
+  validate('兵七進一之後，黑方卒7進1沒有吃子。', [repeatedPawn]).length === 0)
+check('a following anchor cannot excuse a counterfeit target',
+  validate('黑方卒7進1吃掉紅方馬，接著紅方車二進六。', [repeatedPawn]).length > 0)
+check('a move from a different ply is not an immediate temporal anchor',
+  validate('炮2進4之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('noun comparisons and lists do not disambiguate repeated capture outcomes',
+  validate('兵三進一與黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('比較兵三進一、黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('an unanchored move and ambiguous black-step ordinal remain unresolved',
+  validate('黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('黑方第12步卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('an explicit temporal anchor must exist in the same replay even when another line has the capture',
+  validate('馬8進7之後，黑方卒7進1吃掉紅方兵。', [opening, bestPly18]).length > 0 &&
+  validate('黑方卒7進1吃掉紅方兵，接著黑方馬8進7。', [opening, bestPly18]).length > 0)
+check('an uncited temporal anchor cannot bind a repeated move',
+  validate('兵三進一之後，黑方卒7進1吃掉紅方兵。', [bestPly18]).length > 0)
+check('temporal context does not cross sentence boundaries',
+  validate('兵三進一之後。黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('temporal context preserves explicit side checks for both adjacent moves',
+  validate('兵三進一之後，紅方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('黑方兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('conflicting preceding and following anchors cannot select whichever capture matches the assertion',
+  validate('兵三進一之後，黑方卒7進1吃掉紅方兵，接著紅方炮八平三。', [repeatedPawn]).length > 0)
+check('a distinct cited line with an unanchored same move cannot contaminate an exact adjacency',
+  validate('兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn, bestPly18]).length === 0)
+const repeatedRookFen = '3k5/9/9/9/9/p8/9/9/R8/4K4 w - - 0 1'
+const repeatedRook = replayEvidence('E1', ['a1a2', 'd9d8', 'a2a3', 'd8d9', 'a3a4'], repeatedRookFen)
+const alternateRook = replayEvidence('E2', ['a1a0', 'd9d8', 'a0a1', 'd8d9', 'a1a2'], repeatedRookFen)
+check('adjacent move binding applies to repeated rook moves without pawn-specific rules',
+  validate('黑方將4退1之後，紅方車九進一吃掉黑方卒。', [repeatedRook]).length === 0)
+check('identical adjacent names with conflicting outcomes in another cited line remain ambiguous',
+  validate('黑方將4退1之後，紅方車九進一吃掉黑方卒。', [repeatedRook, alternateRook]).length > 0)
+const repeatedCheck = replayEvidence('E1', ['a7a8', 'h8h7', 'a8a9'],
+  '3k5/7r1/R8/9/9/9/9/9/9/4K4 w - - 0 1')
+check('adjacent move binding also selects a repeated move with a different check outcome',
+  validate('黑方車8進1之後，紅方車九進一將軍。', [repeatedCheck]).length === 0 &&
+  concreteRelation('黑方車8進1之後，紅方車九進一將軍。', [repeatedCheck]))
+check('a resolved capture still cannot fabricate a check or certify hypothetical narration',
+  validate('兵三進一之後，黑方卒7進1吃掉紅方兵並將軍。', [repeatedPawn]).length > 0 &&
+  !concreteRelation('如果兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+check('a temporal anchor also selects the correct fixed-board current opportunity',
+  concreteRelation('車二平三之後，黑方卒7進1可吃紅方馬。', [repeatedPawn]) &&
+  validate('兵三進一之後，黑方卒7進1可吃紅方馬。', [repeatedPawn]).length > 0 &&
+  validate('車二平三之後，黑方卒7進1已吃紅方馬。', [repeatedPawn]).length > 0)
+check('a local hedged chronology does not establish an affirmative capture',
+  !concreteRelation('或許兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+check('a remote future qualifier cannot exempt a new anchored present assertion',
+  validate('未來可能有其他變化，兵三進一之後，黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length > 0)
+check('temporal context does not bridge paragraph or line boundaries in either direction',
+  validate('兵三進一之後\n黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('黑方卒7進1吃掉紅方兵\n接著紅方車二進六。', [repeatedPawn]).length > 0)
+
+const realCannonTrade = replayEvidence('E1', [
+  'g3g4', 'h7g7', 'b2e2', 'c9e7', 'h0g2', 'g6g5', 'g4g5', 'g7g2',
+  'a0a1', 'd9e8', 'a1b1', 'b7b2', 'i0h0', 'b9c7', 'e2e1', 'b2h2',
+  'h0h2', 'g2g3', 'b1b7'
+], START_FEN)
+check('an exact Chinese global ply binds the repeated pawn capture at ply twelve',
+  validate('第十二手卒7進1吃掉紅方兵。', [repeatedPawn]).length === 0)
+check('a real cannon recapture cannot be presented as gaining an extra cannon',
+  validate('車二進二吃掉黑方炮，淨多一炮。', [realCannonTrade]).length > 0 &&
+  !concreteRelation('車二進二吃掉黑方炮，淨多一炮。', [realCannonTrade]))
+check('Arabic global plies distinguish correct noncapture pawn and horse captures',
+  validate('第8手黑方卒7進1沒有吃子。', [repeatedPawn]).length === 0 &&
+  validate('第12手黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length === 0 &&
+  concreteRelation('第十八手黑方卒7進1吃掉紅方馬。', [repeatedPawn]))
+check('explicit global plies preserve move side and target validation',
+  validate('第14手卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('第18手卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('第12手紅方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('invalid global counts and side-relative round or step numbers are not guessed',
+  ['第0手', '第257手', '第十二十手', '第十二回合', '黑方第12步', '黑方第12手'].every((prefix) =>
+    validate(`${prefix}卒7進1吃掉紅方兵。`, [repeatedPawn]).length > 0))
+check('a global ordinal cannot borrow a conflicting result from another cited replay',
+  validate('第五手車九進一吃掉黑方卒。', [repeatedRook, alternateRook]).length > 0)
+const tradeEvidenceBeforeLedger = JSON.stringify(realCannonTrade)
+const tradeLedger = buildVariationCaptureLedger(realCannonTrade)!
+check('the real ledger retains initial and current cannon counts separately from captured and lost',
+  tradeLedger.initialCounts.red.cannon === 2 && tradeLedger.initialCounts.black.cannon === 2 &&
+  tradeLedger.currentCounts.red.cannon === 1 && tradeLedger.currentCounts.black.cannon === 1 &&
+  tradeLedger.captured.red.cannon === 1 && tradeLedger.lost.red.cannon === 1 &&
+  tradeLedger.netCaptureChange.red.cannon === 0 && tradeLedger.currentCountDifference.red.cannon === 0 &&
+  tradeLedger.throughPly === 19)
+check('the real ledger exposes the earlier horse loss and pawn capture without assigning values',
+  tradeLedger.currentCounts.red.horse === 1 && tradeLedger.currentCounts.black.horse === 2 &&
+  tradeLedger.lost.red.horse === 1 && tradeLedger.captured.red.pawn === 1 &&
+  tradeLedger.netCaptureChange.red.horse === -1 && tradeLedger.netCaptureChange.red.pawn === 1)
+check('an immediate recapture identifies the exact preceding capturing piece on the same square',
+  JSON.stringify(tradeLedger.immediateRecaptures) ===
+  JSON.stringify([{ capturePly: 16, recapturePly: 17, square: 'h2' }]))
+check('capture summaries supply both side ledgers and the real immediate cannon recapture',
+  summarize([realCannonTrade]).some((line) => line.includes('紅方棋子帳本') && line.includes('目前')) &&
+  summarize([realCannonTrade]).some((line) => line.includes('黑方棋子帳本')) &&
+  summarize([realCannonTrade]).some((line) => line.includes('第 16、17 手') && line.includes('立即吃回')))
+check('the whole verified real line has equal cannon counts and one fewer red horse',
+  validate('紅方淨多零炮，紅方淨少一馬。', [realCannonTrade]).length === 0 &&
+  validate('紅方淨多一炮。', [realCannonTrade]).length > 0 &&
+  !concreteRelation('紅方淨多零炮，紅方淨少一馬。', [realCannonTrade]))
+check('an exact prefix distinguishes the pre-recapture cannon deficit from the completed trade',
+  validate('截至第十六手，紅方淨少一炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第17手，紅方淨多零炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第17手，紅方淨多一炮。', [realCannonTrade]).length > 0)
+check('the actor of an exact capturing step supplies the side of a following numeric claim',
+  validate('第16手黑方炮2平8吃掉紅方炮，淨多一炮。', [realCannonTrade]).length === 0 &&
+  validate('第17手紅方車二進二吃掉黑方炮，淨多一炮。', [realCannonTrade]).length > 0)
+const isolatedCannonGain = replayEvidence('E1', ['a1a4'],
+  '3k5/9/9/9/9/c8/9/9/R7C/4K4 w - - 0 1')
+const isolatedCannonLoss = replayEvidence('E1', ['i4i1'],
+  '3k5/9/9/9/9/c7r/9/9/8C/4K4 b - - 0 1')
+check('a real isolated same-type gain is accepted with Chinese and decimal counts',
+  validate('紅方淨多一炮。', [isolatedCannonGain]).length === 0 &&
+  validate('紅方淨多1枚炮。', [isolatedCannonGain]).length === 0 &&
+  validate('紅方淨少一炮。', [isolatedCannonGain]).length > 0)
+check('a real isolated same-type loss preserves side and quantity',
+  validate('紅方淨少一炮，黑方淨多一炮。', [isolatedCannonLoss]).length === 0 &&
+  validate('紅方淨多一炮。', [isolatedCannonLoss]).length > 0 &&
+  validate('紅方淨少二炮。', [isolatedCannonLoss]).length > 0)
+const initiallyExtraCannon = replayEvidence('E1', ['h0g2'], START_FEN.replace('1c5c1', '1c7'))
+check('an unchanged initial cannon imbalance is not confused with zero new captures',
+  validate('紅方淨多一炮。', [initiallyExtraCannon]).length === 0 &&
+  buildVariationCaptureLedger(initiallyExtraCannon)?.netCaptureChange.red.cannon === 0)
+check('current piece count differences are not inferred from capture deltas on unequal starting boards',
+  validate('紅方淨少一兵。', [capture]).length === 0 &&
+  validate('紅方淨多一兵。', [capture]).length > 0 &&
+  buildVariationCaptureLedger(capture)?.netCaptureChange.red.pawn === 1)
+check('an unqualified multi-line count cannot select its favourable line',
+  validate('紅方淨多一炮。', [realCannonTrade, isolatedCannonGain]).length > 0 &&
+  validate('紅方淨多零炮。', [realCannonTrade, { ...realCannonTrade, id: 'E2' }]).length > 0)
+check('matching exact steps across same-start lines can share a count but conflicting balances cannot',
+  validate('第17手車二進二吃掉黑方炮，紅方淨多零炮。', [realCannonTrade, { ...realCannonTrade, id: 'E2' }]).length === 0 &&
+  validate('第5手車九進一，紅方淨多零兵。', [repeatedRook, alternateRook]).length > 0)
+check('same move names on different starting boards cannot establish one material balance',
+  validate('炮二平五，紅方淨多零炮。', [opening,
+    replayEvidence('E2', ['h2e2'], initiallyExtraCannon.positionFen)]).length > 0)
+const incompleteTrade = { ...realCannonTrade, analysis: {
+  ...realCannonTrade.analysis, principalVariation: [...realCannonTrade.analysis.principalVariation.slice(0, 17), 'a0a9']
+} }
+check('an incomplete supplied tail cannot support an unqualified full-line net count',
+  buildVariationCaptureLedger(incompleteTrade)?.throughPly === 17 &&
+  buildVariationCaptureLedger(incompleteTrade)?.warning !== null &&
+  validate('紅方淨多零炮。', [incompleteTrade]).length > 0)
+check('an explicit verified prefix remains countable while a missing later ply fails closed',
+  validate('截至第17手，紅方淨多零炮。', [incompleteTrade]).length === 0 &&
+  validate('截至第18手，紅方淨多零炮。', [incompleteTrade]).length > 0 &&
+  buildVariationCaptureLedger(incompleteTrade, 18) === null)
+check('canonical Chinese hundreds resolve a checked prefix at the existing parser limit',
+  validate('截至第二百五十六手，紅方淨多零炮。', [oversizedLine]).length === 0 &&
+  validate('紅方淨多零炮。', [oversizedLine]).length > 0)
+check('future numeric possibilities are not present counts and a new current claim remains checked',
+  validate('未來可能紅方淨多一炮。', [realCannonTrade]).length === 0 &&
+  !concreteRelation('未來可能紅方淨多一炮。', [realCannonTrade]) &&
+  validate('未來可能有其他變化，紅方淨多一炮。', [realCannonTrade]).length > 0)
+check('numerical denials test the current count without asserting a material gain',
+  validate('紅方並非淨多一炮。', [realCannonTrade]).length === 0 &&
+  validate('紅方並非淨多零炮。', [realCannonTrade]).length > 0)
+check('ambiguous numerical profit wording and absent actor scopes fail closed',
+  validate('紅方又淨賺一炮。', [realCannonTrade]).length > 0 &&
+  validate('淨多一炮。', [isolatedCannonGain]).length > 0 &&
+  validate('截至第16手，淨多一炮。', [realCannonTrade]).length > 0 &&
+  validate('紅方淨多一炮。', []).length > 0)
+check('an immediately coordinated conditional numeric conclusion does not assert a current balance',
+  validate('如果車二進二吃掉黑方炮，淨多一炮。', [realCannonTrade]).length === 0 &&
+  !concreteRelation('如果車二進二吃掉黑方炮，淨多一炮。', [realCannonTrade]))
+check('ledger construction does not mutate replay facts and invalid FEN has no ledger',
+  JSON.stringify(realCannonTrade) === tradeEvidenceBeforeLedger &&
+  buildVariationCaptureLedger({ ...realCannonTrade, positionFen: 'invalid' }) === null)
+check('a denied interpretation of the real rook exchange does not assert the quoted net gain',
+  validate('沿主線走到紅方車二進三吃黑車，黑方緊接馬7退8吃紅車，雙方各少一車，不能只把第一手吃車算成紅方淨多一車。',
+    [rookExchange]).length === 0)
+check('negative interpretation frames apply across piece types without certifying the quoted number',
+  validate('車二進二吃掉黑方炮，不能把一次吃子視為紅方淨多一炮。', [realCannonTrade]).length === 0 &&
+  validate('不能稱為紅方淨多一炮。', [realCannonTrade]).length === 0 &&
+  validate('不可把先前吃子算成紅方淨多一車。', [rookExchange]).length === 0)
+check('an affirmative interpretation of the same capture still uses the real current counts',
+  validate('車二進二吃掉黑方炮，把一次吃子算成紅方淨多一炮。', [realCannonTrade]).length > 0)
+check('a denied interpretation cannot exempt a subsequent affirmative numeric claim',
+  validate('不能把一次吃子算成紅方淨多一炮，但此時紅方淨多一炮。', [realCannonTrade]).length > 0 &&
+  validate('不能只把吃車算成紅方淨多一車但是目前紅方淨多一車。', [rookExchange]).length > 0 &&
+  validate('不能把一次吃子算成紅方淨多一炮並稱為紅方淨多一炮。', [realCannonTrade]).length > 0)
+check('quoted numbers retain their local denied or affirmed interpretation',
+  validate('不能稱為「紅方淨多一炮」。', [realCannonTrade]).length === 0 &&
+  validate('稱為「紅方淨多一炮」。', [realCannonTrade]).length > 0)
+check('a snapshot cutoff persists across numerical denial instead of reverting to the whole line',
+  validate('截至第16手，紅方並非淨少一炮。', [realCannonTrade]).length > 0)
+check('a snapshot cutoff takes priority over the earlier literal capturing move for current counts',
+  validate('截至第17手，炮2平8已吃掉紅方炮，紅方淨少一炮。', [realCannonTrade]).length > 0)
+check('an earlier historical capture and the correct current snapshot count can coexist',
+  validate('截至第17手，炮2平8已吃掉紅方炮，紅方淨多零炮。', [realCannonTrade]).length === 0)
+check('the snapshot is inclusive for historical captures and excludes unplayed later captures',
+  validate('截至第16手，炮2平8已吃掉紅方炮，紅方淨少一炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第16手，車二進二已吃掉黑方炮，紅方淨少一炮。', [realCannonTrade]).length > 0 &&
+  validate('截至第16手，車二進二已吃掉黑方炮。', [realCannonTrade]).length > 0)
+check('snapshot numerical denials use the same inclusive cutoff on both sides',
+  validate('到第十六手，黑方並非淨少一炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第17手，紅方並非淨少一炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第17手，紅方並非淨多零炮。', [realCannonTrade]).length > 0)
+check('a snapshot persists through multiple historical clauses and current numerical statements',
+  validate('截至第十七手，炮7進5吃掉紅方馬，炮2平8吃掉紅方炮，紅方淨少一馬，紅方淨多零炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第十七手，炮7進5吃掉紅方馬，炮2平8吃掉紅方炮，紅方淨少一馬，紅方淨少一炮。', [realCannonTrade]).length > 0)
+check('unsupported or invalid explicit snapshot qualifiers never fall back to a favourable full-line count',
+  ['截至第0手', '截至第257手', '截至第十二十手', '截至第16步', '截至第16回合', '截至16手', '截至第16手之前'].every((prefix) =>
+    validate(`${prefix}，紅方淨多零炮。`, [realCannonTrade]).length > 0))
+check('unknown snapshots cannot borrow a prior known capture from a truncated line',
+  validate('截至第18手，炮2平8已吃掉紅方炮，紅方淨多零炮。', [incompleteTrade]).length > 0 &&
+  validate('截至第17手，炮2平8已吃掉紅方炮，紅方淨多零炮。', [incompleteTrade]).length === 0)
+check('an exact historical ordinal must also lie within the snapshot prefix',
+  validate('截至第16手，第17手車二進二吃掉黑方炮。', [realCannonTrade]).length > 0 &&
+  validate('截至第17手，第16手炮2平8吃掉紅方炮，紅方淨多零炮。', [realCannonTrade]).length === 0)
+check('a later explicit cutoff updates the snapshot only for later clauses',
+  validate('截至第16手，紅方淨少一炮，截至第17手，紅方淨多零炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第16手，紅方淨多零炮，截至第17手，紅方淨多零炮。', [realCannonTrade]).length > 0)
+check('a sentence boundary ends the snapshot and does not leak an earlier deficit into a new whole-line claim',
+  validate('截至第16手，紅方淨少一炮。紅方淨多零炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第16手，紅方淨少一炮。紅方淨少一炮。', [realCannonTrade]).length > 0)
+check('every cited replay must establish the declared snapshot without choosing an available favourable line',
+  validate('截至第17手，炮2平8已吃掉紅方炮，紅方淨多零炮。', [realCannonTrade, { ...incompleteTrade,
+    id: 'E2', analysis: { ...incompleteTrade.analysis, principalVariation: realCannonTrade.analysis.principalVariation.slice(0, 16) } }]).length > 0)
+check('snapshot counts inherit a historical actor instead of the side that moved on the cutoff ply',
+  validate('截至第17手，黑方炮2平8已吃掉紅方炮，淨少一卒。', [realCannonTrade]).length === 0 &&
+  validate('截至第17手，黑方炮2平8已吃掉紅方炮，淨多一卒。', [realCannonTrade]).length > 0)
+check('a direct clause-leading cutoff supports current counts and their denials without requiring a comma',
+  validate('截至第16手紅方淨少一炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第17手紅方並非淨多零炮。', [realCannonTrade]).length > 0)
 
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1
