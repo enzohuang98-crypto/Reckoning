@@ -168,17 +168,19 @@ export function validateVariationBoardStatements(
   const sideOf = (name: string): PieceColor => /紅|红/.test(name) ? 'red' : 'black'
   // Qualifiers apply to the fact that follows them, never to earlier facts in
   // the same sentence. A contrasting assertion starts a new scope.
-  const isHypothetical = (prefix: string): boolean => {
+  const predicateScope = (prefix: string): string => {
     let scope = prefix.split(/但是|但|然而|卻|却|可是|不過|不过/).at(-1) ?? ''
     // A conditional retains its scope even when its premise says "already".
     // A new coordinated present assertion can instead stand on its own.
     const coordinated = scope.split(/並且|并且|而且|並|并/)
     const last = coordinated.at(-1) ?? ''
-    if (coordinated.length > 1 && /這步|这步|此步|本手|已經|已经|立即|實際|实际|確實|确实/.test(last)) {
+    if (coordinated.length > 1 && /這步|这步|此步|本手|已(?:經|经)?|立即|實際|实际|確實|确实/.test(last)) {
       scope = last
     }
-    return /如果|假如|若|可能|將來|将来|未來|未来|後續|后续|更遠|更远|是否|能否|無法確認|无法确认/.test(scope)
+    return scope
   }
+  const isHypothetical = (prefix: string): boolean =>
+    /如果|假如|若|可能|將來|将来|未來|未来|後續|后续|更遠|更远|是否|能否|無法確認|无法确认/.test(predicateScope(prefix))
   for (const clause of text.split(/[。！？；，,.!?;\n]/)) {
     const mentions = chineseMoveMentions(clause)
     for (const [index, mention] of mentions.entries()) {
@@ -186,8 +188,24 @@ export function validateVariationBoardStatements(
       const before = clause.slice(index === 0 ? 0 : mentions[index - 1]!.index + mentions[index - 1]!.move.length, mention.index)
       const after = clause.slice(mention.index + move.length, mentions[index + 1]?.index ?? clause.length)
       const side = /(紅方|红方|黑方)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*$/.exec(before)
-      const captures = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方))?([兵卒車车炮砲馬马象相士仕將将帥帅])?/g)]
-        .filter((match) => !isHypothetical(before + after.slice(0, match.index)))
+      const captures = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方))?([a-i][0-9])?([兵卒車车炮砲馬马象相士仕將将帥帅])?/g)]
+        .flatMap((match) => {
+          const prefix = before + after.slice(0, match.index)
+          const modal = /((?:(?:沒有|没有|沒|没|未|不|非)(?:是)?)?(?:可(?:以)?|能(?:夠|够)?|可能)|無法|无法|沒有機會|没有机会|沒機會|没机会|有機會|有机会)(?:直接|立即|立刻)?$/.exec(prefix)
+          // A bare possibility can concern a later, changed board. An explicit
+          // current possibility instead has to match this move's resulting board.
+          const opportunity = Boolean(modal && (!modal[1]!.includes('可能') ||
+            /當下|当下|此時|此时|目前|當前|当前|現在|现在|走後|走后|這步|这步|此步|本手|固定盤面|固定盘面/.test(predicateScope(prefix))))
+          const assertionPrefix = opportunity ? prefix.slice(0, -modal![0].length) : prefix
+          if (isHypothetical(assertionPrefix)) return []
+          // "Can choose not to capture" makes neither an actual-capture nor a
+          // capture-availability assertion. Later predicates are still checked.
+          if (opportunity && /^(沒有|没有|未|不|非)/.test(match[1]!)) return []
+          const denied = opportunity
+            ? /^(沒有|没有|沒|没|未|不|非|無法|无法)/.test(modal![1]!)
+            : /^(沒有|没有|未|不|非)/.test(match[1]!)
+          return [{ match, opportunity, denied }]
+        })
       const checks = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?)(?:形成|構成|构成)?(?:將軍|将军)/g)]
         .filter((match) => !isHypothetical(before + after.slice(0, match.index)))
       if (!side && captures.length === 0 && checks.length === 0) continue
@@ -203,18 +221,22 @@ export function validateVariationBoardStatements(
       if (side && candidates.some((candidate) => sideOf(side[1]!) !== candidate.side)) {
         issues.push(`棋盤事實：${move} 的走子方與所引用變例不一致。`)
       }
-      for (const capture of captures) {
-        const matchingCapture = (candidate: VariationStepFact): boolean => Boolean(
-          candidate.captured &&
-          (!capture[2] || sideOf(capture[2]) === candidate.captured.side) &&
-          (!capture[3] || pieceTypes[capture[3]] === candidate.captured.piece)
-        )
+      for (const { match: capture, opportunity, denied } of captures) {
+        const matchingCapture = (candidate: VariationStepFact): boolean => opportunity
+          ? candidate.movedPieceCaptureTargets.some((target) =>
+              (!capture[2] || sideOf(capture[2]) === target.side) &&
+              (!capture[3] || capture[3] === target.square) &&
+              (!capture[4] || pieceTypes[capture[4]] === target.piece))
+          : Boolean(candidate.captured &&
+              (!capture[2] || sideOf(capture[2]) === candidate.captured.side) &&
+              (!capture[3] || capture[3] === candidate.toSquare) &&
+              (!capture[4] || pieceTypes[capture[4]] === candidate.captured.piece))
         const captureOutcomes = new Set(candidates.map(matchingCapture))
-        const denied = /^(沒有|没有|未|不|非)/.test(capture[1]!)
+        const kind = opportunity ? '可吃目標' : '吃子'
         if (captureOutcomes.size !== 1) {
-          issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同吃子結果，必須指明所述步數。`)
+          issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同${kind}結果，必須指明所述步數。`)
         } else if (denied ? matchingCapture(fact) : !matchingCapture(fact)) {
-          issues.push(`棋盤事實：${move} 的吃子斷言與逐手棋盤不一致。`)
+          issues.push(`棋盤事實：${move} 的${kind}斷言與逐手棋盤不一致。`)
         }
       }
       for (const check of checks) {

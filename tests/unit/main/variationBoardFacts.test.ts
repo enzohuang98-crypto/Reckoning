@@ -160,5 +160,70 @@ check('check remains a separate fact and enemy kings are never capture targets',
   checkingRookFacts[0]?.givesCheck === true &&
   checkingRookFacts[0]?.movedPieceCaptureTargets?.every((target) => target.piece !== 'king') === true)
 
+const horseOpportunity = replayEvidence('E2', [
+  'h2e2', 'h9g7', 'h0g2', 'i9h9', 'g3g4', 'h7i7',
+  'b0c2', 'c6c5', 'b2b6', 'g9e7', 'g2f4'
+], START_FEN)
+check('the real red horse opportunity is not mistaken for a capture already made',
+  validate('紅方馬三進四雖可吃兵卻同時暴露馬腳。', [horseOpportunity]).length === 0)
+check('can and able capture predicates use the same computed opportunities',
+  validate('紅方馬三進四可以吃黑方卒，也能吃兵。', [horseOpportunity]).length === 0)
+check('a supported cannon opportunity uses the resulting board rather than captured',
+  validate('紅方炮二平五能夠吃掉黑方卒。', [opening]).length === 0)
+check('a supported black cannon opportunity retains the captured target side',
+  validate('黑方炮8平9可吃紅方兵。', [horseOpportunity]).length === 0)
+check('king safety still restricts a rook opportunity',
+  validate('紅方車五進一可吃黑方車。', [pinnedRook]).length === 0 &&
+  validate('紅方車五進一可吃黑方卒。', [pinnedRook]).length > 0)
+check('a denied actual capture and an affirmed opportunity can both be true',
+  validate('紅方馬三進四沒有吃子但可吃黑方卒。', [horseOpportunity]).length === 0)
+check('negated opportunities do not deny an actual capture',
+  validate('紅方車九進八已吃黑方卒但不能吃黑方卒。', [capture]).length === 0)
+check('a claimed lack of a supported opportunity is rejected',
+  validate('紅方馬三進四不能吃黑方卒。', [horseOpportunity]).length > 0)
+check('a denied unsupported opportunity is accepted',
+  validate('紅方馬三進四不可吃黑方車，也無法吃紅方兵。', [horseOpportunity]).length === 0)
+check('a denied supported opportunity using cannot also fails',
+  validate('紅方炮二平五無法吃掉黑方卒。', [opening]).length > 0)
+check('a false completed capture still fails despite a real opportunity',
+  validate('紅方馬三進四已經吃掉黑方卒。', [horseOpportunity]).length > 0)
+check('an earlier opportunity never exempts a later completed capture assertion',
+  validate('紅方馬三進四可吃黑方卒但這步已經吃掉黑方卒。', [horseOpportunity]).length > 0)
+check('opportunities retain wrong-side rejection',
+  validate('黑方馬三進四可吃黑方卒。', [horseOpportunity]).length > 0)
+check('opportunities cannot borrow a move from an uncited variation',
+  validate('紅方馬三進四可吃黑方卒。', [opening]).length > 0)
+check('an opportunity with the wrong target type or side is rejected',
+  validate('紅方馬三進四可吃黑方車。', [horseOpportunity]).length > 0 &&
+  validate('紅方馬三進四可吃紅方兵。', [horseOpportunity]).length > 0)
+check('a developed horse cannot claim an immediate cannon capture opportunity',
+  validate('黑方馬8進7可吃紅方炮。', [opening]).length > 0)
+check('explicit current possibilities are checked against capture targets',
+  validate('紅方馬三進四當下可能吃黑方卒。', [horseOpportunity]).length === 0 &&
+  validate('黑方馬8進7當下可能吃紅方炮。', [opening]).length > 0)
+check('a future conditional is not asserted as a current opportunity',
+  validate('紅方炮二平五後如果黑方改走其他變化，未來可能吃黑方車。', [opening]).length === 0)
+check('a remote conditional cannot exempt a new current opportunity assertion',
+  validate('黑方馬8進7未來可能吃子但此時可吃紅方炮。', [opening]).length > 0)
+check('explicit opportunity squares must identify an actual computed target',
+  validate('紅方馬三進四可吃黑方e6卒。', [horseOpportunity]).length === 0 &&
+  validate('紅方馬三進四可吃黑方a6卒。', [horseOpportunity]).length > 0)
+check('completed captures with explicit squares still use the actual captured square',
+  validate('紅方車九進八已吃黑方a9卒。', [capture]).length === 0 &&
+  validate('紅方車九進八已吃黑方e5卒。', [capture]).length > 0)
+check('copular and opportunity denials retain their own target semantics',
+  validate('紅方馬三進四並不是可以吃黑方車。', [horseOpportunity]).length === 0 &&
+  validate('紅方馬三進四沒有機會吃黑方卒。', [horseOpportunity]).length > 0)
+check('a current impossibility cannot deny a legally supported target',
+  validate('紅方馬三進四當下不可能吃黑方卒。', [horseOpportunity]).length > 0)
+const shiftedPawnLine = replayEvidence('E3', ['e3e4', 'e6e5', 'h2e2'], START_FEN)
+check('opportunity ambiguity across cited lines cannot borrow the first matching target',
+  validate('紅方炮二平五可吃黑方e6卒。', [opening, shiftedPawnLine]).some((issue) => issue.includes('不同可吃目標')))
+check('the option not to capture does not assert a missing or available target',
+  validate('紅方馬三進四可以不吃黑方車。', [horseOpportunity]).length === 0 &&
+  validate('紅方馬三進四可以不吃黑方車但這步已吃黑方卒。', [horseOpportunity]).length > 0)
+check('a current possible capture cannot exempt a coordinated already-captured predicate',
+  validate('紅方馬三進四當下可能吃黑方卒並已吃黑方卒。', [horseOpportunity]).length > 0)
+
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1
