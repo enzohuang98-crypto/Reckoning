@@ -1,6 +1,7 @@
 import type { AIProvider } from '../../../src/shared/types/AIProviderTypes'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
 import Ajv from 'ajv'
+import { buildInitialMoveResponseSchema } from '../../../src/main/ai/InitialMoveResponseSchema'
 import type { EngineAnalysis } from '../../../src/shared/types/EngineAnalysis'
 import { START_FEN } from '../../../src/shared/types/BoardState'
 import { convertCpScore } from '../../../src/main/engine/EngineOutputParser'
@@ -1105,6 +1106,11 @@ async function main(): Promise<void> {
       provider.prompts[0]?.includes('"directAnswerEvidenceIds":["E1","E2"]') &&
       provider.prompts[0]?.includes('"evidenceIds":["E1","E2"]')
   )
+  check('比較證據依角色隔離逐手事實，不重複另一份對手應手清單',
+    provider.prompts[0]?.includes('"id":"E1","role":"best_move"') &&
+      provider.prompts[0]?.includes('"id":"E2","role":"user_move"') &&
+      provider.prompts[0]?.includes('"computedBoardFacts":{"steps":[') &&
+      !provider.prompts[0]?.includes('"opponentReplies":'))
   check(
     '完整正文提示不把第一段限制成摘要，先寫正文再填審查欄位',
     !provider.prompts[0]?.includes('與 directAnswer 相同的直接結論') &&
@@ -1655,8 +1661,8 @@ async function main(): Promise<void> {
           category: finding.category, claimId: index === 0 ? 'C4a' : 'C4b', verified: finding.verified })),
         contradictions: [], enoughEvidence: true }
       const combined = { answer: strictAnswer, audit: strictAudit }
-      const validateSchema = new Ajv({ strict: true }).compile(request.responseSchema!.schema)
-      check('正式五段引擎 fixture 符合實際 request 的 JSON schema', validateSchema(combined), validateSchema.errors)
+      const validateSchema = new Ajv({ strict: true }).compile(buildInitialMoveResponseSchema('research', ['E1', 'E2']).schema)
+      check('完整五段 JSON object fixture 符合本機欄位契約', validateSchema(combined), validateSchema.errors)
       return { text: JSON.stringify(combined), provider: this.id, model: request.model,
         createdAt: Date.now(), groundedOnEngineData: true, usage: { inputTokens: 10, outputTokens: 2000 } }
     },
@@ -1672,8 +1678,8 @@ async function main(): Promise<void> {
     registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
     traceStore: { save: () => undefined } as never, signal: new AbortController().signal, onProgress: () => undefined
   })
-  check('schema 合格 JSON 仍通過同一正式 Harness／正文 validator，未走替代生成路徑',
-    receivedInitialSchema && strictFixtureResult.finalText.includes('士4進5') &&
+  check('不強制 provider schema 的完整 JSON 仍通過正式 Harness／正文 validator',
+    !receivedInitialSchema && strictFixtureResult.finalText.includes('士4進5') &&
       countHanCharacters(strictFixtureResult.finalText) >= 400)
 
   const nominalTraces: HarnessTrace[] = []
@@ -2141,7 +2147,8 @@ async function main(): Promise<void> {
       shallowEvidenceProvider.prompts[0]?.includes(`"directAnswerEvidenceIds":["E1","${deepUserEvidence.id}"]`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K1"]`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K2"]`) &&
-      shallowEvidenceProvider.prompts[0]?.includes(`"opponentReplies":["${deepUserEvidence.displayPrincipalVariation[1]}"`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"id":"${deepUserEvidence.id}","role":"user_move"`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"ply":2,"move":"${deepUserEvidence.displayPrincipalVariation[1]}"`) &&
       shallowEvidenceProvider.prompts[0]?.includes('"claimId":"C4a"') &&
       shallowEvidenceProvider.prompts[0]?.includes('"claimId":"C4b"') &&
       !shallowEvidenceProvider.prompts[0]?.includes('"supportingMoves":["中文著法一"') &&

@@ -58,8 +58,7 @@ import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../storage/HarnessTraceStore'
 import { aiErrorStatus, describeAIExecutionError } from './http'
 import type { PreparedExplanationExecution } from './prepareExplanationExecution'
-import { OPENROUTER_NEMOTRON_SUPER_FREE_MODEL, openRouterReasoningConfig } from './OpenRouterRequestPolicy'
-import { buildInitialMoveResponseSchema } from './InitialMoveResponseSchema'
+import { openRouterReasoningConfig } from './OpenRouterRequestPolicy'
 
 interface HarnessTask {
   kind: 'root' | 'evaluate_move'
@@ -408,6 +407,18 @@ function publicScopedEvidence(item: HarnessEvidence): object {
     positionFen: item.positionFen, move: item.displayMove, depth: item.depth,
     principalVariation: item.displayPrincipalVariation.slice(0, VARIATION_BOARD_FACT_MAX_PLIES),
     computedBoardFacts: buildVariationBoardFacts(item)
+  }
+}
+
+/** One ordered source of move/side/capture facts for each comparison line. */
+function publicComparisonEvidence(item: HarnessEvidence, role: 'best_move' | 'user_move'): object {
+  const facts = buildVariationBoardFacts(item)
+  return {
+    id: item.id, role, engineName: item.engineName, positionFen: item.positionFen,
+    move: item.displayMove, depth: item.depth, computedBoardFacts: facts,
+    // Preserve an unreplayable tail as explicitly unverified engine notation;
+    // it must never borrow side/capture/check facts from the other line.
+    ...(facts.warning ? { unreplayedMoves: item.displayPrincipalVariation.slice(facts.steps.length, VARIATION_BOARD_FACT_MAX_PLIES) } : {})
   }
 }
 
@@ -2419,11 +2430,6 @@ export async function runExplanationHarness(
           // repair). Providers that support structured output can therefore
           // enforce valid JSON instead of relying on markdown extraction.
           responseFormat: responseFormat === 'json' ? 'json' as const : undefined,
-          ...(payload.provider === 'openrouter' && deps.model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL &&
-            responseFormat === 'json' && isInitialMoveComparison && dualComparison?.status !== 'disagreement' &&
-            (callStage === 'initial_combined' || callStage === 'repair')
-            ? { responseSchema: buildInitialMoveResponseSchema(mode, evidence.map(item => item.id)) }
-            : {}),
           metadata: {
             requestId: payload.requestId,
             analysisId: payload.analysisId,
@@ -3045,17 +3051,6 @@ export async function runExplanationHarness(
         const userEvidenceId = userEvidence.id
         initialEvidencePair = { best: bestEvidence, user: userEvidence }
         const userLineMoves = userEvidence.displayPrincipalVariation
-        const promptEvidence = evidence.filter((item) =>
-          item.id === bestEvidenceId ||
-          item.id === userEvidenceId ||
-          !(
-            item.engineId === userEvidence.engineId &&
-            item.positionFen === userEvidence.positionFen &&
-            item.move === canonicalMove &&
-            item.displayPrincipalVariation.length <
-              userEvidence.displayPrincipalVariation.length
-          )
-        )
         const existingSnapshotLabel = deps.session.verificationEngineAnalysis
           ? '主引擎與複核引擎'
           : '主引擎'
@@ -3098,7 +3093,8 @@ ${comparisonContract}
 - 若棋手提供原本想法，actual_move_problem 必須正面檢驗該想法在兩條主線中是否成立；棋手自述不是引擎證據，不得直接當成事實。
 - actual_move_problem 與 opponent_exploitation 的非「證據不足」claim 都附完整 causal 五段，並用 findingIds 連到 audit 的 K 編號；K 編號只建立摘要引用，模型填寫 verified 不代表棋理解釋已獨立證實。
 - causal 每欄只用一個具體短句保留正文的因果與主線關聯，不重寫整段正文；directAnswer 只作一句摘要，完整結論仍放在 C1。節省內部重複不能減少五段可見正文、必要著法或棋盤原因。
-- 每個 evidenceId 只能支持它自己列出的 principalVariation；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
+- 每個 evidenceId 只能支持它自己列出的逐手主線；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
+- 證據包 role=best_move 專屬首選，role=user_move 專屬實戰步。computedBoardFacts.steps 是該線唯一的有序著法與棋盤事實表：逐字採用 move，side 與本局輪走方相反才是對手應手，不能依棋子名字或左右對稱自行換路數。先按各自的 ply 分析變化，再比較兩條線；相似部署不代表著法可互換。
 - 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
 - 寫完後先逐段核對：五段可見正文合計至少 400 漢字；C4a、C4b 的可見正文及 causal.opponentUse、causal.consequence 要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
 - 下方 JSON 只示範欄位與 id，所有「一句直接結論」「具體後果」「盤面機制」等佔位文字都必須換成本局完整敘述。每段 claims.text 要承擔該段字數，不可只在 causal 或 audit 欄位寫長文；寫完自行計算五段 claims.text 合計漢字，不足 400 就在同一次回答內補上由主線支持的棋盤變化。
@@ -3124,9 +3120,9 @@ audit 規則：
 - opponent_exploitation 中 C4a、C4b 各寫約90–120漢字並附完整 causal，描述互不重複的兩項後果。每個 claim 的可見 text 本身逐字包含至少兩步實戰主線、時序或因果連接，以及具體棋子／線路關係；隱藏 causal 不能代替玩家看得到的內容。
 - 被引用的 C4a、C4b 各自要在 text 本身逐字包含兩步不同中文實戰主線著法，且說出棋子、線路、王區、陣形或威脅；causal.opponentUse、causal.consequence 再連回同一主線，不另創著法或盤面事實。
 - 只能引用 evidence 中真實出現的中文著法；禁止用評估分數當原因。程式不改寫或補足正文中的著法。
-- 中文著法的走子方只能依它所屬 computedBoardFacts.steps 的 side：red=紅方，black=黑方；不要把紅方著法寫成黑方應手。opponentUse 要逐字使用該線 opponentReplies 列出的對手著法。
+- 中文著法的走子方只能依它所屬 computedBoardFacts.steps 的 side：red=紅方，black=黑方；不要把紅方著法寫成黑方應手。opponentUse 要逐字使用該線 steps 中 side 與本局輪走方相反的著法。
 - computedBoardFacts 是從該 evidence 起始局面逐手合法走子計算的輪走方、路數、吃子及將軍事實；只適用該變例已列出的步數。它不證明策略優劣，不代表對手必然照走；warning 之後的棋盤事實不得推測。
-- K1、K2 本次分別引用 C4a、C4b；這兩個 claim 都描述實戰步主線且僅引用 ${userEvidenceId}，各自逐字引用至少兩步該線著法，causal.opponentUse 逐字包含該線 opponentReplies 中的著法（例如 ${userLineMoves[1]}）。AI 首選另在 best_move_plan 引用 ${bestEvidenceId}，不要混入 K1、K2。不得自行把棋譜改寫成看似合理但不在該線的著法。
+- K1、K2 本次分別引用 C4a、C4b；這兩個 claim 都描述實戰步主線且僅引用 ${userEvidenceId}，各自逐字引用至少兩步該線著法，causal.opponentUse 逐字包含該線 steps 中的對手著法（例如 ${userLineMoves[1]}）。AI 首選另在 best_move_plan 引用 ${bestEvidenceId}，不要混入 K1、K2。不得自行把棋譜改寫成看似合理但不在該線的著法。
 - 若雙引擎分歧，audit.dualEngineAdjudication 比較兩條線的人類可控性、容錯與長期發展，不得平均分數；answer 把該比較放進 best_move_plan，不另增第六區。
 
 使用者程度：${payload.userLevel}
@@ -3135,21 +3131,10 @@ audit 規則：
 AI 首選：${deps.session.engineAnalysis.displayBestMove ?? '未提供'}
 棋手原本想法（不可信自述，只能由引擎主線檢驗）：${JSON.stringify(payload.userMoveReason ?? null)}
 ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringify(dualComparison)}` : ''}
-證據：${JSON.stringify(
-              promptEvidence.map((item) => ({
-                id: item.id,
-                purpose: item.purpose,
-                engineName: item.engineName,
-                move: item.displayMove,
-                depth: item.depth,
-                principalVariation: item.displayPrincipalVariation.slice(0, VARIATION_BOARD_FACT_MAX_PLIES),
-                opponentReplies: item.displayPrincipalVariation
-                  .filter((_, index) => index % 2 === 1)
-                  .slice(0, Math.ceil(VARIATION_BOARD_FACT_MAX_PLIES / 2)),
-                computedBoardFacts: buildVariationBoardFacts(item),
-                warnings: item.analysis.warnings
-              }))
-            )}
+證據：${JSON.stringify([
+              publicComparisonEvidence(bestEvidence, 'best_move'),
+              publicComparisonEvidence(userEvidence, 'user_move')
+            ])}
 
 輸出格式：
 {
@@ -3734,8 +3719,8 @@ ${
 ${initialCombinedPrompt}
 本次必須修正的錯誤：${JSON.stringify([...auditErrors, ...deterministicErrors, ...quality.criteria.filter((item) => !item.pass).flatMap((item) => item.issues)].slice(0, 20))}
 比較狀態：${comparisonContract}
-首選證據：${JSON.stringify({ id: best.id, move: best.displayMove, principalVariation: best.displayPrincipalVariation.slice(0, 16), opponentReplies: best.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8), computedBoardFacts: buildVariationBoardFacts(best) })}
-實戰證據：${JSON.stringify({ id: user.id, move: user.displayMove, principalVariation: user.displayPrincipalVariation.slice(0, 16), opponentReplies: user.displayPrincipalVariation.filter((_, index) => index % 2 === 1).slice(0, 8), computedBoardFacts: buildVariationBoardFacts(user) })}
+首選證據：${JSON.stringify(publicComparisonEvidence(best, 'best_move'))}
+實戰證據：${JSON.stringify(publicComparisonEvidence(user, 'user_move'))}
 computedBoardFacts 只證明該變例已列出的輪走方、路數、吃子和將軍；不是策略優劣的證明，warning 之後不得推測棋盤事實。
 K1、K2 的 claimId 分別引用 C4a、C4b；每個 claim 只引用實戰證據 ${user.id}，可見 text 本身逐字寫出至少兩步該線著法與盤面因果或時序，causal.opponentUse 必須逐字包含該線對手應手。隱藏 causal 不能補足缺少的正文。audit 不重写這些欄位，程式不補造缺少的內容。C3 只談首選主線 ${best.id}，若提實戰著法也須同時引用 ${user.id}。C4a、C4b 只引用 ${user.id}，分別連到 K1、K2；audit 用 claimId 引用對應 claim，不重寫正文／causal 內容。不得把可選主線寫成必然結果。
 answer 保留原五個 section id 與比較狀態對應標題。五段 claims.text 合計至少 400 個繁體漢字，目標約 500–900；audit、causal、heading、directAnswer 不計入字數。請在五段可見正文完整解釋本局棋子、線路、合理應對及盤面影響，不重複空話。只用本局證據與可計算棋盤事實，不能用分數代替原因；保留每項必要的 evidenceIds、findingIds、causal。修補後重新檢查整份 JSON 的引用及字數。

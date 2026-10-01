@@ -81,8 +81,8 @@ for (const model of ['nvidia/nemotron-3-super-120b-a12b:free', 'vendor/other:fre
       await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
       const body = requests[0].body as Record<string, unknown>
       if (model.includes('-super-')) {
-        assert.deepEqual(body.response_format, { type: 'json_schema', json_schema: { ...responseSchema, strict: true } })
-        assert.deepEqual(body.provider, { require_parameters: true })
+        assert.deepEqual(body.response_format, { type: 'json_object' }, 'Super must use the bounded JSON-object contract confirmed by the live comparison')
+        assert.equal(body.provider, undefined, 'Schema routing must not force the regressed constrained decoder')
         assert.deepEqual(body.reasoning, { effort: 'none', exclude: true })
       } else {
         assert.deepEqual(body.response_format, model.includes('-ultra-') ? undefined : { type: 'json_object' })
