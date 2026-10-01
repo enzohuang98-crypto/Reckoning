@@ -12,7 +12,7 @@ const root = path.resolve(__dirname, '../..')
 const outputArg = process.argv.indexOf('--artifact-dir')
 const artifactDir = outputArg < 0 ? path.join(os.tmpdir(), 'reckoning-renderer-layout-artifacts') : path.resolve(process.argv[outputArg + 1])
 const quick = process.argv.includes('--quick')
-const sizes = quick ? [[960, 640]] : [[960, 640], [1008, 680], [1024, 768], [1280, 720], [1366, 768], [1920, 1080]]
+const sizes = quick ? [[960, 640]] : [[960, 640], [1008, 680], [1024, 768], [1280, 720], [1366, 768], [1920, 1080], [1280, 360], [1920, 320], [1366, 480]]
 const scales = quick ? [1] : [1, 1.25, 1.5, 2]
 let window
 let profile
@@ -111,7 +111,6 @@ async function main() {
       poll()
     }))
     await settle()
-    if (process.argv.includes('--probe-board-height')) await window.webContents.insertCSS('.board-editor.tools-open { height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); } .analyze-layout .board-editor.tools-open .xiangqi-board { width: auto; max-width: 100%; height: 100%; max-height: 100%; }')
     const row = { id, physicalViewport: { width, height }, scale, sourceRenderer: true }
     for (const toolsOpen of [false, true]) {
       if (toolsOpen) {
@@ -132,8 +131,8 @@ async function main() {
         assert.ok(geometry.board.y >= geometry.wrap.y - 1 && geometry.board.bottom <= geometry.wrap.bottom + 1, 'All ten board rows must fit inside the board wrap')
         assert.ok(geometry.board.width >= 260 && geometry.board.height >= 288, 'Board must remain readable at small/scaled viewports')
         assert.equal(geometry.cells.length, 90)
-        assert.ok((await reachable('.xiangqi-board [role="gridcell"]:first-of-type')).ok, 'First board cell must be reachable')
-        assert.ok((await reachable('.xiangqi-board [role="gridcell"]:last-of-type')).ok, 'Last board cell must be reachable')
+        assert.ok((await reachable('.xiangqi-board [role="gridcell"][aria-rowindex="1"][aria-colindex="1"]')).ok, 'First board cell must be reachable')
+        assert.ok((await reachable('.xiangqi-board [role="gridcell"][aria-rowindex="10"][aria-colindex="9"]')).ok, 'Last board cell must be reachable')
         assert.ok(geometry.documentWidth <= geometry.viewport.width + 1, 'Document must fit the CSS viewport')
         if (toolsOpen) assert.ok((await reachable('.editor-controls input')).ok, 'Save-position control must be reachable')
         assert.ok((await reachable('.follow-up-row input')).ok, 'AI follow-up input must be reachable after scrolling the long Chinese explanation')
