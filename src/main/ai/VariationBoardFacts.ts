@@ -181,13 +181,28 @@ export function validateVariationBoardStatements(
   }
   const isHypothetical = (prefix: string): boolean =>
     /如果|假如|若|可能|將來|将来|未來|未来|後續|后续|更遠|更远|是否|能否|無法確認|无法确认/.test(predicateScope(prefix))
+  const literalListGap = /^\s*[」』”"'’]?\s*、\s*[「『“"'‘]?\s*$/
   for (const clause of text.split(/[。！？；，,.!?;\n]/)) {
     const mentions = chineseMoveMentions(clause)
+    let listActor: { side: PieceColor; prefix: string } | null = null
     for (const [index, mention] of mentions.entries()) {
       const move = mention.move
       const before = clause.slice(index === 0 ? 0 : mentions[index - 1]!.index + mentions[index - 1]!.move.length, mention.index)
       const after = clause.slice(mention.index + move.length, mentions[index + 1]?.index ?? clause.length)
-      const side = /(紅方|红方|黑方)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*$/.exec(before)
+      const explicitActor = /(紅方|红方|黑方)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)
+      // Only adjacent literal list members inherit an actor. Narrative and
+      // comparison words break the list; a named next actor starts a new one.
+      const isListMember = index > 0 && literalListGap.test(before)
+      let lastMember = index
+      while (mentions[lastMember + 1] && literalListGap.test(clause.slice(
+        mentions[lastMember]!.index + mentions[lastMember]!.move.length,
+        mentions[lastMember + 1]!.index))) lastMember += 1
+      const listTail = clause.slice(mentions[lastMember]!.index + mentions[lastMember]!.move.length)
+      const comparisonObjects = /^[」』”"'’]?\s*(?:作|做|進行|进行)?(?:比較|比较|對照|对照)/.test(listTail)
+      listActor = comparisonObjects ? null : explicitActor
+        ? { side: sideOf(explicitActor[1]!), prefix: before }
+        : isListMember ? listActor : null
+      const side = listActor?.side
       const captures = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方))?([a-i][0-9])?([兵卒車车炮砲馬马象相士仕將将帥帅])?/g)]
         .flatMap((match) => {
           const prefix = before + after.slice(0, match.index)
@@ -213,12 +228,12 @@ export function validateVariationBoardStatements(
       const candidates = facts.filter((fact) => canonicalChineseMoveNotation(fact.move) === canonicalMove)
       const fact = candidates[0]
       if (!fact) {
-        if (captures.length > 0 || checks.length > 0 || (side && !isHypothetical(before))) {
+        if (captures.length > 0 || checks.length > 0 || (side && !isHypothetical(listActor!.prefix))) {
           issues.push(`棋盤事實：${move} 的引用缺少可重播或無歧義的吃子／將軍事實。`)
         }
         continue
       }
-      if (side && candidates.some((candidate) => sideOf(side[1]!) !== candidate.side)) {
+      if (side && candidates.some((candidate) => side !== candidate.side)) {
         issues.push(`棋盤事實：${move} 的走子方與所引用變例不一致。`)
       }
       for (const { match: capture, opportunity, denied } of captures) {

@@ -225,5 +225,36 @@ check('the option not to capture does not assert a missing or available target',
 check('a current possible capture cannot exempt a coordinated already-captured predicate',
   validate('紅方馬三進四當下可能吃黑方卒並已吃黑方卒。', [horseOpportunity]).length > 0)
 
+check('the real quoted same-actor enumeration rejects its black move assigned to Red',
+  validate('紅方以「馬二進三」、「車9平8」等著法展開。', [opening, horseOpportunity]).some((issue) => issue.includes('車9平8 的走子方')))
+check('quoted red moves can share an explicit red actor',
+  validate('紅方以「馬二進三」、「馬八進七」等著法展開。', [horseOpportunity]).length === 0)
+check('quoted black moves can share an explicit black actor',
+  validate('黑方以「馬8進7」、「車9平8」等著法展開。', [horseOpportunity]).length === 0)
+check('an explicit black actor cannot perform the red member of its list',
+  validate('黑方以「馬8進7」、「馬二進三」等著法展開。', [horseOpportunity]).some((issue) => issue.includes('馬二進三 的走子方')))
+check('an unquoted same-actor enumeration retains side checks for later members',
+  validate('紅方走馬二進三、車9平8。', [horseOpportunity]).length > 0)
+check('alternate quote styles retain the same bounded actor enumeration',
+  validate('紅方以“馬二進三”、“車9平8”展開。', [horseOpportunity]).length > 0 &&
+  validate('黑方以『馬8進7』、『車9平8』展開。', [horseOpportunity]).length === 0)
+check('an explicitly named next actor replaces the first actor locally',
+  validate('紅方以「馬二進三」、黑方以「車9平8」、「炮8平9」展開。', [horseOpportunity]).length === 0 &&
+  validate('紅方以「馬二進三」、黑方以「車9平8」、「馬八進七」展開。', [horseOpportunity]).length > 0)
+check('a comparison of two sides is not treated as a same-actor move list',
+  validate('紅方比較「馬二進三」、「車9平8」的部署。', [horseOpportunity]).length === 0 &&
+  validate('比較紅方的「馬二進三」與黑方的「車9平8」。', [horseOpportunity]).length === 0)
+check('an actor is not inherited through narrative or comparison text between moves',
+  validate('紅方以「馬二進三」發展並對照「車9平8」的應對。', [horseOpportunity]).length === 0)
+check('a quoted actor list cannot borrow moves from an uncited line',
+  validate('红方以「馬二進三」、「馬八進七」展開。', [replayEvidence('E1', ['b2e2', 'b9c7', 'b0c2'], START_FEN)]).length > 0)
+check('quoted lists preserve ambiguity of repeated move identities across evidence',
+  validate('紅方以「炮二平五」、「車九進八」吃掉黑方卒。', [opening, capture, { ...noCapture, id: 'E3' }]).some((issue) => issue.includes('不同吃子結果')))
+check('a literal list explicitly used for comparison does not assign its moves to the comparing side',
+  validate('紅方以「車9平8」、「馬二進三」作比較。', [horseOpportunity]).length === 0 &&
+  validate('紅方以「馬二進三」、「車9平8」進行對照。', [horseOpportunity]).length === 0)
+check('later comparison prose does not exempt an earlier wrong-side action list',
+  validate('紅方以「馬二進三」、「車9平8」展開並比較後續計畫。', [horseOpportunity]).length > 0)
+
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1
