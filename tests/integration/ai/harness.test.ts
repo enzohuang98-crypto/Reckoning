@@ -3690,6 +3690,12 @@ async function main(): Promise<void> {
     '一鍵正文的 UCI、FEN、trace、token 或證據編號會被確定性驗證擋下',
     leakedPlayerErrors.some((error) => error.includes('內部格式或診斷資訊'))
   )
+  for (const annotation of ['（E1）', 'E1 ply2', '落在 e2', '依照 C1']) {
+    const errors = validateAnswer({ ...leakedPlayerAnswer,
+      directAnswer: `炮二平五建立中炮${annotation}，要配合後續出子。`
+    }, validatorEvidence, { hasUserMove: true, requiredSectionIds: [HARNESS_SECTION_IDS.actualMoveProblem] })
+    check(`可見正文不能漏出內部標記 ${annotation}`, errors.some(error => error.includes('內部格式或診斷資訊')))
+  }
 
   console.log('\n## 一鍵實戰步五段與完整度硬契約')
 

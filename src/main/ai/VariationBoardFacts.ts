@@ -1,5 +1,5 @@
 import { parseFen } from '@shared/logic/board/fen'
-import { applyUciMove, isKingInCheck, parseUciMove } from '@shared/logic/board/moves'
+import { applyUciMove, formatUciMove, isKingInCheck, legalMoveCheck, parseUciMove } from '@shared/logic/board/moves'
 import {
   canonicalChineseMoveNotation,
   chineseMoveMentions,
@@ -20,6 +20,11 @@ export interface VariationStepFact {
   piece: PieceType
   fromFile: number
   toFile: number
+  /** Absolute UCI squares; independent of the mover's file-number convention. */
+  fromSquare: string
+  toSquare: string
+  /** Fixed resulting board, assuming this side could move again; not a forced threat or an actual extra ply. */
+  movedPieceCaptureTargets: { square: string; side: PieceColor; piece: PieceType }[]
   captured: { side: PieceColor; piece: PieceType } | null
   givesCheck: boolean
 }
@@ -50,6 +55,19 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
     }
     const piece = board.grid[coordinates.fromRow][coordinates.fromCol]!
     const file = (column: number): number => piece.color === 'red' ? 9 - column : column + 1
+    const movedPieceCaptureTargets: VariationStepFact['movedPieceCaptureTargets'] = []
+    for (const [row, cells] of applied.board.grid.entries()) {
+      for (const [col, target] of cells.entries()) {
+        if (!target || target.color === piece.color || target.type === 'king') continue
+        const captureMove = formatUciMove({
+          fromRow: coordinates.toRow, fromCol: coordinates.toCol,
+          toRow: row, toCol: col
+        })
+        if (captureMove && legalMoveCheck(applied.board.grid, piece.color, captureMove).ok) {
+          movedPieceCaptureTargets.push({ square: captureMove.slice(2), side: target.color, piece: target.type })
+        }
+      }
+    }
     steps.push({
       ply: index + 1,
       move: display,
@@ -57,6 +75,9 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
       piece: piece.type,
       fromFile: file(coordinates.fromCol),
       toFile: file(coordinates.toCol),
+      fromSquare: uci.slice(0, 2),
+      toSquare: uci.slice(2),
+      movedPieceCaptureTargets,
       captured: applied.captured
         ? { side: applied.captured.color, piece: applied.captured.type }
         : null,

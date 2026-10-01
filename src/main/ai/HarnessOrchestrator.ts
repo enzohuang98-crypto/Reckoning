@@ -1425,8 +1425,8 @@ export function validateAnswer(
       errors.push('一鍵解說不得使用模擬提問或自問自答。')
     }
     if (
-      /\b[a-i][0-9][a-i][0-9]\b/i.test(playerFacingProse) ||
-      /\b(?:FEN|UCI|token|trace(?:\s*ID)?)\b/i.test(playerFacingProse) ||
+      /\b[a-i][0-9](?:[a-i][0-9])?\b/i.test(playerFacingProse) ||
+      /\b(?:FEN|UCI|token|trace(?:\s*ID)?|ply\s*\d+|[EKC]\d+[a-z]?)\b/i.test(playerFacingProse) ||
       /(?:模型(?:呼叫|调用|輪次|轮次)|證據編號|证据编号|內部驗證|内部验证|\[E\d+\])/i.test(
         playerFacingProse
       )
@@ -3095,6 +3095,8 @@ ${comparisonContract}
 - causal 每欄只用一個具體短句保留正文的因果與主線關聯，不重寫整段正文；directAnswer 只作一句摘要，完整結論仍放在 C1。節省內部重複不能減少五段可見正文、必要著法或棋盤原因。
 - 每個 evidenceId 只能支持它自己列出的逐手主線；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
 - 證據包 role=best_move 專屬首選，role=user_move 專屬實戰步。computedBoardFacts.steps 是該線唯一的有序著法與棋盤事實表：逐字採用 move，side 與本局輪走方相反才是對手應手，不能依棋子名字或左右對稱自行換路數。先按各自的 ply 分析變化，再比較兩條線；相似部署不代表著法可互換。
+- fromSquare／toSquare 是絕對走前／走後落點，只供內部比對，正文用棋子與中文路數表述，不輸出座標、id或ply標記。若兩線同側同兵種走後落點相同，先說共同作用；來源路數不同不能推出走後位置較左或較右，差異須連回留下的棋子、空出的路線及各線後續部署。
+- movedPieceCaptureTargets 只列固定走後盤面、假如該枚棋子所屬方再次輪走時，可用合法著法吃到的敵方非將帥棋子；實際下一手仍由對手走，這不是已發生吃子或必然威脅。givesCheck另行表示本手是否已將軍。targets為空只表示該棋子當下無直接合法吃子，不否定長期壓力；不得把單純出子寫成已直接攻擊某子或迫使對手受限，長期計畫必須指出後續主線如何建立壓力與其限制。
 - 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
 - 寫完後先逐段核對：五段可見正文合計至少 400 漢字；C4a、C4b 的可見正文及 causal.opponentUse、causal.consequence 要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
 - 下方 JSON 只示範欄位與 id，所有「一句直接結論」「具體後果」「盤面機制」等佔位文字都必須換成本局完整敘述。每段 claims.text 要承擔該段字數，不可只在 causal 或 audit 欄位寫長文；寫完自行計算五段 claims.text 合計漢字，不足 400 就在同一次回答內補上由主線支持的棋盤變化。

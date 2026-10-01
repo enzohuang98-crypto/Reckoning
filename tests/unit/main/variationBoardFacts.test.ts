@@ -7,6 +7,7 @@ import {
 import { START_FEN } from '../../../src/shared/types/BoardState'
 import { canonicalChineseMoveNotation, chineseMoveIsMentioned, formatChineseVariation } from '../../../src/shared/logic/board/ChineseNotation'
 import { parseFen } from '../../../src/shared/logic/board/fen'
+import { applyUciMove, legalMoveCheck } from '../../../src/shared/logic/board/moves'
 import type { HarnessEvidence } from '../../../src/shared/types/Harness'
 
 let passed = 0
@@ -126,6 +127,38 @@ const selectedUserLine = {
 check('user-move evidence summarizes its own PV rather than the best PV', summarize([selectedUserLine]).includes('E2 第 1 手：黑方炮走炮7進3，吃掉紅方兵。') && !summarize([selectedUserLine]).some((line) => line.includes('卒7進1')))
 check('an invalid starting FEN reports the replay failure without captures', summarize([{ ...capture, positionFen: 'invalid' }]).some((line) => line.includes('證據起始局面無效')) && !summarize([{ ...capture, positionFen: 'invalid' }]).some((line) => line.includes('吃掉')))
 check('empty evidence has no purported capture summary', summarize([]).length === 0)
+
+const rightCannonFacts = buildVariationBoardFacts(opening).steps
+const leftCannonFacts = buildVariationBoardFacts(replayEvidence('E1', ['b2e2', 'b9c7'], START_FEN)).steps
+check('both central cannons occupy the same absolute square despite different origins',
+  rightCannonFacts[0]?.fromSquare === 'h2' && leftCannonFacts[0]?.fromSquare === 'b2' &&
+  rightCannonFacts[0]?.toSquare === 'e2' && leftCannonFacts[0]?.toSquare === 'e2')
+check('a developed black horse has no direct capture target on the central cannon',
+  rightCannonFacts[1]?.fromSquare === 'h9' && rightCannonFacts[1]?.toSquare === 'g7' &&
+  rightCannonFacts[1]?.movedPieceCaptureTargets?.length === 0)
+check('the central cannon has an exact legally capturable pawn on the fixed resulting board',
+  JSON.stringify(rightCannonFacts[0]?.movedPieceCaptureTargets) === JSON.stringify([{ square: 'e6', side: 'black', piece: 'pawn' }]))
+check('a capture opportunity is neither a capture already made nor another actual ply',
+  rightCannonFacts.length === 2 && rightCannonFacts[0]?.captured === null &&
+  rightCannonFacts[1]?.side === 'black' && rightCannonFacts[1]?.move === '馬8進7')
+const afterCannon = applyUciMove(parseFen(START_FEN).board, 'h2e2')
+if (!afterCannon.valid) throw new Error('Opening cannon fixture must be legal')
+const afterCannonSnapshot = JSON.stringify(afterCannon.board)
+check('testing a hypothetical capture leaves the actual next side and board unchanged',
+  legalMoveCheck(afterCannon.board.grid, 'red', 'e2e6').ok &&
+  afterCannon.board.sideToMove === 'black' && JSON.stringify(afterCannon.board) === afterCannonSnapshot)
+const pinnedRookFen = '3kr4/9/9/9/9/9/9/p8/4R4/4K4 w - - 0 1'
+const pinnedRook = replayEvidence('E1', ['e1e2'], pinnedRookFen)
+const afterPinnedRook = applyUciMove(parseFen(pinnedRookFen).board, 'e1e2')
+if (!afterPinnedRook.valid) throw new Error('Pinned rook fixture must be legal')
+check('a geometrically reachable enemy pawn is excluded when capture exposes the king',
+  !legalMoveCheck(afterPinnedRook.board.grid, 'red', 'e2a2').ok &&
+  buildVariationBoardFacts(pinnedRook).steps[0]?.movedPieceCaptureTargets?.every((target) => target.square !== 'a2') === true &&
+  buildVariationBoardFacts(pinnedRook).steps[0]?.movedPieceCaptureTargets?.some((target) => target.square === 'e9' && target.piece === 'rook') === true)
+const checkingRookFacts = buildVariationBoardFacts(capture).steps
+check('check remains a separate fact and enemy kings are never capture targets',
+  checkingRookFacts[0]?.givesCheck === true &&
+  checkingRookFacts[0]?.movedPieceCaptureTargets?.every((target) => target.piece !== 'king') === true)
 
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1
