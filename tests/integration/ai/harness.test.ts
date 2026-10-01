@@ -1111,6 +1111,11 @@ async function main(): Promise<void> {
       provider.prompts[0]?.includes('"id":"E2","role":"user_move"') &&
       provider.prompts[0]?.includes('"computedBoardFacts":{"steps":[') &&
       !provider.prompts[0]?.includes('"opponentReplies":'))
+  check('首次正文把本手結果與走後機會分開表述，不投放易混淆的原始欄位',
+    provider.prompts[0]?.includes('"actualCapture":"本手未吃子。"') &&
+      provider.prompts[0]?.includes('"captureOpportunities":') &&
+      !provider.prompts[0]?.includes('"captured":') &&
+      !provider.prompts[0]?.includes('"movedPieceCaptureTargets":'))
   check(
     '完整正文提示不把第一段限制成摘要，先寫正文再填審查欄位',
     !provider.prompts[0]?.includes('與 directAnswer 相同的直接結論') &&
@@ -1291,7 +1296,7 @@ async function main(): Promise<void> {
     sameMoveProvider.prompt.includes('"computedBoardFacts"') &&
       sameMoveProvider.prompt.includes('"move":"炮二平五","side":"red"') &&
       sameMoveProvider.prompt.includes('"move":"馬8進7","side":"black"') &&
-      sameMoveProvider.prompt.includes('"captured":null,"givesCheck":false')
+      sameMoveProvider.prompt.includes('"actualCapture":"本手未吃子。","actualCheck":"本手未將軍。"')
   )
   check(
     '實戰步等同首選時保留五段 id 並改用正向顯示標題',
@@ -3583,6 +3588,32 @@ async function main(): Promise<void> {
   )
   check('具體的後果審查可通過全部檢查', baselineErrors.length === 0, baselineErrors)
 
+  const realExchangeEvidence = boardFactEvidence(
+    ['h2e2', 'h9g7', 'h0g2', 'i9h9', 'i0h0', 'g6g5', 'h0h6', 'c6c5',
+      'b2c2', 'c9e7', 'b0a2', 'b9d8', 'a0b0', 'h7i7', 'h6h9', 'g7h9'],
+    ['炮二平五', '馬8進7', '馬二進三', '車9平8', '車一平二', '卒7進1',
+      '車二進六', '卒3進1', '炮八平七', '象3進5', '馬八進九', '馬2進4',
+      '車九平八', '炮8平9', '車二進三', '馬7退8']
+  )
+  const exchangeFinding = makeFinding({
+    summary: '紅方車二進三吃黑車，接著黑方馬7退8吃紅車，雙方各少一車。',
+    opponentUse: '黑方以馬7退8吃掉紅車，回到黑車原位。',
+    boardImpact: '車二進三與馬7退8之後，雙方的車各少一枚，黑馬留在原黑車所在格。',
+    supportingMoves: ['車二進三', '馬7退8'], evidenceIds: [realExchangeEvidence.id]
+  })
+  const exchangeAudit: ConsequenceAudit = {
+    bestMovePurpose: '炮二平五先把紅炮移到中路，後續出車再交換黑車。',
+    userMoveProblem: '', consequences: [exchangeFinding], contradictions: [], enoughEvidence: true
+  }
+  const exchangeAuditErrors = validateConsequenceAudit(exchangeAudit, [realExchangeEvidence], false)
+  check('真實中性換車通過具體性與棋盤檢查，只有單項後果的結構缺項仍拒絕',
+    exchangeAuditErrors.length === 1 && exchangeAuditErrors[0]?.includes('至少需要兩項'), exchangeAuditErrors)
+  const falseExchangeErrors = validateConsequenceAudit({ ...exchangeAudit, consequences: [
+    { ...exchangeFinding, summary: exchangeFinding.summary.replace('吃黑車', '吃黑象') }
+  ] }, [realExchangeEvidence], false)
+  check('真實交換中的一個錯誤被吃棋子不能靠其他正確斷言豁免',
+    falseExchangeErrors.some(error => error.includes('吃子斷言與逐手棋盤不一致')), falseExchangeErrors)
+
   const fatVagueErrors = validateConsequenceAudit(
     makeAudit([
       makeFinding({
@@ -4406,6 +4437,12 @@ async function main(): Promise<void> {
       repairedTraces[0]?.status === 'completed',
     JSON.stringify({ calls: repairSuccessProvider.calls, errors: repairedTraces[0]?.validationErrors })
   )
+  check('修補只使用一份首選與實戰逐手來源，避免重複主線造成混淆',
+    (repairSuccessProvider.prompts[1]?.match(/"role":"best_move"/g)?.length ?? 0) === 1 &&
+      (repairSuccessProvider.prompts[1]?.match(/"role":"user_move"/g)?.length ?? 0) === 1)
+  check('中性比較的提示與修補診斷不再強迫描述變差',
+    !repairSuccessProvider.prompts[1]?.includes('後續具體變差在哪裡') &&
+      !repairSuccessProvider.prompts[1]?.includes('必須說出具體變差在哪裡'))
   check(
     '修補保留失敗診斷與原局面但不回灌被拒絕的草稿斷言',
     repairSuccessProvider.prompts[1]?.includes('錯誤：') &&

@@ -443,6 +443,28 @@ check(
   check('具體回答（含完整因果鏈）通過全部準則', good.pass, good.summary)
   check('通過時沒有失敗區塊', good.failedSections.length === 0)
 
+  const neutralExchange = buildSameMoveAnswer()
+  neutralExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text =
+    '紅方車二進三吃黑車，接著黑方馬7退8吃紅車，雙方各少一車，黑馬回到黑車原位。'
+  const exchangeInput = {
+    answer: neutralExchange,
+    availableMoves: [...AVAILABLE_MOVES, '車二進三', '馬7退8'],
+    hasUserMove: true,
+    comparisonState: 'same_move' as const,
+    groundedConcreteClaims: new Map([['C4', neutralExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text]])
+  }
+  check('由呼叫端逐手核對的中性交換可滿足具體盤面描述，不催造戰術術語',
+    !criterionFailed(scoreExplanationAnswer(exchangeInput), 'concrete_consequences'))
+  check('未經逐手核對的交換仍不能只靠著法名字取得具體性',
+    criterionFailed(scoreExplanationAnswer({ ...exchangeInput, groundedConcreteClaims: new Map<string, string>() }), 'concrete_consequences'))
+  check('其他 claim 的棋盤核對不能替當段具體性背書',
+    criterionFailed(scoreExplanationAnswer({ ...exchangeInput, groundedConcreteClaims: new Map([['C3', neutralExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text]]) }), 'concrete_consequences'))
+  const changedExchange = structuredClone(neutralExchange)
+  changedExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text =
+    '車二進三之後接著馬7退8，雙方的盤面逐漸變化。'
+  check('相同 claim id 的其他文字不能借用先前棋盤核對',
+    criterionFailed(scoreExplanationAnswer({ ...exchangeInput, answer: changedExchange }), 'concrete_consequences'))
+
   const emptyPrincipleAnswer = buildAnswer()
   const emptyPrinciple = emptyPrincipleAnswer.sections.find(
     (section) => section.id === HARNESS_SECTION_IDS.practicalPrinciple

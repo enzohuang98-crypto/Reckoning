@@ -244,8 +244,8 @@ const CAUSAL_FIELD_LABELS: Record<keyof CausalChain, string> = {
   cause: '原因（因為哪一步）',
   mechanism: '機制（造成什麼棋理或盤面變化）',
   affected: '受影響對象（棋子、線路、王區、陣形或威脅）',
-  opponentUse: '對手利用（對手下一步如何利用）',
-  consequence: '後果（後續具體變差在哪裡）'
+  opponentUse: '對手利用／應對（對手下一步如何回應）',
+  consequence: '後果（後續具體盤面變化）'
 }
 
 /**
@@ -291,7 +291,7 @@ export function validateClaimCausalChain(
     issues.push('因果鏈的機制與受影響對象沒有使用具體象棋詞彙或主線著法。')
   }
   if (looksVagueConsequenceText(causal.consequence, availableMoves)) {
-    issues.push('因果鏈的後果仍是空泛標籤，必須說出具體變差在哪裡。')
+    issues.push('因果鏈的後果仍是空泛標籤，必須說出具體盤面變化。')
   }
   if (!compactChineseText(causal.opponentUse) || causal.opponentUse.length < 6) {
     issues.push('因果鏈的對手利用描述太短，必須說明對手下一步怎麼走、利用什麼。')
@@ -365,6 +365,8 @@ export interface QualityScorerInput {
   comparisonState?: MoveComparisonEvidenceState
   /** 只計玩家實際看得到的正文漢字；未設定時不套用篇幅門檻。 */
   minimumHanCharacters?: number
+  /** Caller-computed replay relations in this claim's visible text, never model-supplied verified flags. */
+  groundedConcreteClaims?: ReadonlyMap<string, string>
 }
 
 /** Stable ids used by validation and repair; headings are display-only. */
@@ -432,7 +434,8 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
     userMoveDisplay,
     hasUserMove,
     comparisonState = hasUserMove ? 'evidence_backed_difference' : 'insufficient',
-    minimumHanCharacters
+    minimumHanCharacters,
+    groundedConcreteClaims
   } = input
   const requiresNegativeComparison =
     hasUserMove && comparisonState === 'evidence_backed_difference'
@@ -600,11 +603,12 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       if (distinctMentionedMoves(text, availableMoves) < 2) {
         issues.push('後續後果沒有逐字連回至少兩步主線著法。')
       }
-      if (!containsConcreteXiangqiTerm(text)) {
+      if (!containsConcreteXiangqiTerm(text) &&
+          !consequenceSection.claims.some(claim => groundedConcreteClaims?.get(claim.id) === claim.text)) {
         issues.push('後續後果沒有使用具體象棋詞彙指出位置、棋子關係或威脅。')
       }
       if (!CAUSAL_CONNECTIVES.test(text) && !/(之後|接著|接下來|然後)/.test(text)) {
-        issues.push('後續後果缺少因果或時序連接，看不出盤面如何一步步變差。')
+        issues.push('後續後果缺少因果或時序連接，看不出盤面如何一步步變化。')
       }
     }
     record(

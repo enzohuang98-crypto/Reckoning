@@ -1,5 +1,5 @@
 import { buildBoardQuestionFacts } from './BoardQuestionFacts'
-import { buildVariationBoardFacts, summarizeVariationCaptures, validateVariationBoardStatements, VARIATION_BOARD_FACT_MAX_PLIES } from './VariationBoardFacts'
+import { buildVariationBoardFacts, hasAffirmedConcreteVariationRelation, modelFacingVariationStep, summarizeVariationCaptures, validateVariationBoardStatements, VARIATION_BOARD_FACT_MAX_PLIES } from './VariationBoardFacts'
 import { buildQuestionRecoveryPrompt, extractDirectQuestionText, isFocusedQuestionAnswer } from './QuestionAnswerQuality'
 import { randomUUID } from 'node:crypto'
 import type { AIProvider, TokenUsage } from '@shared/types/AIProviderTypes'
@@ -402,11 +402,13 @@ function makeEvidence(
 
 /** Each model-visible ID exposes only its bounded replayed variation. */
 function publicScopedEvidence(item: HarnessEvidence): object {
+  const facts = buildVariationBoardFacts(item)
   return {
     id: item.id, purpose: item.purpose, engineName: item.engineName,
     positionFen: item.positionFen, move: item.displayMove, depth: item.depth,
     principalVariation: item.displayPrincipalVariation.slice(0, VARIATION_BOARD_FACT_MAX_PLIES),
-    computedBoardFacts: buildVariationBoardFacts(item)
+    computedBoardFacts: { ...facts, steps: facts.steps.map(modelFacingVariationStep),
+      captureOpportunityScope: 'captureOpportunities只列固定走後盤面，假如此手走子方再次輪走的合法可吃目標；實際下一手仍由對手走。機會尚未發生，不表示必然威脅。' }
   }
 }
 
@@ -415,7 +417,8 @@ function publicComparisonEvidence(item: HarnessEvidence, role: 'best_move' | 'us
   const facts = buildVariationBoardFacts(item)
   return {
     id: item.id, role, engineName: item.engineName, positionFen: item.positionFen,
-    move: item.displayMove, depth: item.depth, computedBoardFacts: facts,
+    move: item.displayMove, depth: item.depth,
+    computedBoardFacts: { ...facts, steps: facts.steps.map(modelFacingVariationStep) },
     // Preserve an unreplayable tail as explicitly unverified engine notation;
     // it must never borrow side/capture/check facts from the other line.
     ...(facts.warning ? { unreplayedMoves: item.displayPrincipalVariation.slice(facts.steps.length, VARIATION_BOARD_FACT_MAX_PLIES) } : {})
@@ -888,7 +891,8 @@ function scoreUsedAsReasonForLanguage(
  */
 function consequenceTextIssues(
   finding: ConsequenceFinding,
-  language: ExplanationLanguage = 'zh-TW'
+  language: ExplanationLanguage = 'zh-TW',
+  evidence: HarnessEvidence[] = []
 ): string[] {
   const issues: string[] = []
   const combined = [finding.summary, finding.opponentUse, finding.boardImpact].join(' ')
@@ -902,7 +906,10 @@ function consequenceTextIssues(
   if (distinctMentionedMoves(combined, finding.supportingMoves) < 2) {
     issues.push('沒有把後果連回至少兩步實際主線著法（正文必須逐字出現這些著法）。')
   }
-  if (!containsConcreteTermForLanguage(combined, language)) {
+  const cited = evidence.filter(item => finding.evidenceIds.includes(item.id))
+  if (!containsConcreteTermForLanguage(combined, language) &&
+      ![finding.summary, finding.opponentUse, finding.boardImpact]
+        .some(text => hasAffirmedConcreteVariationRelation(text, cited))) {
     issues.push(
       `沒有使用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）指出位置、棋子關係或威脅。`
     )
@@ -956,9 +963,9 @@ export function validateConsequenceAudit(
   }
   if (hasUserMove) {
     if (!audit.userMoveProblem) {
-      errors.push('缺少使用者著法錯失機會的解釋。')
+      errors.push('缺少實戰著法與首選的關係說明。')
     } else if (looksVaguePurposeText(audit.userMoveProblem)) {
-      errors.push('使用者著法的問題描述太空泛，必須具體說明錯失了什麼。')
+      errors.push('實戰著法的描述太空泛，必須具體說明計畫與比較關係。')
     }
     if (
       comparisonState === 'same_move' &&
@@ -1042,7 +1049,7 @@ export function validateConsequenceAudit(
     ) {
       errors.push(`${consequence.id} 使用了未出現在其引用變例中的著法。`)
     }
-    for (const issue of consequenceTextIssues(consequence, language)) {
+    for (const issue of consequenceTextIssues(consequence, language, evidence)) {
       errors.push(`${consequence.id} ${issue}`)
     }
   }
@@ -1138,11 +1145,12 @@ export function validateConsequenceAudit(
 
 function concreteVerifiedConsequences(
   audit: ConsequenceAudit,
-  language: ExplanationLanguage = 'zh-TW'
+  language: ExplanationLanguage = 'zh-TW',
+  evidence: HarnessEvidence[] = []
 ): ConsequenceFinding[] {
   return audit.consequences.filter(
     (item) =>
-      item.verified && consequenceTextIssues(item, language).length === 0
+      item.verified && consequenceTextIssues(item, language, evidence).length === 0
   )
 }
 
@@ -1543,8 +1551,13 @@ function scoreAnswerForLanguage(
   hasUserMove: boolean,
   comparisonState: MoveComparisonEvidenceState,
   language: ExplanationLanguage,
-  minimumHanCharacters?: number
+  minimumHanCharacters?: number,
+  evidence: HarnessEvidence[] = []
 ): QualityReport {
+  const groundedConcreteClaims = new Map(answer.sections.flatMap(section =>
+    section.claims.filter(claim => hasAffirmedConcreteVariationRelation(
+      claim.text, evidence.filter(item => claim.evidenceIds.includes(item.id))
+    )).map(claim => [claim.id, claim.text] as const)))
   const base = scoreExplanationAnswer({
     answer,
     availableMoves,
@@ -1552,7 +1565,8 @@ function scoreAnswerForLanguage(
     userMoveDisplay,
     hasUserMove,
     comparisonState,
-    minimumHanCharacters
+    minimumHanCharacters,
+    groundedConcreteClaims
   })
   if (hasUserMove || language === 'zh-TW') return base
 
@@ -1576,7 +1590,8 @@ function scoreAnswerForLanguage(
     if (distinctMentionedMoves(consequenceText, availableMoves) < 2) {
       consequenceIssues.push('後續後果沒有逐字連回至少兩步主線著法。')
     }
-    if (!containsConcreteTermForLanguage(consequenceText, language)) {
+    if (!containsConcreteTermForLanguage(consequenceText, language) &&
+        !consequenceSection.claims.some(claim => groundedConcreteClaims.get(claim.id) === claim.text)) {
       consequenceIssues.push('後續後果沒有使用具體象棋詞彙指出位置、棋子關係或威脅。')
     }
     if (!hasCausalConnectorForLanguage(consequenceText, language)) {
@@ -1761,7 +1776,7 @@ function buildFallbackAnswer(
   const userMove = analysis.displayUserMove ?? '這步'
   const bestMove = analysis.displayBestMove ?? copy.bestMoveFallback
   const findings = audit
-    ? concreteVerifiedConsequences(audit, fallbackLanguage).filter(
+    ? concreteVerifiedConsequences(audit, fallbackLanguage, evidence).filter(
         (item) =>
           hasUserMove ||
           !hasNoUserMoveFraming(
@@ -3096,7 +3111,7 @@ ${comparisonContract}
 - 每個 evidenceId 只能支持它自己列出的逐手主線；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
 - 證據包 role=best_move 專屬首選，role=user_move 專屬實戰步。computedBoardFacts.steps 是該線唯一的有序著法與棋盤事實表：逐字採用 move，side 與本局輪走方相反才是對手應手，不能依棋子名字或左右對稱自行換路數。先按各自的 ply 分析變化，再比較兩條線；相似部署不代表著法可互換。
 - fromSquare／toSquare 是絕對走前／走後落點，只供內部比對，正文用棋子與中文路數表述，不輸出座標、id或ply標記。若兩線同側同兵種走後落點相同，先說共同作用；來源路數不同不能推出走後位置較左或較右，差異須連回留下的棋子、空出的路線及各線後續部署。
-- movedPieceCaptureTargets 只列固定走後盤面、假如該枚棋子所屬方再次輪走時，可用合法著法吃到的敵方非將帥棋子；實際下一手仍由對手走，這不是已發生吃子或必然威脅。givesCheck另行表示本手是否已將軍。targets為空只表示該棋子當下無直接合法吃子，不否定長期壓力；不得把單純出子寫成已直接攻擊某子或迫使對手受限，長期計畫必須指出後續主線如何建立壓力與其限制。
+- actualCapture 與 actualCheck 明示本手已發生的吃子／將軍；captureOpportunities 只列固定走後盤面、假如該枚棋子所屬方再次輪走時，可用合法著法吃到的敵方非將帥棋子。實際下一手仍由對手走，機會不是已發生吃子或必然威脅；本手未吃子不得因targets有棋子就說已吃。targets為空只表示該棋子當下無直接合法吃子，不否定長期壓力；不得把單純出子寫成已直接攻擊某子或迫使對手受限，長期計畫必須指出後續主線如何建立壓力與其限制。
 - 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
 - 寫完後先逐段核對：五段可見正文合計至少 400 漢字；C4a、C4b 的可見正文及 causal.opponentUse、causal.consequence 要點出本局具體棋子與線路，例如有主線支持時才說中路或炮架，不能只用「較好」「節奏」等抽象詞。
 - 下方 JSON 只示範欄位與 id，所有「一句直接結論」「具體後果」「盤面機制」等佔位文字都必須換成本局完整敘述。每段 claims.text 要承擔該段字數，不可只在 causal 或 audit 欄位寫長文；寫完自行計算五段 claims.text 合計漢字，不足 400 就在同一次回答內補上由主線支持的棋盤變化。
@@ -3242,7 +3257,8 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
         }
         verifiedConsequenceCount = concreteVerifiedConsequences(
           audit,
-          validationLanguage
+          validationLanguage,
+          evidence
         ).length
         validationErrors.push(...auditErrors)
         break
@@ -3367,7 +3383,8 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
       }
       verifiedConsequenceCount = concreteVerifiedConsequences(
         audit,
-        validationLanguage
+        validationLanguage,
+        evidence
       ).length
       validationErrors.push(...auditErrors)
       if (auditErrors.length === 0) break
@@ -3388,7 +3405,8 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
 
     let concreteConsequences = concreteVerifiedConsequences(
       audit,
-      validationLanguage
+      validationLanguage,
+      evidence
     ).filter(
       (item) =>
         hasUserMove ||
@@ -3525,8 +3543,8 @@ ${
       {"id":"C1","text":"實戰步較差的直接因果。","evidenceIds":["E1"]}
     ]},
     {"id":"actual_move_problem","heading":"實戰步問題","claims":[
-      {"id":"C2","text":"錯失的機會以及為什麼不好。","evidenceIds":["E1"],"findingIds":["K1"],
-       "causal":{"cause":"因為走了主線中的某步中文著法","mechanism":"造成的棋理或盤面變化","affected":"受影響的棋子或線路","opponentUse":"對手下一步如何利用","consequence":"後續具體變差在哪裡"}}
+      {"id":"C2","text":"按比較狀態說明實戰步的具體計畫與差異。","evidenceIds":["E1"],"findingIds":["K1"],
+       "causal":{"cause":"因為走了主線中的某步中文著法","mechanism":"造成的棋理或盤面變化","affected":"受影響的棋子或線路","opponentUse":"對手下一步如何應對","consequence":"後續具體盤面變化"}}
     ]},
     {"id":"best_move_plan","heading":"AI 首選","claims":[
       {"id":"C3","text":"AI 首選的具體目的。","evidenceIds":["E1"]}
@@ -3695,7 +3713,8 @@ ${
             validationLanguage,
             isInitialMoveComparison
               ? INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS
-              : undefined
+              : undefined,
+            evidence
           )
     let deterministicErrors = validateCandidate(answer)
     let quality = scoreAnswer(answer)
@@ -3721,8 +3740,7 @@ ${
 ${initialCombinedPrompt}
 本次必須修正的錯誤：${JSON.stringify([...auditErrors, ...deterministicErrors, ...quality.criteria.filter((item) => !item.pass).flatMap((item) => item.issues)].slice(0, 20))}
 比較狀態：${comparisonContract}
-首選證據：${JSON.stringify(publicComparisonEvidence(best, 'best_move'))}
-實戰證據：${JSON.stringify(publicComparisonEvidence(user, 'user_move'))}
+首選與實戰證據沿用上方唯一逐手來源，不另列重複主線。
 computedBoardFacts 只證明該變例已列出的輪走方、路數、吃子和將軍；不是策略優劣的證明，warning 之後不得推測棋盤事實。
 K1、K2 的 claimId 分別引用 C4a、C4b；每個 claim 只引用實戰證據 ${user.id}，可見 text 本身逐字寫出至少兩步該線著法與盤面因果或時序，causal.opponentUse 必須逐字包含該線對手應手。隱藏 causal 不能補足缺少的正文。audit 不重写這些欄位，程式不補造缺少的內容。C3 只談首選主線 ${best.id}，若提實戰著法也須同時引用 ${user.id}。C4a、C4b 只引用 ${user.id}，分別連到 K1、K2；audit 用 claimId 引用對應 claim，不重寫正文／causal 內容。不得把可選主線寫成必然結果。
 answer 保留原五個 section id 與比較狀態對應標題。五段 claims.text 合計至少 400 個繁體漢字，目標約 500–900；audit、causal、heading、directAnswer 不計入字數。請在五段可見正文完整解釋本局棋子、線路、合理應對及盤面影響，不重複空話。只用本局證據與可計算棋盤事實，不能用分數代替原因；保留每項必要的 evidenceIds、findingIds、causal。修補後重新檢查整份 JSON 的引用及字數。
@@ -3742,7 +3760,7 @@ answer 保留原五個 section id 與比較狀態對應標題。五段 claims.te
           validationErrors.push(...repairedAuditErrors.map((item) => `修補審查未通過：${item}`))
         } else {
           const repairedConsequences = concreteVerifiedConsequences(
-            repairedAudit, validationLanguage
+            repairedAudit, validationLanguage, evidence
           )
           const repairedAnswer = applyComparisonPresentation(
             attachVerifiedFindingIds({
@@ -3904,7 +3922,7 @@ ${JSON.stringify(
 ${
   hasUserMove
     ? `- 第 2～5 區每個非證據不足 claim 必須用 findingIds 連到可用 K 編號。
-- 每個核心 claim 附 "causal" 五段因果鏈（cause 必須逐字含主線中文著法；mechanism/affected 用具體象棋詞彙，例如：${CONCRETE_TERM_EXAMPLES}；consequence 說出具體變差在哪裡）。`
+- 每個核心 claim 附 "causal" 五段因果鏈（cause 必須逐字含主線中文著法；mechanism/affected 說清本局棋子關係，可用經逐手核對的具體交換或棋理詞彙，例如：${CONCRETE_TERM_EXAMPLES}；consequence 說出具體盤面變化，是否較差須依比較狀態與主線）。`
     : `- 本次沒有提供使用者著法，只能修正目前局面、最佳著法目的與最佳著法後續主線；禁止新增、批評或比較未提供的著法。
 - 「後續主線與具體後果」每個非證據不足 claim 必須用 findingIds 連到可用 K 編號，並附以最佳著法主線為原因的 "causal" 五段因果鏈。`
 }

@@ -29,6 +29,36 @@ export interface VariationStepFact {
   givesCheck: boolean
 }
 
+const CHINESE_PIECE_NAMES: Record<PieceColor, Record<PieceType, string>> = {
+  red: { king: '帥', advisor: '仕', elephant: '相', horse: '馬', rook: '車', cannon: '炮', pawn: '兵' },
+  black: { king: '將', advisor: '士', elephant: '象', horse: '馬', rook: '車', cannon: '炮', pawn: '卒' }
+}
+const chineseSide = (side: PieceColor): string => side === 'red' ? '紅方' : '黑方'
+const chinesePiece = (side: PieceColor, piece: PieceType): string =>
+  `${chineseSide(side)}${CHINESE_PIECE_NAMES[side][piece]}`
+
+/**
+ * A pure per-step prompt projection; replay and validation retain typed facts.
+ * The caller describes the fixed-board, hypothetical next-own-turn opportunity
+ * scope once in the prompt, rather than repeating it for every step.
+ */
+export function modelFacingVariationStep(step: VariationStepFact):
+  Omit<VariationStepFact, 'captured' | 'givesCheck' | 'movedPieceCaptureTargets'> & {
+    actualCapture: string
+    actualCheck: string
+    captureOpportunities: { square: string; piece: string }[]
+  } {
+  const { captured, givesCheck, movedPieceCaptureTargets, ...identity } = step
+  return {
+    ...identity,
+    actualCapture: captured ? `本手吃掉${chinesePiece(captured.side, captured.piece)}。` : '本手未吃子。',
+    actualCheck: givesCheck ? '本手已將軍。' : '本手未將軍。',
+    captureOpportunities: movedPieceCaptureTargets.map((target) => ({
+      square: target.square, piece: chinesePiece(target.side, target.piece)
+    }))
+  }
+}
+
 /** Board facts only, never a strategic verdict or proof of a model's explanation. */
 export function buildVariationBoardFacts(evidence: HarnessEvidence): {
   steps: VariationStepFact[]
@@ -98,12 +128,6 @@ export function buildVariationBoardFacts(evidence: HarnessEvidence): {
  */
 export function summarizeVariationCaptures(evidence: readonly HarnessEvidence[]): string[] {
   if (evidence.length === 0) return []
-  const names: Record<PieceColor, Record<PieceType, string>> = {
-    red: { king: '帥', advisor: '仕', elephant: '相', horse: '馬', rook: '車', cannon: '炮', pawn: '兵' },
-    black: { king: '將', advisor: '士', elephant: '象', horse: '馬', rook: '車', cannon: '炮', pawn: '卒' }
-  }
-  const pieceName = (side: PieceColor, piece: PieceType): string =>
-    `${side === 'red' ? '紅方' : '黑方'}${names[side][piece]}`
   const summaries = [
     `吃子摘要只涵蓋各變例最多前 ${VARIATION_BOARD_FACT_MAX_PLIES} 手的已重播前綴，不是終局子力或優劣判定。共同事件只比較被吃方與棋子類別，不表示同一枚棋子。`
   ]
@@ -118,7 +142,7 @@ export function summarizeVariationCaptures(evidence: readonly HarnessEvidence[])
     if (facts.warning) summaries.push(`${item.id}：${facts.warning}`)
     for (const step of captures) {
       const captured = step.captured!
-      summaries.push(`${item.id} 第 ${step.ply} 手：${pieceName(step.side, step.piece)}走${step.move}，吃掉${pieceName(captured.side, captured.piece)}。`)
+      summaries.push(`${item.id} 第 ${step.ply} 手：${chinesePiece(step.side, step.piece)}走${step.move}，吃掉${chinesePiece(captured.side, captured.piece)}。`)
       let categories = sharedByFen.get(item.positionFen)
       if (!categories) {
         categories = new Map()
@@ -139,7 +163,7 @@ export function summarizeVariationCaptures(evidence: readonly HarnessEvidence[])
     for (const { captured, pliesById } of categories.values()) {
       if (pliesById.size < 2) continue
       const locations = [...pliesById].map(([id, plies]) => `${id} 第 ${plies.join('、')} 手`).join('；')
-      summaries.push(`相同起始局面的已重播前綴共同出現被吃${pieceName(captured.side, captured.piece)}：${locations}。不能據此稱為某一條變例獨有的損失，也不能據此判定走法優劣。`)
+      summaries.push(`相同起始局面的已重播前綴共同出現被吃${chinesePiece(captured.side, captured.piece)}：${locations}。不能據此稱為某一條變例獨有的損失，也不能據此判定走法優劣。`)
     }
   }
   return summaries
@@ -155,7 +179,34 @@ export function validateVariationBoardStatements(
   text: string,
   evidence: HarnessEvidence[]
 ): string[] {
+  return inspectVariationBoardStatements(text, evidence).issues
+}
+
+/**
+ * True only for an affirmative capture, check, or current capture opportunity
+ * explicitly matched to this claim's cited replay. Capture relations must name
+ * a target piece or square; denials, deployment, and strategy are not proofs of
+ * a concrete relation. Any detected board-statement error vetoes the result.
+ * This establishes the relation's concreteness, never the rest of the prose's
+ * strategic conclusions or facts outside the bounded literal-move parser.
+ */
+export function hasAffirmedConcreteVariationRelation(
+  text: string,
+  evidence: HarnessEvidence[]
+): boolean {
+  const inspection = inspectVariationBoardStatements(text, evidence)
+  return inspection.affirmations > 0 && inspection.issues.length === 0 && !inspection.unboundPredicates
+}
+
+function inspectVariationBoardStatements(
+  text: string,
+  evidence: HarnessEvidence[]
+): { issues: string[]; affirmations: number; unboundPredicates: boolean } {
   const issues: string[] = []
+  let affirmations = 0
+  let unboundPredicates = false
+  const capturePattern = /((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方|紅|红|黑))?([a-i][0-9])?([兵卒車车炮砲馬马象相士仕將将帥帅])?/g
+  const checkPattern = /((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?)(?:形成|構成|构成)?(?:將軍|将军)/g
   // Discover assertions before looking up their evidence. A whitelist matcher
   // would silently discard invented moves, rather than reject unbound facts.
   const facts = evidence.flatMap((item) => buildVariationBoardFacts(item).steps)
@@ -181,15 +232,27 @@ export function validateVariationBoardStatements(
   }
   const isHypothetical = (prefix: string): boolean =>
     /如果|假如|若|可能|將來|将来|未來|未来|後續|后续|更遠|更远|是否|能否|無法確認|无法确认/.test(predicateScope(prefix))
+  const isHedged = (prefix: string): boolean =>
+    /未必|不一定|或許|或许|也許|也许|似乎|大概/.test(predicateScope(prefix))
   const literalListGap = /^\s*[」』”"'’]?\s*、\s*[「『“"'‘]?\s*$/
-  for (const clause of text.split(/[。！？；，,.!?;\n]/)) {
+  for (const segment of text.split(/(?<=[。！？；，,.!?;\n])/)) {
+    const clause = segment.replace(/[。！？；，,.!?;\n]+$/, '')
+    const affirmativeClause = !/[？?]/.test(segment) &&
+      !/可否|會不會|会不会|有沒有|有没有|嗎|吗/.test(clause)
     const mentions = chineseMoveMentions(clause)
+    // A proven predicate elsewhere cannot certify an omitted-move assertion.
+    // Keep validation's existing scope, but fail the concreteness helper closed
+    // rather than inventing which prior move a separate clause refers to.
+    if (mentions.length === 0 &&
+      ([...clause.matchAll(capturePattern)].length > 0 || [...clause.matchAll(checkPattern)].length > 0)) {
+      unboundPredicates = true
+    }
     let listActor: { side: PieceColor; prefix: string } | null = null
     for (const [index, mention] of mentions.entries()) {
       const move = mention.move
       const before = clause.slice(index === 0 ? 0 : mentions[index - 1]!.index + mentions[index - 1]!.move.length, mention.index)
       const after = clause.slice(mention.index + move.length, mentions[index + 1]?.index ?? clause.length)
-      const explicitActor = /(紅方|红方|黑方)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)
+      const explicitActor = /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)
       // Only adjacent literal list members inherit an actor. Narrative and
       // comparison words break the list; a named next actor starts a new one.
       const isListMember = index > 0 && literalListGap.test(before)
@@ -203,7 +266,7 @@ export function validateVariationBoardStatements(
         ? { side: sideOf(explicitActor[1]!), prefix: before }
         : isListMember ? listActor : null
       const side = listActor?.side
-      const captures = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?(?:吃掉|吃去|吃子|吃))(?:了)?(?:一[個枚]?|一顆)?(?:(紅方|红方|黑方))?([a-i][0-9])?([兵卒車车炮砲馬马象相士仕將将帥帅])?/g)]
+      const captures = [...after.matchAll(capturePattern)]
         .flatMap((match) => {
           const prefix = before + after.slice(0, match.index)
           const modal = /((?:(?:沒有|没有|沒|没|未|不|非)(?:是)?)?(?:可(?:以)?|能(?:夠|够)?|可能)|無法|无法|沒有機會|没有机会|沒機會|没机会|有機會|有机会)(?:直接|立即|立刻)?$/.exec(prefix)
@@ -221,7 +284,7 @@ export function validateVariationBoardStatements(
             : /^(沒有|没有|未|不|非)/.test(match[1]!)
           return [{ match, opportunity, denied }]
         })
-      const checks = [...after.matchAll(/((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?)(?:形成|構成|构成)?(?:將軍|将军)/g)]
+      const checks = [...after.matchAll(checkPattern)]
         .filter((match) => !isHypothetical(before + after.slice(0, match.index)))
       if (!side && captures.length === 0 && checks.length === 0) continue
       const canonicalMove = canonicalChineseMoveNotation(move)
@@ -252,6 +315,9 @@ export function validateVariationBoardStatements(
           issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同${kind}結果，必須指明所述步數。`)
         } else if (denied ? matchingCapture(fact) : !matchingCapture(fact)) {
           issues.push(`棋盤事實：${move} 的${kind}斷言與逐手棋盤不一致。`)
+        } else if (affirmativeClause && !denied && (capture[3] || capture[4]) &&
+          !isHedged(before + after.slice(0, capture.index))) {
+          affirmations += 1
         }
       }
       for (const check of checks) {
@@ -260,9 +326,11 @@ export function validateVariationBoardStatements(
           issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同將軍結果，必須指明所述步數。`)
         } else if (denied ? fact.givesCheck : !fact.givesCheck) {
           issues.push(`棋盤事實：${move} 的將軍斷言與逐手棋盤不一致。`)
+        } else if (affirmativeClause && !denied && !isHedged(before + after.slice(0, check.index))) {
+          affirmations += 1
         }
       }
     }
   }
-  return [...new Set(issues)]
+  return { issues: [...new Set(issues)], affirmations, unboundPredicates }
 }

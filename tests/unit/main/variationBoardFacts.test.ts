@@ -1,5 +1,7 @@
 import {
   buildVariationBoardFacts,
+  hasAffirmedConcreteVariationRelation,
+  modelFacingVariationStep,
   summarizeVariationCaptures,
   VARIATION_BOARD_FACT_MAX_PLIES,
   validateVariationBoardStatements as validate
@@ -255,6 +257,104 @@ check('a literal list explicitly used for comparison does not assign its moves t
   validate('紅方以「馬二進三」、「車9平8」進行對照。', [horseOpportunity]).length === 0)
 check('later comparison prose does not exempt an earlier wrong-side action list',
   validate('紅方以「馬二進三」、「車9平8」展開並比較後續計畫。', [horseOpportunity]).length > 0)
+
+const rookExchange = replayEvidence('E2', [
+  'h2e2', 'h9g7', 'h0g2', 'i9h9', 'i0h0', 'g6g5', 'h0h6', 'c6c5',
+  'b2c2', 'c9e7', 'b0a2', 'b9d8', 'a0b0', 'h7i7', 'h6h9', 'g7h9'
+], START_FEN)
+check('a real rook exchange establishes a concrete relation without tactical glossary terms',
+  hasAffirmedConcreteVariationRelation('紅方車二進三吃黑車，接著黑方馬7退8吃紅車，雙方各少一車。', [rookExchange]))
+check('a short explicit actor cannot assign a red capture to Black',
+  !hasAffirmedConcreteVariationRelation('黑車二進三吃黑車。', [rookExchange]))
+check('asking about a capture does not affirm that it occurred',
+  !hasAffirmedConcreteVariationRelation('紅方車九進八吃黑卒嗎？', [capture]) &&
+  !hasAffirmedConcreteVariationRelation('紅方車九進八可否吃黑卒？', [capture]))
+const concreteRelation = hasAffirmedConcreteVariationRelation
+check('a completed capture uses captured rather than a different post-move target',
+  concreteRelation('紅方車二進三吃黑車。', [rookExchange]) &&
+  !concreteRelation('紅方車二進三吃黑象。', [rookExchange]))
+check('short target-side spelling cannot change the captured side',
+  !concreteRelation('紅方車二進三吃紅車。', [rookExchange]) &&
+  !concreteRelation('車九進八吃紅兵。', [capture]))
+check('an uncited variation cannot establish a concrete exchange relation',
+  !concreteRelation('紅方車二進三吃黑車。', [opening]) &&
+  !concreteRelation('紅方車二進三吃黑車。', []))
+check('a named legal current target establishes an opportunity without asserting a capture',
+  concreteRelation('紅方馬三進四當下可吃黑方e6卒。', [horseOpportunity]) &&
+  concreteRelation('紅方炮二平五可以吃黑卒。', [opening]) &&
+  concreteRelation('黑方炮8平9能吃紅兵。', [horseOpportunity]))
+check('wrong current target type side or square cannot establish concreteness',
+  !concreteRelation('紅方馬三進四可吃黑車。', [horseOpportunity]) &&
+  !concreteRelation('紅方馬三進四可吃紅兵。', [horseOpportunity]) &&
+  !concreteRelation('紅方馬三進四可吃黑方e5卒。', [horseOpportunity]))
+check('king safety restrictions also veto a concrete opportunity',
+  !concreteRelation('紅方車五進一可吃黑卒。', [pinnedRook]) &&
+  concreteRelation('紅方車五進一可吃黑車。', [pinnedRook]))
+check('an actual check establishes a relation independently of capturing',
+  concreteRelation('紅方車九進八將軍。', [capture]) &&
+  !concreteRelation('紅方炮二平五將軍。', [opening]))
+check('vague possibilities and remote conditions do not establish an affirmed relation',
+  !concreteRelation('紅方馬三進四可能吃黑卒。', [horseOpportunity]) &&
+  !concreteRelation('如果紅方車九進八吃黑卒，將來可能將軍。', [capture]) &&
+  !concreteRelation('無法確認紅方車九進八是否吃黑卒。', [capture]))
+check('hedged present captures or checks are not positive proof even on a matching board',
+  !concreteRelation('紅方車九進八未必吃黑卒。', [capture]) &&
+  !concreteRelation('紅方車九進八似乎將軍。', [capture]))
+check('explicit current possibilities are concretely checked but bare unnamed targets are not',
+  concreteRelation('紅方馬三進四當下可能吃黑卒。', [horseOpportunity]) &&
+  !concreteRelation('紅方馬三進四可吃子。', [horseOpportunity]) &&
+  !concreteRelation('紅方車九進八吃子。', [capture]))
+check('a truthful denial alone does not establish an affirmative mechanism',
+  !concreteRelation('紅方炮二平五沒有吃子也沒有將軍。', [opening]) &&
+  !concreteRelation('紅方馬三進四不能吃黑車。', [horseOpportunity]) &&
+  !concreteRelation('紅方車九進八沒有吃黑車。', [capture]))
+check('legal move mentions and tactical vocabulary alone are not replay-confirmed relations',
+  !concreteRelation('紅方炮二平五控制中路，黑方馬8進7發展。', [opening]) &&
+  !concreteRelation('牽制、肋道、抽將形成多點壓力。', [opening]) &&
+  !concreteRelation('炮二平五、馬8進7。', [opening]))
+check('a true relation never exempts a separate false capture or wrong-side assertion',
+  !concreteRelation('紅方車二進三吃黑車，但這步吃黑象。', [rookExchange]) &&
+  !concreteRelation('紅方車二進三吃黑車。紅方馬7退8吃紅車。', [rookExchange]) &&
+  !concreteRelation('紅方馬三進四可吃黑卒但已吃黑卒。', [horseOpportunity]))
+check('ambiguous repeated moves cannot affirm capture or current-target facts',
+  !concreteRelation('車九進八吃黑卒。', [capture, { ...noCapture, id: 'E2' }]) &&
+  !concreteRelation('炮二平五可吃黑方e6卒。', [opening, shiftedPawnLine]))
+check('non-replayable evidence cannot establish a positive relation',
+  !concreteRelation('紅方車九進八吃黑卒。', [evidence([], ['車九進八'])]) &&
+  !concreteRelation('紅方車九進八吃黑卒。', [{ ...capture, displayPrincipalVariation: ['車九平五'] }]))
+const exchangeCapture = buildVariationBoardFacts(rookExchange).steps[14]!
+check('the model-facing result separates this move capturing a rook from its later elephant target',
+  modelFacingVariationStep(exchangeCapture).actualCapture === '本手吃掉黑方車。' &&
+  JSON.stringify(modelFacingVariationStep(exchangeCapture).captureOpportunities) ===
+    JSON.stringify([{ square: 'g9', piece: '黑方象' }]))
+const projectedCannon = modelFacingVariationStep(rightCannonFacts[0]!)
+check('a non-capturing deployment and its current pawn target remain visibly separate',
+  projectedCannon.actualCapture === '本手未吃子。' &&
+  JSON.stringify(projectedCannon.captureOpportunities) === JSON.stringify([{ square: 'e6', piece: '黑方卒' }]))
+check('pawn names are translated according to the captured side',
+  modelFacingVariationStep(buildVariationBoardFacts(bestPly18).steps[0]!).actualCapture === '本手吃掉紅方兵。' &&
+  modelFacingVariationStep(checkingRookFacts[0]!).actualCapture === '本手吃掉黑方卒。')
+check('the actual check result is explicit for both checking and non-checking moves',
+  modelFacingVariationStep(checkingRookFacts[0]!).actualCheck === '本手已將軍。' &&
+  projectedCannon.actualCheck === '本手未將軍。')
+check('black opportunities retain their move side and the enemy pawn name',
+  modelFacingVariationStep(buildVariationBoardFacts(horseOpportunity).steps[5]!).captureOpportunities.some((target) => target.piece === '紅方兵') &&
+  modelFacingVariationStep(buildVariationBoardFacts(horseOpportunity).steps[5]!).side === 'black')
+check('prompt translation retains move identity while replacing the ambiguous raw result fields',
+  projectedCannon.ply === 1 && projectedCannon.move === '炮二平五' && projectedCannon.side === 'red' &&
+  projectedCannon.fromSquare === 'h2' && projectedCannon.toSquare === 'e2' &&
+  projectedCannon.fromFile === 2 && projectedCannon.toFile === 5 &&
+  !('captured' in projectedCannon) && !('givesCheck' in projectedCannon) && !('movedPieceCaptureTargets' in projectedCannon))
+const replayPrefix = buildVariationBoardFacts(invalidTail)
+const promptPrefix = { ...replayPrefix, steps: replayPrefix.steps.map(modelFacingVariationStep) }
+check('a replay warning is retained and only the verified prefix is translated',
+  promptPrefix.warning?.includes('第 2 手未通過合法性檢查') === true && promptPrefix.steps.length === 1 &&
+  promptPrefix.steps[0]?.actualCapture === '本手吃掉紅方兵。')
+const captureFactBeforeTranslation = JSON.stringify(exchangeCapture)
+modelFacingVariationStep(exchangeCapture)
+check('prompt translation leaves typed replay facts unchanged for validation',
+  JSON.stringify(exchangeCapture) === captureFactBeforeTranslation && exchangeCapture.captured?.piece === 'rook' &&
+  exchangeCapture.movedPieceCaptureTargets[0]?.piece === 'elephant')
 
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1
