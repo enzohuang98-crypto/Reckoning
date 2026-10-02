@@ -3913,6 +3913,26 @@ async function main(): Promise<void> {
   check('同首選澄清不是失誤不會被負評篩選誤擋',
     !validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
       .some((error) => error.includes('同一著法')))
+  for (const directAnswer of [
+    '炮二平五與首選一致，實戰步不是失誤或敗著。',
+    '如果實戰步失誤導致更差，還需要後續主線確認。炮二平五在此與首選相同。'
+  ]) {
+    const scopedVerdictAnswer = structuredClone(sameVerdictAnswer)
+    scopedVerdictAnswer.directAnswer = directAnswer
+    const errors = validateAnswer(scopedVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
+    check(`同首選完整五段的否定／條件說明通過正式 validator：${directAnswer}`,
+      errors.length === 0, errors)
+  }
+  for (const directAnswer of [
+    '炮二平五不是失誤而是敗著。',
+    '炮二平五不是失誤或敗著，但仍是更差的著法。'
+  ]) {
+    const scopedVerdictAnswer = structuredClone(sameVerdictAnswer)
+    scopedVerdictAnswer.directAnswer = directAnswer
+    check(`同首選的前句否定不能豁免後續肯定負評：${directAnswer}`,
+      validateAnswer(scopedVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
+        .some(error => error.includes('同一著法')))
+  }
 
   const wrongSideEvidence: HarnessEvidence = {
     ...validatorEvidence[1]!,

@@ -25,15 +25,22 @@ export function hasAssertedMoveCriticism(text: string, moveNames: string[]): boo
           (match) => ({ index: match.index!, user: false }))
       ].sort((a, b) => a.index - b.index)
       let previousVerdictEnd = 0
+      let previousVerdictNegated = false
       for (const verdict of clause.matchAll(/較差|较差|更差|失誤|失误|敗著|败着|錯失|错失|錯過|错过|失去先手|不好|懲罰|惩罚|必然受罰|必然受罚/g)) {
         for (const reference of references.filter(({ index }) => index <= verdict.index!)) {
           concernsUserMove = reference.user
         }
         const prefix = clause.slice(previousVerdictEnd, verdict.index)
-        const negatedOrConditional = /(?:不是|並非|并非|沒有|没有|不能說|不能说|不得|不應|不应|無法說|无法说)[^，,。！？；]{0,8}$/.test(prefix)
-          || /(?:如果|假如|若)/.test(prefix)
+        // A denial can govern coordinated verdicts (不是失誤或敗著),
+        // but not a new predicate (不是失誤而是敗著). Condition scope
+        // belongs to this clause, so an earlier verdict cannot consume it.
+        const negated: boolean = /(?:不是|並非|并非|沒有|没有|不能說|不能说|不得|不應|不应|無法說|无法说)[^，,。！？；]{0,8}$/.test(prefix)
+          || (previousVerdictNegated && /^(?:\s*(?:或(?:者|是)?|和|與|与|及|、)\s*)+$/.test(prefix))
+        const negatedOrConditional = negated
+          || /(?:如果|假如|若)/.test(clause.slice(0, verdict.index))
         if (concernsUserMove && !negatedOrConditional) return true
         previousVerdictEnd = verdict.index! + verdict[0].length
+        previousVerdictNegated = negated
       }
       if (references.length > 0) concernsUserMove = references.at(-1)!.user
     }

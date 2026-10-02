@@ -366,6 +366,29 @@ async function main(): Promise<void> {
     !hasAssertedMoveCriticism('炮二平五與首選一致，但馬八進七較差。', ['炮二平五']))
   check('明確否定的負評不變成實質負評',
     !hasAssertedMoveCriticism('炮二平五不是失誤，也沒有錯失機會。', ['炮二平五']))
+  const scopedVerdictCases = [
+    { text: '實戰步不是失誤或敗著。', asserted: false },
+    { text: '炮二平五不是較差與失誤的著法。', asserted: false },
+    { text: '如果實戰步失誤導致更差，還需要後續主線確認。', asserted: false },
+    { text: '實戰步不是失誤而是敗著。', asserted: true },
+    { text: '實戰步不是失誤或敗著，但仍是更差的著法。', asserted: true },
+    { text: '實戰步不是失誤，實戰步確實更差。', asserted: true },
+    { text: '如果實戰步有失誤，但實戰步確實更差。', asserted: true }
+  ]
+  for (const { text, asserted } of scopedVerdictCases) {
+    check(`負評否定與條件作用範圍：${text}`,
+      hasAssertedMoveCriticism(text, ['炮二平五']) === asserted)
+  }
+  for (const text of [
+    '炮二平五與首選一致，實戰步不是失誤或敗著。',
+    '如果實戰步失誤導致更差，還需要後續主線確認。炮二平五在此與首選相同。'
+  ]) {
+    const scopedSameMoveAnswer = buildSameMoveAnswer()
+    scopedSameMoveAnswer.sections[1]!.claims[0]!.text += text
+    const report = score(scopedSameMoveAnswer, AVAILABLE_MOVES, undefined,
+      'same_move', '炮二平五', '炮二平五')
+    check(`完整同首選回答的否定／條件說明可通過 scorer：${text}`, report.pass, report.summary)
+  }
   const falselyNegativeSameMove = buildSameMoveAnswer()
   falselyNegativeSameMove.sections[1]!.claims[0]!.text =
     '炮二平五雖與首選相同，仍是較差失誤，必然受到懲罰。'
