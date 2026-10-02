@@ -272,6 +272,31 @@ function buildSameMoveAnswer(): ScorableAnswer {
   }
 }
 
+function buildNeutralComparisonAnswer(): ScorableAnswer {
+  const answer = buildSameMoveAnswer()
+  const causal: CausalChain = {
+    cause: '因為馬八進七先出馬，而炮二平五先架起中炮',
+    mechanism: '紅馬先發展與紅炮先控制中路的部署次序不同',
+    affected: '紅方左馬、紅炮與中央線路',
+    opponentUse: '黑方馬8進7發展右翼馬，紅方補炮二平五後黑方再走馬2進3',
+    consequence: '兩條線皆出現中炮與兩翼馬的部署，現有主線尚不能確認其他戰術差別'
+  }
+  answer.directAnswer = '兩條線的參考評估分別為400分與200分。馬八進七與炮二平五在所提供主線中的部署次序不同；分差尚不能說明具體棋理原因。'
+  answer.sections[0]!.claims[0]!.text = answer.directAnswer
+  answer.sections[1]!.heading = '實戰步評價'
+  answer.sections[1]!.claims = [{
+    id: 'C2',
+    text: '馬八進七先讓紅馬出動，而炮二平五先把紅炮移到中路；因為兩條主線都包含後續出子著法，目前可確認的是部署次序不同，尚不能確認這個次序造成其他戰術差別。',
+    causal
+  }]
+  answer.sections[3]!.claims = [{
+    id: 'C4',
+    text: '實戰先走馬八進七，黑方馬8進7發展右翼馬；紅方接著炮二平五建立中炮，黑方再馬2進3發展另一路馬。首選線則先炮二平五、馬8進7，再馬八進七；兩線的中炮與出馬次序不同，目前提供的片段都顯示雙方正在配置子力。中炮移到中央後瞄準黑方中卒，紅馬離開底線後取得向河口發展的方向，這些是逐手可以核對的盤面關係。馬八進七先處理左翼馬的發展，炮二平五先安排中路炮的位置，兩項計畫在後續片段都出現。黑方可以馬8進7先出右翼馬，再以馬2進3出另一翼馬；描述這種應對時，需要區分主線實際列出的走法與尚未搜索的變化。兩條線都能看到紅馬與中炮參與部署，但眼前片段未提供紅方之後進攻及黑方不同防守的完整結果，因此還不能把參考分差說成某項已證明的戰術損失。若要判斷這個次序造成何種長期影響，仍缺少相同深度下更後面的主線及各種合理回應的比較；這個限制不影響已可確認的出馬與中炮移位。實戰思考可以先辨認當前要改善哪一枚棋子，再看對手主線應手如何改變中路子力的配置，沿著實際走法檢查炮與馬的協調。對照兩線時還要確認雙方從同一局面開始，輪走方一致，才能避免把首選線的盤面結果移到實戰線。',
+    causal
+  }]
+  return answer
+}
+
 function criterionFailed(report: ReturnType<typeof score>, id: string): boolean {
   return report.criteria.some((criterion) => criterion.id === id && !criterion.pass)
 }
@@ -442,6 +467,63 @@ check(
   const good = score(buildAnswer())
   check('具體回答（含完整因果鏈）通過全部準則', good.pass, good.summary)
   check('通過時沒有失敗區塊', good.failedSections.length === 0)
+
+  const unspecifiedComparison = scoreExplanationAnswer({
+    answer: buildAnswer(),
+    availableMoves: AVAILABLE_MOVES,
+    bestMoveDisplay: '炮二平五',
+    userMoveDisplay: '馬八進七',
+    hasUserMove: true
+  })
+  check('未提供比較狀態時不能僅因有實戰步就採用已證差異，確定負評須被擋下',
+    criterionFailed(unspecifiedComparison, 'missed_opportunity'))
+
+  const neutralComparison = buildNeutralComparisonAnswer()
+  const numericComparisonState = moveComparisonEvidenceState({
+    ...comparisonFixture, userMove: 'b0c2', evaluationAfterUserMove: 2,
+    evaluationAfterBestMove: 4, scoreDifference: 2, mistakeLevel: 'mistake'
+  })
+  const neutralReport = score(neutralComparison, AVAILABLE_MOVES,
+    INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, numericComparisonState)
+  check('既有分差分級仍可接受具體中性機制、合理應對及明確缺項，不強迫負面因果',
+    numericComparisonState === 'evidence_backed_difference' && neutralReport.pass, neutralReport.summary)
+  const unspecifiedNeutralReport = scoreExplanationAnswer({
+    answer: neutralComparison, availableMoves: AVAILABLE_MOVES,
+    bestMoveDisplay: '炮二平五', userMoveDisplay: '馬八進七', hasUserMove: true,
+    minimumHanCharacters: INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS
+  })
+  check('未提供比較狀態仍可保留具體中性比較與缺項，不強迫負面內容',
+    unspecifiedNeutralReport.pass, unspecifiedNeutralReport.summary)
+  const scoreOnlyComparison = buildNeutralComparisonAnswer()
+  scoreOnlyComparison.sections[1]!.claims[0]!.text =
+    '因為炮二平五引擎評估400分，而馬八進七只有200分，所以馬八進七較差。'
+  check('數值分級、完整篇幅及另附因果都不能替只用分數的實戰步理由背書',
+    criterionFailed(score(scoreOnlyComparison, AVAILABLE_MOVES,
+      INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, numericComparisonState), 'no_score_as_reason'))
+  const noCauseComparison = buildNeutralComparisonAnswer()
+  noCauseComparison.directAnswer = '馬八進七先出紅馬，炮二平五把紅炮放到中路，兩線的部署次序不同。'
+  noCauseComparison.sections[0]!.claims[0]!.text = noCauseComparison.directAnswer
+  noCauseComparison.sections[1]!.claims = [{
+    id: 'C2', text: '馬八進七先出紅馬，而炮二平五把紅炮放到中路，兩線的部署次序不同。'
+  }]
+  const noCauseReport = score(noCauseComparison)
+  check('數值差異下缺少因果仍被拒絕，修正診斷應要求具體因果對照而非負面結論',
+    criterionFailed(noCauseReport, 'causal_chains') && criterionFailed(noCauseReport, 'why_bad') &&
+    noCauseReport.criteria.filter(criterion => ['missed_opportunity', 'why_bad'].includes(criterion.id))
+      .every(criterion => !/錯失|為什麼不好/.test(`${criterion.label} ${criterion.issues.join(' ')}`)),
+    noCauseReport.summary)
+  const deniedInsufficientCriticism = buildNeutralComparisonAnswer()
+  deniedInsufficientCriticism.sections[1]!.claims[0]!.text +=
+    '目前比較證據不足，不能說馬八進七較差。'
+  const deniedInsufficientReport = score(deniedInsufficientCriticism, AVAILABLE_MOVES,
+    INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, 'insufficient')
+  check('證據不足時局部否定較差不構成確定負評，具體中性機制仍可通過',
+    deniedInsufficientReport.pass, deniedInsufficientReport.summary)
+  const assertedInsufficientCriticism = structuredClone(deniedInsufficientCriticism)
+  assertedInsufficientCriticism.sections[1]!.claims[0]!.text += '但馬八進七仍是較差的著法。'
+  check('否定前句負評不能替證據不足時後續確定負評背書',
+    criterionFailed(score(assertedInsufficientCriticism, AVAILABLE_MOVES,
+      INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, 'insufficient'), 'missed_opportunity'))
 
   const neutralExchange = buildSameMoveAnswer()
   neutralExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text =
@@ -822,7 +904,8 @@ check(
     availableMoves: AVAILABLE_MOVES,
     bestMoveDisplay: '炮二平五',
     userMoveDisplay: '兵九進一',
-    hasUserMove: true
+    hasUserMove: true,
+    comparisonState: 'evidence_backed_difference'
   })
   check(
     '使用者著法不在候選著法時，比較與因果仍可通過',

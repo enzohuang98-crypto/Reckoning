@@ -1,0 +1,67 @@
+# 免費模型能力核對與本次候選選擇
+
+核對日期：2026-10-02。研究限定 Reckoning 當下免費目錄的 17 個精確 ID；不呼叫模型、不切換設定、不讀 key 或帳戶 API。
+
+## 決策
+
+本次最有比較證據的首選為 **`qwen/qwen3.8-27b:free`，保留其推理模式與原廠預設 Xhigh 深度**。目前 Artificial Analysis（AA）Intelligence Index v4.3.2 的公開同版比較中，Qwen3.8 27B（Xhigh）為 34，Ultra（Reasoning）為 23；Qwen 在 HLE 與長上下文推理評測亦較高。這是選擇候選的依據，不是已證明它在象棋固定案例勝出。[AA 同版比較](https://artificialanalysis.ai/models/comparisons/qwen3-8-27b-vs-nvidia-nemotron-3-ultra-550b-a55b)
+
+本次沒有找到涵蓋全部 17 個精確免費 route、同一提示、同一有限預算的象棋解說評測。因此不能宣稱完整目錄的絕對第一名。正式 Harness 的完整回答、棋盤事實與人工內容檢閱仍是必要驗收。
+
+## 搜尋方法與證據等級
+
+- 以安全目錄快照 `free-catalog-model-strength-2026-10-02.json` 的精確 ID 為範圍，並重新讀取 [OpenRouter 公開模型目錄](https://openrouter.ai/api/v1/models)。17 個 ID 當時均列出 prompt／completion 價格為 `0`；這不證明即時流量可用、帳戶不被限流或日後仍免費。
+- 使用 research skill 與 Agent-Reach。Exa 免費搜尋額度本次受限，未建立付費 key；改以瀏覽搜尋、AA 原站、原廠模型卡及公開 endpoint JSON 核對。
+- 搜尋包含 `site.artificialanalysis.ai/models` 搭配各候選名稱，以及 `site.huggingface.co/Qwen Qwen3.8-27B reasoning`。核對當前頁面，模型發布年代主要為 2026；排除論壇體驗、轉載榜單、不同版本分數及單靠名稱／參數量的排名。
+- **AA 原站**：評測發佈者的一手結果，獨立於模型原廠；權重最高。但各頁仍屬同一家評測，不能算多次獨立複驗。[AA 方法](https://artificialanalysis.ai/methodology)
+- **原廠模型卡**：能力設定、方法與原廠自評的一手資料；適合確認推理選項，不能取代獨立比較。
+- **OpenRouter 公開 route metadata**：介面、價格與限制的一手資料；能證明當時的宣告，不能證明實際回答品質或可用性。
+
+## 17 個候選的比較覆蓋
+
+AA 分數取目前 v4.3.2 頁面；近似整數及估值不能當成精確統計差異。`未取得` 表示本次定向搜尋沒有取得可用的同版同模型分數，並非斷言其他地方完全沒有評測。
+
+| 精確免費 ID | 本次 AA 結果／證據 | 判讀 |
+|---|---|---|
+| `qwen/qwen3.8-27b:free` | 34，Xhigh。[AA](https://artificialanalysis.ai/models/qwen3-8-27b) | 已取得比較資料的最高者；本次首選。 |
+| `thinkingmachines/inkling-small:free` | 26，reasoning。[AA](https://artificialanalysis.ai/models/inkling-small) | 不能因名稱含 Small 就排除，但現有同版指數低於 Qwen。 |
+| `thinkingmachines/inkling:free` | 25，Xhigh。[AA](https://artificialanalysis.ai/models/inkling) | 指數不是依參數量遞增。 |
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | 23，reasoning。[AA](https://artificialanalysis.ai/models/nvidia-nemotron-3-ultra-550b-a55b) | 不因 Ultra 名稱視為目錄第一。 |
+| `google/gemma-4-26b-a4b-it:free` | 約 17，**估值**。[AA](https://artificialanalysis.ai/models/comparisons/gemma-4-26b-a4b-vs-nvidia-nemotron-3-super-120b-a12b) | 未完整獨立評測的估值不能與實測同等看待。 |
+| `google/gemma-4-31b-it:free` | 15，reasoning。[AA](https://artificialanalysis.ai/models/gemma-4-31b) | 未以舊版宣傳分數與新版指數混排。 |
+| `nvidia/nemotron-3.5-lightning:free` | 13。[AA](https://artificialanalysis.ai/models/nemotron-3-5-lightning) | 速度／效率優勢不等同最強推理。 |
+| `nvidia/nemotron-3-super-120b-a12b:free` | 13，reasoning。[AA](https://artificialanalysis.ai/models/comparisons/gemma-4-26b-a4b-vs-nvidia-nemotron-3-super-120b-a12b) | 實際可生成仍須與能力及內容驗收分開。 |
+| `cohere/north-mini-code:free` | 10。[AA](https://artificialanalysis.ai/models/north-mini-code) | 未提供高於 Qwen 的一般能力證據。 |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | 約 10；頁面摘要／FAQ 的 estimated 標示不一致，保守列**估值**。[AA](https://artificialanalysis.ai/models/nemotron-3-nano-omni-30b-a3b) | 不把多模態功能當成象棋文字推理優勢。 |
+| `liquid/lfm-2.5-2.6b:free` | 約 8，**估值**。[AA](https://artificialanalysis.ai/models/lfm2-5-2-6b) | 未提供高於 Qwen 的一般能力證據。 |
+| `apodex/apodex-1.1-mini:free` | 未取得同版 AA 指數；原廠有 Agent Team 結果。[模型卡](https://huggingface.co/apodex/Apodex-1.1-mini) | 專屬多代理 harness 的自評，不能搬成 Reckoning 單次生成排名。 |
+| `dots-studio/dots-3-note-preview:free` | 未取得同版 AA 指數。 | 本次不據參數量或其他家族版本推定排名。 |
+| `inclusionai/ling-3.0-flash-sante:free` | 未取得 Sante 精確版的同版 AA 指數。 | 不把普通 Ling 3.0 Flash 的分數移給 Sante。 |
+| `poolside/laguna-s-2.1:free` | 未取得同版 AA 總指數；原廠公開 coding／agent 評測。[模型卡](https://huggingface.co/poolside/Laguna-S-2.1-FP8) | 不足以推出本案一般推理或象棋第一。 |
+| `poolside/laguna-xs-2.1:free` | 未取得同版 AA 總指數。 | 不把 S 版分數移給 XS。 |
+| `nvidia/nemotron-3.5-content-safety:free` | 原廠定位為安全分類 moderator。[模型卡](https://huggingface.co/nvidia/Nemotron-3.5-Content-Safety) | 不選作本案一般象棋解說模型。 |
+
+## 精確免費 endpoint 與推理限制
+
+以下為當時公開 endpoint 實際回傳的安全欄位，不是套用付費模型頁面的能力。每一列 prompt／completion 均為 `0`。
+
+| 精確 ID | 當時 provider | context／最大 completion | 與本案相關的宣告參數 |
+|---|---|---|---|
+| `qwen/qwen3.8-27b:free` | ModelRun | 262144／235929 | `max_tokens`、`reasoning`、`reasoning_effort`、`structured_outputs`；**未列 `response_format`**。[endpoint](https://openrouter.ai/api/v1/models/qwen/qwen3.8-27b:free/endpoints) |
+| `nvidia/nemotron-3-ultra-550b-a55b:free` | Nvidia | 1000000／65536 | `max_tokens`、`reasoning`、`reasoning_effort`；**未列 `response_format`**。[endpoint](https://openrouter.ai/api/v1/models/nvidia/nemotron-3-ultra-550b-a55b:free/endpoints) |
+| `google/gemma-4-31b-it:free` | Google AI Studio | 262144／32768 | `max_tokens`、`reasoning`、`response_format`；未列 `reasoning_effort`。[endpoint](https://openrouter.ai/api/v1/models/google/gemma-4-31b-it:free/endpoints) |
+| `thinkingmachines/inkling:free` | Thinking Machines | 1048576／262144 | `max_tokens`、`reasoning`、`reasoning_effort`；未列 `response_format`。[endpoint](https://openrouter.ai/api/v1/models/thinkingmachines/inkling:free/endpoints) |
+| `nvidia/nemotron-3.5-lightning:free` | Nvidia | 1000000／65536 | `max_tokens`、`reasoning`；未列 `reasoning_effort`／`response_format`。[endpoint](https://openrouter.ai/api/v1/models/nvidia/nemotron-3.5-lightning:free/endpoints) |
+
+`supported_parameters` 列出 reasoning 家族，不自動證明每一個子選項、enum 或 token 上限都被該 route 完整支援。原廠 Qwen3.8-27B 模型卡明列 `xhigh` 為預設，另有 `medium`、`low`，並指出降低深度可能造成分析不足或更多重試。這支持保留高深度的候選選擇；當前免費 ModelRun 是否接受並實現該設定，仍需正式服務探測與診斷。[Qwen 原廠模型卡](https://huggingface.co/Qwen/Qwen3.8-27B)
+
+OpenRouter 的 `exclude: true` 只隱藏回傳的 reasoning；不能視作不消耗推理 token。多數 provider 會把 reasoning 算進 `max_tokens`，不夠完成時仍可能 `finish_reason=length`，且空正文應拒絕。[OpenRouter reasoning 規格](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)
+
+## 與本案預算、品質及可用性的關係
+
+- AA 的 Qwen Xhigh 比較表列每任務加權平均約 67k output、48k reasoning；這不是 Reckoning 應採用的配額，也不是每題所需 token，但足以證明不能將高預算榜單的能力直接等同於本案 6000-token 配額。[AA 比較及 token 使用量](https://artificialanalysis.ai/models/comparisons/qwen3-8-27b-vs-nvidia-nemotron-3-ultra-550b-a55b)
+- 本案仍採明確的有限總 token、時間與呼叫次數上限，先以真實固定案例查 token／finish reason／正文品質，再依證據判斷是否需要調整。不得靠無上限增加配額，或關閉推理後仍宣稱等同 Xhigh。
+- 綜合指數較高不代表每一面向都較強：同表 Qwen AA-Omniscience 為 -10、Ultra 為 0。因此精確引用、合法重播、吃子／交換核對、因果及人工檢閱都需保留，不能以榜單代替正確性。[AA 同版明細](https://artificialanalysis.ai/models/comparisons/qwen3-8-27b-vs-nvidia-nemotron-3-ultra-550b-a55b)
+- 歷史 429／502 只表示當時路由或限流狀態，不能當作能力評比。研究沒有重放這些請求；正式同 key 切換失敗必須保留原模型，不以自動改用其他模型掩蓋。
+
+可信度：Qwen 是本次已取得同版比較證據中最有力的免費候選，為中等可信；它在本案有限預算的完整象棋正文是否達標，尚需實測。公開目錄及 endpoint 是當時狀態，正式執行前需再核對免費資格與參數。

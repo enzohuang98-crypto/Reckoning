@@ -3,11 +3,12 @@ export const OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL =
 export const OPENROUTER_NEMOTRON_SUPER_FREE_MODEL =
   'nvidia/nemotron-3-super-120b-a12b:free'
 export const OPENROUTER_DOTS_NOTE_FREE_MODEL = 'dots-studio/dots-3-note-preview:free'
+export const OPENROUTER_QWEN38_FREE_MODEL = 'qwen/qwen3.8-27b:free'
 export const OPENROUTER_NEMOTRON_JSON_REASONING_MAX_TOKENS = 1_000
 
 export interface OpenRouterReasoningConfig {
   max_tokens?: number
-  effort?: 'none'
+  effort?: 'none' | 'xhigh'
   enabled?: false
   exclude: true
 }
@@ -16,6 +17,13 @@ export function openRouterReasoningConfig(
   model: string,
   responseFormat: 'json' | 'text'
 ): OpenRouterReasoningConfig | undefined {
+  if (model === OPENROUTER_QWEN38_FREE_MODEL) {
+    // The exact free catalog entry advertises Xhigh as its default effort.
+    // Preserve that reasoning depth; exclude hides the trace, not its tokens.
+    // The existing Harness output/time/call caps still apply. See the dated
+    // primary-source audit in docs/operations/free-model-selection-2026-10-02.md.
+    return { effort: 'xhigh', exclude: true }
+  }
   if (model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL) {
     // The catalog marks reasoning as optional. Live fixed-case calls returned
     // 3,877 tokens with max_tokens: 1,000 and 3,822 with effort: low, exhausting

@@ -1661,7 +1661,7 @@ async function main(): Promise<void> {
   check(
     '正式案例即使 history 清空仍保留完整五段 move-comparison contract',
     formalExecution.answerStrategy === 'formal-move-comparison' &&
-      ['直接結論', '實戰步問題', 'AI 首選', '對手利用與後果', '實戰原則'].every((heading) =>
+      ['直接結論', '實戰步評價', 'AI 首選', '對手合理應對與後續', '實戰原則'].every((heading) =>
         formalResult.finalText.includes(`### ${heading}`)
       )
   )
@@ -1928,16 +1928,16 @@ async function main(): Promise<void> {
       ).length === 6
   )
   check('棋手正文不顯示證據編號', !result.finalText.includes('[E1]'))
-  check('回答先顯示直接結論', result.finalText.indexOf('### 直接結論') < result.finalText.indexOf('### 實戰步問題'))
-  check('回答使用五個具名內容區塊', ['直接結論', '實戰步問題', 'AI 首選', '對手利用與後果', '實戰原則'].every((heading) => result.finalText.includes(`### ${heading}`)))
+  check('回答先顯示直接結論', result.finalText.indexOf('### 直接結論') < result.finalText.indexOf('### 實戰步評價'))
+  check('回答使用五個具名內容區塊', ['直接結論', '實戰步評價', 'AI 首選', '對手合理應對與後續', '實戰原則'].every((heading) => result.finalText.includes(`### ${heading}`)))
   check(
     '首次實戰步 render 正好只有五個棋手標題且順序固定',
     (result.finalText.match(/^### .+$/gm) ?? []).join('|') ===
       [
         '### 直接結論',
-        '### 實戰步問題',
+        '### 實戰步評價',
         '### AI 首選',
-        '### 對手利用與後果',
+        '### 對手合理應對與後續',
         '### 實戰原則'
       ].join('|')
   )
@@ -3594,9 +3594,25 @@ async function main(): Promise<void> {
   const baselineErrors = validateConsequenceAudit(
     makeAudit([makeFinding({}), goodSecondFinding]),
     validatorEvidence,
-    true
+    true, undefined, 'zh-TW', 'evidence_backed_difference'
   )
   check('具體的後果審查可通過全部檢查', baselineErrors.length === 0, baselineErrors)
+  check('只有實戰步存在時，審查不把缺省比較狀態升格為已支持失誤',
+    validateConsequenceAudit(makeAudit([makeFinding({}), goodSecondFinding]), validatorEvidence, true)
+      .some(error => error.includes('比較證據不足')))
+  for (const [text, asserted] of [
+    ['目前比較證據不足，不能說馬八進七較差。', false],
+    ['馬八進七並非失誤，這步的部署仍應沿主線觀察。', false],
+    ['不能說馬八進七較差且更差。', true],
+    ['馬八進七並非失誤，但這步較差。', true],
+    ['馬八進七錯過中路部署，所以這步失去先手。', true]
+  ] as const) {
+    const errors = validateConsequenceAudit({
+      ...makeAudit([makeFinding({}), goodSecondFinding]), userMoveProblem: text
+    }, validatorEvidence, true, undefined, 'zh-TW', 'insufficient')
+    check('不足比較的否定只約束自己的斷言 ' + text,
+      errors.some(error => error.includes('比較證據不足')) === asserted, errors)
+  }
 
   const realExchangeEvidence = boardFactEvidence(
     ['h2e2', 'h9g7', 'h0g2', 'i9h9', 'i0h0', 'g6g5', 'h0h6', 'c6c5',
@@ -3829,6 +3845,66 @@ async function main(): Promise<void> {
     falseNetMaterialAnswer, replayedExchangeEvidence, sameVerdictRequirements)
   check('合格五段正文只改成錯誤淨多一車，即使保留真實吃子與有效引用也拒絕',
     falseNetMaterialErrors.some(error => error.includes('棋盤事實')), falseNetMaterialErrors)
+  // A numerical difference must not require a negative explanation. These
+  // two legal opening variations are mirror images; the engine classification
+  // alone cannot establish a distinct tactical benefit for one cannon move.
+  const mirrorFiles = 'ihgfedcba'
+  const mirrorLine = realExchangeEvidence.analysis.principalVariation.map(move =>
+    `${mirrorFiles[move.charCodeAt(0) - 97]}${move[1]}${mirrorFiles[move.charCodeAt(2) - 97]}${move[3]}`)
+  const mirrorDisplay = ['炮八平五', '馬2進3', '馬八進七', '車1平2', '車九平八', '卒3進1',
+    '車八進六', '卒7進1', '炮二平三', '象7進5', '馬二進一', '馬8進6',
+    '車一平二', '炮2平1', '車八進三', '馬3退2']
+  const neutralAnalysis: EngineAnalysis = {
+    ...realExchangeEvidence.analysis, bestMove: 'b2e2', displayBestMove: '炮八平五',
+    principalVariation: mirrorLine, displayPrincipalVariation: mirrorDisplay,
+    userMove: 'h2e2', displayUserMove: '炮二平五',
+    userMovePrincipalVariation: realExchangeEvidence.analysis.principalVariation,
+    displayUserMovePrincipalVariation: realExchangeEvidence.displayPrincipalVariation
+  }
+  const neutralEvidence: HarnessEvidence[] = [
+    { ...realExchangeEvidence, id: 'E1', move: 'b2e2', displayMove: '炮八平五',
+      displayPrincipalVariation: mirrorDisplay, analysis: neutralAnalysis },
+    { ...realExchangeEvidence, id: 'E2', move: 'h2e2', displayMove: '炮二平五', analysis: neutralAnalysis }
+  ]
+  const neutralAnswer = structuredClone(sameVerdictAnswer)
+  neutralAnswer.directAnswer = '炮二平五與炮八平五都成中炮，兩條主線可支持共同作用，數值觀測不能代替具體優劣原因。'
+  neutralAnswer.directAnswerEvidenceIds = ['E1', 'E2']
+  const developmentCausal = {
+    cause: '因為炮二平五先把紅炮移到中路',
+    mechanism: '紅炮所在的中線與留下的邊炮線路不同',
+    affected: '紅方兩枚炮與中兵所在的中路線路',
+    opponentUse: '黑方馬8進7發展馬，再以車9平8調整車',
+    consequence: '紅方馬二進三與黑方車9平8形成這條線的部署'
+  }
+  neutralAnswer.sections[0]!.claims = [{ id: 'N1', evidenceIds: ['E1', 'E2'], text:
+    '炮二平五與炮八平五都把一枚紅炮移到中路，並留下另一翼炮。這個共同作用可以由第一手位置確認，不能說其中一步才有中炮計畫。兩條主線後續從不同一翼出馬、出車，顯示的是所選變例的部署；它們沒有證明對手必須照走，也沒有單憑第一手就建立某一步必有失誤。' }]
+  neutralAnswer.sections[1]!.claims = [{ id: 'N2', evidenceIds: ['E1', 'E2'], findingIds: ['K1'], causal: developmentCausal, text:
+    '實戰的炮二平五與首選炮八平五都有控制中路的想法，但控制不等於立即取得攻勢。實戰線中黑方馬8進7、紅方馬二進三、黑方車9平8依次出現，反映双方繼續出子；應將移炮與這些後續位置連起來理解。若要說實戰步比首選更容易受攻，仍缺少能區分兩線的具體攻擊及應對證據，不能由數值觀測自行補出原因。' }]
+  neutralAnswer.sections[2]!.claims = [{ id: 'N3', evidenceIds: ['E1'], text:
+    '首選炮八平五同樣先成中炮。這條線接著黑方馬2進3、紅方馬八進七、黑方車1平2，紅方再以車九平八調整車路，這些位置變化支持先出馬再出車的部署解讀。它與另一條線在選用的翼側不同，但此處沒有證據說中炮落點更內或更安全；一般出子原則是對這些變化的解釋，不能當成引擎已證明的唯一計畫。' }]
+  neutralAnswer.sections[3]!.claims = [
+    { id: 'N4a', evidenceIds: ['E2'], findingIds: ['K1'], causal: developmentCausal, text:
+      '實戰線的黑方馬8進7離開原位後，黑方車9平8把車移到八路；紅方也有馬二進三與車一平二。這段主線展示兩邊如何調整子力及車路，黑方應手可以合理發展，不應自動解釋成對實戰步的懲罰。紅方後續車二進六把車推前時，仍須觀察對方子力及後續應手，不能把前進本身寫成必定獲利。' },
+    { id: 'N4b', evidenceIds: ['E2'], findingIds: ['K2'], causal: {
+      cause: '紅方車二進三吃黑車，黑方緊接馬7退8吃紅車',
+      mechanism: '兩方的車在相同位置交換，再由黑馬回吃',
+      affected: '紅方二路車、黑方車與回吃的黑馬',
+      opponentUse: '黑方馬7退8收回剛到該位置的紅車',
+      consequence: '車二進三與馬7退8後雙方各少一車'
+    }, text: '這條線最後紅方車二進三吃掉黑車，黑方緊接馬7退8吃掉紅車，雙方各少一車。這是交換結果，不能只把第一手吃車算成紅方淨多一車。至於交換後其他棋子的協調與整體優劣，仍需分析相應局面及其他合理應手；吃子帳本能確認數量，不能替長期計畫作保證。' }
+  ]
+  neutralAnswer.sections[4]!.claims = [{ id: 'N5', evidenceIds: ['E1', 'E2'], text:
+    '比較開局著法時，先確認共同落點與保留的子力，再沿各自的對手應手觀察部署和交換。每一項優劣都要指出不同的棋子關係與後續影響；若只有數值觀測，保留已知變化並列出未確認的原因，實戰仍應檢查對手其他可行回應。' }]
+  const numericalDifferenceRequirements = { ...initialMoveRequirements, comparisonState: 'evidence_backed_difference' as const }
+  const neutralComparisonErrors = validateAnswer(neutralAnswer, neutralEvidence, numericalDifferenceRequirements)
+  check('有數值比較分類但尚無獨有優劣機制時，合法兩線的完整中性五段正文可通過',
+    countHanCharacters(playerFacingAnswerText(neutralAnswer)) >= 400 && neutralComparisonErrors.length === 0, neutralComparisonErrors)
+  const wrongNeutralExchange = structuredClone(neutralAnswer)
+  wrongNeutralExchange.sections[3]!.claims[1]!.text =
+    wrongNeutralExchange.sections[3]!.claims[1]!.text.replace('雙方各少一車', '紅方淨多一車')
+  check('同一中性比較正文改成錯誤交換結論仍拒絕，數值分類不豁免棋盤事實',
+    validateAnswer(wrongNeutralExchange, neutralEvidence, numericalDifferenceRequirements)
+      .some(error => error.includes('棋盤事實')))
   sameVerdictAnswer.directAnswer = '炮二平五是較差著法，這步是失誤。'
   check('同首選的負面矛盾不能藏在 directAnswer 避過正文檢查',
     validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements)
@@ -3907,6 +3983,12 @@ async function main(): Promise<void> {
     '這不代表黑方只能走馬8進7。',
     '黑方不必被迫走馬8進7。',
     '黑方並不被迫走馬8進7。',
+    '黑方馬8進7並未被迫防禦。',
+    '黑方沒有被迫防禦。',
+    '黑方沒被迫防禦。',
+    '黑方未被迫防禦。',
+    '黑方並沒有被迫防禦。',
+    '紅方從未被迫退車。',
     'The principal variation does not mean Black must play this reply.'
   ]) {
     forcedLineAnswer.directAnswer = text
@@ -3923,6 +4005,22 @@ async function main(): Promise<void> {
     validateAnswer(forcedLineAnswer, validatorEvidence, initialMoveRequirements)
       .some(error => error.includes('不得把單一引擎主線誇大')))
   forcedLineAnswer.directAnswer = normalContractAnswer.directAnswer
+  for (const text of [
+    '黑方並未被迫防禦，但紅方被迫退車。',
+    '黑方沒有被迫防禦且紅方被迫退車。',
+    '黑方沒有吃子但被迫防禦。',
+    '黑方未走馬8進7，卻被迫退車。'
+  ]) {
+    forcedLineAnswer.directAnswer = text
+    check('局部否定不能豁免後面的強迫斷言 ' + text,
+      validateAnswer(forcedLineAnswer, validatorEvidence, initialMoveRequirements)
+        .some(error => error.includes('不得把單一引擎主線誇大')))
+  }
+  forcedLineAnswer.directAnswer = normalContractAnswer.directAnswer
+  forcedLineAnswer.sections[1]!.claims[0]!.causal!.opponentUse = '黑方並未被迫防禦。'
+  check('causal 欄位的明確局部否定同樣不被誤擋',
+    !validateAnswer(forcedLineAnswer, validatorEvidence, initialMoveRequirements)
+      .some(error => error.includes('不得把單一引擎主線誇大')))
   forcedLineAnswer.sections[1]!.claims[0]!.causal!.opponentUse = '黑方被迫走馬8進7。'
   check('隱藏 causal 也不能聲稱主線是被迫應對',
     validateAnswer(forcedLineAnswer, validatorEvidence, initialMoveRequirements)
@@ -4864,7 +4962,7 @@ async function main(): Promise<void> {
     dualAudit,
     dualEvidence,
     true,
-    dualComparison
+    dualComparison, 'zh-TW', 'evidence_backed_difference'
   )
   check(
     '雙引擎裁決同時比較可控性、長期發展與兩邊證據時通過',

@@ -119,7 +119,7 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
           .join('、')}`
       )
     }
-    if (!focusedQuestion) lines.push(`錯誤等級：${MISTAKE_LEVEL_LABELS[mc.mistakeLevel]}`)
+    if (!focusedQuestion) lines.push(`既有分差分級：${MISTAKE_LEVEL_LABELS[mc.mistakeLevel]}（數值比較分類，不證明具體失誤機制）`)
     lines.push(`比較證據狀態：${comparisonState}`)
     if (mc.uncertaintyReasons.length > 0) {
       lines.push(`不確定原因：${mc.uncertaintyReasons.join('；')}`)
@@ -153,10 +153,11 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
       lines.push('3. best_move_plan／這步的好處：連回本局主線與受影響棋子或線路。')
       lines.push('4. opponent_exploitation／對手合理應對：引用至少兩步真實主線，說明合理回應與後續盤面。')
     } else if (comparisonState === 'evidence_backed_difference') {
-      lines.push('1. direct_conclusion／直接結論：第一句直接說兩步有證據支持的實質差異。')
-      lines.push('2. actual_move_problem／實戰步問題：同時點名實戰步與 AI 首選，說明原因、盤面機制與受影響棋子或線路。')
+      lines.push('1. direct_conclusion／直接結論：第一句直接說明目前可確定的著法作用與兩線比較；分差是數值觀測，不預判實戰步有具體失誤。')
+      lines.push('2. actual_move_problem／實戰步評價：同時點名實戰步與 AI 首選，說明已可確認的作用、盤面機制與受影響棋子或線路；只有兩條主線的具體盤面證據支持時，才說明實戰步的問題與原因。')
       lines.push('3. best_move_plan／AI 首選：解釋首選著法的具體目的。')
-      lines.push('4. opponent_exploitation／對手利用與後果：引用至少兩步真實主線，說明對手利用與盤面結果。')
+      lines.push('4. opponent_exploitation／對手合理應對與後果：引用至少兩步真實主線，說明合理回應與盤面結果；已確認的具體利用可據實說明，不得因分差而補出懲罰。')
+      lines.push('兩線的機制差異無法確認時，仍保留已可核對的具體走法、盤面事實與合理應對，並指出缺少哪些後續主線、同局面應手或盤面關係；不要把整篇改成證據不足。')
     } else {
       lines.push('1. direct_conclusion／直接結論：中性說明目前證據可支持的比較，不誇大優劣。')
       lines.push('2. actual_move_problem／實戰步評價：分開說目前可確定的內容與欠缺的證據。')
@@ -168,7 +169,7 @@ export function buildExplanationPrompt(input: BuildExplanationPromptInput): stri
   } else {
     lines.push('1. direct_conclusion／直接結論：直接說明目前局面的判讀重點。')
     lines.push('2. best_move_plan／AI 首選：解釋最佳著法的具體目的。')
-    lines.push('3. opponent_exploitation／對手利用與後果：依主要變例逐手說明；資料較短時明確說明。')
+    lines.push('3. opponent_exploitation／對手合理應對與後果：依主要變例逐手說明；資料較短時明確說明。')
     lines.push('4. practical_principle／實戰原則：給出一條可操作的思考原則。')
   }
   return lines.join('\n')

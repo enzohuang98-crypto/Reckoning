@@ -7,9 +7,9 @@
  *
  * 十項準則（全部通過才算合格）：
  *  1. best_move_purpose      — 說明最佳著法的具體目的
- *  2. missed_opportunity     — 說明使用者著法錯失什麼
- *  3. why_bad                — 說明為什麼不好（要有因果連接，不是貼標籤）
- *  4. opponent_exploitation  — 說明對手如何利用
+ *  2. missed_opportunity     — 說明實戰步的具體評價（沿用穩定準則 id）
+ *  3. why_bad                — 說明著法與盤面後果的因果對照（沿用穩定準則 id）
+ *  4. opponent_exploitation  — 說明對手合理應對或具體利用
  *  5. concrete_consequences  — 後續具體盤面後果（主線不足時必須誠實說不足）
  *  6. full_comparison        — 完成最佳著法 vs 使用者著法的完整比較
  *  7. practical_principle    — 恰好一條非空、可帶走的實戰原則
@@ -433,11 +433,13 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
     bestMoveDisplay,
     userMoveDisplay,
     hasUserMove,
-    comparisonState = hasUserMove ? 'evidence_backed_difference' : 'insufficient',
+    comparisonState = 'insufficient',
     minimumHanCharacters,
     groundedConcreteClaims
   } = input
-  const requiresNegativeComparison =
+  // The state classifies the existing score comparison; it does not prove a
+  // negative board mechanism. Specific causal comparison can be neutral.
+  const requiresCausalComparison =
     hasUserMove && comparisonState === 'evidence_backed_difference'
   const criteria: QualityCriterionResult[] = []
   const sectionIssues = new Map<
@@ -498,12 +500,12 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
     )
   }
 
-  // 2. 實戰步評價；只有引擎有差異證據時才要求「錯失什麼」。
+  // 2. 實戰步評價；數值差異仍須連回具體著法，不預設負面因果。
   if (hasUserMove) {
     const issues: string[] = []
     const text = sectionPlainText(missedSection)
     if (!missedSection) {
-      issues.push('缺少「你的著法錯失什麼」區塊。')
+      issues.push('缺少「實戰步評價」區塊。')
     } else if (isLimitedInsufficiencyStatement(text)) {
       // 誠實承認不足是合格的
     } else if (comparisonState === 'same_move') {
@@ -518,73 +520,73 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
         issues.push('既有分級僅為可接受或輕微誤差，不得誇大為嚴重錯誤。')
       }
     } else if (comparisonState === 'insufficient') {
-      if (/(錯失|錯過|错过|失去先手|失誤|敗著|較差|更差|懲罰|惩罚|必然受罰|必然受罚)/.test(text)) {
+      if (hasAssertedMoveCriticism(text, [userMoveDisplay ?? ''])) {
         issues.push('比較證據不足時，不得把使用者著法寫成確定的失誤、較差或懲罰。')
       }
     } else {
       if (looksVaguePurposeText(text)) {
-        issues.push('錯失機會的描述太空泛，必須具體說明錯失了什麼。')
+        issues.push('實戰步評價太空泛，必須具體說明著法的作用與盤面影響。')
       }
       if (!mentionsAnyMove(text, availableMoves)) {
-        issues.push('錯失機會沒有逐字連回任何一步主線著法。')
+        issues.push('實戰步評價沒有逐字連回任何一步主線著法。')
       }
     }
     record(
       'missed_opportunity',
-      '說明錯失什麼',
+      '說明實戰步的具體評價',
       issues,
       missedSection,
-      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步問題' }
+      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步評價' }
     )
   }
 
-  // 3. 只有有差異證據時才要求「為什麼不好」。
+  // 3. 數值比較有差異時要求具體因果對照，不要求實戰步一定較差。
   if (hasUserMove) {
     const issues: string[] = []
     const text = `${sectionPlainText(missedSection)} ${sectionPlainText(comparisonSection)} ${answer.directAnswer}`
     if (
-      requiresNegativeComparison &&
+      requiresCausalComparison &&
       !isLimitedInsufficiencyStatement(text) &&
       !CAUSAL_CONNECTIVES.test(text)
     ) {
       issues.push(
-        '沒有用因果語句說明為什麼不好（需要「因為／導致／使得／讓」等把著法與後果接起來）。'
+        '沒有用因果語句說明著法與盤面後果的對照（需要「因為／導致／使得／讓」等把著法與後果接起來）。'
       )
     }
     record(
       'why_bad',
-      '說明為什麼不好',
+      '說明著法與盤面後果的因果對照',
       issues,
       missedSection,
-      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步問題' }
+      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步評價' }
     )
   }
 
-  // 4. 對手如何利用
+  // 4. 對手合理應對或具體利用
   if (hasUserMove) {
     const issues: string[] = []
     const text = sectionPlainText(opponentSection)
     if (!opponentSection) {
-      issues.push('缺少「對手如何利用」區塊。')
+      issues.push('缺少「對手合理應對與後果」區塊。')
     } else if (isLimitedInsufficiencyStatement(text)) {
       // 合格的誠實回答
     } else {
       if (looksVaguePurposeText(text)) {
-        issues.push('對手利用的描述太空泛。')
+        issues.push('對手應對的描述太空泛。')
       }
       if (!mentionsAnyMove(text, availableMoves)) {
-        issues.push('對手利用沒有指出對手實際會走的主線著法。')
+        issues.push('對手應對沒有指出對手實際會走的主線著法。')
       }
       if (!/(對手|对手|黑方|紅方|红方)/.test(text)) {
-        issues.push('對手利用沒有以對手為主詞說明其計畫。')
+        issues.push('對手應對沒有以對手為主詞說明其計畫。')
       }
     }
     record(
       'opponent_exploitation',
-      '說明對手如何利用',
+      '說明對手合理應對與後果',
       issues,
       opponentSection,
-      { id: SECTION_IDS.opponentExploitation, heading: '對手利用與後果' }
+      { id: SECTION_IDS.opponentExploitation, heading: '對手合理應對與後果' }
     )
   }
 
@@ -616,7 +618,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       '後續具體盤面後果',
       issues,
       consequenceSection,
-      { id: SECTION_IDS.opponentExploitation, heading: '對手利用與後果' }
+      { id: SECTION_IDS.opponentExploitation, heading: '對手合理應對與後果' }
     )
   }
 
@@ -658,7 +660,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       '最佳著法 vs 你的著法完整比較',
       issues,
       comparisonSection,
-      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步問題' }
+      { id: SECTION_IDS.actualMoveProblem, heading: '實戰步評價' }
     )
   }
 
@@ -697,7 +699,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
       `完整解說至少 ${minimumHanCharacters} 個漢字`,
       issues,
       opponentSection,
-      { id: SECTION_IDS.opponentExploitation, heading: '對手利用與後果' }
+      { id: SECTION_IDS.opponentExploitation, heading: '對手合理應對與後果' }
     )
   }
 
@@ -756,7 +758,7 @@ export function scoreExplanationAnswer(input: QualityScorerInput): QualityReport
     record('no_vague_wording', '不用空泛詞帶過', issues)
   }
 
-  // 9. 因果鏈：核心區塊（錯失／對手利用／後果／比較）每個 claim 都要有完整因果鏈
+  // 9. 因果鏈：核心區塊（實戰步評價／對手應對／後果／比較）每個 claim 都要有完整因果鏈
   if (hasUserMove) {
     const issues: string[] = []
     const coreSections = [...new Map(

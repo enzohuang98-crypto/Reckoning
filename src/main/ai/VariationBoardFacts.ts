@@ -301,7 +301,7 @@ function inspectVariationBoardStatements(
   const checkPattern = /((?:(?:沒有|没有|未|不|非)(?:是)?(?:直接|立即|立刻)?)?)(?:形成|構成|构成)?(?:將軍|将军)/g
   // Discover assertions before looking up their evidence. A whitelist matcher
   // would silently discard invented moves, rather than reject unbound facts.
-  // Keep each replay separate: adjacent moves must share this exact variation
+  // Keep each replay separate: temporally related moves must share this variation
   // and its starting FEN, never borrow their neighbours from another line.
   const replays = evidence.map((item) => ({ item, ...buildVariationBoardFacts(item) }))
   const textMentions = chineseMoveMentions(text)
@@ -355,11 +355,73 @@ function inspectVariationBoardStatements(
   const isHedged = (prefix: string): boolean =>
     /未必|不一定|或許|或许|也許|也许|似乎|大概/.test(predicateScope(prefix))
   const literalListGap = /^\s*[」』”"'’]?\s*、\s*[「『“"'‘]?\s*$/
-  // Only explicit local chronology can resolve repeated notation. Lists,
-  // comparisons and remote narrative do not identify a replay ply.
-  const temporalGap = /^\s*[」』”"'’]?\s*(?:(?:之?後|之?后)\s*[，,]?\s*(?:接著|接着|隨即|随即)?|[，,]?\s*(?:接著|接着|隨即|随即|然後|然后))\s*(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?)?\s*[「『“"'‘]?\s*$/
-  const isTemporalGap = (gap: string): boolean =>
-    !/[。！？；.!?;\r\n]/.test(gap) && temporalGap.test(gap)
+  // 後/然後/接著 establish order, not adjacency. Only an explicit immediate
+  // connector requires the next replay ply. 前 reverses the order. The entire
+  // local gap must match; comparisons and remote narrative supply no anchor.
+  const temporalGap = /^\s*[」』”"'’]?\s*(?:(之?[後后前])\s*[，,]?\s*(隨即|随即|下一手|緊接著|紧接着|緊接|紧接|接著|接着|然後|然后)?|[，,]?\s*(隨即|随即|下一手|緊接著|紧接着|緊接|紧接|接著|接着|然後|然后))\s*((?:第\s*[0-9零一二三四五六七八九十百]+\s*(?:手|步|回合)\s*)?(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?)?\s*[「『“"'‘]?\s*)$/
+  const temporalRelation = (gap: string): { before: boolean; immediate: boolean; prefix: string; valid: boolean } | null => {
+    if (/[。！？；.!?;\r\n]/.test(gap)) return null
+    const match = temporalGap.exec(gap)
+    if (!match) return null
+    const before = match[1]?.endsWith('前') ?? false
+    const connector = match[2] ?? match[3] ?? ''
+    return { before, immediate: /隨即|随即|下一手|緊接|紧接/.test(connector), prefix: match[4]!, valid: !(before && connector) }
+  }
+  const links = textMentions.slice(1).flatMap((right, index) => {
+    const left = textMentions[index]!
+    const gap = text.slice(left.index + left.move.length, right.index)
+    let relation = temporalRelation(gap)
+    // A capture/check predicate stays attached to the earlier move. Its next
+    // comma clause can still state chronology, without using that predicate
+    // or its target to choose a replay occurrence.
+    if (!relation && !/[。！？；.!?;\r\n]/.test(gap)) {
+      const comma = gap.search(/[，,]/)
+      if (comma >= 0 && ([...gap.slice(0, comma).matchAll(capturePattern)].length > 0 ||
+        [...gap.slice(0, comma).matchAll(checkPattern)].length > 0)) relation = temporalRelation(gap.slice(comma))
+    }
+    return relation ? [{ left: index, right: index + 1, ...relation }] : []
+  })
+  const localPrefixes = textMentions.map((mention, index) => {
+    const previous = textMentions[index - 1]
+    const clauseStart = text.slice(0, mention.index).search(/[^。！？；，,.!?;\r\n]*$/)
+    const start = Math.max(previous ? previous.index + previous.move.length : 0, clauseStart)
+    return links.find((link) => link.right === index)?.prefix ?? text.slice(start, mention.index)
+  })
+  // Resolve identity before inspecting predicates: ordinals, cutoffs and actor
+  // declarations constrain temporal anchors as well as the asserted move.
+  const temporalBindings = textMentions.map((mention, index) => {
+    const prefix = localPrefixes[index]!
+    const ordinal = /^\s*(?:在|本變例(?:的)?)?第\s*([0-9零一二三四五六七八九十百]+)\s*手\s*(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走)?)?\s*[「『“"'‘]?\s*$/.exec(prefix)
+    const qualified = /^\s*(?:在|本變例(?:的)?|紅方|红方|黑方|紅|红|黑)?第/.test(prefix)
+    const ply = ordinal ? explicitBoardCount(ordinal[1]!) : null
+    const snapshot = snapshotAt(mention.index)
+    return replays.flatMap((replay) => replay.steps.flatMap((step) =>
+      canonicalChineseMoveNotation(step.move) === canonicalChineseMoveNotation(mention.move) &&
+      (!snapshot || (snapshot.valid && step.ply <= snapshot.ply!)) &&
+      (!qualified || (ply !== null && ply > 0 && step.ply === ply)) ? [{ replay, step }] : []))
+  })
+  const temporalActors = localPrefixes.map((prefix) =>
+    /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(prefix)?.[1])
+  // The local links form a chain. Pruning in both directions preserves every
+  // compatible occurrence, so a repeated name remains ambiguous when order
+  // alone cannot resolve it. No capture outcome participates in this choice.
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const link of links) {
+      const compatible = (left: typeof temporalBindings[number][number], right: typeof left): boolean => {
+        const distance = link.before ? left.step.ply - right.step.ply : right.step.ply - left.step.ply
+        return link.valid && left.replay === right.replay && distance > 0 && (!link.immediate || distance === 1) &&
+          (!temporalActors[link.left] || sideOf(temporalActors[link.left]!) === left.step.side) &&
+          (!temporalActors[link.right] || sideOf(temporalActors[link.right]!) === right.step.side)
+      }
+      const left = temporalBindings[link.left]!.filter((candidate) => temporalBindings[link.right]!.some((other) => compatible(candidate, other)))
+      const right = temporalBindings[link.right]!.filter((candidate) => left.some((other) => compatible(other, candidate)))
+      if (left.length !== temporalBindings[link.left]!.length || right.length !== temporalBindings[link.right]!.length) changed = true
+      temporalBindings[link.left] = left
+      temporalBindings[link.right] = right
+    }
+  }
   let segmentStart = 0
   for (const segment of text.split(/(?<=[。！？；，,.!?;\n])/)) {
     const clauseStart = segmentStart
@@ -382,26 +444,13 @@ function inspectVariationBoardStatements(
       const after = clause.slice(mention.index + move.length, mentions[index + 1]?.index ?? clause.length)
       const textIndex = mentionIndices.get(clauseStart + mention.index)!
       const previousMention = textMentions[textIndex - 1]
-      const nextMention = textMentions[textIndex + 1]
-      const precedingMove = previousMention && isTemporalGap(text.slice(
-        previousMention.index + previousMention.move.length, clauseStart + mention.index))
-        ? canonicalChineseMoveNotation(previousMention.move) : null
+      const precedingLink = links.find((link) => link.right === textIndex)
+      const temporalContext = precedingLink || links.some((link) => link.left === textIndex)
       // Chronology also carries a local conditional/hedge: "if A, then B"
       // cannot turn B into an affirmative fact just because a comma intervenes.
-      const predicateBefore = precedingMove
+      const predicateBefore = precedingLink
         ? (text.slice(0, previousMention!.index).split(/[。！？；，,.!?;\n]/).at(-1) ?? '') + before
         : before
-      // The following anchor starts a separate clause. Its connector must be
-      // the entire gap after the current clause; capture/check prose remains
-      // attached to the current move rather than being used to select it.
-      const followingMove = nextMention && nextMention.index >= clauseStart + clause.length &&
-        isTemporalGap(text.slice(clauseStart + clause.length, nextMention.index))
-        ? canonicalChineseMoveNotation(nextMention.move) : null
-      // A standalone 第N手 means the one-based ply of this cited variation.
-      // Actor-relative 第N步/回合 and a side before the ordinal are not guesses.
-      const plyQualification = /^\s*(?:在|本變例(?:的)?)?第\s*([0-9零一二三四五六七八九十百]+)\s*手\s*(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走)?)?\s*[「『“"'‘]?\s*$/.exec(before)
-      const qualifiedPly = plyQualification ? explicitBoardCount(plyQualification[1]!) : null
-      const snapshot = snapshotAt(clauseStart + mention.index)
       const explicitActor = /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)
       // Only adjacent literal list members inherit an actor. Narrative and
       // comparison words break the list; a named next actor starts a new one.
@@ -436,21 +485,14 @@ function inspectVariationBoardStatements(
         })
       const checks = [...after.matchAll(checkPattern)]
         .filter((match) => !isHypothetical(predicateBefore + after.slice(0, match.index)))
-      const canonicalMove = canonicalChineseMoveNotation(move)
-      const bindings = replays.flatMap((replay) => replay.steps.flatMap((fact, stepIndex) =>
-        canonicalChineseMoveNotation(fact.move) === canonicalMove &&
-        (!snapshot || (snapshot.valid && fact.ply <= snapshot.ply!)) &&
-        (!plyQualification || (qualifiedPly !== null && qualifiedPly > 0 && fact.ply === qualifiedPly)) &&
-        (!precedingMove || canonicalChineseMoveNotation(replay.steps[stepIndex - 1]?.move ?? '') === precedingMove) &&
-        (!followingMove || canonicalChineseMoveNotation(replay.steps[stepIndex + 1]?.move ?? '') === followingMove)
-          ? [{ replay, step: fact }] : []))
+      const bindings = temporalBindings[textIndex]!
       moveBindings.set(clauseStart + mention.index, bindings)
       movePredicatePrefixes.set(clauseStart + mention.index, predicateBefore)
-      if (!side && captures.length === 0 && checks.length === 0) continue
+      if (!side && captures.length === 0 && checks.length === 0 && !temporalContext) continue
       const candidates = bindings.map((binding) => binding.step)
       const fact = candidates[0]
       if (!fact) {
-        if (captures.length > 0 || checks.length > 0 || (side && !isHypothetical(listActor!.prefix))) {
+        if (captures.length > 0 || checks.length > 0 || (!isHypothetical(predicateBefore) && (side || temporalContext))) {
           issues.push(`棋盤事實：${move} 的引用缺少可重播或無歧義的吃子／將軍事實。`)
         }
         continue

@@ -9,7 +9,7 @@ export type MoveComparisonEvidenceState =
 
 /** One comparison-verdict policy shared by the formal validator and scorer. */
 export function hasAssertedMoveCriticism(text: string, moveNames: string[]): boolean {
-  const subjects = [...moveNames, '實戰步', '实战步', '實戰著法', '实战着法', '這步', '这步', '你的著法', '你的着法']
+  const subjects = [...moveNames, '實戰步', '实战步', '實戰著法', '实战着法', '這步', '这步', '你的著法', '你的着法', '使用者著法', '用户着法']
     .filter(Boolean).map((move) => move.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   const subjectPattern = new RegExp(subjects.join('|'), 'g')
   // Commas can continue the same subject, but a different move/opponent
@@ -24,14 +24,16 @@ export function hasAssertedMoveCriticism(text: string, moveNames: string[]): boo
         ...Array.from(clause.matchAll(/對手(?:的)?(?:著法|着法|這步|这步)|黑方(?:的)?(?:著法|着法)|紅方(?:的)?(?:著法|着法)/g),
           (match) => ({ index: match.index!, user: false }))
       ].sort((a, b) => a.index - b.index)
-      for (const verdict of clause.matchAll(/較差|较差|更差|失誤|失误|敗著|败着|錯失|错失|不好|懲罰|惩罚/g)) {
+      let previousVerdictEnd = 0
+      for (const verdict of clause.matchAll(/較差|较差|更差|失誤|失误|敗著|败着|錯失|错失|錯過|错过|失去先手|不好|懲罰|惩罚|必然受罰|必然受罚/g)) {
         for (const reference of references.filter(({ index }) => index <= verdict.index!)) {
           concernsUserMove = reference.user
         }
-        const prefix = clause.slice(0, verdict.index)
+        const prefix = clause.slice(previousVerdictEnd, verdict.index)
         const negatedOrConditional = /(?:不是|並非|并非|沒有|没有|不能說|不能说|不得|不應|不应|無法說|无法说)[^，,。！？；]{0,8}$/.test(prefix)
           || /(?:如果|假如|若)/.test(prefix)
         if (concernsUserMove && !negatedOrConditional) return true
+        previousVerdictEnd = verdict.index! + verdict[0].length
       }
       if (references.length > 0) concernsUserMove = references.at(-1)!.user
     }
@@ -42,7 +44,9 @@ export function hasAssertedMoveCriticism(text: string, moveNames: string[]): boo
 /**
  * Classify only from the existing, tested move-comparison contract. This does
  * not invent a second score threshold: the established mistake level and
- * confidence calculation remain the source of truth.
+ * confidence calculation remain the source of truth for numerical comparison.
+ * The legacy evidence_backed_difference name does not establish a causal
+ * mechanism, strategic superiority, or an independently verified mistake.
  */
 export function moveComparisonEvidenceState(
   comparison: MoveComparisonResult

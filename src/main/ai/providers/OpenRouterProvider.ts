@@ -20,7 +20,11 @@ import {
   readJsonResponseBounded,
   toAITransportError
 } from '../http'
-import { OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL, openRouterReasoningConfig } from '../OpenRouterRequestPolicy'
+import {
+  OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL,
+  OPENROUTER_QWEN38_FREE_MODEL,
+  openRouterReasoningConfig
+} from '../OpenRouterRequestPolicy'
 import {
   credentialTestRequest,
   credentialTestSucceeded
@@ -167,14 +171,16 @@ export class OpenRouterProvider implements AIProvider {
         max_tokens: request.maxOutputTokens ?? 4096,
         temperature: 0.2,
         stream: false,
-        // The exact free Ultra endpoint advertises reasoning but no JSON-mode
+        // The exact free Ultra and Qwen3.8 endpoints advertise reasoning but no JSON-mode
         // parameter. Harness still requests and validates JSON in its prompt.
         // Super advertises schema support, but the live fixed-case comparison
         // exhausted 6,000 output tokens with strict schema and zero reasoning;
         // JSON object finished within 1,900. This observed format difference
         // selects JSON object; it does not establish the decoder's root cause.
         // All local content validation remains required.
-        ...(request.responseFormat === 'json' && request.model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL
+        ...(request.responseFormat === 'json' &&
+          request.model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL &&
+          request.model !== OPENROUTER_QWEN38_FREE_MODEL
           ? { response_format: { type: 'json_object' } }
           : {}),
         ...(reasoningConfig ? { reasoning: reasoningConfig } : {}),

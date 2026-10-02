@@ -207,6 +207,44 @@ for (const format of ['json', 'text', undefined] as const) {
   })
 }
 
+for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-27b-preview:free']) {
+  for (const responseFormat of ['json', 'text'] as const) {
+    await withServer(() => ({ model, choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
+      usage: { completion_tokens: 2500, completion_tokens_details: { reasoning_tokens: 1000 } }
+    }), async (baseUrl, requests) => {
+      const result = await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model, apiKey: 'synthetic-test-key', prompt: 'Offline exact endpoint contract',
+        responseFormat, maxOutputTokens: 6000,
+        metadata: { requestId: 'qwen-exact-policy', analysisId: 'qwen-exact-policy', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+      })
+      const body = requests[0].body as Record<string, unknown>
+      const exactFree = model === 'qwen/qwen3.8-27b:free'
+      assert.deepEqual(body.reasoning, exactFree ? { effort: 'xhigh', exclude: true } : undefined,
+        'The confirmed Qwen free route must preserve Xhigh reasoning without applying its policy to neighbouring models')
+      assert.deepEqual(body.response_format, !exactFree && responseFormat === 'json' ? { type: 'json_object' } : undefined,
+        'The exact Qwen free endpoint does not advertise response_format; prompted JSON still goes through the Harness validator')
+      assert.equal(body.max_tokens, 6000, 'Selecting the strongest candidate must not silently increase its total output cap')
+      assert.equal(body.provider, undefined, 'The request must not introduce provider or model fallback routing')
+      assert.equal(result.model, model)
+      assert.equal(result.usage?.reasoningTokens, 1000, 'Excluded reasoning still counts toward the reported output usage')
+    })
+  }
+}
+for (const content of ['', '{"partial":true}']) {
+  await withServer(() => ({ model: 'qwen/qwen3.8-27b:free',
+    choices: [{ message: { content }, finish_reason: 'length' }],
+    usage: { completion_tokens: 6000, completion_tokens_details: { reasoning_tokens: content ? 3000 : 6000 } }
+  }), async baseUrl => {
+    await assert.rejects(new OpenRouterProvider({ baseUrl }).generateExplanation({
+      provider: 'openrouter', model: 'qwen/qwen3.8-27b:free', apiKey: 'synthetic-test-key',
+      prompt: 'Offline incomplete response', responseFormat: 'json', maxOutputTokens: 6000,
+      metadata: { requestId: 'qwen-length', analysisId: 'qwen-length', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+    }), error => error instanceof AIResponseValidationError && error.category === 'generation_incomplete' &&
+      error.details.finishReason === 'length' && error.details.outputTokens === 6000 &&
+      error.details.reasoningTokens === (content ? 3000 : 6000))
+  })
+}
+
 for (const model of ['dots-studio/dots-3-note-preview:free', 'dots-studio/dots-3-note-preview', 'test/other:free']) {
   for (const responseFormat of ['json', 'text'] as const) {
     await withServer(() => ({ model, choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }] }), async (baseUrl, requests) => {

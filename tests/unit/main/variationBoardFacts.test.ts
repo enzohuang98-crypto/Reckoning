@@ -367,30 +367,30 @@ check('the repeated pawn fixture has distinct noncapture pawn-capture and horse-
     .map((step) => [step.ply, step.captured?.piece ?? null])) ===
   JSON.stringify([[8, null], [12, 'pawn'], [16, null], [18, 'horse']]))
 check('a literal immediately preceding move with an explicit after connector binds the pawn capture',
-  validate('兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length === 0 &&
-  concreteRelation('兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+  validate('兵三進一之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length === 0 &&
+  concreteRelation('兵三進一之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
 check('the same preceding-move binding works within one clause and with quoted mixed notation',
-  validate('紅方「兵三進一」後黑方「卒7進一」吃掉紅方兵。', [repeatedPawn]).length === 0)
+  validate('紅方「兵三進一」後緊接著黑方「卒7進一」吃掉紅方兵。', [repeatedPawn]).length === 0)
 check('an explicit next connector binds the horse capture using its immediately preceding move',
-  validate('紅方馬七進六，接著黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length === 0)
+  validate('紅方馬七進六，緊接著黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length === 0)
 check('a literal immediately following move with a next connector binds the pawn capture',
-  validate('黑方卒7進1吃掉紅方兵，接著紅方車二進六。', [repeatedPawn]).length === 0 &&
-  concreteRelation('黑方卒7進1吃掉紅方兵，接著紅方車二進六。', [repeatedPawn]))
+  validate('黑方卒7進1吃掉紅方兵，緊接著紅方車二進六。', [repeatedPawn]).length === 0 &&
+  concreteRelation('黑方卒7進1吃掉紅方兵，緊接著紅方車二進六。', [repeatedPawn]))
 check('the following move separately binds the horse capture',
-  validate('黑方卒7進1吃掉紅方馬，然後紅方炮八平三。', [repeatedPawn]).length === 0)
+  validate('黑方卒7進1吃掉紅方馬，緊接著紅方炮八平三。', [repeatedPawn]).length === 0)
 check('the preceding noncapture identity cannot borrow the later pawn or horse capture',
-  validate('兵七進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
-  validate('車二平三之後，黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length > 0)
+  validate('兵七進一之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('車二平三之後，緊接著黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length > 0)
 check('an anchored actual pawn capture cannot change its captured type side or square',
   ['紅方馬', '黑方卒', '紅方g2兵'].every((target) =>
-    validate(`兵三進一之後，黑方卒7進1吃掉${target}。`, [repeatedPawn]).length > 0))
+    validate(`兵三進一之後，緊接著黑方卒7進1吃掉${target}。`, [repeatedPawn]).length > 0))
 check('an anchored capture cannot be denied and a noncapture can be correctly denied',
-  validate('兵三進一之後，黑方卒7進1沒有吃子。', [repeatedPawn]).length > 0 &&
-  validate('兵七進一之後，黑方卒7進1沒有吃子。', [repeatedPawn]).length === 0)
+  validate('兵三進一之後，緊接著黑方卒7進1沒有吃子。', [repeatedPawn]).length > 0 &&
+  validate('兵七進一之後，緊接著黑方卒7進1沒有吃子。', [repeatedPawn]).length === 0)
 check('a following anchor cannot excuse a counterfeit target',
-  validate('黑方卒7進1吃掉紅方馬，接著紅方車二進六。', [repeatedPawn]).length > 0)
+  validate('黑方卒7進1吃掉紅方馬，緊接著紅方車二進六。', [repeatedPawn]).length > 0)
 check('a move from a different ply is not an immediate temporal anchor',
-  validate('炮2進4之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+  validate('炮2進4之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
 check('noun comparisons and lists do not disambiguate repeated capture outcomes',
   validate('兵三進一與黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
   validate('比較兵三進一、黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
@@ -398,45 +398,45 @@ check('an unanchored move and ambiguous black-step ordinal remain unresolved',
   validate('黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
   validate('黑方第12步卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
 check('an explicit temporal anchor must exist in the same replay even when another line has the capture',
-  validate('馬8進7之後，黑方卒7進1吃掉紅方兵。', [opening, bestPly18]).length > 0 &&
-  validate('黑方卒7進1吃掉紅方兵，接著黑方馬8進7。', [opening, bestPly18]).length > 0)
+  validate('馬8進7之後，緊接著黑方卒7進1吃掉紅方兵。', [opening, bestPly18]).length > 0 &&
+  validate('黑方卒7進1吃掉紅方兵，緊接著黑方馬8進7。', [opening, bestPly18]).length > 0)
 check('an uncited temporal anchor cannot bind a repeated move',
-  validate('兵三進一之後，黑方卒7進1吃掉紅方兵。', [bestPly18]).length > 0)
+  validate('兵三進一之後，緊接著黑方卒7進1吃掉紅方兵。', [bestPly18]).length > 0)
 check('temporal context does not cross sentence boundaries',
-  validate('兵三進一之後。黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+  validate('兵三進一之後緊接著。黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
 check('temporal context preserves explicit side checks for both adjacent moves',
-  validate('兵三進一之後，紅方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
-  validate('黑方兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+  validate('兵三進一之後，緊接著紅方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('黑方兵三進一之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
 check('conflicting preceding and following anchors cannot select whichever capture matches the assertion',
-  validate('兵三進一之後，黑方卒7進1吃掉紅方兵，接著紅方炮八平三。', [repeatedPawn]).length > 0)
+  validate('兵三進一之後，緊接著黑方卒7進1吃掉紅方兵，緊接著紅方炮八平三。', [repeatedPawn]).length > 0)
 check('a distinct cited line with an unanchored same move cannot contaminate an exact adjacency',
-  validate('兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn, bestPly18]).length === 0)
+  validate('兵三進一之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn, bestPly18]).length === 0)
 const repeatedRookFen = '3k5/9/9/9/9/p8/9/9/R8/4K4 w - - 0 1'
 const repeatedRook = replayEvidence('E1', ['a1a2', 'd9d8', 'a2a3', 'd8d9', 'a3a4'], repeatedRookFen)
 const alternateRook = replayEvidence('E2', ['a1a0', 'd9d8', 'a0a1', 'd8d9', 'a1a2'], repeatedRookFen)
 check('adjacent move binding applies to repeated rook moves without pawn-specific rules',
-  validate('黑方將4退1之後，紅方車九進一吃掉黑方卒。', [repeatedRook]).length === 0)
+  validate('黑方將4退1之後，緊接著紅方車九進一吃掉黑方卒。', [repeatedRook]).length === 0)
 check('identical adjacent names with conflicting outcomes in another cited line remain ambiguous',
-  validate('黑方將4退1之後，紅方車九進一吃掉黑方卒。', [repeatedRook, alternateRook]).length > 0)
+  validate('黑方將4退1之後，緊接著紅方車九進一吃掉黑方卒。', [repeatedRook, alternateRook]).length > 0)
 const repeatedCheck = replayEvidence('E1', ['a7a8', 'h8h7', 'a8a9'],
   '3k5/7r1/R8/9/9/9/9/9/9/4K4 w - - 0 1')
 check('adjacent move binding also selects a repeated move with a different check outcome',
-  validate('黑方車8進1之後，紅方車九進一將軍。', [repeatedCheck]).length === 0 &&
-  concreteRelation('黑方車8進1之後，紅方車九進一將軍。', [repeatedCheck]))
+  validate('黑方車8進1之後，緊接著紅方車九進一將軍。', [repeatedCheck]).length === 0 &&
+  concreteRelation('黑方車8進1之後，緊接著紅方車九進一將軍。', [repeatedCheck]))
 check('a resolved capture still cannot fabricate a check or certify hypothetical narration',
-  validate('兵三進一之後，黑方卒7進1吃掉紅方兵並將軍。', [repeatedPawn]).length > 0 &&
-  !concreteRelation('如果兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+  validate('兵三進一之後，緊接著黑方卒7進1吃掉紅方兵並將軍。', [repeatedPawn]).length > 0 &&
+  !concreteRelation('如果兵三進一之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
 check('a temporal anchor also selects the correct fixed-board current opportunity',
-  concreteRelation('車二平三之後，黑方卒7進1可吃紅方馬。', [repeatedPawn]) &&
-  validate('兵三進一之後，黑方卒7進1可吃紅方馬。', [repeatedPawn]).length > 0 &&
-  validate('車二平三之後，黑方卒7進1已吃紅方馬。', [repeatedPawn]).length > 0)
+  concreteRelation('車二平三之後，緊接著黑方卒7進1可吃紅方馬。', [repeatedPawn]) &&
+  validate('兵三進一之後，緊接著黑方卒7進1可吃紅方馬。', [repeatedPawn]).length > 0 &&
+  validate('車二平三之後，緊接著黑方卒7進1已吃紅方馬。', [repeatedPawn]).length > 0)
 check('a local hedged chronology does not establish an affirmative capture',
-  !concreteRelation('或許兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+  !concreteRelation('或許兵三進一之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
 check('a remote future qualifier cannot exempt a new anchored present assertion',
-  validate('未來可能有其他變化，兵三進一之後，黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length > 0)
+  validate('未來可能有其他變化，兵三進一之後，緊接著黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length > 0)
 check('temporal context does not bridge paragraph or line boundaries in either direction',
-  validate('兵三進一之後\n黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
-  validate('黑方卒7進1吃掉紅方兵\n接著紅方車二進六。', [repeatedPawn]).length > 0)
+  validate('兵三進一之後緊接著\n黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate('黑方卒7進1吃掉紅方兵\n緊接著紅方車二進六。', [repeatedPawn]).length > 0)
 
 const realCannonTrade = replayEvidence('E1', [
   'g3g4', 'h7g7', 'b2e2', 'c9e7', 'h0g2', 'g6g5', 'g4g5', 'g7g2',
@@ -609,6 +609,75 @@ check('snapshot counts inherit a historical actor instead of the side that moved
 check('a direct clause-leading cutoff supports current counts and their denials without requiring a comma',
   validate('截至第16手紅方淨少一炮。', [realCannonTrade]).length === 0 &&
   validate('截至第17手紅方並非淨多零炮。', [realCannonTrade]).length > 0)
+
+// Public Super E2 replay: ordinary chronology may skip the intervening horse moves.
+const superOpening = replayEvidence('E2', [
+  'h2e2', 'h9g7', 'h0g2', 'i9h9', 'g3g4', 'h7i7',
+  'b0c2', 'c6c5', 'b2b6', 'g9e7', 'g2f4'
+], START_FEN)
+check('the public Super rook deployment follows the cannon without being the next ply',
+  validate('炮二平五後，黑方車9平8。', [superOpening]).length === 0 &&
+  validate('炮二平五之後黑方車9平8沒有吃子。', [superOpening]).length === 0)
+check('plain then and next distinguish later deployment from an immediate response',
+  validate('炮二平五，然後黑方車9平8。', [superOpening]).length === 0 &&
+  validate('炮二平五後，隨即黑方車9平8。', [superOpening]).length > 0 &&
+  validate('炮二平五，下一手黑方車9平8。', [superOpening]).length > 0 &&
+  validate('炮二平五，緊接著黑方車9平8。', [superOpening]).length > 0)
+check('a supported immediate connector accepts only the actual next ply',
+  validate('炮二平五後，下一手黑方馬8進7沒有吃子。', [superOpening]).length === 0 &&
+  validate('炮二平五，隨即黑方馬8進7沒有吃子。', [superOpening]).length === 0)
+check('an explicit global ordinal inside chronological context still binds the exact replay ply',
+  validate('炮二平五後，第4手黑方車9平8沒有吃子。', [superOpening]).length === 0 &&
+  validate('炮二平五後，第2手黑方車9平8沒有吃子。', [superOpening]).length > 0 &&
+  validate('炮二平五後，第4步黑方車9平8沒有吃子。', [superOpening]).length > 0)
+check('ordinal qualification on an earlier anchor is preserved by chronology',
+  validate('第十二手黑方卒7進1之後，第十八手黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length === 0 &&
+  validate('第十八手黑方卒7進1之後，第十二手黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('plain after cannot select a repeated capture by its asserted target',
+  validate('兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  !concreteRelation('兵三進一之後，黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+check('a strict next-ply context resolves the repeated capture without changing its target',
+  validate('兵三進一之後，緊接著黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length === 0 &&
+  validate('兵三進一之後，緊接著黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length > 0)
+check('before reverses the chronological relation and does not mean the previous ply',
+  validate('黑方車9平8之前，紅方炮二平五沒有吃子。', [superOpening]).length === 0 &&
+  validate('紅方炮二平五之前，黑方車9平8沒有吃子。', [superOpening]).length > 0)
+check('ordinary following anchors preserve order without forcing adjacency',
+  validate('紅方炮二平五沒有吃子，然後黑方車9平8。', [superOpening]).length === 0 &&
+  validate('黑方車9平8沒有吃子，然後紅方炮二平五。', [superOpening]).length > 0)
+check('chronology never supplies a move from another cited variation',
+  validate('炮二平五之後，黑方車1平2沒有吃子。', [superOpening,
+    replayEvidence('E1', ['b2e2', 'b9c7', 'b0c2', 'a9b9'], START_FEN)]).length > 0)
+check('ordinary chronology still validates actor and concrete capture assertions',
+  validate('炮二平五後，紅方車9平8沒有吃子。', [superOpening]).length > 0 &&
+  validate('炮二平五後，黑方車9平8吃掉紅方炮。', [superOpening]).length > 0)
+check('a temporal anchor must also be inside the current verified snapshot prefix',
+  validate('截至第4手，炮二平五後，黑方車9平8沒有吃子。', [superOpening]).length === 0 &&
+  validate('截至第3手，炮二平五後，黑方車9平8沒有吃子。', [superOpening]).length > 0 &&
+  validate('截至第4手，炮8平9之前，紅方炮二平五沒有吃子。', [superOpening]).length > 0)
+check('an illegal or mismatched replay tail cannot establish a later chronological occurrence',
+  validate('炮二平五後，黑方車9平8沒有吃子。', [{ ...superOpening,
+    analysis: { ...superOpening.analysis, principalVariation: ['h2e2', 'i9h9'] } }]).length > 0 &&
+  validate('炮二平五後，黑方車9平8沒有吃子。', [{ ...superOpening,
+    displayPrincipalVariation: superOpening.displayPrincipalVariation.map((move, index) => index === 3 ? '車9進1' : move) }]).length > 0)
+check('plain chronology retains local hypothetical scope and checks a new present assertion',
+  !concreteRelation('如果炮二平五後，第11手馬三進四可吃黑方卒。', [superOpening]) &&
+  validate('如果炮二平五後，黑方車9平8沒有吃子，但黑方車9平8這步已經吃掉紅方炮。', [superOpening]).length > 0)
+check('a conflicting before and next qualifier cannot discard before at the comma',
+  validate('炮二平五之前，下一手黑方馬8進7沒有吃子。', [superOpening]).length > 0 &&
+  validate('炮二平五之前，緊接著黑方馬8進7沒有吃子。', [superOpening]).length > 0)
+check('earlier ordinal anchors and later ordinal facts retain their respective capture results',
+  validate('第12手卒7進1沒有吃掉紅方馬，然後第18手卒7進1吃掉紅方馬。', [repeatedPawn]).length === 0 &&
+  validate('第18手卒7進1吃掉紅方馬，然後第12手卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('before can resolve explicit repeated occurrences without inventing immediate adjacency',
+  validate('第12手卒7進1之前，第8手卒7進1沒有吃子。', [repeatedPawn]).length === 0 &&
+  validate('第12手卒7進1之前，第8手卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0)
+check('a temporal chain has to be consistent through all its literal moves',
+  validate('炮二平五後，黑方車9平8，然後黑方馬8進7沒有吃子。', [superOpening]).length > 0 &&
+  validate('炮二平五後，黑方馬8進7，然後黑方車9平8沒有吃子。', [superOpening]).length === 0)
+check('a snapshot preserves later current counts while ordinary chronology covers earlier captures',
+  validate('截至第17手，炮7進5吃掉紅方馬，然後紅方車二進二吃掉黑方炮，紅方淨多零炮。', [realCannonTrade]).length === 0 &&
+  validate('截至第17手，炮7進5吃掉紅方馬，隨即紅方車二進二吃掉黑方炮，紅方淨多零炮。', [realCannonTrade]).length > 0)
 
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1

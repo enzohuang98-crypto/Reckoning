@@ -612,7 +612,10 @@ const COMPARISON_SECTION_HEADINGS: Record<
     [HARNESS_SECTION_IDS.actualMoveProblem]: '實戰步評價',
     [HARNESS_SECTION_IDS.opponentExploitation]: '對手合理應對與後續'
   },
-  evidence_backed_difference: {},
+  evidence_backed_difference: {
+    [HARNESS_SECTION_IDS.actualMoveProblem]: '實戰步評價',
+    [HARNESS_SECTION_IDS.opponentExploitation]: '對手合理應對與後續'
+  },
   insufficient: {
     [HARNESS_SECTION_IDS.actualMoveProblem]: '目前可確定的比較',
     [HARNESS_SECTION_IDS.opponentExploitation]: '可見主線與限制'
@@ -908,9 +911,7 @@ export function validateConsequenceAudit(
   hasUserMove: boolean,
   dualComparison?: DualEngineComparison | null,
   language: ExplanationLanguage = 'zh-TW',
-  comparisonState: MoveComparisonEvidenceState = hasUserMove
-    ? 'evidence_backed_difference'
-    : 'insufficient'
+  comparisonState: MoveComparisonEvidenceState = 'insufficient'
 ): string[] {
   const errors: string[] = []
   const evidenceIds = new Set(evidence.map((item) => item.id))
@@ -935,9 +936,8 @@ export function validateConsequenceAudit(
     }
     if (
       comparisonState === 'insufficient' &&
-      /(錯失|錯過|错过|失去先手|失誤|敗著|較差|更差|懲罰|惩罚|必然受罰|必然受罚)/.test(
-        audit.userMoveProblem
-      )
+      hasAssertedMoveCriticism(audit.userMoveProblem,
+        evidence.map(item => item.analysis.displayUserMove ?? '').filter(Boolean))
     ) {
       errors.push('比較證據不足時，不得把使用者著法寫成確定的錯失、較差或懲罰。')
     }
@@ -959,8 +959,10 @@ export function validateConsequenceAudit(
       )
     }
   }
+  // Legacy verified is the model's attestation, not independent proof. The
+  // following citation, replay, content and causal checks remain mandatory.
   const verified = audit.consequences.filter((item) => item.verified)
-  if (verified.length < 2) errors.push('至少需要兩項已驗證的具體後果。')
+  if (verified.length < 2) errors.push('至少需要兩項具體後果，並具備完整引用及因果關聯。')
   const categoryCount = new Set(verified.map((item) => item.category)).size
   if (verified.length >= 2 && categoryCount < 2) {
     errors.push('兩項具體後果不能只是同一種類型的重述。')
@@ -1161,7 +1163,10 @@ function hasAssertedForcedVariation(text: string): boolean {
     let previousAssertionEnd = 0
     for (const match of clause.matchAll(assertion)) {
       const prefix = clause.slice(previousAssertionEnd, match.index)
-      const denied = /(?:不(?:必|會|会|一定|可能)?|未必)\s*$/.test(prefix) ||
+      // Negation binds to this predicate, not to the paragraph. Resetting the
+      // prefix after each assertion keeps a denied first claim from excusing
+      // a later positive forced-line claim (including within the same clause).
+      const denied = /(?:不(?:必|會|会|一定|可能)?|未必|未|沒(?:有)?|没(?:有)?)\s*$/.test(prefix) ||
         /(?:不是|並非|并非|不代表|不表示|不能(?:說|说|稱|称|認定|认定|當成|当成)|不可(?:說|说|稱|称|認定|认定|當成|当成)|不應(?:說|说|稱|称|認定|认定|當成|当成))[^。！？；，]{0,30}$/.test(prefix) ||
         /\b(?:not|never|cannot)(?:\s+(?:mean|imply|claim|say|that|Black|Red|the|opponent|is|was|a|to)){0,6}\s*$/i.test(prefix)
       if (!denied) return true
@@ -1448,16 +1453,10 @@ export function validateAnswer(
     errors.push('回答缺少後續主線與具體後果。')
   }
   if (
-    !requirements.focusedQuestion && requirements.hasUserMove &&
-    requirements.comparisonState === 'evidence_backed_difference' &&
-    !/(錯失|不好|問題|不對)/.test(prose)
-  ) {
-    errors.push('回答沒有說明使用者著法為什麼不好。')
-  }
-  if (
     requirements.hasUserMove &&
     requirements.comparisonState === 'insufficient' &&
-    /(錯失|錯過|错过|失去先手|失誤|敗著|較差|更差|懲罰|惩罚|必然受罰|必然受罚)/.test(prose)
+    hasAssertedMoveCriticism(prose,
+      evidence.map(item => item.analysis.displayUserMove ?? '').filter(Boolean))
   ) {
     errors.push('比較證據不足時，回答不得宣稱使用者著法確定較差或必然受罰。')
   }
@@ -2245,7 +2244,7 @@ export async function runExplanationHarness(
         ? '比較狀態：既有分級只支持可接受或輕微誤差。可比較計畫差異，但不得誇大成明顯錯誤、敗著或必然受罰。'
         : comparisonState === 'insufficient'
           ? '比較狀態：證據不足。分開寫目前可確定的主線與缺少的證據，不得編造戰術或用全篇「不足」掩蓋已存在的盤面事實。'
-          : '比較狀態：既有引擎比較與可信度支持兩步有實質差異；仍須以本局兩條主線解釋原因，不得只拿分差或候選排名當理由。'
+          : '比較狀態：既有引擎分差分級顯示評估差異，這不是棋理原因或失誤機制的證明。先從本局各線的正確方別、著法及可核對盤面變化分析原因，再判斷具體優劣；兩線共有的機制不能當成其中一步獨有的優勢。若尚找不到具體差異原因，保留已確定的計畫、合理應對與後果，指出比較原因缺少哪種證據，不得為了符合分差而硬造失誤或懲罰。'
   const isFollowUp = execution.answerStrategy === 'conversation-follow-up'
   const isFormalMoveComparison =
     execution.answerStrategy === 'formal-move-comparison'
@@ -3053,11 +3052,11 @@ ${knowledgeContext}
               comparisonState === 'same_move'
                 ? '第一段直接明說實戰步與 AI 首選是同一著法，解釋這步的好處。'
                 : comparisonState === 'evidence_backed_difference'
-                  ? '第一段直接回答實戰步與 AI 首選的實質差異，同時使用兩步的中文著法。'
+                  ? '第一段同時使用兩步的中文著法，說明主線支持的比較；分差只是評估觀測，不預判必有具體失誤。'
                   : '第一段中性說明目前可支持的比較結論，不得把證據強度不足寫成確定優劣。'
             }
 - 說清楚「原因 → 棋盤機制 → 受影響棋子／線路 → 對手合理應對 → 後果」。
-- 對手利用與後果至少逐字引用兩步真實引擎主線；不得拿分數當理由。
+- 對手合理應對與後果至少逐字引用兩步真實引擎主線；不得拿分數當理由或把共有機制說成獨有優勢。
 - 不得虛構戰術、錯認輪走方、顯示 FEN、UCI、token、trace、證據編號或模型輪次。
 - 主線未出現的後續不得寫成已經發生、必然發生或「被迫」；若兩個引擎的對手首應不同，只能說「其中一條主線顯示」，不可把單一路線寫成唯一確定反應。
 - 除非主線直接出現將死或確定得子，避免「完全、全面、嚴重、必然」等誇大語氣；結論強度必須與可見主線相稱。
@@ -3155,7 +3154,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
               comparisonState === 'same_move'
                 ? '實戰步與首選一致及其具體價值'
                 : comparisonState === 'evidence_backed_difference'
-                  ? '實戰步與首選有證據支持的差異'
+                  ? '實戰步與首選的具體比較；分差本身不是棋理原因'
                   : '目前可確定的比較與證據限制'
             }",
     "consequences":[
@@ -3243,7 +3242,7 @@ ${
 2. ${comparisonState === 'same_move'
   ? '使用者著法與首選一致，這步帶來什麼具體好處。'
   : comparisonState === 'evidence_backed_difference'
-    ? '使用者著法與首選有什麼有證據支持的差異、原因為何。'
+    ? '評估差異只是觀測；由本局兩線可核對的盤面機制判斷具體差異，尚不能確認的原因不得編造。'
     : '目前能確定的比較內容與仍缺少的證據；不得硬判失誤。'}
 3. 對手在對應主線中如何合理應對。
 4. 主線顯示哪些盤面影響；不可把可選變例寫成必然。`
@@ -3419,9 +3418,9 @@ PV 只展示這條變例的選擇，不證明對手被迫、只能被動應對�
       ? `先用 directAnswer 寫一段符合比較證據狀態的短結論：${comparisonState === 'same_move'
   ? '明說實戰步與首選一致，解釋這步的好處與對手合理應對。'
   : comparisonState === 'evidence_backed_difference'
-    ? '解釋兩步有證據支持的差異、原因與後續盤面。'
+    ? '解釋兩線可核對的計畫、原因與後續盤面；分差本身不證明具體失誤，尚未確定的差異原因須限定缺項。'
     : '中性說明目前可確定的主線與欠缺的比較證據。'}
-固定依序使用五個 section id 與具名標題：direct_conclusion／直接結論、actual_move_problem／實戰步問題、best_move_plan／AI 首選、opponent_exploitation／對手利用與後果、practical_principle／實戰原則。
+固定依序使用五個 section id 與具名標題：direct_conclusion／直接結論、actual_move_problem／實戰步評價、best_move_plan／AI 首選、opponent_exploitation／對手合理應對與後續、practical_principle／實戰原則。
 不得使用模擬提問或自問自答。使用者可讀正文不得少於 400 個漢字，以約 500–900 個中文字為目標。
 opponent_exploitation 要按引擎主線順序，逐手說明目的與盤面影響，一直寫到具體後果出現。
 actual_move_problem 要先說最佳著法的目的，再依比較狀態說明實戰著法；同一步不得硬造錯失，證據不足不得硬判劣勢。
@@ -3432,7 +3431,7 @@ actual_move_problem 與 opponent_exploitation 的每個 claim 都必須附 "caus
 - cause：因為哪一步（必須逐字使用主線中的中文著法）
 - mechanism：造成什麼棋理或盤面變化
 - affected：受影響的棋子、線路、王區、陣形或威脅
-- opponentUse：對手下一步如何利用
+- opponentUse：該線對手如何合理應對及造成什麼影響，不能預設必有失誤可利用
 - consequence：後續主線顯示的具體盤面變化
 只有明確承認證據不足的 claim 可以不附 causal。
 因果敘述要使用具體象棋詞彙（例如：${CONCRETE_TERM_EXAMPLES}）指出位置、棋子關係或威脅，不能只用抽象評價。`
