@@ -65,3 +65,19 @@ OpenRouter 的 `exclude: true` 只隱藏回傳的 reasoning；不能視作不消
 - 歷史 429／502 只表示當時路由或限流狀態，不能當作能力評比。研究沒有重放這些請求；正式同 key 切換失敗必須保留原模型，不以自動改用其他模型掩蓋。
 
 可信度：Qwen 是本次已取得同版比較證據中最有力的免費候選，為中等可信；它在本案有限預算的完整象棋正文是否達標，尚需實測。公開目錄及 endpoint 是當時狀態，正式執行前需再核對免費資格與參數。
+
+## 本次正式服務探測結果
+
+研究完成後，使用者已授權的同 key 免費模型切換由正式 `OpenRouterSavedModelService` 執行；key 僅在 main process 解密。以下為安全診斷，不是原始帳戶回應。
+
+| 精確候選 | 正式結果 | 保存的模型 |
+|---|---|---|
+| `qwen/qwen3.8-27b:free` | `generation / rate_limited`，429；RetryAfter 未提供。 | 保留 Super。 |
+| `thinkingmachines/inkling-small:free` | `generation / permission`，不可重試；RetryAfter 未提供。 | 保留 Super。 |
+| `thinkingmachines/inkling:free` | `generation / permission`，不可重試；RetryAfter 未提供。 | 保留 Super。 |
+
+三份安全紀錄分別為 `same-key-qwen-strongest-switch-2026-10-02.json`、`same-key-inkling-small-strongest-available-switch-2026-10-02.json`、`same-key-inkling-strongest-available-switch-2026-10-02.json`，保留於本機驗收資料夾而不提交個人帳戶檔案。沒有重試相同拒絕、付費使用或自動改模型；`beforeModel` 與 `afterModel` 均為 `nvidia/nemotron-3-super-120b-a12b:free`。
+
+同期安全 quota metadata 提供 free used=2／limit=50／remaining=48，因此不能宣稱已證明每日額度用盡；Qwen 的限流範圍仍不明。後續用已保存 Super 驗證程式修正，不得稱為 Qwen 或 Inkling 的完整正文驗收。候選能力、route 即時可用性、完整棋理解說品質分開判定。
+
+Inkling 精確免費目錄宣告 optional reasoning、default effort=high，efforts 為 max／high／medium／low／minimal／none，未列 response_format。AA 的 Xhigh 分數不直接證明此免費 route 的預設 high 等同該評測；本次 probe 被拒絕，未替 Inkling 加入未實測的請求策略。
