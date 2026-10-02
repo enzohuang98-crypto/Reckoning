@@ -3828,6 +3828,16 @@ async function main(): Promise<void> {
   const sameVerdictRequirements = { ...initialMoveRequirements, comparisonState: 'same_move' as const }
   check('同首選完整正文可通過正式 validator',
     validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements).length === 0)
+  const deniedOpeningEventsAnswer = structuredClone(sameVerdictAnswer)
+  deniedOpeningEventsAnswer.sections[0]!.claims[0]!.text += '炮二平五在此未發生吃子或將軍。'
+  const deniedOpeningEventsErrors = validateAnswer(
+    deniedOpeningEventsAnswer, sameVerdictEvidence, sameVerdictRequirements)
+  check('完整五段同首選正文的局部否定吃子及將軍可通過正式 validator',
+    deniedOpeningEventsErrors.length === 0, deniedOpeningEventsErrors)
+  deniedOpeningEventsAnswer.sections[0]!.claims[0]!.text += '但炮二平五這步已經將軍。'
+  check('完整正文的局部否定不豁免後續虛構將軍',
+    validateAnswer(deniedOpeningEventsAnswer, sameVerdictEvidence, sameVerdictRequirements)
+      .some(error => error.includes('棋盤事實')))
   const replayedExchangeAnswer = JSON.parse(JSON.stringify(sameVerdictAnswer)
     .replaceAll('馬八進七', '馬二進三').replaceAll('馬2進3', '車9平8')) as HarnessAnswer
   const replayedExchangeEvidence = [{ ...realExchangeEvidence, id: 'E1' }]

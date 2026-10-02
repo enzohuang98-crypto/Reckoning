@@ -54,6 +54,30 @@ check('fullwidth notation does not make a fabricated capture valid', validate('�
 check('red file notation cannot borrow facts from a black-file cited move', validate('黑方馬八進7沒有吃子。', [opening]).length > 0)
 check('mixed notation cannot borrow a fact from an uncited variation', validate('黑方馬8進七沒有吃子。', [capture]).length > 0)
 check('the opening moves do not capture or check', validate('炮二平五沒有吃子，馬8進7未將軍。', [opening]).length === 0)
+for (const text of [
+  '炮二平五未發生吃子或將軍。',
+  '炮二平五沒有發生吃子與將軍。',
+  '炮二平五既未吃子也未將軍。',
+  '炮二平五未將軍或吃子。'
+]) {
+  check(`local denial governs a coordinated capture/check list: ${text}`,
+    validate(text, [opening]).length === 0)
+  check(`denied list cannot contradict an actual capture and check: ${text}`,
+    validate(text.replaceAll('炮二平五', '車九進八'), [capture]).length > 0)
+}
+for (const text of [
+  '炮二平五未發生吃子或將軍，但炮二平五這步已經將軍。',
+  '炮二平五未發生吃子或將軍但這步已經將軍。',
+  '炮二平五沒有發生吃子而是將軍。',
+  '炮二平五未吃子並且這步已經將軍。'
+]) {
+  check(`a denied list does not exempt a new affirmed predicate: ${text}`,
+    validate(text, [opening]).length > 0)
+}
+check('a denied capture/check list cannot borrow an unrelated move identity',
+  validate('紅方車九平五未發生吃子或將軍。', [opening]).length > 0)
+check('denying all capture/check events never supplies an affirmed concrete relation',
+  !hasAffirmedConcreteVariationRelation('炮二平五未發生吃子或將軍。', [opening]))
 check('an invented move cannot evade facts by being absent from the cited PV', validate('紅方車九平五吃掉黑方炮並將軍。', [opening]).length > 0)
 check('a fact assertion without any replayable evidence fails closed', validate('紅方車九平五吃掉黑方炮並將軍。', []).length > 0)
 check('a different valid move cannot borrow facts from an unrelated cited line', validate('黑方炮8平5吃掉紅方車。', [opening]).length > 0)

@@ -465,6 +465,23 @@ function inspectVariationBoardStatements(
         ? { side: sideOf(explicitActor[1]!), prefix: before }
         : isListMember ? listActor : null
       const side = listActor?.side
+      // A local denial may govern a literal predicate list: 未發生吃子或將軍.
+      // Resolve its scope across both event kinds, then still compare each
+      // denied event with the replay. A new assertion cannot borrow the denial.
+      const predicateDenials = new Map<number, boolean>()
+      let previousPredicateEnd = 0
+      let previousPredicateDenied = false
+      const eventPredicates = [...after.matchAll(capturePattern), ...after.matchAll(checkPattern)]
+        .sort((a, b) => a.index! - b.index!)
+      for (const predicate of eventPredicates) {
+        const gap = after.slice(previousPredicateEnd, predicate.index)
+        const denied: boolean = /^(?:沒有|没有|未|不|非)/.test(predicate[0])
+          || /(?:沒有|没有|未|不|非)\s*(?:發生|发生|形成|構成|构成)\s*$/.test(gap)
+          || (previousPredicateDenied && /^(?:\s*(?:或(?:者|是)?|和|與|与|及|、)\s*)+$/.test(gap))
+        predicateDenials.set(predicate.index!, denied)
+        previousPredicateEnd = predicate.index! + predicate[0].length
+        previousPredicateDenied = denied
+      }
       const captures = [...after.matchAll(capturePattern)]
         .flatMap((match) => {
           const prefix = predicateBefore + after.slice(0, match.index)
@@ -480,7 +497,7 @@ function inspectVariationBoardStatements(
           if (opportunity && /^(沒有|没有|未|不|非)/.test(match[1]!)) return []
           const denied = opportunity
             ? /^(沒有|没有|沒|没|未|不|非|無法|无法)/.test(modal![1]!)
-            : /^(沒有|没有|未|不|非)/.test(match[1]!)
+            : predicateDenials.get(match.index!) === true
           return [{ match, opportunity, denied }]
         })
       const checks = [...after.matchAll(checkPattern)]
@@ -522,7 +539,7 @@ function inspectVariationBoardStatements(
         }
       }
       for (const check of checks) {
-        const denied = Boolean(check[1])
+        const denied = predicateDenials.get(check.index!) === true
         if (new Set(candidates.map((candidate) => candidate.givesCheck)).size !== 1) {
           issues.push(`棋盤事實：${move} 在引用變例的不同步數有不同將軍結果，必須指明所述步數。`)
         } else if (denied ? fact.givesCheck : !fact.givesCheck) {
