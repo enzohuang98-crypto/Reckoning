@@ -10,12 +10,10 @@ import {
   loadLegacyUpdatePreferences,
   type AppTab
 } from './app/AppShell'
-import { LICENSE_GATE_DISABLED } from './app/productFlags'
 import { StartupScreen } from './app/StartupScreen'
 import { AnalysisWorkspace } from './features/workspace/AnalysisWorkspace'
 import { useAppDataStore } from './features/app-data/useAppDataStore'
 import { useBoardWorkspace } from './features/board/useBoardWorkspace'
-import { LicensePage } from './pages/LicensePage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SetupWizard } from './pages/SetupWizard'
 import {
@@ -27,7 +25,6 @@ import {
 import { withTimeout } from './utils/withTimeout'
 
 type SetupState = 'checking' | 'wizard' | 'done'
-type LicenseState = 'checking' | 'locked' | 'ok'
 const UPDATE_OPERATION_TIMEOUT_MS = 15_000
 const UPDATE_PREPARATION_TIMEOUT_MS = 20 * 60 * 1000
 export const UNSAVED_UPDATE_DRAFT_MESSAGE =
@@ -54,7 +51,6 @@ export function App(): JSX.Element {
   const [setupState, setSetupState] = useState<SetupState>(() =>
     isSetupCompleted() ? 'done' : 'checking'
   )
-  const [licenseState, setLicenseState] = useState<LicenseState>('checking')
   const pendingConversationId = useRef<string | null>(null)
   const hasUnsavedAnalysisDraftRef = useRef(false)
 
@@ -104,12 +100,20 @@ export function App(): JSX.Element {
 
   const downloadUpdate = useCallback((): void => {
     setUpdateError(null)
+    if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+      void window.api.isolatedUpdaterProbe?.record('prepare-start')
+    }
     void withTimeout(
       window.api.update.download(),
       UPDATE_PREPARATION_TIMEOUT_MS,
       '更新背景準備逾時，請確認網路後再試。'
     )
-      .then(setUpdateStatus)
+      .then((status) => {
+        setUpdateStatus(status)
+        if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+          void window.api.isolatedUpdaterProbe?.record('prepare-complete')
+        }
+      })
       .catch(() => {
         setUpdateError('更新背景準備失敗，請確認網路後再試。')
         setUpdateStatus((current) =>
@@ -125,14 +129,29 @@ export function App(): JSX.Element {
   }, [])
 
   const installUpdate = useCallback(async (): Promise<AppUpdateStatus> => {
+    let draftChecks = 0
     const result = await installPreparedUpdateSafely(
       flushCurrentData,
-      () => withTimeout(
+      () => {
+        if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+          void window.api.isolatedUpdaterProbe?.record('install-dispatch')
+        }
+        return withTimeout(
         window.api.update.install(),
         UPDATE_OPERATION_TIMEOUT_MS,
         '啟動更新安裝逾時。'
-      ),
-      () => hasUnsavedAnalysisDraftRef.current
+        )
+      },
+      () => {
+        const hasDraft = hasUnsavedAnalysisDraftRef.current
+        if (typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__) {
+          const stage = draftChecks++ === 0
+            ? (hasDraft ? 'first-draft-present' : 'first-draft-clear')
+            : (hasDraft ? 'after-save-draft-present' : 'after-save-draft-clear')
+          void window.api.isolatedUpdaterProbe?.record(stage)
+        }
+        return hasDraft
+      }
     )
     if (!result) throw new Error('資料尚未成功保存，已取消重新啟動更新。')
     setUpdateStatus(result)
@@ -214,20 +233,6 @@ export function App(): JSX.Element {
   }, [setupState, setDataError])
 
   useEffect(() => {
-    let cancelled = false
-    void withTimeout(window.api.license.status(), 10_000, '授權狀態查詢逾時')
-      .then((status) => {
-        if (!cancelled) setLicenseState(status.activated ? 'ok' : 'locked')
-      })
-      .catch(() => {
-        if (!cancelled) setLicenseState('locked')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
     const conversationId = pendingConversationId.current
     pendingConversationId.current = null
     setActiveConversation(
@@ -293,13 +298,8 @@ export function App(): JSX.Element {
     [board.fen, updateAppData]
   )
 
-  if (licenseState === 'checking') return <StartupScreen phase="license" />
   if (setupState === 'checking') return <StartupScreen phase="setup" />
   if (!dataReady) return <StartupScreen phase="data" />
-
-  if (licenseState === 'locked' && !LICENSE_GATE_DISABLED) {
-    return <LicensePage onActivated={() => setLicenseState('ok')} />
-  }
 
   if (setupState === 'wizard') {
     return (
@@ -351,6 +351,12 @@ export function App(): JSX.Element {
         }
       }}
     >
+      {typeof __ISOLATED_UPDATER_PROBE_ID__ !== 'undefined' && __ISOLATED_UPDATER_PROBE_ID__ && (
+        <div className="card" aria-label="Isolated updater acceptance controls">
+          <p>Unpublished VM test package: save acknowledgement barrier and one-shot installer fault.</p>
+          <button className="btn" onClick={downloadUpdate}>Test: prepare before discovery</button>
+        </div>
+      )}
       <AnalysisWorkspace
         hidden={activeTab !== 'analyze'}
         headerCommandMount={analysisCommandMount}

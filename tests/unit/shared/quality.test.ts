@@ -18,10 +18,17 @@ import { join } from 'node:path'
 import {
   scoreExplanationAnswer,
   screenExplanationText,
+  scoreUsedAsReason,
   validateClaimCausalChain,
   type ScorableAnswer,
   type ScorableSection
 } from '../../../src/shared/logic/ai/ExplanationQualityScorer'
+import {
+  moveComparisonEvidenceState,
+  hasAssertedMoveCriticism,
+  type MoveComparisonEvidenceState
+} from '../../../src/shared/logic/ai/MoveComparisonEvidence'
+import type { MoveComparisonResult } from '../../../src/shared/types/MoveComparisonResult'
 import {
   HARNESS_SECTION_IDS,
   INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS,
@@ -50,6 +57,48 @@ const AVAILABLE_MOVES = [
   '車九平八',
   '卒3進1'
 ]
+check('numeric score comparison cannot stand in for the reason for a move',
+  scoreUsedAsReason('炮二平五引擎評估400分，你的馬八進七只有200分，所以炮二平五更好。'))
+check('Chinese numeric score comparison cannot stand in for the reason for a move',
+  scoreUsedAsReason('因為炮二平五有四百分，馬八進七只有兩百分，這就是不能這樣走的理由。'))
+check('reported scores do not condemn a separate concrete board explanation',
+  !scoreUsedAsReason('兩條線的參考評估分別為400分與200分。炮二平五把炮移到中路，所以中兵的防守要重新檢查。'))
+check('explicitly denying a numeric score as the reason is not a score-based reason',
+  !scoreUsedAsReason('不能因為炮二平五400分、馬八進七200分就說前者更好，還要比較黑方的應手與中路棋子。'))
+for (const [best, actual, bestScore, actualScore] of [
+  ['炮八平五', '兵三進一', '800', '200'],
+  ['車九平八', '馬二進三', '+1500', '-300'],
+  ['炮8平5', '馬2進3', '八百', '兩百']
+]) {
+  check(`same causal policy applies to other moves and values: ${best}/${actual}`,
+    scoreUsedAsReason(`因為${best}有${bestScore}分，${actual}只有${actualScore}分，所以前者比較好。`))
+}
+check('a single numeric evaluation is also not a board mechanism',
+  scoreUsedAsReason('因為炮八平五的引擎評估是800分，所以這一步好。'))
+check('English decimal evaluations obey the same causal policy',
+  scoreUsedAsReason('Pikafish gives 炮八平五 4.5 points versus 馬二進三 2.0 points, therefore the first move is better.'))
+check('centipawn score values obey the same causal policy',
+  scoreUsedAsReason('Pikafish gives 炮八平五 800cp versus 馬二進三 200cp, so the first move is better.'))
+check('denying score causation cannot exempt a later asserted score conclusion',
+  scoreUsedAsReason('不能只因為分數決定走法，首選100分而實戰20分，所以實戰一定較差。'))
+check('semicolon separates reported score from an actual board cause',
+  !scoreUsedAsReason('Pikafish評估100分；選擇炮二平五是因為中炮瞄準中卒，並為兩翼子力爭取協同。'))
+check('a board cause is not replaced by a score reported in the preceding clause',
+  !scoreUsedAsReason('Pikafish評估100分，選擇炮二平五是因為中炮瞄準中卒，並為兩翼子力爭取協同。'))
+check('a later negation cannot erase an earlier asserted score cause',
+  scoreUsedAsReason('因為炮八平五的評估800分，所以這步好，不能用空泛詞代替解釋。'))
+check('local negation of a qualitative score cause remains a valid correction',
+  !scoreUsedAsReason('不能因為評分較高就稱它更好，還需說明炮的位置與對手應手。'))
+check('a reason introducing a numeric evaluation is still score causation',
+  scoreUsedAsReason('選擇炮八平五的理由是Pikafish評估800分。'))
+check('reporting a higher reference evaluation alone does not assert its cause',
+  !scoreUsedAsReason('這條線的參考評分較高。盤面理由是炮轉到中路後瞄準中卒。'))
+check('English qualitative score cause shares the same policy',
+  scoreUsedAsReason('The evaluation is higher, therefore this move is better.'))
+check('English local score denial shares the same scope',
+  !scoreUsedAsReason('This is not because the evaluation is higher; the cannon targets the central pawn.'))
+check('English score reporting does not taint a separate board cause',
+  !scoreUsedAsReason('The evaluation is higher; the cannon move is useful because it targets the central pawn.'))
 
 const GOOD_CAUSAL: CausalChain = {
   cause: '因為先走馬八進七而不是炮二平五',
@@ -163,16 +212,89 @@ function buildAnswer(overrides: Partial<Record<string, ScorableSection>> = {}): 
 function score(
   answer: ScorableAnswer,
   moves = AVAILABLE_MOVES,
-  minimumHanCharacters?: number
+  minimumHanCharacters?: number,
+  comparisonState: MoveComparisonEvidenceState = 'evidence_backed_difference',
+  bestMoveDisplay = '炮二平五',
+  userMoveDisplay = '馬八進七'
 ) {
   return scoreExplanationAnswer({
     answer,
     availableMoves: moves,
-    bestMoveDisplay: '炮二平五',
-    userMoveDisplay: '馬八進七',
+    bestMoveDisplay,
+    userMoveDisplay,
     hasUserMove: true,
+    comparisonState,
     minimumHanCharacters
   })
+}
+
+function buildSameMoveAnswer(): ScorableAnswer {
+  const causal: CausalChain = {
+    cause: '因為炮二平五先架起中炮',
+    mechanism: '中炮立即控制中路並限制黑方中卒活動',
+    affected: '紅方中炮、黑方中卒與中央線路',
+    opponentUse: '黑方可用馬8進7正常發展右翼馬',
+    consequence: '紅方接著馬八進七時仍保有協調出子的計畫'
+  }
+  return {
+    directAnswer: '炮二平五就是引擎首選；這步立即控制中路，黑方可用馬8進7合理出子。',
+    sections: [
+      {
+        id: HARNESS_SECTION_IDS.directConclusion,
+        heading: '直接結論',
+        claims: [{ id: 'DIRECT', text: '炮二平五就是引擎首選，兩者是同一著法。' }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.actualMoveProblem,
+        heading: '與首選一致',
+        claims: [{ id: 'C2', text: '實戰的炮二平五與首選一致，能立即控制中路。', causal }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.bestMovePlan,
+        heading: '這步的好處',
+        claims: [{ id: 'C3', text: '炮二平五先建立中炮，直接控制中路。' }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.opponentExploitation,
+        heading: '對手合理應對',
+        claims: [{
+          id: 'C4',
+          text: '炮二平五之後，黑方可走馬8進7，紅方接著馬八進七；雙方依序發展子力並保持中路張力。',
+          causal
+        }]
+      },
+      {
+        id: HARNESS_SECTION_IDS.practicalPrinciple,
+        heading: '實戰原則',
+        claims: [{ id: 'C5', text: '著法與首選一致時，重點是理解計畫與對手的合理應對。' }]
+      }
+    ]
+  }
+}
+
+function buildNeutralComparisonAnswer(): ScorableAnswer {
+  const answer = buildSameMoveAnswer()
+  const causal: CausalChain = {
+    cause: '因為馬八進七先出馬，而炮二平五先架起中炮',
+    mechanism: '紅馬先發展與紅炮先控制中路的部署次序不同',
+    affected: '紅方左馬、紅炮與中央線路',
+    opponentUse: '黑方馬8進7發展右翼馬，紅方補炮二平五後黑方再走馬2進3',
+    consequence: '兩條線皆出現中炮與兩翼馬的部署，現有主線尚不能確認其他戰術差別'
+  }
+  answer.directAnswer = '兩條線的參考評估分別為400分與200分。馬八進七與炮二平五在所提供主線中的部署次序不同；分差尚不能說明具體棋理原因。'
+  answer.sections[0]!.claims[0]!.text = answer.directAnswer
+  answer.sections[1]!.heading = '實戰步評價'
+  answer.sections[1]!.claims = [{
+    id: 'C2',
+    text: '馬八進七先讓紅馬出動，而炮二平五先把紅炮移到中路；因為兩條主線都包含後續出子著法，目前可確認的是部署次序不同，尚不能確認這個次序造成其他戰術差別。',
+    causal
+  }]
+  answer.sections[3]!.claims = [{
+    id: 'C4',
+    text: '實戰先走馬八進七，黑方馬8進7發展右翼馬；紅方接著炮二平五建立中炮，黑方再馬2進3發展另一路馬。首選線則先炮二平五、馬8進7，再馬八進七；兩線的中炮與出馬次序不同，目前提供的片段都顯示雙方正在配置子力。中炮移到中央後瞄準黑方中卒，紅馬離開底線後取得向河口發展的方向，這些是逐手可以核對的盤面關係。馬八進七先處理左翼馬的發展，炮二平五先安排中路炮的位置，兩項計畫在後續片段都出現。黑方可以馬8進7先出右翼馬，再以馬2進3出另一翼馬；描述這種應對時，需要區分主線實際列出的走法與尚未搜索的變化。兩條線都能看到紅馬與中炮參與部署，但眼前片段未提供紅方之後進攻及黑方不同防守的完整結果，因此還不能把參考分差說成某項已證明的戰術損失。若要判斷這個次序造成何種長期影響，仍缺少相同深度下更後面的主線及各種合理回應的比較；這個限制不影響已可確認的出馬與中炮移位。實戰思考可以先辨認當前要改善哪一枚棋子，再看對手主線應手如何改變中路子力的配置，沿著實際走法檢查炮與馬的協調。對照兩線時還要確認雙方從同一局面開始，輪走方一致，才能避免把首選線的盤面結果移到實戰線。',
+    causal
+  }]
+  return answer
 }
 
 function criterionFailed(report: ReturnType<typeof score>, id: string): boolean {
@@ -182,9 +304,289 @@ function criterionFailed(report: ReturnType<typeof score>, id: string): boolean 
 async function main(): Promise<void> {
   console.log('\n## 品質評分器：核心守門行為')
 
+  const comparisonFixture: MoveComparisonResult = {
+    positionFen: 'fixture',
+    sideToMove: 'red',
+    userMove: 'h2e2',
+    engineBestMove: 'h2e2',
+    evaluationAfterUserMove: 0.3,
+    evaluationAfterBestMove: 0.3,
+    scoreDifference: 0,
+    mistakeLevel: 'acceptable_or_tiny_inaccuracy',
+    depth: 18,
+    confidence: 'high',
+    uncertaintyReasons: []
+  }
+  check(
+    '同一著法由實際比較欄位判定，不以候選排名推論',
+    moveComparisonEvidenceState(comparisonFixture) === 'same_move'
+  )
+  check(
+    '既有可接受分級映射為近似等值，不另造分差門檻',
+    moveComparisonEvidenceState({
+      ...comparisonFixture,
+      userMove: 'b0c2',
+      engineBestMove: 'h2e2'
+    }) === 'near_equivalent'
+  )
+  check(
+    '低可信比較明確落入證據不足',
+    moveComparisonEvidenceState({
+      ...comparisonFixture,
+      userMove: 'b0c2',
+      confidence: 'low'
+    }) === 'insufficient'
+  )
+
+  const sameMoveReport = score(
+    buildSameMoveAnswer(),
+    AVAILABLE_MOVES,
+    undefined,
+    'same_move',
+    '炮二平五',
+    '炮二平五'
+  )
+  check('同首選可用正向計畫與合理應對通過，不強制負面解釋', sameMoveReport.pass, sameMoveReport.summary)
+  const hiddenConsequences = buildSameMoveAnswer()
+  const hiddenSection = hiddenConsequences.sections.find(section => section.id === 'opponent_exploitation')!
+  const removedBody = hiddenSection.claims[0]!.text
+  hiddenConsequences.sections.find(section => section.id === 'best_move_plan')!.claims[0]!.text += removedBody
+  hiddenSection.claims[0]!.text = '黑方馬8進7發展。'
+  check('其他段落移入長文且保留隱藏因果，仍不能代替後果段的可閱讀兩步主線',
+    criterionFailed(score(hiddenConsequences, AVAILABLE_MOVES, undefined, 'same_move', '炮二平五', '炮二平五'), 'concrete_consequences'))
+  const deniedCriticism = buildSameMoveAnswer()
+  deniedCriticism.sections[1]!.claims[0]!.text += '這不是失誤，也沒有錯失機會。'
+  check('同首選澄清不是失誤且沒有錯失不被 scorer 當成負評',
+    score(deniedCriticism, AVAILABLE_MOVES, undefined, 'same_move', '炮二平五', '炮二平五').pass)
+  check('否定一個負評不能豁免逗號後同一著法的實質負評',
+    hasAssertedMoveCriticism('炮二平五不是失誤，但仍是較差的著法。', ['炮二平五']))
+  check('同句逗號延續著法主詞時仍攔截負評',
+    hasAssertedMoveCriticism('炮二平五與首選相同，仍是較差失誤。', ['炮二平五']))
+  check('另一著法的負評不歸給使用者同首選著法',
+    !hasAssertedMoveCriticism('炮二平五與首選一致，但馬八進七較差。', ['炮二平五']))
+  check('明確否定的負評不變成實質負評',
+    !hasAssertedMoveCriticism('炮二平五不是失誤，也沒有錯失機會。', ['炮二平五']))
+  const scopedVerdictCases = [
+    { text: '實戰步不是失誤或敗著。', asserted: false },
+    { text: '炮二平五不是較差與失誤的著法。', asserted: false },
+    { text: '如果實戰步失誤導致更差，還需要後續主線確認。', asserted: false },
+    { text: '實戰步不是失誤而是敗著。', asserted: true },
+    { text: '實戰步不是失誤或敗著，但仍是更差的著法。', asserted: true },
+    { text: '實戰步不是失誤，實戰步確實更差。', asserted: true },
+    { text: '如果實戰步有失誤，但實戰步確實更差。', asserted: true }
+  ]
+  for (const { text, asserted } of scopedVerdictCases) {
+    check(`負評否定與條件作用範圍：${text}`,
+      hasAssertedMoveCriticism(text, ['炮二平五']) === asserted)
+  }
+  for (const { text, asserted } of [
+    { text: '實戰步不是好棋而是失誤。', asserted: true },
+    { text: '實戰步並非普通著法而是敗著。', asserted: true },
+    { text: '實戰步沒有取得好處反而更差。', asserted: true },
+    { text: '如果實戰步不是好棋而是失誤，仍需分析後續。', asserted: false },
+    { text: '實戰步不是好棋而是並非失誤的普通著法。', asserted: false },
+    { text: '炮二平五不是好棋而是馬八進七失誤。', asserted: false }
+  ]) {
+    check(`非負評前件的否定不跨越對比謂詞：${text}`,
+      hasAssertedMoveCriticism(text, ['炮二平五']) === asserted)
+  }
+  for (const text of [
+    '炮二平五與首選一致，實戰步不是失誤或敗著。',
+    '如果實戰步失誤導致更差，還需要後續主線確認。炮二平五在此與首選相同。'
+  ]) {
+    const scopedSameMoveAnswer = buildSameMoveAnswer()
+    scopedSameMoveAnswer.sections[1]!.claims[0]!.text += text
+    const report = score(scopedSameMoveAnswer, AVAILABLE_MOVES, undefined,
+      'same_move', '炮二平五', '炮二平五')
+    check(`完整同首選回答的否定／條件說明可通過 scorer：${text}`, report.pass, report.summary)
+  }
+  const falselyNegativeSameMove = buildSameMoveAnswer()
+  falselyNegativeSameMove.sections[1]!.claims[0]!.text =
+    '炮二平五雖與首選相同，仍是較差失誤，必然受到懲罰。'
+  check(
+    '同首選卻硬寫較差或懲罰會被擋下',
+    criterionFailed(
+      score(
+        falselyNegativeSameMove,
+        AVAILABLE_MOVES,
+        undefined,
+        'same_move',
+        '炮二平五',
+        '炮二平五'
+      ),
+      'missed_opportunity'
+    )
+  )
+
+check(
+  '不足字樣不能豁免同段仍存在的確定戰術斷言',
+    validateClaimCausalChain(
+      {
+        id: 'mixed-insufficiency',
+        text: '目前證據不足，但這步必然丟車。'
+      },
+      AVAILABLE_MOVES
+    ).length > 0
+)
+check(
+  '不足字樣與確定斷言之間沒有標點也不能整段豁免',
+  validateClaimCausalChain(
+    { id: 'mixed-no-punctuation', text: '證據不足但這步必然丟車' },
+    ['炮二平五', '馬８進７']
+  ).length > 0
+)
+check(
+  '不足聲明後接正面確定錯著不能豁免因果鏈',
+  validateClaimCausalChain(
+    { id: 'mixed-positive-certainty', text: '證據不足，目前能確定這步是錯著。' },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '不足聲明及分析需求不能吞掉同句其餘將軍斷言',
+  validateClaimCausalChain(
+    { id: 'mixed-analysis-request', text: '證據不足，需要進一步分析，炮二平五已經將軍。' },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '沒有逗號的不足聲明與分析需求也不能吞掉將軍斷言',
+  validateClaimCausalChain(
+    { id: 'mixed-analysis-no-comma', text: '證據不足需要進一步分析炮二平五已經將軍' },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '正文只有不足聲明時，另附的實質因果欄位仍須接受檢查',
+  validateClaimCausalChain(
+    {
+      id: 'insufficiency-with-causal-assertion', text: '目前引擎證據不足。',
+      causal: { cause: '炮二平五已經將軍', mechanism: '', affected: '', opponentUse: '', consequence: '' }
+    },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '僅指出證據不足與需要進一步分析仍可豁免',
+  validateClaimCausalChain(
+    { id: 'limited-analysis-request', text: '證據不足，需要進一步分析。' },
+    AVAILABLE_MOVES
+  ).length === 0
+)
+check(
+  '單純證據不足與無法確認不必填入虛構因果',
+  validateClaimCausalChain(
+    { id: 'limited-unconfirmed', text: '目前引擎證據不足，無法確認。' },
+    AVAILABLE_MOVES
+  ).length === 0
+)
+check(
+  '無法確認的純不足正文不能豁免另附的實質因果',
+  validateClaimCausalChain(
+    {
+      id: 'limited-unconfirmed-with-causal', text: '目前引擎證據不足，無法確認。',
+      causal: { cause: '炮二平五已經將軍', mechanism: '', affected: '', opponentUse: '', consequence: '' }
+    },
+    AVAILABLE_MOVES
+  ).length > 0
+)
+check(
+  '單純指出缺少主線仍可免不適用的因果鏈',
+  validateClaimCausalChain(
+    { id: 'limited-insufficiency', text: '目前引擎證據不足，無法確認錯失的具體機會。' },
+    AVAILABLE_MOVES
+  ).length === 0
+)
+
   const good = score(buildAnswer())
   check('具體回答（含完整因果鏈）通過全部準則', good.pass, good.summary)
   check('通過時沒有失敗區塊', good.failedSections.length === 0)
+
+  const unspecifiedComparison = scoreExplanationAnswer({
+    answer: buildAnswer(),
+    availableMoves: AVAILABLE_MOVES,
+    bestMoveDisplay: '炮二平五',
+    userMoveDisplay: '馬八進七',
+    hasUserMove: true
+  })
+  check('未提供比較狀態時不能僅因有實戰步就採用已證差異，確定負評須被擋下',
+    criterionFailed(unspecifiedComparison, 'missed_opportunity'))
+
+  const neutralComparison = buildNeutralComparisonAnswer()
+  const numericComparisonState = moveComparisonEvidenceState({
+    ...comparisonFixture, userMove: 'b0c2', evaluationAfterUserMove: 2,
+    evaluationAfterBestMove: 4, scoreDifference: 2, mistakeLevel: 'mistake'
+  })
+  const neutralReport = score(neutralComparison, AVAILABLE_MOVES,
+    INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, numericComparisonState)
+  check('既有分差分級仍可接受具體中性機制、合理應對及明確缺項，不強迫負面因果',
+    numericComparisonState === 'evidence_backed_difference' && neutralReport.pass, neutralReport.summary)
+  const unspecifiedNeutralReport = scoreExplanationAnswer({
+    answer: neutralComparison, availableMoves: AVAILABLE_MOVES,
+    bestMoveDisplay: '炮二平五', userMoveDisplay: '馬八進七', hasUserMove: true,
+    minimumHanCharacters: INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS
+  })
+  check('未提供比較狀態仍可保留具體中性比較與缺項，不強迫負面內容',
+    unspecifiedNeutralReport.pass, unspecifiedNeutralReport.summary)
+  const scoreOnlyComparison = buildNeutralComparisonAnswer()
+  scoreOnlyComparison.sections[1]!.claims[0]!.text =
+    '因為炮二平五引擎評估400分，而馬八進七只有200分，所以馬八進七較差。'
+  check('數值分級、完整篇幅及另附因果都不能替只用分數的實戰步理由背書',
+    criterionFailed(score(scoreOnlyComparison, AVAILABLE_MOVES,
+      INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, numericComparisonState), 'no_score_as_reason'))
+  const noCauseComparison = buildNeutralComparisonAnswer()
+  noCauseComparison.directAnswer = '馬八進七先出紅馬，炮二平五把紅炮放到中路，兩線的部署次序不同。'
+  noCauseComparison.sections[0]!.claims[0]!.text = noCauseComparison.directAnswer
+  noCauseComparison.sections[1]!.claims = [{
+    id: 'C2', text: '馬八進七先出紅馬，而炮二平五把紅炮放到中路，兩線的部署次序不同。'
+  }]
+  const noCauseReport = score(noCauseComparison)
+  check('數值差異下缺少因果仍被拒絕，修正診斷應要求具體因果對照而非負面結論',
+    criterionFailed(noCauseReport, 'causal_chains') && criterionFailed(noCauseReport, 'why_bad') &&
+    noCauseReport.criteria.filter(criterion => ['missed_opportunity', 'why_bad'].includes(criterion.id))
+      .every(criterion => !/錯失|為什麼不好/.test(`${criterion.label} ${criterion.issues.join(' ')}`)),
+    noCauseReport.summary)
+  const deniedInsufficientCriticism = buildNeutralComparisonAnswer()
+  deniedInsufficientCriticism.sections[1]!.claims[0]!.text +=
+    '目前比較證據不足，不能說馬八進七較差。'
+  const deniedInsufficientReport = score(deniedInsufficientCriticism, AVAILABLE_MOVES,
+    INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, 'insufficient')
+  check('證據不足時局部否定較差不構成確定負評，具體中性機制仍可通過',
+    deniedInsufficientReport.pass, deniedInsufficientReport.summary)
+  const assertedInsufficientCriticism = structuredClone(deniedInsufficientCriticism)
+  assertedInsufficientCriticism.sections[1]!.claims[0]!.text += '但馬八進七仍是較差的著法。'
+  check('否定前句負評不能替證據不足時後續確定負評背書',
+    criterionFailed(score(assertedInsufficientCriticism, AVAILABLE_MOVES,
+      INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, 'insufficient'), 'missed_opportunity'))
+  for (const text of ['實戰步不是好棋而是失誤。', '實戰步並非好棋而是敗著。']) {
+    const unsupportedVerdict = structuredClone(deniedInsufficientCriticism)
+    unsupportedVerdict.sections[1]!.claims[0]!.text += text
+    check(`完整正文在證據不足時拒絕對比後的確定負評：${text}`,
+      criterionFailed(score(unsupportedVerdict, AVAILABLE_MOVES,
+        INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, 'insufficient'), 'missed_opportunity'))
+  }
+
+  const neutralExchange = buildSameMoveAnswer()
+  neutralExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text =
+    '紅方車二進三吃黑車，接著黑方馬7退8吃紅車，雙方各少一車，黑馬回到黑車原位。'
+  const exchangeInput = {
+    answer: neutralExchange,
+    availableMoves: [...AVAILABLE_MOVES, '車二進三', '馬7退8'],
+    hasUserMove: true,
+    comparisonState: 'same_move' as const,
+    groundedConcreteClaims: new Map([['C4', neutralExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text]])
+  }
+  check('由呼叫端逐手核對的中性交換可滿足具體盤面描述，不催造戰術術語',
+    !criterionFailed(scoreExplanationAnswer(exchangeInput), 'concrete_consequences'))
+  check('未經逐手核對的交換仍不能只靠著法名字取得具體性',
+    criterionFailed(scoreExplanationAnswer({ ...exchangeInput, groundedConcreteClaims: new Map<string, string>() }), 'concrete_consequences'))
+  check('其他 claim 的棋盤核對不能替當段具體性背書',
+    criterionFailed(scoreExplanationAnswer({ ...exchangeInput, groundedConcreteClaims: new Map([['C3', neutralExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text]]) }), 'concrete_consequences'))
+  const changedExchange = structuredClone(neutralExchange)
+  changedExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text =
+    '車二進三之後接著馬7退8，雙方的盤面逐漸變化。'
+  check('相同 claim id 的其他文字不能借用先前棋盤核對',
+    criterionFailed(scoreExplanationAnswer({ ...exchangeInput, answer: changedExchange }), 'concrete_consequences'))
 
   const emptyPrincipleAnswer = buildAnswer()
   const emptyPrinciple = emptyPrincipleAnswer.sections.find(
@@ -543,7 +945,8 @@ async function main(): Promise<void> {
     availableMoves: AVAILABLE_MOVES,
     bestMoveDisplay: '炮二平五',
     userMoveDisplay: '兵九進一',
-    hasUserMove: true
+    hasUserMove: true,
+    comparisonState: 'evidence_backed_difference'
   })
   check(
     '使用者著法不在候選著法時，比較與因果仍可通過',

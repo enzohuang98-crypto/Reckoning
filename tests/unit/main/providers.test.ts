@@ -29,7 +29,8 @@ import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanati
 import {
   AI_COMPATIBLE_PRESETS,
   PROVIDER_DEFAULT_MODELS,
-  type AIExplanationStreamChunk
+  type AIExplanationStreamChunk,
+  type TokenUsage
 } from '../../../src/shared/types/AIProviderTypes'
 import {
   KeyedOperationGate,
@@ -420,6 +421,29 @@ async function main(): Promise<void> {
     )
   }
 
+  section('OpenAI-compatible Provider：未回報的 token 用量保持未知')
+  const compatibleUsageCases: Array<{ label: string; usage: Record<string, unknown>; expected: TokenUsage }> = [
+    { label: '只回報 prompt 用量', usage: { prompt_tokens: 10 }, expected: { inputTokens: 10 } },
+    { label: '只回報 input 用量', usage: { input_tokens: 10 }, expected: { inputTokens: 10 } },
+    { label: 'completion 明確為零', usage: { completion_tokens: 0 }, expected: { outputTokens: 0 } },
+    { label: 'output 明確為零', usage: { output_tokens: 0 }, expected: { outputTokens: 0 } },
+    { label: '零用量優先於別名', usage: { prompt_tokens: 0, input_tokens: 99, completion_tokens: 0, output_tokens: 99 }, expected: { inputTokens: 0, outputTokens: 0 } },
+    { label: '負數不當作用量', usage: { prompt_tokens: -1, completion_tokens: -1 }, expected: {} },
+    { label: '非數字不當作用量', usage: { prompt_tokens: '10', completion_tokens: null }, expected: {} }
+  ]
+  for (const fixture of compatibleUsageCases) {
+    const { server, port } = await startMockServer(() => [200, {
+      choices: [{ message: { content: 'Synthetic usage fixture' } }], usage: fixture.usage
+    }])
+    try {
+      const response = await new OpenAICompatibleProvider().generateExplanation(
+        explanationRequest('openai-compatible', 'synthetic-model', 'synthetic-test-key', `http://127.0.0.1:${port}/v1`))
+      check(`相容 provider ${fixture.label}`,
+        response.usage?.inputTokens === fixture.expected.inputTokens &&
+        response.usage?.outputTokens === fixture.expected.outputTokens, response.usage)
+    } finally { server.close() }
+  }
+
   section('AI HTTP 回應大小邊界')
   {
     let error: unknown = null
@@ -545,6 +569,35 @@ async function main(): Promise<void> {
       'Responses token 用量正規化',
       response.usage?.inputTokens === 12 && response.usage.outputTokens === 7
     )
+  }
+
+  section('OpenAIProvider：未回報的 token 用量保持未知')
+  const openAIUsageCases: Array<{
+    label: string
+    chatUsage: Record<string, unknown>
+    responsesUsage: Record<string, unknown>
+    expected: TokenUsage
+  }> = [
+    { label: '只回報輸入', chatUsage: { prompt_tokens: 10 }, responsesUsage: { input_tokens: 10 }, expected: { inputTokens: 10 } },
+    { label: '明確回報零輸出', chatUsage: { completion_tokens: 0 }, responsesUsage: { output_tokens: 0 }, expected: { outputTokens: 0 } },
+    { label: '負數不當作用量', chatUsage: { prompt_tokens: -1, completion_tokens: -1 }, responsesUsage: { input_tokens: -1, output_tokens: -1 }, expected: {} },
+    { label: '非數字不當作用量', chatUsage: { prompt_tokens: '10', completion_tokens: null }, responsesUsage: { input_tokens: '10', output_tokens: null }, expected: {} }
+  ]
+  for (const model of ['gpt-5.4', 'gpt-5.6-sol']) {
+    for (const fixture of openAIUsageCases) {
+      const { server, port } = await startMockServer(() => [200, {
+        choices: [{ message: { content: 'Synthetic usage fixture' } }],
+        output_text: 'Synthetic usage fixture',
+        usage: model === 'gpt-5.4' ? fixture.chatUsage : fixture.responsesUsage
+      }])
+      try {
+        const response = await new OpenAIProvider({ baseUrl: `http://127.0.0.1:${port}/v1` })
+          .generateExplanation(explanationRequest('openai', model, 'synthetic-test-key'))
+        check(`OpenAI ${model} ${fixture.label}`,
+          response.usage?.inputTokens === fixture.expected.inputTokens &&
+          response.usage?.outputTokens === fixture.expected.outputTokens, response.usage)
+      } finally { server.close() }
+    }
   }
 
   section('OpenAIProvider：streaming 包裝（§2.17.4、§2.17.1）')
@@ -701,6 +754,29 @@ async function main(): Promise<void> {
       body.generationConfig?.thinkingConfig === undefined,
       body.generationConfig
     )
+  }
+
+  section('GeminiProvider：輸出總量不以零補齊缺少的候選或 thinking 用量')
+  const geminiUsageCases: Array<{ label: string; usage: Record<string, unknown>; expected: TokenUsage }> = [
+    { label: '只回報輸入', usage: { promptTokenCount: 10 }, expected: { inputTokens: 10 } },
+    { label: '缺少 thinking 用量', usage: { candidatesTokenCount: 3 }, expected: {} },
+    { label: '缺少候選用量', usage: { thoughtsTokenCount: 2 }, expected: {} },
+    { label: '明確零用量', usage: { promptTokenCount: 0, candidatesTokenCount: 0, thoughtsTokenCount: 0 }, expected: { inputTokens: 0, outputTokens: 0 } },
+    { label: '候選負數', usage: { promptTokenCount: -1, candidatesTokenCount: -1, thoughtsTokenCount: 0 }, expected: {} },
+    { label: 'thinking 負數', usage: { promptTokenCount: 10, candidatesTokenCount: 3, thoughtsTokenCount: -1 }, expected: { inputTokens: 10 } },
+    { label: '非數字不當作用量', usage: { promptTokenCount: '10', candidatesTokenCount: '3', thoughtsTokenCount: 0 }, expected: {} }
+  ]
+  for (const fixture of geminiUsageCases) {
+    const { server, port } = await startMockServer(() => [200, {
+      candidates: [{ content: { parts: [{ text: 'Synthetic usage fixture' }] } }], usageMetadata: fixture.usage
+    }])
+    try {
+      const response = await new GeminiProvider({ baseUrl: `http://127.0.0.1:${port}` })
+        .generateExplanation(explanationRequest('gemini', 'gemini-3.5-flash', 'synthetic-test-key'))
+      check(`Gemini ${fixture.label}`,
+        response.usage?.inputTokens === fixture.expected.inputTokens &&
+        response.usage?.outputTokens === fixture.expected.outputTokens, response.usage)
+    } finally { server.close() }
   }
 
   section('GeminiProvider：streaming 包裝與空回應防護')

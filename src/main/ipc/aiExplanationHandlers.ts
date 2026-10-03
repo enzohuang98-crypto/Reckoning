@@ -172,7 +172,8 @@ export async function buildAIExplanationRequest(
     explanationStyle: payload.explanationStyle,
     language: payload.language,
     conversationHistory: payload.conversationHistory,
-    followUpQuestion: payload.followUpQuestion
+    followUpQuestion: payload.followUpQuestion,
+    answerStrategy: execution.answerStrategy
   })
   return {
     provider: payload.provider,

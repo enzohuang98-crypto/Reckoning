@@ -215,9 +215,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     verificationEngineId: null
   })
   const [primaryEngineId, setPrimaryEngineId] = useState<string | null>(null)
-  const [verificationEngineId, setVerificationEngineId] = useState<string | null>(
-    null
-  )
   const [harnessProgress, setHarnessProgress] =
     useState<HarnessProgressPayload | null>(null)
   const [traceId, setTraceId] = useState<string | null>(null)
@@ -283,7 +280,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       const registry = await window.api.engine.listInstallations()
       setEngineRegistry(registry)
       setPrimaryEngineId(registry.activeEngineId)
-      setVerificationEngineId(registry.verificationEngineId)
       const current = await window.api.engine.status()
       if (!current.available) {
         setStatus(current)
@@ -654,15 +650,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     const userMoveEvalMovetimeMs = automatic
       ? automaticUserMoveMovetimeMs(settings.userMoveEvalMovetimeMs)
       : settings.userMoveEvalMovetimeMs
-    const useVerificationEngine = Boolean(
-      settings.crossEngineEnabled && verificationEngineId
-    )
     const analysisKey = [
       automatic ? (refinement ? 'auto-refine' : 'auto-initial') : 'manual',
       board.fen,
       move,
       primaryEngineId ?? '',
-      useVerificationEngine ? verificationEngineId : '',
       rootAnalysisMovetimeMs,
       userMoveEvalMovetimeMs,
       settings.multiPv
@@ -719,9 +711,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     window.api.engine.startAnalysis({
       requestId,
       engineId: primaryEngineId ?? undefined,
-      verificationEngineId: useVerificationEngine
-        ? verificationEngineId ?? undefined
-        : undefined,
       positionFen: board.fen,
       userMove: move || undefined,
       analysisConfig: {
@@ -752,12 +741,10 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     onExplanation,
     onResult,
     settings.multiPv,
-    settings.crossEngineEnabled,
     settings.rootAnalysisMovetimeMs,
     settings.userMoveEvalMovetimeMs,
     analysisMove,
     primaryEngineId,
-    verificationEngineId,
     actualMove
   ])
 
@@ -901,10 +888,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
                 : settings.harnessFocusedMaxOutputTokens
           },
           engineId: primaryEngineId ?? undefined,
-          verificationEngineId:
-            settings.crossEngineEnabled && verificationEngineId
-              ? verificationEngineId
-              : undefined,
           reuseEvidence: settings.harnessReuseEvidence
         }
     const pending = retained
@@ -1146,29 +1129,14 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
   const selectPrimaryEngine = async (id: string): Promise<void> => {
     try {
-      const nextVerification = verificationEngineId === id ? null : verificationEngineId
       setPrimaryEngineId(id)
-      setVerificationEngineId(nextVerification)
       setEngineRegistry(
-        await window.api.engine.selectInstallation(id, nextVerification)
+        await window.api.engine.selectInstallation(id)
       )
       setStatus(await window.api.engine.status())
       setError(null)
     } catch {
       setError('無法切換主引擎，請到設定頁重新測試該引擎。')
-    }
-  }
-
-  const selectVerificationEngine = async (id: string | null): Promise<void> => {
-    if (!primaryEngineId) return
-    try {
-      setVerificationEngineId(id)
-      setEngineRegistry(
-        await window.api.engine.selectInstallation(primaryEngineId, id)
-      )
-      setError(null)
-    } catch {
-      setError('無法切換複核引擎；主引擎與複核引擎必須不同。')
     }
   }
 
@@ -1193,15 +1161,12 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     <div className="analysis-panel analysis-details-panel">
       <DetailsView
         result={result}
-        settings={settings}
         registry={engineRegistry}
         primaryEngineId={primaryEngineId}
-        verificationEngineId={verificationEngineId}
         busy={busy}
         aiBusy={aiBusy}
         diagnostics={engineDiagnostics}
         onSelectPrimary={(id) => void selectPrimaryEngine(id)}
-        onSelectVerification={(id) => void selectVerificationEngine(id)}
       />
     </div>
   )

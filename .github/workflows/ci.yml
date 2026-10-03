@@ -19,6 +19,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-client-preflight:
+    name: Prepare isolated Windows 11 client VM
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify x64 execution on the isolated client
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          architecture: x64
+
+      - name: Record real VM prerequisites without touching user data
+        shell: pwsh
+        run: ./tools/acceptance/windows-client-preflight.ps1 -OutputPath "$env:RUNNER_TEMP/windows-client-preflight.json"
+
+      - name: Upload environment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-client-preflight
+          path: ${{ runner.temp }}/windows-client-preflight.json
+          retention-days: 7
+          if-no-files-found: error
+
   verify:
     name: Verify Windows desktop app
     runs-on: windows-2022
@@ -42,14 +72,50 @@ jobs:
       - name: Compile the test engine
         uses: ./.github/actions/compile-fake-engine
 
+      - name: Verify exact Windows accessibility version observations
+        shell: powershell
+        run: ./tools/acceptance/windows-ui-version.self-test.ps1
+
+      - name: Verify source-matched Windows accessibility actions
+        shell: powershell
+        run: ./tools/acceptance/windows-ui-action.self-test.ps1
+
+      - name: Verify visible saved-board observations and scrolling
+        shell: powershell
+        run: ./tools/acceptance/windows-ui-fen.self-test.ps1
+
+      - name: Exercise the compatible bundled Pikafish and NNUE
+        run: npx --no-install tsx --tsconfig tsconfig.node.json tools/acceptance/bundled-engine-compatibility.ts --output "${{ runner.temp }}/compatible-engine.json"
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Test
         run: npm test
 
+      - name: Run AI acceptance self-test
+        run: npm run test:acceptance:ai
+
       - name: Audit dependencies
         run: npm run security:audit
 
       - name: Build production bundles
         run: npm run build
+
+      - name: Verify isolated updater build boundary
+        run: npx --no-install tsx --tsconfig tsconfig.node.json tools/acceptance/isolated-build-policy.self-test.ts
+
+      - name: Verify isolated updater hooks are excluded from ordinary builds
+        run: node tools/acceptance/verify-no-updater-hooks.cjs
+
+      - name: Verify renderer viewport and scaling matrix
+        run: npm run test:layout -- --artifact-dir "${{ runner.temp }}/renderer-layout"
+
+      - name: Upload renderer layout evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: renderer-layout
+          path: ${{ runner.temp }}/renderer-layout
+          retention-days: 7
+          if-no-files-found: warn

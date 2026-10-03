@@ -1,4 +1,4 @@
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, resolve, win32 } from 'node:path'
 import { parseFen } from '@shared/logic/board/fen'
 import { detectApiKeyProvider } from '@shared/logic/validation/ApiKeyProvider'
 import {
@@ -166,10 +166,11 @@ export function normalizeEnginePath(
   if (/[\u0000-\u001f\u007f]/.test(enginePath)) {
     throw new SecurityValidationError('引擎路徑含有不允許的控制字元。')
   }
-  if (!isAbsolute(enginePath)) {
+  const pathApi = platform === 'win32' ? win32 : { isAbsolute, resolve }
+  if (!pathApi.isAbsolute(enginePath)) {
     throw new SecurityValidationError('引擎路徑必須是絕對路徑。')
   }
-  const normalized = resolve(enginePath)
+  const normalized = pathApi.resolve(enginePath)
   if (
     platform === 'win32' &&
     (normalized.startsWith('\\\\') || normalized.startsWith('//'))

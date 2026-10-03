@@ -15,7 +15,7 @@
  * 取消（§2.16.5）：analyzePosition 接受 AbortSignal；abort 時對目前子行程送
  * UCI "stop"，500ms 寬限期後強制 kill，流程以 AbortError 拒絕。
  *
- * 二進位檔尋找順序：使用者設定路徑 > PIKAFISH_PATH > resources/engine/pikafish.exe。
+ * 二進位檔尋找順序：使用者設定路徑 > PIKAFISH_PATH > 內建 SSE4.1/POPCNT 版本。
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -185,9 +185,13 @@ function resolveBundledEnginePath(): string | null {
 
   const resourceCandidates: string[] = []
   if (typeof process.resourcesPath === 'string' && process.resourcesPath.trim()) {
+    // The original pikafish.exe requires AVX2. Prefer the compatible binary
+    // from the same distribution; do not infer instructions from CPU names.
+    resourceCandidates.push(join(process.resourcesPath, 'engine', 'pikafish-sse41-popcnt.exe'))
     resourceCandidates.push(join(process.resourcesPath, 'engine', 'pikafish.exe'))
   }
   if (isDevelopmentRuntime()) {
+    resourceCandidates.push(join(process.cwd(), 'resources', 'engine', 'pikafish-sse41-popcnt.exe'))
     resourceCandidates.push(join(process.cwd(), 'resources', 'engine', 'pikafish.exe'))
   }
   for (const candidate of resourceCandidates) {

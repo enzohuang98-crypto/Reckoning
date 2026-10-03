@@ -58,13 +58,16 @@ function migrateSettings(raw: Record<string, unknown>): AppSettings {
     legacy.activeProvider && ALL_PROVIDER_IDS.includes(legacy.activeProvider)
       ? legacy.activeProvider
       : DEFAULT_SETTINGS.aiProvider
-  const migrated: AppSettings = {
+  const migrated = normalizeSettings({
     ...DEFAULT_SETTINGS,
-    aiProvider,
-    aiModel: legacy.selectedModels?.[aiProvider] ?? DEFAULT_SETTINGS.aiModel,
+    ...raw,
+    aiProvider: ALL_PROVIDER_IDS.includes(raw.aiProvider as AIProviderId)
+      ? raw.aiProvider : aiProvider,
+    aiModel: typeof raw.aiModel === 'string' && raw.aiModel.trim()
+      ? raw.aiModel : legacy.selectedModels?.[aiProvider] ?? DEFAULT_SETTINGS.aiModel,
     multiPv: typeof legacy.engineMultiPv === 'number' ? legacy.engineMultiPv : DEFAULT_SETTINGS.multiPv,
     language: legacy.language ?? DEFAULT_SETTINGS.language
-  }
+  }, DEFAULT_SETTINGS)
   void saveSettings(migrated)
   return migrated
 }
@@ -82,5 +85,5 @@ export function loadSettings(): AppSettings {
 }
 
 export function saveSettings(settings: AppSettings): LocalStorageWriteResult {
-  return safeSetItem(SETTINGS_KEY, JSON.stringify(settings))
+  return safeSetItem(SETTINGS_KEY, JSON.stringify(normalizeSettings(settings, DEFAULT_SETTINGS)))
 }

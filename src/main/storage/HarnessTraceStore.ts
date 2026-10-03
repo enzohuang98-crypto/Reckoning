@@ -1,5 +1,6 @@
 import type {
   HarnessEvidence,
+  HarnessModelCallDiagnostic,
   HarnessRegressionCase,
   HarnessTrace
 } from '@shared/types/Harness'
@@ -270,8 +271,58 @@ function sanitizeProviderDiagnostic(value: unknown): AICredentialDiagnostic | un
       ? { finishReason: value.finishReason.slice(0, 64) }
       : {}),
     ...(typeof value.outputTokens === 'number' ? { outputTokens: value.outputTokens } : {}),
+    ...(typeof value.reasoningTokens === 'number'
+      ? { reasoningTokens: value.reasoningTokens }
+      : {}),
     message: value.message.slice(0, 500)
   }
+}
+
+function sanitizeModelCallDiagnostics(value: unknown): HarnessModelCallDiagnostic[] {
+  if (!Array.isArray(value)) return []
+  const stages: HarnessModelCallDiagnostic['stage'][] = [
+    'question_recovery',
+    'initial_combined',
+    'audit',
+    'writer',
+    'repair'
+  ]
+  return value
+    .filter((item): item is Record<string, unknown> =>
+      isRecord(item) &&
+      typeof item.callIndex === 'number' &&
+      stages.includes(item.stage as HarnessModelCallDiagnostic['stage']) &&
+      typeof item.model === 'string' &&
+      typeof item.maxOutputTokens === 'number' &&
+      (item.responseFormat === 'json' || item.responseFormat === 'text') &&
+      (item.reasoningPolicy === 'bounded_1000_excluded' ||
+        item.reasoningPolicy === 'reasoning_disabled' ||
+        item.reasoningPolicy === 'provider_managed') &&
+      typeof item.durationMs === 'number' &&
+      (item.status === 'completed' || item.status === 'failed')
+    )
+    .slice(-12)
+    .map((item) => ({
+      callIndex: item.callIndex as number,
+      stage: item.stage as HarnessModelCallDiagnostic['stage'],
+      model: String(item.model).slice(0, 256),
+      maxOutputTokens: item.maxOutputTokens as number,
+      responseFormat: item.responseFormat as 'json' | 'text',
+      reasoningPolicy: item.reasoningPolicy as HarnessModelCallDiagnostic['reasoningPolicy'],
+      ...(typeof item.timeoutMs === 'number' ? { timeoutMs: item.timeoutMs } : {}),
+      durationMs: item.durationMs as number,
+      status: item.status as 'completed' | 'failed',
+      ...(typeof item.outputTokens === 'number' ? { outputTokens: item.outputTokens } : {}),
+      ...(typeof item.reasoningTokens === 'number'
+        ? { reasoningTokens: item.reasoningTokens }
+        : {}),
+      ...(typeof item.finishReason === 'string'
+        ? { finishReason: item.finishReason.slice(0, 64) }
+        : {}),
+      ...(typeof item.errorCategory === 'string'
+        ? { errorCategory: item.errorCategory.slice(0, 64) }
+        : {})
+    }))
 }
 
 function sanitizeTrace(value: unknown): HarnessTrace | null {
@@ -341,10 +392,19 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
       .slice(-30),
     modelCalls: typeof trace.modelCalls === 'number' ? trace.modelCalls : 0,
     engineRounds: typeof trace.engineRounds === 'number' ? trace.engineRounds : 0,
-    ...(trace.usage &&
-    typeof trace.usage.inputTokens === 'number' &&
-    typeof trace.usage.outputTokens === 'number'
-      ? { usage: { ...trace.usage } }
+    ...(trace.usage && isRecord(trace.usage)
+      ? { usage: {
+          ...(typeof trace.usage.inputTokens === 'number' && Number.isFinite(trace.usage.inputTokens) && trace.usage.inputTokens >= 0
+            ? { inputTokens: trace.usage.inputTokens } : {}),
+          ...(typeof trace.usage.outputTokens === 'number' && Number.isFinite(trace.usage.outputTokens) && trace.usage.outputTokens >= 0
+            ? { outputTokens: trace.usage.outputTokens } : {}),
+          ...(typeof trace.usage.reasoningTokens === 'number' && Number.isFinite(trace.usage.reasoningTokens) && trace.usage.reasoningTokens >= 0
+            ? { reasoningTokens: trace.usage.reasoningTokens } : {}),
+          ...(typeof trace.usage.finishReason === 'string' ? { finishReason: trace.usage.finishReason.slice(0, 64) } : {})
+        } }
+      : {}),
+    ...(sanitizeModelCallDiagnostics(trace.modelCallDiagnostics).length > 0
+      ? { modelCallDiagnostics: sanitizeModelCallDiagnostics(trace.modelCallDiagnostics) }
       : {}),
     ...(sanitizeProviderDiagnostic(trace.providerDiagnostic)
       ? { providerDiagnostic: sanitizeProviderDiagnostic(trace.providerDiagnostic) }

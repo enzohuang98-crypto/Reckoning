@@ -1,0 +1,92 @@
+name: Isolated packaged Windows acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-packaged-acceptance.yml'
+      - 'tools/acceptance/windows-*'
+      - 'tools/acceptance/isolated-*'
+      - 'tools/acceptance/verify-no-updater-hooks.cjs'
+      - 'src/**'
+      - 'electron.vite.config.ts'
+      - 'electron-builder*'
+      - 'package*.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-packaged-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify loopback transport accounting without installer substitution
+        run: node tools/acceptance/windows-update-feed.self-test.cjs
+      - name: Build explicitly unsigned unpublished predecessor and update candidate
+        shell: pwsh
+        run: ./tools/acceptance/windows-build-update-pair.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: isolated-windows-package
+          path: |
+            release/*-setup.exe
+            release/*-setup.exe.blockmap
+            release/latest.yml
+            release/isolated-package-manifest.json
+            release/update-candidate/*-setup.exe
+            release/update-candidate/*-setup.exe.blockmap
+            release/update-candidate/latest.yml
+            release/update-candidate/isolated-package-manifest.json
+          retention-days: 7
+          if-no-files-found: error
+  client:
+    needs: build
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          architecture: x64
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: isolated-windows-package
+          path: release
+      - name: Verify clean Windows client VM
+        shell: pwsh
+        run: ./tools/acceptance/windows-client-preflight.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-client-preflight.json"
+      - name: Complete observed hosted VM privacy first-run screen
+        shell: powershell
+        run: ./tools/acceptance/windows-client-desktop.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-client-desktop.json"
+      - name: Install and inspect actual packaged application
+        shell: powershell
+        run: ./tools/acceptance/windows-packaged-client.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-packaged-client.json"
+      - name: Exercise actual packaged predecessor updater through normal UI
+        shell: powershell
+        run: ./tools/acceptance/windows-packaged-updater.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-packaged-updater.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: isolated-windows-client-evidence
+          path: |
+            ${{ runner.temp }}/isolated-*.json
+            ${{ runner.temp }}/isolated-*.png
+            ${{ runner.temp }}/isolated-*.log
+          retention-days: 7
+          if-no-files-found: error

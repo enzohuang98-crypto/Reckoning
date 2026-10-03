@@ -1,6 +1,6 @@
 import { ALL_PROVIDER_IDS, type AIProviderId } from '../../types/AIProviderTypes'
 import type { BoardState, FenValidationResult } from '../../types/BoardState'
-import type { AppSettings } from '../../types/Settings'
+import { DEFAULT_SETTINGS, FIXED_ANALYSIS_SETTINGS, type AppSettings } from '../../types/Settings'
 import { parseFen } from '../board/fen'
 import { legalMoveCheck, type MoveCheckResult } from '../board/moves'
 
@@ -18,20 +18,14 @@ export function validateMoveInput(board: BoardState, move: string): MoveCheckRes
   return legalMoveCheck(board.grid, board.sideToMove, move.trim().toLowerCase())
 }
 
-function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
-  return typeof value === 'number' && Number.isSafeInteger(value)
-    ? Math.min(max, Math.max(min, value))
-    : fallback
-}
-
 export function normalizeSettings(value: unknown, fallback: AppSettings): AppSettings {
-  if (typeof value !== 'object' || value === null) return fallback
+  if (typeof value !== 'object' || value === null) return { ...fallback, ...FIXED_ANALYSIS_SETTINGS, version: DEFAULT_SETTINGS.version }
   const candidate = { ...fallback, ...(value as Partial<AppSettings>) }
   const aiProvider = ALL_PROVIDER_IDS.includes(candidate.aiProvider)
     ? candidate.aiProvider
     : fallback.aiProvider
   return {
-    ...candidate,
+    ...fallback,
     aiProvider,
     aiModel:
       typeof candidate.aiModel === 'string' && candidate.aiModel.trim()
@@ -41,63 +35,12 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
       typeof candidate.aiBaseUrl === 'string'
         ? candidate.aiBaseUrl.trim().slice(0, 2048)
         : fallback.aiBaseUrl,
-    rootAnalysisMovetimeMs: clampInteger(
-      candidate.rootAnalysisMovetimeMs,
-      1_000,
-      10_000,
-      fallback.rootAnalysisMovetimeMs
-    ),
-    userMoveEvalMovetimeMs: clampInteger(
-      candidate.userMoveEvalMovetimeMs,
-      500,
-      3_000,
-      fallback.userMoveEvalMovetimeMs
-    ),
-    multiPv: clampInteger(candidate.multiPv, 1, 5, fallback.multiPv),
-    crossEngineEnabled:
-      typeof candidate.crossEngineEnabled === 'boolean'
-        ? candidate.crossEngineEnabled
-        : fallback.crossEngineEnabled,
-    harnessAnswerMode: 'research',
-    harnessAutoRun: false,
-    harnessReuseEvidence: true,
-    harnessEngineTimeMs: clampInteger(
-      candidate.harnessEngineTimeMs,
-      20_000,
-      60_000,
-      fallback.harnessEngineTimeMs
-    ),
-    harnessMaxEngineRounds: clampInteger(
-      candidate.harnessMaxEngineRounds,
-      1,
-      10,
-      fallback.harnessMaxEngineRounds
-    ),
-    harnessResearchMaxModelCalls: clampInteger(
-      candidate.harnessResearchMaxModelCalls,
-      3,
-      10,
-      fallback.harnessResearchMaxModelCalls
-    ),
-    harnessResearchMaxOutputTokens: clampInteger(
-      candidate.harnessResearchMaxOutputTokens,
-      500,
-      20_000,
-      fallback.harnessResearchMaxOutputTokens
-    ),
-    harnessFocusedMaxModelCalls: clampInteger(
-      candidate.harnessFocusedMaxModelCalls,
-      3,
-      10,
-      fallback.harnessFocusedMaxModelCalls
-    ),
-    harnessFocusedMaxOutputTokens: clampInteger(
-      candidate.harnessFocusedMaxOutputTokens,
-      500,
-      20_000,
-      fallback.harnessFocusedMaxOutputTokens
-    ),
-    version: fallback.version
+    userLevel: ['basic', 'intermediate', 'advanced'].includes(candidate.userLevel)
+      ? candidate.userLevel : fallback.userLevel,
+    language: ['zh-TW', 'zh-CN', 'en'].includes(candidate.language)
+      ? candidate.language : fallback.language,
+    ...FIXED_ANALYSIS_SETTINGS,
+    version: DEFAULT_SETTINGS.version
   }
 }
 

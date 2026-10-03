@@ -258,8 +258,6 @@ async function run(): Promise<void> {
     <SystemSettingsSection
       updateStatus={status}
       updateBusy={false}
-      license={null}
-      licenseGateDisabled={true}
       onExportBackup={() => undefined}
       canExportBackup={true}
       onImportBackup={() => undefined}
@@ -267,7 +265,6 @@ async function run(): Promise<void> {
       onDownloadUpdate={() => downloads++}
       onInstallUpdate={() => readyInstalls++}
       onSetBackgroundPreparation={() => undefined}
-      onDeactivateLicense={() => undefined}
     />
   )
   const testWindow = globalThis as typeof globalThis & {

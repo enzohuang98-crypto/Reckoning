@@ -11,6 +11,26 @@
  * - 公開的中國象棋術語分類與常見教學用語
  */
 
+/**
+ * Mandatory common movement rules, independently paraphrased from AXF's
+ * 2017 fourth revision, chapter 1, sections 1–3 (printed pages 4–5):
+ * https://asianxiangqi.org/%E6%AF%94%E8%B5%9B%E8%A7%84%E4%BE%8B/%E6%AF%94%E8%B5%9B%E8%A7%84%E4%BE%8B_2017.pdf
+ * These describe movement, not a replacement for legalMoveCheck or a claim
+ * that the app adjudicates every tournament repetition case. They are never
+ * keyword-selected: every writer, audit and recovery receives the same basis.
+ */
+const XIANGQI_BASIC_RULES = [
+  '棋盤有九路、十條橫線；初始局面紅先黑後，之後雙方輪流各走一著。本次輪走方以局面資料為準。',
+  '帥／將限於本方九宮，沿橫線或直線移一格；仕／士也限於九宮，只能斜移一格。',
+  '相／象斜移兩格且不能過河；路徑中點被任何棋子占據即塞象眼，該方向不能走。',
+  '馬先沿橫線或直線一步，再向外斜一步；第一步的馬腿被任何棋子占據，該方向不能走。',
+  '車沿橫線或直線移動，距離不限，路徑不能跨越棋子。',
+  '炮不吃子時像車移動且中間不能有棋子；吃子時，炮與敵子之間必須恰好一枚炮架，炮架可以是任一方的棋子。',
+  '兵／卒每次前進一格；過河後也可橫移一格，始終不能後退。前進方向依所屬方，不能把紅黑方方向混用。',
+  '不能占據己方棋子的位置；合法吃子後，被吃棋子移除，吃子方占據其位置。',
+  '將帥不能在同一直線無子相隔；行棋不能使本方將帥受攻擊。遭將軍時必須走能解將的著法。'
+] as const
+
 export type XiangqiKnowledgeCategory =
   | 'official_rule'
   | 'board'
@@ -57,7 +77,7 @@ export const XIANGQI_KNOWLEDGE_BASE: readonly XiangqiKnowledgeEntry[] = [
   knowledge('rule-perpetual-check', '長將', ['长将'], 'official_rule', '同一方連續將軍形成規定次數的循環。', '提醒循環棋例限制，不能把長將當作永久和棋手段。'),
   knowledge('rule-perpetual-mate', '長殺', ['长杀'], 'official_rule', '同一方持續以殺著形成重複循環。', '用於棋例與變著責任判斷。'),
   knowledge('rule-perpetual-chase', '長捉', ['长捉'], 'official_rule', '同一方持續追捉一子或數子形成重複循環。', '用於判斷是否必須變著。'),
-  knowledge('rule-forbidden-cycle', '禁止著法', ['禁止着法'], 'official_rule', '長將、長殺、長捉及其攻擊性組合所形成的禁例。', '引擎主線若出現循環，解說要提醒規則風險。'),
+  knowledge('rule-forbidden-cycle', '禁止著法', ['禁止着法'], 'official_rule', '循環中是否有變著責任，取決於採用的比賽規例及完整走棋歷史；不能把長殺一律視為禁例。', '引擎主線若出現循環，先辨明規例與歷史資料是否齊全。', '必須指出採用規例及完整循環依據；目前有限主線不足以獨立作出比賽裁判判決。'),
   knowledge('rule-rooted', '有根子', ['有根', '受保護子', '受保护子'], 'official_rule', '有己方其他棋子提供足夠保護的棋子。', '分析交換後能否反吃，以及攻擊是否真的能得子。'),
   knowledge('rule-unrooted', '無根子', ['无根子', '無根', '无根', '失根'], 'official_rule', '缺乏己方棋子有效保護的棋子。', '常是捉子、頓挫或先手攻擊的具體目標。'),
   knowledge('rule-underdefended', '少根子', ['少根', '保護不足', '保护不足'], 'official_rule', '保護力量少於攻擊力量，或保護者無法有效反吃的棋子。', '用攻擊者與防守者數量、釘住狀態具體說明。'),
@@ -269,9 +289,15 @@ export function selectXiangqiKnowledge(
 export function formatXiangqiKnowledgeForPrompt(
   entries: readonly XiangqiKnowledgeEntry[]
 ): string {
-  if (entries.length === 0) return ''
   return [
-    '【本機象棋知識：只協助解釋術語，不得冒充引擎證據】',
+    '【象棋基本規則：所有解說共用，來源為亞洲象棋聯合會 2017 比賽規例第一章】',
+    ...XIANGQI_BASIC_RULES.map(rule => `- ${rule}`),
+    '【從棋規到本局解釋】',
+    '- 循環的勝負判決需完整歷史與採用規例；有限主線或術語表不能獨立作出比賽裁判判決。',
+    '- 逐手棋盤事實以該變例的合法重播為準；本手已吃子、之後可吃子與對方下一手是三件不同的事。',
+    '- 先查看雙方後續吃子、反吃與交換，再描述子力得失；一次吃子不能單獨證明淨得子、淨虧子或某一線獨有的損失。',
+    '- 一般棋理可協助推論目的，但不證明本局已形成該戰術。說明支持推論的具體主線與限制，不能用分數或排名替代原因。',
+    ...(entries.length ? ['【本機象棋知識：只協助解釋術語，不得冒充引擎證據】'] : []),
     ...entries.map(
       (entry) =>
         `- ${entry.term}：${entry.definition} 教練用途：${entry.coachingUse} 證據限制：${entry.evidenceRule}`

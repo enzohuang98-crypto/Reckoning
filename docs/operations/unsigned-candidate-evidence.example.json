@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "result": "NOT_RUN",
+  "releaseMode": "unsigned-release",
+  "repository": "enzohuang98-crypto/Reckoning",
+  "releaseTag": "v0.4.15",
+  "version": "0.4.15",
+  "commitSha": "RECORD_EXACT_CANDIDATE_40_HEX_COMMIT",
+  "candidateReleaseRunId": "RECORD_ORIGINAL_RELEASE_RUN_ID",
+  "installerSha256": "RECORD_EXACT_PUBLIC_SETUP_64_HEX_SHA256",
+  "testRunId": "RECORD_UUID",
+  "testedAt": "RECORD_ACTUAL_TEST_COMPLETION_ISO_TIMESTAMP",
+  "installerUrl": "https://github.com/enzohuang98-crypto/Reckoning/releases/download/v0.4.15/xiangqi-analyzer-0.4.15-setup.exe",
+  "authenticodeStatus": "NotSigned",
+  "limitations": { "unsigned": true, "smartScreenMayWarnOrBlock": true },
+  "candidate": {
+    "evidenceClass": "installed-windows-client-ui",
+    "savedModelBefore": "RECORD_PREVIOUS_SAVED_VENDOR/MODEL_ID",
+    "savedModelAfter": "RECORD_EXACT_SELECTED_VENDOR/MODEL_ID:free",
+    "os": {
+      "family": "Windows 11", "productType": "client", "build": "RECORD_BUILD",
+      "architecture": "x64", "appArchitecture": "x64", "executionMode": "native"
+    },
+    "gates": {
+      "installed": false,
+      "settingsUiUsed": false,
+      "sameSavedKeyFreeModelSwitch": false,
+      "settingsReopenPreservesModel": false,
+      "appRestartPreservesModel": false,
+      "failedSwitchPreservesModel": false,
+      "normalInstallerLaunched": false,
+      "installPathsVerified": false,
+      "shortcutsVerified": false,
+      "pikafishUciReady": false,
+      "pikafishSearchCompleted": false,
+      "userDataPreserved": false,
+      "draftProtected": false
+    },
+    "analysis": {
+      "evidenceClass": "installed-candidate-analysis",
+      "provider": "openrouter", "model": "RECORD_EXACT_ACTUAL_MODEL_ID:free",
+      "promptPrice": 0, "completionPrice": 0, "sameSavedCredential": false,
+      "complete": false, "truncated": true, "finishReason": "NOT_RUN",
+      "bodySections": [],
+      "bodySha256": "SHA256_OF_FIVE_ACTUAL_BODY_SECTIONS_JOINED_WITH_TWO_LF_CHARACTERS",
+      "validator": {
+        "result": "NOT_RUN", "bodySha256": "RECORD_EXACT_BODY_HASH",
+        "grounded": false, "fiveBodySections": false
+      },
+      "independentReview": {
+        "result": "NOT_RUN", "bodySha256": "RECORD_EXACT_BODY_HASH",
+        "grounded": false, "independent": false, "reviewer": "RECORD_REVIEWER"
+      }
+    }
+  },
+  "updater": {
+    "evidenceClass": "isolated-packaged-predecessor-to-candidate",
+    "os": {
+      "family": "Windows 11", "productType": "client", "build": "RECORD_BUILD",
+      "architecture": "arm64", "appArchitecture": "x64", "executionMode": "x64-emulation",
+      "emulationDisclosed": true
+    },
+    "gates": {
+      "isolated": false,
+      "packagedPredecessorInstalled": false,
+      "newUpdaterPresent": false,
+      "normalInstallCompleted": false,
+      "backgroundDownloadUiUsable": false,
+      "noAutomaticQuit": false,
+      "cacheReopenVerified": false,
+      "cacheRestartVerified": false,
+      "cacheCorruptionRejected": false,
+      "downloadFailureRecovered": false,
+      "earlyPrepareSafe": false,
+      "installRetryPassed": false,
+      "userDataPreserved": false,
+      "draftProtected": false,
+      "exactCandidateInstalled": false,
+      "candidateLaunched": false
+    },
+    "targetVersion": "0.4.15",
+    "targetInstallerSha256": "RECORD_EXACT_CANDIDATE_SETUP_HASH",
+    "predecessorVersion": "RECORD_ACTUAL_PACKAGED_PREDECESSOR_VERSION",
+    "predecessorInstallerSha256": "RECORD_ACTUAL_PREDECESSOR_SETUP_HASH",
+    "predecessorCommitSha": "RECORD_ACTUAL_PREDECESSOR_40_HEX_COMMIT",
+    "installerPayloadBytesOnCacheReuse": null,
+    "testedAt": "RECORD_ACTUAL_ISOLATED_UPDATER_TEST_COMPLETION_ISO_TIMESTAMP"
+  }
+}

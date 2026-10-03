@@ -128,19 +128,19 @@ export class OpenAIProvider implements AIProvider {
       throw new Error('OpenAI 回應中沒有文字內容。')
     }
 
+    const inputTokens = useResponses
+      ? (data as OpenAIResponsesResponse).usage?.input_tokens
+      : (data as OpenAIChatResponse).usage?.prompt_tokens
+    const outputTokens = useResponses
+      ? (data as OpenAIResponsesResponse).usage?.output_tokens
+      : (data as OpenAIChatResponse).usage?.completion_tokens
     const usage = data.usage
-      ? useResponses
-        ? {
-            inputTokens:
-              (data as OpenAIResponsesResponse).usage?.input_tokens ?? 0,
-            outputTokens:
-              (data as OpenAIResponsesResponse).usage?.output_tokens ?? 0
-          }
-        : {
-            inputTokens: (data as OpenAIChatResponse).usage?.prompt_tokens ?? 0,
-            outputTokens:
-              (data as OpenAIChatResponse).usage?.completion_tokens ?? 0
-          }
+      ? {
+          ...(typeof inputTokens === 'number' && Number.isFinite(inputTokens) && inputTokens >= 0
+            ? { inputTokens } : {}),
+          ...(typeof outputTokens === 'number' && Number.isFinite(outputTokens) && outputTokens >= 0
+            ? { outputTokens } : {})
+        }
       : undefined
 
     return {
