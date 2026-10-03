@@ -1,10 +1,18 @@
 # 免費模型能力核對與本次候選選擇
 
-核對日期：2026-10-02。研究限定 Reckoning 當下免費目錄的 17 個精確 ID；不呼叫模型、不切換設定、不讀 key 或帳戶 API。
+公開能力核對日期：2026-10-02，2026-10-03 重新核對精確 Qwen route。公開研究限定 Reckoning 免費目錄的 17 個精確 ID；下方另標明正式 App 服務的真實探測與完整生成，兩類證據分開。
+
+## 2026-10-03 正式截斷診斷與設定修正
+
+- 同一把 App 已保存的 OpenRouter key，經正式 main-process 服務探測及原子保存，從 Super 成功切至 `qwen/qwen3.8-27b:free`；安全紀錄 `same-key-qwen-strongest-switch-2026-10-03.json`。這只證明服務切換，不代替設定頁 UI 或完整回答。
+- 程式來源 `ed1fd71d09ca0f8d8e7bb57ffebb1743ed2dda11`，正式 Pikafish／prepare／Harness 初局 `h2e2` 完整題，唯一請求 `max_tokens=6000`、`reasoning={effort:xhigh,exclude:true}`，未送 `response_format`。59,905ms 後 **FAILED / generation_incomplete / empty_content**，`finish_reason=length`，completion=6000、reasoning=6000，可見輸出 token=0。沒有合格正文、正文 hash 或內容驗收。安全紀錄 `pr-fixed-case-qwen-strongest-ed1fd71-2026-10-03.json`。
+- 當下官方精確 model metadata 仍為 optional reasoning，supported_efforts=`xhigh,medium,low`、default=`xhigh`；沒有宣告 `supports_max_tokens`。免費 ModelRun endpoint 的 prompt／completion 價格皆0，支持 reasoning／reasoning_effort，未列 `response_format`。[官方模型目錄](https://openrouter.ai/api/v1/models)、[精確 endpoint](https://openrouter.ai/api/v1/models/qwen/qwen3.8-27b:free/endpoints)。不能從其他 Qwen 型號推定可用 token-budget 控制。
+- 此結果與官方說明相符：reasoning 與正式輸出共用 `max_tokens`，`exclude` 只隱藏 reasoning；若全額用於推理，可能回傳空 content 與 length。[官方 reasoning 說明](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)。因此只對精確免費 Qwen route 改用支援的 `low` effort，仍保留推理、相同模型／key、6000 單次上限、Harness 共用總預算／時限／次數與完整 validator。沒有付費模型、自動換模型或新增無上限重試。
+- `low` 是否能在此有限預算內產生准确完整正文，仍須下一次真實固定题證明。AA 的 Xhigh 分數不能冒充 low 設定的品質證據；低 effort 也不是 hard reasoning-token cap，不保證每次都預留固定正文額度。
 
 ## 決策
 
-本次最有比較證據的首選為 **`qwen/qwen3.8-27b:free`，保留其推理模式與原廠預設 Xhigh 深度**。目前 Artificial Analysis（AA）Intelligence Index v4.3.2 的公開同版比較中，Qwen3.8 27B（Xhigh）為 34，Ultra（Reasoning）為 23；Qwen 在 HLE 與長上下文推理評測亦較高。這是選擇候選的依據，不是已證明它在象棋固定案例勝出。[AA 同版比較](https://artificialanalysis.ai/models/comparisons/qwen3-8-27b-vs-nvidia-nemotron-3-ultra-550b-a55b)
+本次最有比較證據的模型候選為 **`qwen/qwen3.8-27b:free`**。目前 Artificial Analysis（AA）Intelligence Index v4.3.2 的公開同版比較中，Qwen3.8 27B（Xhigh）為 34，Ultra（Reasoning）為 23；Qwen 在 HLE 與長上下文推理評測亦較高。這是選擇模型候選的依據，不是已證明它在象棋固定案例或較低推理設定勝出。原廠 Xhigh 預設已經正式完整題證明會耗盡本 App 的有限輸出額度，後續策略依上節修正。[AA 同版比較](https://artificialanalysis.ai/models/comparisons/qwen3-8-27b-vs-nvidia-nemotron-3-ultra-550b-a55b)
 
 本次沒有找到涵蓋全部 17 個精確免費 route、同一提示、同一有限預算的象棋解說評測。因此不能宣稱完整目錄的絕對第一名。正式 Harness 的完整回答、棋盤事實與人工內容檢閱仍是必要驗收。
 

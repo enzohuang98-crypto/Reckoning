@@ -8,7 +8,7 @@ export const OPENROUTER_NEMOTRON_JSON_REASONING_MAX_TOKENS = 1_000
 
 export interface OpenRouterReasoningConfig {
   max_tokens?: number
-  effort?: 'none' | 'xhigh'
+  effort?: 'none' | 'low'
   enabled?: false
   exclude: true
 }
@@ -18,11 +18,12 @@ export function openRouterReasoningConfig(
   responseFormat: 'json' | 'text'
 ): OpenRouterReasoningConfig | undefined {
   if (model === OPENROUTER_QWEN38_FREE_MODEL) {
-    // The exact free catalog entry advertises Xhigh as its default effort.
-    // Preserve that reasoning depth; exclude hides the trace, not its tokens.
-    // The existing Harness output/time/call caps still apply. See the dated
-    // primary-source audit in docs/operations/free-model-selection-2026-10-02.md.
-    return { effort: 'xhigh', exclude: true }
+    // This exact free endpoint advertises low/medium/xhigh; no token-budget
+    // control is advertised. Its formal fixed case used all 6,000 tokens reasoning
+    // at xhigh and returned empty content with finish_reason=length (2026-10-03).
+    // Use the supported lower effort to leave room for the visible answer;
+    // exclude only hides the trace. Harness caps and validation remain intact.
+    return { effort: 'low', exclude: true }
   }
   if (model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL) {
     // The catalog marks reasoning as optional. Live fixed-case calls returned

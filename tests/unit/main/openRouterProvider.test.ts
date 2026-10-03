@@ -219,8 +219,8 @@ for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-
       })
       const body = requests[0].body as Record<string, unknown>
       const exactFree = model === 'qwen/qwen3.8-27b:free'
-      assert.deepEqual(body.reasoning, exactFree ? { effort: 'xhigh', exclude: true } : undefined,
-        'The confirmed Qwen free route must preserve Xhigh reasoning without applying its policy to neighbouring models')
+      assert.deepEqual(body.reasoning, exactFree ? { effort: 'low', exclude: true } : undefined,
+        'Only the confirmed Qwen free route uses its supported lower effort to preserve visible-output room after measured reasoning exhaustion')
       assert.deepEqual(body.response_format, !exactFree && responseFormat === 'json' ? { type: 'json_object' } : undefined,
         'The exact Qwen free endpoint does not advertise response_format; prompted JSON still goes through the Harness validator')
       assert.equal(body.max_tokens, 6000, 'Selecting the strongest candidate must not silently increase its total output cap')
