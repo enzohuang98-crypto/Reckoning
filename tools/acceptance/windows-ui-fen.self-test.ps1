@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$UpdaterPath = (Join-Path $PSScriptRoot 'windows-packaged-updater.ps1'),
   [string]$UiPath = (Join-Path $PSScriptRoot 'windows-packaged-ui.ps1')
 )
@@ -26,13 +26,14 @@ function Wait-Probe([scriptblock]$Condition, [string]$Message, [int]$Seconds = 3
   }
   throw $Message
 }
-function New-FenControl([string]$Name, [bool]$Offscreen = $false, [string]$Class = 'fen-output', [bool]$Scrollable = $true, [bool]$Responds = $true, [string]$PatternText = '') {
+function New-FenControl([string]$Value, [bool]$Offscreen = $false, [string]$Class = 'fen-output', [bool]$Scrollable = $true, [bool]$Responds = $true, [string]$PatternText = '', [object]$ReadOnly = $true, [bool]$ValueSupported = $true, [string]$Name = '目前 FEN', $Kind = [System.Windows.Automation.ControlType]::Edit) {
   $control = [pscustomobject]@{
     Current = [pscustomobject]@{
       Name = $Name; ClassName = $Class; IsOffscreen = $Offscreen
-      ControlType = [System.Windows.Automation.ControlType]::Text; AutomationId = ''; IsEnabled = $true
+      ControlType = $Kind; AutomationId = ''; IsEnabled = $true
     }
     scrolls = 0; scrollable = $Scrollable; responds = $Responds; patternText = $PatternText; bound = $null
+    readOnly = $ReadOnly; valueSupported = $ValueSupported; valueReads = 0; readOnlyReads = 0
   }
   $scroll = [pscustomobject]@{ Owner = $control }
   $scroll | Add-Member ScriptMethod ScrollIntoView {
@@ -45,16 +46,30 @@ function New-FenControl([string]$Name, [bool]$Offscreen = $false, [string]$Class
     $this.Owner.bound = $limit
     return $this.Owner.patternText.Substring(0, [Math]::Min($limit, $this.Owner.patternText.Length))
   }
+  $range | Add-Member ScriptMethod GetAttributeValue {
+    param($attribute)
+    if ($attribute -ne [System.Windows.Automation.TextPattern]::IsReadOnlyAttribute) { throw 'Unexpected text attribute read' }
+    $this.Owner.readOnlyReads++
+    return $this.Owner.readOnly
+  }
+  $valuePattern = [pscustomobject]@{ Owner = $control; Value = $Value }
+  $valuePattern | Add-Member ScriptProperty Current {
+    $this.Owner.valueReads++
+    return [pscustomobject]@{ IsReadOnly = $this.Owner.readOnly; Value = $this.Value }
+  }
   $control | Add-Member NoteProperty ScrollPattern $scroll
   $control | Add-Member NoteProperty TextPattern ([pscustomobject]@{ DocumentRange = $range })
+  $control | Add-Member NoteProperty ValuePattern $valuePattern
   $control | Add-Member ScriptMethod GetSupportedPatterns {
     if ($this.scrollable) { [System.Windows.Automation.ScrollItemPattern]::Pattern }
     if ($this.patternText) { [System.Windows.Automation.TextPattern]::Pattern }
+    if ($this.valueSupported) { [System.Windows.Automation.ValuePattern]::Pattern }
   }
   $control | Add-Member ScriptMethod TryGetCurrentPattern {
     param($id, $target)
     if ($this.scrollable -and $id -eq [System.Windows.Automation.ScrollItemPattern]::Pattern) { $target.Value = $this.ScrollPattern; return $true }
     if ($this.patternText -and $id -eq [System.Windows.Automation.TextPattern]::Pattern) { $target.Value = $this.TextPattern; return $true }
+    if ($this.valueSupported -and $id -eq [System.Windows.Automation.ValuePattern]::Pattern) { $target.Value = $this.ValuePattern; return $true }
     $target.Value = $null; return $false
   }
   return $control
@@ -79,13 +94,13 @@ if (-not $observed -or $observed.fen -cne $fen -or $offscreen.Current.IsOffscree
 }
 Write-Output 'PASS offscreen exact current FEN scrolled once and observed visibly'
 
-$text = New-FenControl '' $true 'fen-output' $true $true $fen
+$text = New-FenControl '' $true 'fen-output' $true $true $fen $true $false
 Reset-Case $text
 $observed = Get-ProbeVisibleFen
-if (-not $observed -or $observed.fen -cne $fen -or $text.bound -ne 256 -or $text.scrolls -ne 1) { throw 'Bounded source-only TextPattern observation failed' }
+if (-not $observed -or $observed.fen -cne $fen -or $text.bound -ne 257 -or $text.scrolls -ne 1) { throw 'Bounded source-only TextPattern observation failed' }
 Write-Output 'PASS source FEN bounded TextPattern read after scrolling'
 
-$unrelated = New-FenControl $fen $true 'unrelated-output' $true $true $fen
+$unrelated = New-FenControl $fen $true 'unrelated-output' $true $true $fen -Name '匯入 FEN'
 Reset-Case $unrelated
 if ((Get-ProbeVisibleFen) -or $unrelated.scrolls -ne 0 -or $unrelated.bound -ne $null) { throw 'Arbitrary FEN control was operated or accepted' }
 Write-Output 'PASS unrelated FEN text is neither scrolled nor read'
@@ -110,4 +125,78 @@ $failure = $null
 try { [void](Get-ProbeVisibleFen) } catch { $failure = $_.Exception.Message }
 if ($failure -cne 'Visible current board FEN is ambiguous.') { throw 'Two visible source FEN outputs were accepted' }
 Write-Output 'PASS ambiguous source FEN outputs rejected'
-Write-Output '8/8 offline FEN cases passed; actual packaged VM scrolling and saved-position restoration remain separate gates.'
+$caseCount = 8
+
+# The real ARM64 VM omitted ClassName. Identity must survive that platform
+# mapping, while the actual field value must be read anew after board changes.
+$emptyClass = New-FenControl $fen $true ''
+Reset-Case $emptyClass
+$observed = Get-ProbeVisibleFen
+if (-not $observed -or $observed.fen -cne $fen -or $emptyClass.scrolls -ne 1 -or
+    $observed.control.className -cne '' -or $observed.source -cne 'exact_current_fen_value_pattern' -or
+    $observed.readOnly -ne $true) { throw 'Exact read-only FEN field with empty ClassName was not observed' }
+Write-Output 'PASS empty-class current FEN field is identified, scrolled and read'
+$caseCount++
+$changedFen = 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b - - 0 1'
+$emptyClass.ValuePattern.Value = $changedFen
+$observed = Get-ProbeVisibleFen
+if (-not $observed -or $observed.fen -cne $changedFen -or $emptyClass.scrolls -ne 1) { throw 'Current FEN observation retained an old field value' }
+Write-Output 'PASS same current FEN field is reread after its value changes'
+$caseCount++
+
+foreach ($wrong in @(
+  @{ name = '匯入 FEN'; kind = [System.Windows.Automation.ControlType]::Edit },
+  @{ name = "目前 FEN $fen"; kind = [System.Windows.Automation.ControlType]::StatusBar },
+  @{ name = '目前 FEN'; kind = [System.Windows.Automation.ControlType]::StatusBar },
+  @{ name = '目前 FEN'; kind = [System.Windows.Automation.ControlType]::Text },
+  @{ name = $fen; kind = [System.Windows.Automation.ControlType]::Text }
+)) {
+  $control = New-FenControl $fen $true 'fen-output' $true $true $fen -Name $wrong.name -Kind $wrong.kind
+  Reset-Case $control
+  if ((Get-ProbeVisibleFen) -or $control.scrolls -ne 0 -or $control.bound -ne $null -or $control.valueReads -ne 0) { throw 'Misleading label, status or unrelated FEN was read or operated' }
+  Write-Output 'PASS misleading role/name cannot identify the current FEN'
+  $caseCount++
+}
+
+foreach ($useValue in @($true, $false)) {
+  foreach ($readOnly in @($false, $null, 'True', [System.Windows.Automation.AutomationElement]::NotSupported)) {
+    $control = New-FenControl $fen $true '' $true $true $fen $readOnly $useValue
+    Reset-Case $control
+    if ((Get-ProbeVisibleFen) -or $control.scrolls -ne 0 -or $control.bound -ne $null) { throw 'Writable or unknown-read-only field was scrolled or accepted' }
+    Write-Output 'PASS writable or unproven read-only field rejected before scrolling'
+    $caseCount++
+  }
+}
+
+$text = New-FenControl '' $true '' $true $true "$fen`r`n" $true $false
+Reset-Case $text
+$observed = Get-ProbeVisibleFen
+if (-not $observed -or $observed.fen -cne $fen -or $text.bound -ne 257 -or
+    $text.readOnlyReads -ne 2 -or $observed.source -cne 'exact_current_fen_text_pattern') { throw 'Exact full read-only TextPattern fallback failed' }
+Write-Output 'PASS empty-class TextPattern proves read-only and reads the exact whole FEN'
+$caseCount++
+
+foreach ($invalidFen in @(
+  '9 w - - 0 1',
+  '8/9/9/9/9/9/9/9/9/9 w - - 0 1',
+  '99/9/9/9/9/9/9/9/9/9 w - - 0 1',
+  "Current board: $fen",
+  "$fen extra",
+  ($fen + (' ' * 256) + 'another value')
+)) {
+  foreach ($useValue in @($true, $false)) {
+    $control = New-FenControl $invalidFen $false '' $true $true $invalidFen $true $useValue
+    Reset-Case $control
+    if (Get-ProbeVisibleFen) { throw 'Malformed, embedded or truncated FEN was accepted' }
+    Write-Output 'PASS malformed, embedded or oversized FEN rejected'
+    $caseCount++
+  }
+}
+
+Reset-Case @((New-FenControl $fen $false ''), (New-FenControl 'invalid' $true ''))
+$failure = $null
+try { [void](Get-ProbeVisibleFen) } catch { $failure = $_.Exception.Message }
+if ($failure -cne 'Visible current board FEN is ambiguous.' -or @($script:controls | Where-Object { $_.scrolls -gt 0 -or $_.valueReads -gt 0 }).Count) { throw 'Duplicate current FEN identity was read or scrolled before rejection' }
+Write-Output 'PASS duplicate field identity rejected before reading or scrolling either field'
+$caseCount++
+Write-Output "$caseCount/$caseCount offline FEN cases passed; actual packaged VM scrolling and saved-position restoration remain separate gates."

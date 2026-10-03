@@ -702,6 +702,32 @@ check('a temporal chain has to be consistent through all its literal moves',
 check('a snapshot preserves later current counts while ordinary chronology covers earlier captures',
   validate('截至第17手，炮7進5吃掉紅方馬，然後紅方車二進二吃掉黑方炮，紅方淨多零炮。', [realCannonTrade]).length === 0 &&
   validate('截至第17手，炮7進5吃掉紅方馬，隨即紅方車二進二吃掉黑方炮，紅方淨多零炮。', [realCannonTrade]).length > 0)
+const twoLinkCapture = '炮二平五後，黑方車9平8，然後第十二手黑方卒7進1吃掉紅方兵'
+const threeLinkCapture = '炮二平五後，黑方車9平8，然後紅方兵三進一，緊接著黑方卒7進1吃掉紅方兵'
+const fourLinkCapture = `${threeLinkCapture}，然後第十八手黑方卒7進1吃掉紅方馬`
+check('two three and four temporal links preserve factual captures and exact repeated occurrences',
+  [twoLinkCapture, threeLinkCapture, fourLinkCapture].every((text) =>
+    validate(`${text}。`, [repeatedPawn]).length === 0 && concreteRelation(`${text}。`, [repeatedPawn])))
+check('a hypothetical qualifier reaches captures through every link in the same temporal chain',
+  [twoLinkCapture, threeLinkCapture, fourLinkCapture].every((text) =>
+    validate(`如果${text}，就應重新評估。`, [repeatedPawn]).length === 0 &&
+    !concreteRelation(`如果${text}，就應重新評估。`, [repeatedPawn])))
+check('a hedged qualifier reaches captures through every link in the same temporal chain',
+  [twoLinkCapture, threeLinkCapture, fourLinkCapture].every((text) =>
+    validate(`或許${text}。`, [repeatedPawn]).length === 0 && !concreteRelation(`或許${text}。`, [repeatedPawn])))
+check('new current assertions after a qualified chain still reject a wrong capture target',
+  ['如果', '或許'].every((qualifier) => ['但這步已經', '並且這步已經'].every((assertion) =>
+    validate(`${qualifier}${threeLinkCapture}${assertion}吃掉紅方馬。`, [repeatedPawn]).length > 0 &&
+    !concreteRelation(`${qualifier}${threeLinkCapture}${assertion}吃掉紅方馬。`, [repeatedPawn]))))
+check('a sentence boundary ends a temporal qualifier before a new exact capture assertion',
+  validate(`如果${threeLinkCapture}。第十八手黑方卒7進1吃掉紅方兵。`, [repeatedPawn]).length > 0 &&
+  concreteRelation(`如果${threeLinkCapture}。第十八手黑方卒7進1吃掉紅方馬。`, [repeatedPawn]))
+check('a new current assertion inside a linked gap resets qualification for following captures',
+  validate('如果炮二平五後，黑方車9平8沒有吃子並且這步已經沒有吃子，然後第十二手黑方卒7進1吃掉紅方馬。', [repeatedPawn]).length > 0 &&
+  concreteRelation('如果炮二平五後，黑方車9平8沒有吃子並且這步已經沒有吃子，然後第十二手黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+check('transitive factual chronology still rejects a mismatched actor and repeated capture target',
+  validate('炮二平五後，黑方車9平8，然後紅方兵三進一，緊接著紅方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
+  validate(`${threeLinkCapture}，然後第十八手黑方卒7進1吃掉紅方兵。`, [repeatedPawn]).length > 0)
 
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1

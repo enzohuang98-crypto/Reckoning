@@ -46,31 +46,54 @@ function Get-ProbeEvents {
   return @()
 }
 function Get-ProbeVisibleFen {
-  # BoardEditor renders the actual board state in this exact source-defined
-  # <code> element. No renderer evaluation, storage injection or inferred FEN.
-  $observations = @()
-  foreach ($control in Get-ProbeControls) {
-    $current = $control.Current
-    if ([string]$current.ClassName -cne 'fen-output') { continue }
-    # The editor's FEN follows the saved-position controls and can be below
-    # a small VM viewport. Reveal this observed source-defined element first.
-    Show-ProbeControl $control 'current board FEN'
-    $current = $control.Current
-    if ($current.IsOffscreen) { continue }
-    $text = ([string]$current.Name).Trim()
-    $source = 'exact_fen_output_name'
-    if (-not $text) {
-      $pattern = $null
-      if (-not $control.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) { continue }
-      $text = ([string]$pattern.DocumentRange.GetText(256)).Trim()
-      $source = 'exact_fen_output_text_pattern'
-    }
-    if ($text -cmatch '^[rnbakcpRNBAKCP1-9/]+ [wb] - - [0-9]+ [1-9][0-9]*$') {
-      $observations += @{ fen = $text; source = $source; control = Get-ProbeControlDiagnostic $control }
-    }
+  # Native read-only BoardEditor textbox: its role/name identify the current
+  # board even when Chromium omits ClassName. Labels, status and FEN elsewhere
+  # cannot prove this value. No renderer evaluation, storage or inferred FEN.
+  $controls = @(Get-ProbeControls | Where-Object {
+    $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and
+    [string]$_.Current.Name -ceq '目前 FEN'
+  })
+  if ($controls.Count -gt 1) { throw 'Visible current board FEN is ambiguous.' }
+  if ($controls.Count -ne 1) { return $null }
+  $control = $controls[0]
+  $pattern = $null
+  if ($control.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {
+    $readOnly = $pattern.Current.IsReadOnly
+    $source = 'exact_current_fen_value_pattern'
+  } elseif ($control.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) {
+    $readOnly = $pattern.DocumentRange.GetAttributeValue([System.Windows.Automation.TextPattern]::IsReadOnlyAttribute)
+    $source = 'exact_current_fen_text_pattern'
+  } else { return $null }
+  if ($readOnly -isnot [bool] -or $readOnly -ne $true) { return $null }
+  # This exact observed field may lie below the VM viewport. Require UIA to
+  # reveal it before reading the current value, including after board changes.
+  Show-ProbeControl $control 'current board FEN'
+  $current = $control.Current
+  if ($current.IsOffscreen -or $current.ControlType -ne [System.Windows.Automation.ControlType]::Edit -or
+      [string]$current.Name -cne '目前 FEN') { return $null }
+  if ($source -ceq 'exact_current_fen_value_pattern') {
+    $value = $pattern.Current
+    $readOnly = $value.IsReadOnly
+    $text = [string]$value.Value
+  } else {
+    $readOnly = $pattern.DocumentRange.GetAttributeValue([System.Windows.Automation.TextPattern]::IsReadOnlyAttribute)
+    # One extra character detects truncation beyond the allowed full value.
+    $text = [string]$pattern.DocumentRange.GetText(257)
   }
-  if ($observations.Count -gt 1) { throw 'Visible current board FEN is ambiguous.' }
-  if ($observations.Count -eq 1) { return $observations[0] }
+  if ($readOnly -isnot [bool] -or $readOnly -ne $true -or $text.Length -gt 256) { return $null }
+  $text = $text.Trim()
+  if ($text -cmatch '^[rnbakcpRNBAKCP1-9/]+ [wb] - - [0-9]+ [1-9][0-9]*$') {
+    $ranks = ($text -split ' ')[0] -split '/'
+    if ($ranks.Count -ne 10) { return $null }
+    foreach ($rank in $ranks) {
+      $width = 0
+      foreach ($cell in $rank.ToCharArray()) {
+        if ($cell -ge '1' -and $cell -le '9') { $width += [int]::Parse([string]$cell) } else { $width++ }
+      }
+      if ($width -ne 9) { return $null }
+    }
+    return @{ fen = $text; source = $source; control = Get-ProbeControlDiagnostic $control; readOnly = $true }
+  }
   return $null
 }
 function Record-Probe([string]$Stage) {

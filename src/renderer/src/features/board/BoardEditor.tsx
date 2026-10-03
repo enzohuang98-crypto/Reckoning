@@ -412,7 +412,13 @@ export function BoardEditor({
         </div>
         <div className="palette-group">
           <span className="palette-label">目前 FEN</span>
-          <code className="fen-output">{board.fen}</code>
+          <textarea
+            className="fen-textarea fen-output"
+            aria-label="目前 FEN"
+            readOnly
+            rows={2}
+            value={board.fen}
+          />
         </div>
       </div>}
     </div>
