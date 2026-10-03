@@ -18,12 +18,12 @@ export function openRouterReasoningConfig(
   responseFormat: 'json' | 'text'
 ): OpenRouterReasoningConfig | undefined {
   if (model === OPENROUTER_QWEN38_FREE_MODEL) {
-    // This exact free endpoint advertises low/medium/xhigh; no token-budget
-    // control is advertised. Its formal fixed case used all 6,000 tokens reasoning
-    // at xhigh and returned empty content with finish_reason=length (2026-10-03).
-    // Use the supported lower effort to leave room for the visible answer;
-    // exclude only hides the trace. Harness caps and validation remain intact.
-    return { effort: 'low', exclude: true }
+    // This exact free endpoint advertises optional thinking, but no hard
+    // reasoning-token budget. Both xhigh and low formal fixed cases used all
+    // 6,000 output tokens reasoning and returned empty content with length
+    // (2026-10-03). Disable its optional thinking to preserve visible-output
+    // room; exclude alone cannot do this. Harness caps/validation stay intact.
+    return { enabled: false, exclude: true }
   }
   if (model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL) {
     // The catalog marks reasoning as optional. Live fixed-case calls returned

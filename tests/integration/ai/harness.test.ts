@@ -1191,6 +1191,24 @@ async function main(): Promise<void> {
     dotsProvider.calls === 1 && dotsProvider.requestedMaxTokens[0] === 6000 &&
     dotsTraces.at(-1)?.modelCallDiagnostics?.[0]?.reasoningPolicy === 'reasoning_disabled' &&
     dotsTraces.at(-1)?.modelCallDiagnostics?.[0]?.stage === 'initial_combined')
+  const qwenTraces: HarnessTrace[] = []
+  const qwenProvider = new FakeProvider()
+  await runExplanationHarness({
+    requestId: 'qwen-policy-trace', analysisId: session.analysisId,
+    provider: 'openrouter', model: 'qwen/qwen3.8-27b:free',
+    userLevel: 'intermediate', explanationStyle: 'long_analytical', language: 'zh-TW',
+    userMoveReason: '先出馬可以讓子力調度更靈活', answerMode: 'research',
+    budget: { engineTimeMs: 3000, maxEngineRounds: 3, maxModelCalls: 4, maxOutputTokens: 6000 }
+  }, {
+    provider: qwenProvider, apiKey: 'synthetic-trace-key', model: 'qwen/qwen3.8-27b:free', session,
+    registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+    traceStore: { save: (trace: HarnessTrace) => qwenTraces.push(trace) } as never,
+    signal: new AbortController().signal, onProgress: () => undefined, explanationPrompt
+  })
+  check('Qwen 完整合格 fixture 的 trace 標示關閉可選推理而不冒稱固定推理 token 上限',
+    qwenProvider.calls === 1 && qwenProvider.requestedMaxTokens[0] === 6000 &&
+      qwenTraces.at(-1)?.modelCallDiagnostics?.[0]?.reasoningPolicy === 'reasoning_disabled' &&
+      qwenTraces.at(-1)?.modelCallDiagnostics?.[0]?.stage === 'initial_combined')
 
   const sameMoveProvider = new SameMoveProvider()
   const sameMoveResult = await runExplanationHarness(
@@ -3828,6 +3846,17 @@ async function main(): Promise<void> {
   const sameVerdictRequirements = { ...initialMoveRequirements, comparisonState: 'same_move' as const }
   check('同首選完整正文可通過正式 validator',
     validateAnswer(sameVerdictAnswer, sameVerdictEvidence, sameVerdictRequirements).length === 0)
+  for (const directAnswer of ['實戰步不是好棋而是失誤。', '實戰步並非好棋而是敗著。']) {
+    const contrastAnswer = structuredClone(sameVerdictAnswer)
+    contrastAnswer.directAnswer = directAnswer
+    check(`同首選完整正文不能把而是後的失誤判斷藏入前句否定：${directAnswer}`,
+      validateAnswer(contrastAnswer, sameVerdictEvidence, sameVerdictRequirements)
+        .some(error => error.includes('同一著法')))
+  }
+  const conditionalContrastAnswer = structuredClone(sameVerdictAnswer)
+  conditionalContrastAnswer.directAnswer = '如果實戰步不是好棋而是失誤，仍需分析後續。炮二平五在此與首選相同。'
+  check('同首選完整正文的而是仍保留外層條件語氣',
+    validateAnswer(conditionalContrastAnswer, sameVerdictEvidence, sameVerdictRequirements).length === 0)
   const deniedOpeningEventsAnswer = structuredClone(sameVerdictAnswer)
   deniedOpeningEventsAnswer.sections[0]!.claims[0]!.text += '炮二平五在此未發生吃子或將軍。'
   const deniedOpeningEventsErrors = validateAnswer(
@@ -3847,6 +3876,69 @@ async function main(): Promise<void> {
     replayedExchangeAnswer, replayedExchangeEvidence, sameVerdictRequirements)
   check('完整五段正文的真實吃車及反吃交換可通過正式 validator',
     replayedExchangeErrors.length === 0, replayedExchangeErrors)
+  for (const text of [
+    '紅方炮二平五當下可能吃黑方卒，然後黑方車9平8已經吃掉紅方炮。',
+    '紅方炮二平五當下可能吃黑方卒，然後黑方車9平8已經將軍。'
+  ]) {
+    const falseSubsequentFact = structuredClone(replayedExchangeAnswer)
+    falseSubsequentFact.sections[3]!.claims[0]!.text += text
+    check(`完整五段正文的當下可能性不豁免後一手確定事件：${text}`,
+      validateAnswer(falseSubsequentFact, replayedExchangeEvidence, sameVerdictRequirements)
+        .some(error => error.includes('棋盤事實')))
+  }
+  const correctSubsequentFact = structuredClone(replayedExchangeAnswer)
+  correctSubsequentFact.sections[3]!.claims[0]!.text +=
+    '紅方炮二平五當下可能吃黑方卒，然後黑方車9平8沒有吃子。'
+  check('完整五段正文可區分前手當下機會與後手真正沒有吃子的事實',
+    validateAnswer(correctSubsequentFact, replayedExchangeEvidence, sameVerdictRequirements).length === 0)
+  const chainedCaptureAnalysis: EngineAnalysis = {
+    ...sameMoveAnalysis,
+    principalVariation: realExchangeEvidence.analysis.principalVariation,
+    displayPrincipalVariation: realExchangeEvidence.displayPrincipalVariation,
+    userMovePrincipalVariation: realExchangeEvidence.analysis.principalVariation,
+    displayUserMovePrincipalVariation: realExchangeEvidence.displayPrincipalVariation
+  }
+  const chainedCaptureSession: AnalysisSession = {
+    ...sameMoveSession, analysisId: 'analysis-qualified-capture-chain',
+    engineAnalysis: chainedCaptureAnalysis, moveComparison: compareMove(chainedCaptureAnalysis)
+  }
+  const captureChain = '炮二平五後，黑方車9平8，然後紅方車二進三吃黑車'
+  for (const [name, text, expectedIssue] of [
+    ['確定走法鏈通過具體關係檢查', `${captureChain}。`, ''],
+    ['條件走法鏈不能充當已發生的具體關係', `如果${captureChain}，就應重新評估。`, '後續後果沒有使用具體象棋詞彙'],
+    ['推測走法鏈不能充當已發生的具體關係', `或許${captureChain}。`, '後續後果沒有使用具體象棋詞彙'],
+    ['條件走法鏈不能豁免獨立的錯誤吃子', `如果${captureChain}，但紅方車二進三這步已經吃黑象。`, '吃子斷言與逐手棋盤不一致'],
+    ['推測走法鏈不能豁免獨立的錯誤吃子', `或許${captureChain}，但紅方車二進三這步已經吃黑象。`, '吃子斷言與逐手棋盤不一致']
+  ]) {
+    const chainAnswer = structuredClone(replayedExchangeAnswer)
+    chainAnswer.sections[2]!.claims[0]!.text += chainAnswer.sections[3]!.claims[0]!.text
+    chainAnswer.sections[3]!.claims[0]!.text = text!
+    const chainProvider = new MutatedSameMoveProvider(answer => Object.assign(answer, chainAnswer))
+    let chainTrace: HarnessTrace | undefined
+    let delivered = ''
+    let failure: unknown
+    try {
+      const result = await runExplanationHarness({
+        requestId: `capture-chain-${name}`, analysisId: chainedCaptureSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW',
+        attachedMove: chainedCaptureAnalysis.userMove, answerMode: 'research',
+        budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 4000 }
+      }, {
+        provider: chainProvider, apiKey: 'synthetic-test-key', model: 'fake-model', session: chainedCaptureSession,
+        registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+        traceStore: { save: (trace: HarnessTrace) => { chainTrace = trace } } as never,
+        signal: new AbortController().signal, onProgress: () => undefined
+      })
+      delivered = result.finalText
+    } catch (error) { failure = error }
+    check(`完整 Harness ${name}`, chainProvider.calls === (expectedIssue ? 2 : 1) && (expectedIssue
+      ? failure instanceof HarnessExplanationUnavailableError && failure.reason === 'quality_validation_failed' &&
+        chainProvider.prompt.includes(expectedIssue) &&
+        delivered === '' && chainTrace?.status === 'failed' && chainTrace.finalText === undefined
+      : failure === undefined && delivered.includes(text!) && chainTrace?.validationErrors.length === 0),
+    JSON.stringify({ failure: String(failure), errors: chainTrace?.validationErrors }))
+  }
   const falseNetMaterialAnswer = JSON.parse(JSON.stringify(replayedExchangeAnswer)) as HarnessAnswer
   falseNetMaterialAnswer.sections[3]!.claims[0]!.text =
     falseNetMaterialAnswer.sections[3]!.claims[0]!.text.replace(

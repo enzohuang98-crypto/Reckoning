@@ -8,7 +8,8 @@
 - 程式來源 `ed1fd71d09ca0f8d8e7bb57ffebb1743ed2dda11`，正式 Pikafish／prepare／Harness 初局 `h2e2` 完整題，唯一請求 `max_tokens=6000`、`reasoning={effort:xhigh,exclude:true}`，未送 `response_format`。59,905ms 後 **FAILED / generation_incomplete / empty_content**，`finish_reason=length`，completion=6000、reasoning=6000，可見輸出 token=0。沒有合格正文、正文 hash 或內容驗收。安全紀錄 `pr-fixed-case-qwen-strongest-ed1fd71-2026-10-03.json`。
 - 當下官方精確 model metadata 仍為 optional reasoning，supported_efforts=`xhigh,medium,low`、default=`xhigh`；沒有宣告 `supports_max_tokens`。免費 ModelRun endpoint 的 prompt／completion 價格皆0，支持 reasoning／reasoning_effort，未列 `response_format`。[官方模型目錄](https://openrouter.ai/api/v1/models)、[精確 endpoint](https://openrouter.ai/api/v1/models/qwen/qwen3.8-27b:free/endpoints)。不能從其他 Qwen 型號推定可用 token-budget 控制。
 - 此結果與官方說明相符：reasoning 與正式輸出共用 `max_tokens`，`exclude` 只隱藏 reasoning；若全額用於推理，可能回傳空 content 與 length。[官方 reasoning 說明](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)。因此只對精確免費 Qwen route 改用支援的 `low` effort，仍保留推理、相同模型／key、6000 單次上限、Harness 共用總預算／時限／次數與完整 validator。沒有付費模型、自動換模型或新增無上限重試。
-- `low` 是否能在此有限預算內產生准确完整正文，仍須下一次真實固定题證明。AA 的 Xhigh 分數不能冒充 low 設定的品質證據；低 effort 也不是 hard reasoning-token cap，不保證每次都預留固定正文額度。
+- `19d8d680e24a930c3bd7f0837b845b5229696da2` 的正式重試已實際送 `effort=low`，仍 **FAILED / generation_incomplete / empty_content**：37,754ms，wire=1 請求，completion=6000、reasoning=6000、finish=length，可見輸出=0。安全報告 `pr-fixed-case-qwen-low-19d8d68-2026-10-03.json` 的 trace rows/count 未取得，而 safeWireRequests 明確記錄一次，不能把 trace count=0 誤當沒有呼叫。沒有正文或 hash。
+- 低 effort 不是 hard reasoning-token cap；兩次不同 effort 都耗盡正文額度。官方精確模型 metadata `mandatory=false` 且模型頁明示 thinking 可開關，因此只對這個精確免費 route 改送 `reasoning={enabled:false,exclude:true}`，不更改同一模型、key、輸出及共用預算、驗證或重試限制。[精確官方模型頁](https://openrouter.ai/qwen/qwen3.8-27b:free)。下一次正式完整題仍是必要品質驗收；AA 的 Xhigh 分數不能冒充關閉 thinking 設定的品質證據。停止重刷已失敗的相同設定。
 
 ## 決策
 
