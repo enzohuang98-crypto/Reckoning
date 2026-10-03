@@ -379,6 +379,17 @@ async function main(): Promise<void> {
     check(`負評否定與條件作用範圍：${text}`,
       hasAssertedMoveCriticism(text, ['炮二平五']) === asserted)
   }
+  for (const { text, asserted } of [
+    { text: '實戰步不是好棋而是失誤。', asserted: true },
+    { text: '實戰步並非普通著法而是敗著。', asserted: true },
+    { text: '實戰步沒有取得好處反而更差。', asserted: true },
+    { text: '如果實戰步不是好棋而是失誤，仍需分析後續。', asserted: false },
+    { text: '實戰步不是好棋而是並非失誤的普通著法。', asserted: false },
+    { text: '炮二平五不是好棋而是馬八進七失誤。', asserted: false }
+  ]) {
+    check(`非負評前件的否定不跨越對比謂詞：${text}`,
+      hasAssertedMoveCriticism(text, ['炮二平五']) === asserted)
+  }
   for (const text of [
     '炮二平五與首選一致，實戰步不是失誤或敗著。',
     '如果實戰步失誤導致更差，還需要後續主線確認。炮二平五在此與首選相同。'
@@ -547,6 +558,13 @@ check(
   check('否定前句負評不能替證據不足時後續確定負評背書',
     criterionFailed(score(assertedInsufficientCriticism, AVAILABLE_MOVES,
       INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, 'insufficient'), 'missed_opportunity'))
+  for (const text of ['實戰步不是好棋而是失誤。', '實戰步並非好棋而是敗著。']) {
+    const unsupportedVerdict = structuredClone(deniedInsufficientCriticism)
+    unsupportedVerdict.sections[1]!.claims[0]!.text += text
+    check(`完整正文在證據不足時拒絕對比後的確定負評：${text}`,
+      criterionFailed(score(unsupportedVerdict, AVAILABLE_MOVES,
+        INITIAL_MOVE_EXPLANATION_MIN_HAN_CHARACTERS, 'insufficient'), 'missed_opportunity'))
+  }
 
   const neutralExchange = buildSameMoveAnswer()
   neutralExchange.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)!.claims[0]!.text =

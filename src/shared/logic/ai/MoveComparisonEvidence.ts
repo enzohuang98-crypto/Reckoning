@@ -34,7 +34,10 @@ export function hasAssertedMoveCriticism(text: string, moveNames: string[]): boo
         // A denial can govern coordinated verdicts (不是失誤或敗著),
         // but not a new predicate (不是失誤而是敗著). Condition scope
         // belongs to this clause, so an earlier verdict cannot consume it.
-        const negated: boolean = /(?:不是|並非|并非|沒有|没有|不能說|不能说|不得|不應|不应|無法說|无法说)[^，,。！？；]{0,8}$/.test(prefix)
+        // A contrast ends the preceding denial even when that predicate was
+        // positive (不是好棋而是失誤). Keep the surrounding conditional scope.
+        const denialPrefix = prefix.split(/而是|反而/).at(-1) ?? ''
+        const negated: boolean = /(?:不是|並非|并非|沒有|没有|不能說|不能说|不得|不應|不应|無法說|无法说)[^，,。！？；]{0,8}$/.test(denialPrefix)
           || (previousVerdictNegated && /^(?:\s*(?:或(?:者|是)?|和|與|与|及|、)\s*)+$/.test(prefix))
         const negatedOrConditional = negated
           || /(?:如果|假如|若)/.test(clause.slice(0, verdict.index))

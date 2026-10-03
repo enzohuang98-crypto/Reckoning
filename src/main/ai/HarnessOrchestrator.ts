@@ -2390,7 +2390,9 @@ export async function runExplanationHarness(
       const reasoningPolicy = reasoningConfig
           ? reasoningConfig.effort === 'none' || reasoningConfig.enabled === false
             ? 'reasoning_disabled' as const
-            : 'bounded_1000_excluded' as const
+            : reasoningConfig.effort === 'low'
+              ? 'effort_low_excluded' as const
+              : 'bounded_1000_excluded' as const
           : 'provider_managed' as const
       try {
         const request = {

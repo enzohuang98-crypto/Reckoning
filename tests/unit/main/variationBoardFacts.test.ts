@@ -728,6 +728,24 @@ check('a new current assertion inside a linked gap resets qualification for foll
 check('transitive factual chronology still rejects a mismatched actor and repeated capture target',
   validate('炮二平五後，黑方車9平8，然後紅方兵三進一，緊接著紅方卒7進1吃掉紅方兵。', [repeatedPawn]).length > 0 &&
   validate(`${threeLinkCapture}，然後第十八手黑方卒7進1吃掉紅方兵。`, [repeatedPawn]).length > 0)
+check('a prior current capture opportunity cannot exempt a later fabricated capture',
+  ['當下可能', '當下可'].every(modal => {
+    const text = `紅方炮二平五${modal}吃黑方卒，然後黑方車9平8已經吃掉紅方炮。`
+    return validate(text, [superOpening]).length > 0 && !concreteRelation(text, [superOpening])
+  }))
+check('a prior current capture opportunity cannot exempt a later fabricated check',
+  ['當下可能', '當下可'].every(modal => {
+    const text = `紅方炮二平五${modal}吃黑方卒，然後黑方車9平8已經將軍。`
+    return validate(text, [superOpening]).length > 0 && !concreteRelation(text, [superOpening])
+  }))
+check('a denied local capture possibility does not qualify a later factual capture',
+  validate('紅方炮二平五當下不可能吃黑方車，然後第十二手黑方卒7進1吃掉紅方兵。', [repeatedPawn]).length === 0 &&
+  concreteRelation('紅方炮二平五當下不可能吃黑方車，然後第十二手黑方卒7進1吃掉紅方兵。', [repeatedPawn]))
+check('an outer conditional or hedge still qualifies chronology past a local opportunity',
+  ['如果', '或許'].every(qualifier => !concreteRelation(
+    `${qualifier}紅方炮二平五當下可能吃黑方卒，然後黑方車9平8，然後第十二手黑方卒7進1吃掉紅方兵。`, [repeatedPawn])))
+check('an independent assertion resets a chain without exporting its local opportunity modal',
+  validate('如果炮二平五並且這步當下可能吃黑方卒，然後黑方車9平8已經將軍。', [superOpening]).length > 0)
 
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1

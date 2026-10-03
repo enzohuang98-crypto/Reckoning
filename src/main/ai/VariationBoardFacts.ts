@@ -448,9 +448,10 @@ function inspectVariationBoardStatements(
       const temporalContext = precedingLink || links.some((link) => link.left === textIndex)
       // Chronology also carries a local conditional/hedge: "if A, then B"
       // cannot turn B into an affirmative fact just because a comma intervenes.
-      const predicateBefore = precedingLink
-        ? (movePredicatePrefixes.get(previousMention!.index) ?? '') +
-          text.slice(previousMention!.index + previousMention!.move.length, clauseStart + mention.index)
+      const linkedGap = precedingLink
+        ? text.slice(previousMention!.index + previousMention!.move.length, clauseStart + mention.index) : ''
+      const predicateBefore = precedingLink && predicateScope(linkedGap) === linkedGap
+        ? (movePredicatePrefixes.get(previousMention!.index) ?? '') + before
         : before
       const explicitActor = /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)
       // Only adjacent literal list members inherit an actor. Narrative and
