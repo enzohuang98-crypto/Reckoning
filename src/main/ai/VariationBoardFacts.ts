@@ -367,17 +367,26 @@ function inspectVariationBoardStatements(
     const connector = match[2] ?? match[3] ?? ''
     return { before, immediate: /隨即|随即|下一手|緊接|紧接/.test(connector), prefix: match[4]!, valid: !(before && connector) }
   }
+  // A matched event (including its target) belongs to the preceding move.
+  // Its modal cannot become the following move's condition, with or without
+  // punctuation. Outer conditions are carried separately through known links.
+  const afterLastEvent = (gap: string): string => {
+    const predicates = [...gap.matchAll(capturePattern), ...gap.matchAll(checkPattern)]
+    const end = predicates.reduce((last, predicate) => Math.max(last, predicate.index! + predicate[0].length), 0)
+    return gap.slice(end)
+  }
   const links = textMentions.slice(1).flatMap((right, index) => {
     const left = textMentions[index]!
     const gap = text.slice(left.index + left.move.length, right.index)
     let relation = temporalRelation(gap)
-    // A capture/check predicate stays attached to the earlier move. Its next
-    // comma clause can still state chronology, without using that predicate
-    // or its target to choose a replay occurrence.
+    // Read chronology only after the preceding event, never use its modal or
+    // target to choose a replay occurrence. Punctuation is optional here.
     if (!relation && !/[。！？；.!?;\r\n]/.test(gap)) {
-      const comma = gap.search(/[，,]/)
-      if (comma >= 0 && ([...gap.slice(0, comma).matchAll(capturePattern)].length > 0 ||
-        [...gap.slice(0, comma).matchAll(checkPattern)].length > 0)) relation = temporalRelation(gap.slice(comma))
+      const tail = afterLastEvent(gap)
+      if (tail !== gap) {
+        const comma = tail.search(/[，,]/)
+        relation = temporalRelation(tail) ?? (comma >= 0 ? temporalRelation(tail.slice(comma)) : null)
+      }
     }
     return relation ? [{ left: index, right: index + 1, ...relation }] : []
   })
@@ -385,7 +394,9 @@ function inspectVariationBoardStatements(
     const previous = textMentions[index - 1]
     const clauseStart = text.slice(0, mention.index).search(/[^。！？；，,.!?;\r\n]*$/)
     const start = Math.max(previous ? previous.index + previous.move.length : 0, clauseStart)
-    return links.find((link) => link.right === index)?.prefix ?? text.slice(start, mention.index)
+    const prefix = text.slice(start, mention.index)
+    return links.find((link) => link.right === index)?.prefix ??
+      (previous && previous.index >= clauseStart ? afterLastEvent(prefix) : prefix)
   })
   // Resolve identity before inspecting predicates: ordinals, cutoffs and actor
   // declarations constrain temporal anchors as well as the asserted move.
@@ -450,9 +461,10 @@ function inspectVariationBoardStatements(
       // cannot turn B into an affirmative fact just because a comma intervenes.
       const linkedGap = precedingLink
         ? text.slice(previousMention!.index + previousMention!.move.length, clauseStart + mention.index) : ''
+      const localPrefix = localPrefixes[textIndex]!
       const predicateBefore = precedingLink && predicateScope(linkedGap) === linkedGap
-        ? (movePredicatePrefixes.get(previousMention!.index) ?? '') + before
-        : before
+        ? (movePredicatePrefixes.get(previousMention!.index) ?? '') + localPrefix
+        : localPrefix
       const explicitActor = /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)
       // Only adjacent literal list members inherit an actor. Narrative and
       // comparison words break the list; a named next actor starts a new one.

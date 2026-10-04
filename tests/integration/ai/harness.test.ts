@@ -4001,6 +4001,33 @@ async function main(): Promise<void> {
   const neutralComparisonErrors = validateAnswer(neutralAnswer, neutralEvidence, numericalDifferenceRequirements)
   check('有數值比較分類但尚無獨有優劣機制時，合法兩線的完整中性五段正文可通過',
     countHanCharacters(playerFacingAnswerText(neutralAnswer)) >= 400 && neutralComparisonErrors.length === 0, neutralComparisonErrors)
+  for (const { cannon, rook, captureMove, evidenceId } of [
+    { cannon: '炮二平五', rook: '車9平8', captureMove: '車二進三', evidenceId: 'E2' },
+    { cannon: '炮八平五', rook: '車1平2', captureMove: '車八進三', evidenceId: 'E1' }
+  ]) {
+    for (const punctuation of ['，', ',', '']) {
+      for (const event of ['已經吃掉紅方炮', '已經將軍', '沒有吃子']) {
+        const text = `紅方${cannon}當下可能吃黑方卒${punctuation}然後黑方${rook}${event}。`
+        const scopedAnswer = structuredClone(neutralAnswer)
+        scopedAnswer.sections[2]!.claims.push({ id: 'scope-boundary', evidenceIds: [evidenceId], text })
+        const errors = validateAnswer(scopedAnswer, neutralEvidence, numericalDifferenceRequirements)
+        check(`完整五段按著法與謂詞邊界檢查後手事件：${text}`,
+          event === '沒有吃子' ? errors.length === 0 : errors.some(error => error.includes('棋盤事實')), errors)
+      }
+      const conditionalAnswer = structuredClone(neutralAnswer)
+      conditionalAnswer.sections[2]!.claims.push({ id: 'conditional-boundary', evidenceIds: [evidenceId], text:
+        `如果紅方${cannon}當下可能吃黑方卒${punctuation}然後黑方${rook}已經吃掉紅方炮，應重新確認棋盤。` })
+      const conditionalErrors = validateAnswer(conditionalAnswer, neutralEvidence, numericalDifferenceRequirements)
+      check(`完整五段的外層條件跨謂詞邊界仍有效：${cannon}${punctuation}`,
+        conditionalErrors.length === 0, conditionalErrors)
+      const laterCaptureAnswer = structuredClone(neutralAnswer)
+      laterCaptureAnswer.sections[2]!.claims.push({ id: 'capture-boundary', evidenceIds: [evidenceId], text:
+        `紅方${cannon}當下可能吃黑方卒${punctuation}然後紅方${captureMove}吃掉黑方車。` })
+      const laterCaptureErrors = validateAnswer(laterCaptureAnswer, neutralEvidence, numericalDifferenceRequirements)
+      check(`完整五段保留當下吃子機會與後手真正吃車：${cannon}${punctuation}`,
+        laterCaptureErrors.length === 0, laterCaptureErrors)
+    }
+  }
   const wrongNeutralExchange = structuredClone(neutralAnswer)
   wrongNeutralExchange.sections[3]!.claims[1]!.text =
     wrongNeutralExchange.sections[3]!.claims[1]!.text.replace('雙方各少一車', '紅方淨多一車')

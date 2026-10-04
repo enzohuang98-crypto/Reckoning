@@ -747,5 +747,31 @@ check('an outer conditional or hedge still qualifies chronology past a local opp
 check('an independent assertion resets a chain without exporting its local opportunity modal',
   validate('如果炮二平五並且這步當下可能吃黑方卒，然後黑方車9平8已經將軍。', [superOpening]).length > 0)
 
+const mirrorOpening = replayEvidence('E1', ['b2e2', 'b9c7', 'b0c2', 'a9b9'], START_FEN)
+for (const punctuation of ['，', ',', '']) {
+  const captureAfterOpportunity = `紅方炮二平五當下可能吃黑方卒${punctuation}然後紅方車二進三吃掉黑方車。`
+  check(`a current opportunity does not hide a true later capture: ${captureAfterOpportunity}`,
+    validate(captureAfterOpportunity, [rookExchange]).length === 0 && concreteRelation(captureAfterOpportunity, [rookExchange]))
+  check(`an outer condition still prevents a later capture from proving an event: ${captureAfterOpportunity}`,
+    validate(`如果${captureAfterOpportunity}`, [rookExchange]).length === 0 && !concreteRelation(`如果${captureAfterOpportunity}`, [rookExchange]))
+}
+for (const { line, cannon, rook } of [
+  { line: superOpening, cannon: '炮二平五', rook: '車9平8' },
+  { line: mirrorOpening, cannon: '炮八平五', rook: '車1平2' }
+]) {
+  for (const punctuation of ['，', ',', '']) {
+    for (const event of ['已經吃掉紅方炮', '已經將軍']) {
+      const text = `紅方${cannon}當下可能吃黑方卒${punctuation}然後黑方${rook}${event}。`
+      check(`a local opportunity stays with its move across a temporal predicate boundary: ${text}`,
+        validate(text, [line]).length > 0 && !concreteRelation(text, [line]))
+    }
+    const trueFacts = `紅方${cannon}當下可能吃黑方卒${punctuation}然後黑方${rook}沒有吃子。`
+    check(`current opportunity and a true later fact retain their own scopes: ${trueFacts}`,
+      validate(trueFacts, [line]).length === 0 && concreteRelation(trueFacts, [line]))
+    check(`outer conditional still reaches the later move across predicate boundaries: ${trueFacts}`,
+      validate(`如果${trueFacts}`, [line]).length === 0 && !concreteRelation(`如果${trueFacts}`, [line]))
+  }
+}
+
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1
