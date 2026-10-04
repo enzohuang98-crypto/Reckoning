@@ -4861,6 +4861,41 @@ async function main(): Promise<void> {
         : budgetResult.usage === undefined && budgetTraces[0]?.modelCallDiagnostics?.every(call => call.outputTokens === undefined) === true)
   }
 
+  // Advancing only the clock avoids a 55-second test, while exercising the
+  // actual initial -> repair deadline allocation with the full valid fixture.
+  const originalNow = Date.now
+  let elapsedOffset = 0
+  const sharedDeadlineTraces: HarnessTrace[] = []
+  let sharedDeadlineCalls = 0
+  Date.now = () => originalNow() + elapsedOffset
+  try {
+    const sharedDeadlineResult = await runExplanationHarness({
+      requestId: 'initial-repair-shared-deadline', analysisId: sameMoveSession.analysisId,
+      provider: 'openai', model: 'fake-model', userLevel: 'intermediate', explanationStyle: 'long_analytical',
+      language: 'zh-TW', attachedMove: sameMoveAnalysis.userMove, answerMode: 'research',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 3, maxOutputTokens: 10_000 }
+    }, {
+      provider: {
+        id: 'openai', displayName: 'Synthetic shared deadline',
+        async generateExplanation() {
+          sharedDeadlineCalls++
+          if (sharedDeadlineCalls === 1) elapsedOffset = 55_000
+          return { text: sharedDeadlineCalls === 1 ? JSON.stringify(invalidRepairDraft) : validRepairText,
+            provider: 'openai', model: 'fake-model', createdAt: Date.now(), groundedOnEngineData: true,
+            usage: { inputTokens: 10, outputTokens: 2000 } }
+        }, async *generateExplanationStream(): AsyncIterable<never> { return }
+      }, apiKey: 'synthetic-test-key', model: 'fake-model', session: sameMoveSession,
+      registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+      traceStore: { save: trace => sharedDeadlineTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    })
+    const repairCall = sharedDeadlineTraces[0]?.modelCallDiagnostics?.find(call => call.stage === 'repair')
+    check('repair uses the existing 105-second deadline remainder without a new time or call budget',
+      sharedDeadlineCalls === 2 && repairCall?.timeoutMs !== undefined &&
+        repairCall.timeoutMs > 49_000 && repairCall.timeoutMs <= 50_000 &&
+        countHanCharacters(sharedDeadlineResult.finalText) >= 400)
+  } finally { Date.now = originalNow }
+
   for (const budgetCase of [{ mode: 'quick' as const, tokens: 4000 }, { mode: 'research' as const, tokens: 6000 }]) {
     const originalNetworkError = new TypeError('fetch failed')
     let attemptedCalls = 0

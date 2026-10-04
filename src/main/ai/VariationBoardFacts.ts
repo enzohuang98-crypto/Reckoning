@@ -524,7 +524,9 @@ function inspectVariationBoardStatements(
       const fact = candidates[0]
       if (!fact) {
         if (captures.length > 0 || checks.length > 0 || (!isHypothetical(predicateBefore) && (side || temporalContext))) {
-          issues.push(`棋盤事實：${move} 的引用缺少可重播或無歧義的吃子／將軍事實。`)
+          issues.push(temporalContext && captures.length === 0 && checks.length === 0
+            ? `棋盤事實：${move} 的時序或走子方引用不能對應所引主線；請依逐手順序核對「下一手／緊接」是否跳過對手應手。`
+            : `棋盤事實：${move} 的引用缺少可重播或無歧義的吃子／將軍事實。`)
         }
         continue
       }

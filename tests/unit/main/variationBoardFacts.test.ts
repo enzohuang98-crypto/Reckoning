@@ -684,6 +684,11 @@ check('an illegal or mismatched replay tail cannot establish a later chronologic
     analysis: { ...superOpening.analysis, principalVariation: ['h2e2', 'i9h9'] } }]).length > 0 &&
   validate('炮二平五後，黑方車9平8沒有吃子。', [{ ...superOpening,
     displayPrincipalVariation: superOpening.displayPrincipalVariation.map((move, index) => index === 3 ? '車9進1' : move) }]).length > 0)
+for (const text of ['黑方馬8進7後，車9平8，緊接著炮8平9。', '車9平8下一手炮8平9。']) {
+  const issues = validate(text, [superOpening])
+  check('impossible adjacent moves diagnose chronology rather than inventing a capture/check requirement',
+    issues.length > 0 && issues.every(issue => issue.includes('時序') && !issue.includes('吃子／將軍')))
+}
 check('plain chronology retains local hypothetical scope and checks a new present assertion',
   !concreteRelation('如果炮二平五後，第11手馬三進四可吃黑方卒。', [superOpening]) &&
   validate('如果炮二平五後，黑方車9平8沒有吃子，但黑方車9平8這步已經吃掉紅方炮。', [superOpening]).length > 0)

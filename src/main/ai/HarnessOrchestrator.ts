@@ -3078,6 +3078,7 @@ ${knowledgeContext}
 - causal 每欄只用一個具體短句保留正文的因果與主線關聯，不重寫整段正文；directAnswer 只作一句摘要，完整結論仍放在 C1。節省內部重複不能減少五段可見正文、必要著法或棋盤原因。
 - 每個 evidenceId 只能支持它自己列出的逐手主線；不得用根局面 E1 替另一條候選或使用者變例背書。比較兩條變例時必須分別引用對應 evidenceIds。
 - 證據包 role=best_move 專屬首選，role=user_move 專屬實戰步。computedBoardFacts.steps 是該線唯一的有序著法與棋盤事實表：逐字採用 move，side 與本局輪走方相反才是對手應手，不能依棋子名字或左右對稱自行換路數。先按各自的 ply 分析變化，再比較兩條線；相似部署不代表著法可互換。
+- 逐手引用須保留紅黑交替。只列同一方的部署時可說「該方稍後」，不可用「下一手／緊接」跳過另一方應手；若稱下一手，必須引用主線緊鄰的那手。不得倒轉主線次序再說是該線已支持的反制。
 - fromSquare／toSquare 是絕對走前／走後落點，只供內部比對，正文用棋子與中文路數表述，不輸出座標、id或ply標記。若兩線同側同兵種走後落點相同，先說共同作用；來源路數不同不能推出走後位置較左或較右，差異須連回留下的棋子、空出的路線及各線後續部署。
 - actualCapture 與 actualCheck 明示本手已發生的吃子／將軍；captureOpportunities 只列固定走後盤面、假如該枚棋子所屬方再次輪走時，可用合法著法吃到的敵方非將帥棋子。實際下一手仍由對手走，機會不是已發生吃子或必然威脅；本手未吃子不得因targets有棋子就說已吃。targets為空只表示該棋子當下無直接合法吃子，不否定長期壓力；不得把單純出子寫成已直接攻擊某子或迫使對手受限，長期計畫必須指出後續主線如何建立壓力與其限制。
 - 本次優先使用 ${bestEvidenceId} 作 AI 首選主線、${userEvidenceId} 作實戰步主線；它們有足夠後續著法可供引用。較早的短變例可能仍在證據清單中，不得拿短變例替代已加深的主線。若同一段同時點名兩種著法，該 claim 的 evidenceIds 及 directAnswerEvidenceIds 都要同時含 ${bestEvidenceId}、${userEvidenceId}；只談某一條主線時只引對應的 id。不得照抄下方示意欄位而忽略實際引用範圍。
@@ -3099,7 +3100,7 @@ audit 規則：
               comparisonState === 'same_move'
                 ? '說明實戰步與首選一致及其具體價值，不得杜撰問題。'
                 : comparisonState === 'evidence_backed_difference'
-                  ? '直接說明實戰步與首選之間有證據支持的問題差異。'
+                  ? '中性記錄兩線可核對的部署差異；只有具體機制支持時才記錄優劣，找不到原因時說明目前能確定的共同作用與比較限制，不預設實戰步有問題。'
                   : '中性記錄目前可確定的差異與證據限制。'
             }
 - consequences 只輸出 id、category、claimId、verified；K1 指向 C4a、K2 指向 C4b。不要重寫 summary、opponentUse、boardImpact、supportingMoves 或 evidenceIds，程式僅從被引用 claim 的原文、causal 與所引用主線解析，缺少內容仍拒絕。
@@ -3739,7 +3740,7 @@ computedBoardFacts 只證明該變例已列出的輪走方、路數、吃子和�
 K1、K2 的 claimId 分別引用 C4a、C4b；每個 claim 只引用實戰證據 ${user.id}，可見 text 本身逐字寫出至少兩步該線著法與盤面因果或時序，causal.opponentUse 必須逐字包含該線對手應手。隱藏 causal 不能補足缺少的正文。audit 不重写這些欄位，程式不補造缺少的內容。C3 只談首選主線 ${best.id}，若提實戰著法也須同時引用 ${user.id}。C4a、C4b 只引用 ${user.id}，分別連到 K1、K2；audit 用 claimId 引用對應 claim，不重寫正文／causal 內容。不得把可選主線寫成必然結果。
 answer 保留原五個 section id 與比較狀態對應標題。五段 claims.text 合計至少 400 個繁體漢字，目標約 500–900；audit、causal、heading、directAnswer 不計入字數。請在五段可見正文完整解釋本局棋子、線路、合理應對及盤面影響，不重複空話。只用本局證據與可計算棋盤事實，不能用分數代替原因；保留每項必要的 evidenceIds、findingIds、causal。修補後重新檢查整份 JSON 的引用及字數。
 `, INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS,
-        Math.min(30_000, repairWindowMs), 'json', 'repair',
+        repairWindowMs, 'json', 'repair',
         buildInitialMoveResponseSchema(mode, [best.id, user.id]))
         repairCallingModel = false
         const repaired = jsonFromText<{
