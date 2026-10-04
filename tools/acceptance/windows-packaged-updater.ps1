@@ -45,6 +45,17 @@ function Get-ProbeEvents {
   }
   return @()
 }
+function Get-ProbeSaveBarrierTimeline {
+  $timeline = @{}
+  foreach ($name in @('save-entered', 'save-completed', 'save-timed-out')) {
+    $path = Join-Path $script:probeFaultRoot $name
+    if (Test-Path -LiteralPath $path) {
+      $timeline[$name] = Get-Content -Raw -Encoding UTF8 -LiteralPath $path | ConvertFrom-Json
+    }
+  }
+  $timeline.releaseMarkerPresent = Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-release')
+  return $timeline
+}
 function Get-ProbeVisibleFen {
   # Native read-only BoardEditor textbox: its role/name identify the current
   # board even when Chromium omits ClassName. Labels, status and FEN elsewhere
@@ -261,25 +272,41 @@ try {
   # Navigation stays normal UI; the passive observations distinguish the
   # pre-save clear state from a draft entered while the save promise is pending.
   $eventOffset = @(Get-ProbeEvents).Count
+  $raceProcessId = (Get-ProbeWindow).Current.ProcessId
+  $report.draftRaceEvidence = @{ eventOffset = $eventOffset; processId = $raceProcessId; armedAt = [DateTime]::UtcNow.ToString('o') }
   Set-Content -LiteralPath (Join-Path $script:probeFaultRoot 'save-arm') -Value 'one-shot' -Encoding ASCII
   Invoke-ProbeAction '重新啟動完成更新'
   Confirm-ProbeRestart
   [void](Wait-Probe { Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-entered') } 'Real save acknowledgement barrier was not entered.' 10)
-  $raceProcessId = (Get-ProbeWindow).Current.ProcessId
+  $writeBarrier = Get-Content -Raw -LiteralPath (Join-Path $script:probeFaultRoot 'save-entered') | ConvertFrom-Json
+  if ($writeBarrier.actualWriteCompleted -ne $true -or $writeBarrier.timeoutMs -ne 12000) { throw 'Real atomic-write barrier evidence is invalid.' }
   Invoke-ProbeAction '分析'
-  Invoke-ProbeAction '猜著'
+  # The guessing view was selected and its exact input verified empty before
+  # opening settings. Returning preserves it; re-toggling the selected tab
+  # added a full UIA scan and scroll inside the twelve-second barrier.
   Set-ProbeInput '你選這一步的原因' 'Draft entered while actual save acknowledgement is pending'
+  $report.draftRaceEvidence.input = $script:probeUiActions[-1]
+  if ($report.draftRaceEvidence.input.method -cne 'UIA_Value' -or $report.draftRaceEvidence.input.result -cne 'completed' -or
+      (Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-timed-out')) -or
+      (Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-completed')) -or
+      [DateTime]::UtcNow -ge [DateTime]::Parse($writeBarrier.deadlineAt).ToUniversalTime()) {
+    throw 'Verified draft input did not finish while the real save acknowledgement was pending.'
+  }
+  $report.draftRaceEvidence.releaseRequestedAt = [DateTime]::UtcNow.ToString('o')
   Set-Content -LiteralPath (Join-Path $script:probeFaultRoot 'save-release') -Value 'release' -Encoding ASCII
   [void](Wait-Probe { @(Get-ProbeEvents | Select-Object -Skip $eventOffset | Where-Object stage -eq 'after-save-draft-present').Count -gt 0 } 'Actual post-save draft check did not reject the newly entered draft.' 5)
   $raceEvents = @(Get-ProbeEvents | Select-Object -Skip $eventOffset)
   if (-not @($raceEvents | Where-Object stage -eq 'first-draft-clear').Count -or
+      -not (Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-completed')) -or
+      (Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-timed-out')) -or
       @($raceEvents | Where-Object stage -eq 'install-dispatch').Count -or
       (Get-ProbeWindow).Current.ProcessId -ne $raceProcessId -or
       (Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion -notin @($predecessor.version, "$($predecessor.version).0")) {
     throw 'Save-race evidence did not preserve the old App without installer dispatch.'
   }
   $report.draftAddedDuringSave = 'passed'
-  $report.draftRaceEvidence = @{ events = $raceEvents; writeBarrier = (Get-Content -Raw -LiteralPath (Join-Path $script:probeFaultRoot 'save-entered') | ConvertFrom-Json); processId = $raceProcessId }
+  $report.draftRaceEvidence.events = $raceEvents
+  $report.draftRaceEvidence.barrier = Get-ProbeSaveBarrierTimeline
   Record-Probe 'draft-added-during-save'
   Set-ProbeInput '你選這一步的原因' ''
   Open-ProbeSystemSettings
@@ -381,6 +408,12 @@ try {
   $report.failure = $_.Exception.Message
   throw
 } finally {
+  if ($script:probeFaultRoot) {
+    try {
+      $report.probeEvents = @(Get-ProbeEvents)
+      $report.saveBarrierTimeline = Get-ProbeSaveBarrierTimeline
+    } catch { $report.probeTimelineFailure = $_.Exception.Message }
+  }
   if ($installerExitSource) {
     Unregister-Event -SourceIdentifier $installerExitSource -ErrorAction SilentlyContinue
     Get-Event -SourceIdentifier $installerExitSource -ErrorAction SilentlyContinue | Remove-Event -ErrorAction SilentlyContinue

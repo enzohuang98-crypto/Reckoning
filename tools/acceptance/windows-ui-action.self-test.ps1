@@ -120,3 +120,5 @@ if ($ordinary.Pattern.invokes -ne 1 -or $ordinary.Pattern.toggles -ne 0 -or
 }
 Write-Output 'PASS ordinary InvokePattern navigation remains usable'
 Write-Output '9/9 offline action cases passed; actual packaged VM input remains a separate gate.'
+& (Join-Path $PSScriptRoot 'windows-ui-input.self-test.ps1') -SourcePath $SourcePath
+& (Join-Path $PSScriptRoot 'windows-save-race.self-test.ps1')

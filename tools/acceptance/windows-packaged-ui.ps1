@@ -213,7 +213,7 @@ function Invoke-ProbeAction([string]$Name, [switch]$Prefix) {
 function Set-ProbeInput([string]$Name, [string]$Value) {
   Assert-ProbeForeground
   $field = Wait-Probe {
-    $matches = @(Get-ProbeControls | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and $_.Current.Name -ceq $Name -and $_.Current.IsEnabled })
+    $matches = @(Get-ProbeInputControls $Name)
     if ($matches.Count -gt 1) { throw "Input '$Name' is ambiguous." }
     if ($matches.Count -eq 1) { return $matches[0] }
   } "Required input '$Name' is missing."
@@ -233,7 +233,9 @@ function Set-ProbeInput([string]$Name, [string]$Value) {
     # Chromium's accessibility value may lag the displayed controlled input.
     # Reacquire the same element/pattern; do not retry input or accept another field.
     [void](Wait-Probe {
-      foreach ($candidate in Get-ProbeControls) {
+      $candidates = @(Get-ProbeInputControls $Name)
+      if ($candidates.Count -gt 1) { throw "Input '$Name' became ambiguous." }
+      foreach ($candidate in $candidates) {
         $current = $candidate.Current
         if ($current.ControlType -ne [System.Windows.Automation.ControlType]::Edit -or $current.Name -cne $Name -or
             -not $current.IsEnabled -or ($candidate.GetRuntimeId() -join '.') -cne $runtimeId) { continue }
@@ -247,7 +249,22 @@ function Set-ProbeInput([string]$Name, [string]$Value) {
   } catch {
     $action.result = 'failed'; $action.failure = $_.Exception.Message
     throw
-  } finally { $action.verificationMs = [int]([DateTime]::UtcNow - $started).TotalMilliseconds }
+  } finally {
+    $action.verificationMs = [int]([DateTime]::UtcNow - $started).TotalMilliseconds
+    $action.completedAt = [DateTime]::UtcNow.ToString('o')
+  }
+}
+function Get-ProbeInputControls([string]$Name) {
+  $window = Get-ProbeWindow
+  if (-not $window) { return @() }
+  # Filter in UIA before crossing the process boundary. Reading Current on
+  # every descendant consumed seconds inside the bounded save barrier.
+  $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@(
+    [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit),
+    [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $Name),
+    [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::IsEnabledProperty, $true)
+  ))
+  return $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
 }
 function Confirm-ProbeRestart {
   [void](Wait-Probe { (Get-ProbeNames -join ' ') -match '更新已準備完成。現在要先保存資料，再重新啟動 Reckoning 完成更新嗎' } 'Normal restart confirmation did not appear.' 10)

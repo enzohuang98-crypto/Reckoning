@@ -69,14 +69,20 @@ export function registerDataHandlers(storage: StorageService): void {
             probeRoot && !saveBarrierUsed && existsSync(join(probeRoot, 'save-arm'))) {
           saveBarrierUsed = true
           unlinkSync(join(probeRoot, 'save-arm'))
-          writeFileSync(join(probeRoot, 'save-entered'), JSON.stringify({ at: new Date().toISOString(), pid: process.pid, actualWriteCompleted: true }))
-          const deadline = Date.now() + 12_000
-          while (!existsSync(join(probeRoot, 'save-release'))) {
-            if (Date.now() >= deadline) throw new Error('Isolated save acknowledgement barrier timed out.')
+          const barrierStarted = Date.now()
+          const deadline = barrierStarted + 12_000
+          writeFileSync(join(probeRoot, 'save-entered'), JSON.stringify({ at: new Date(barrierStarted).toISOString(), pid: process.pid, actualWriteCompleted: true, timeoutMs: 12_000, deadlineAt: new Date(deadline).toISOString() }))
+          while (true) {
+            const now = Date.now()
+            if (now >= deadline) {
+              writeFileSync(join(probeRoot, 'save-timed-out'), JSON.stringify({ at: new Date(now).toISOString(), pid: process.pid, elapsedMs: now - barrierStarted }))
+              throw new Error('Isolated save acknowledgement barrier timed out.')
+            }
+            if (existsSync(join(probeRoot, 'save-release'))) break
             await new Promise((resolve) => setTimeout(resolve, 50))
           }
           unlinkSync(join(probeRoot, 'save-release'))
-          writeFileSync(join(probeRoot, 'save-completed'), new Date().toISOString())
+          writeFileSync(join(probeRoot, 'save-completed'), JSON.stringify({ at: new Date().toISOString(), pid: process.pid, elapsedMs: Date.now() - barrierStarted }))
         }
         return { ok: true }
       } catch (error) {
