@@ -1,6 +1,14 @@
 # 免費模型能力核對與本次候選選擇
 
-公開能力核對日期：2026-10-02，2026-10-03 重新核對精確 Qwen route。公開研究限定 Reckoning 免費目錄的 17 個精確 ID；下方另標明正式 App 服務的真實探測與完整生成，兩類證據分開。
+公開能力核對日期：2026-10-02，2026-10-03／04 重新核對精確 Qwen route。公開研究限定 Reckoning 免費目錄的 17 個精確 ID；下方另標明正式 App 服務的真實探測與完整生成，兩類證據分開。
+
+## 2026-10-04 Structured Outputs 能力更正
+
+使用者提供的 [OpenRouter 官方 Structured Outputs 文件](https://openrouter.ai/docs/guides/features/structured-outputs) 明確以 endpoint 的 `structured_outputs` 作為 JSON Schema 能力指標；請求欄位則是 `response_format.type=json_schema`，搭配 `json_schema.strict=true` 與 `provider.require_parameters=true`。**未列 legacy `response_format` 不代表不支援 schema**。本文件下方原始 metadata 記錄仍保留，但不能再由缺少該 legacy 名稱推導 Qwen 無結構化輸出能力。
+
+當日 [精確免費 Qwen endpoint](https://openrouter.ai/api/v1/models/qwen/qwen3.8-27b:free/endpoints) 為 ModelRun，prompt／completion 價格皆 0，列有 `structured_outputs`、reasoning、reasoning_effort。`505490b` 將既有五段 schema 接入正式 Harness 初次生成及一次修補，provider 僅對精確 `qwen/qwen3.8-27b:free` 的 JSON/schema 請求採用上述路由要求。其他型號、短文字、無 schema 的 planner／追問不繼承這條策略；Super 保留已有實測依據的 JSON object，沒有自動換模型或付費 fallback。
+
+這是欄位與引用 ID 的輸出契約；官方亦指出 enforcement 依 provider 而異。400 個五段可見正文漢字、棋盤／方別／變例引用及因果驗證仍獨立執行，`length`／空正文仍拒絕，沒有 Response Healing 或補完截斷 JSON。單次 6000 與共享 token／時間／次數限制不變。離線新測試先重現 schema 缺漏（provider exit1、Harness307/9），修正及提示範例欄位對齊後 provider exit0、Harness316/0、node typecheck exit0；真實 provider 結果以進度紀錄另列，離線通過不代替正文驗收。
 
 ## 2026-10-03 正式截斷診斷與設定修正
 
