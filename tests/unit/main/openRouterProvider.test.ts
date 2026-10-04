@@ -53,8 +53,10 @@ const responseSchema = buildInitialMoveResponseSchema('research', ['E1', 'E2'])
 const validateShape = new Ajv({ strict: true }).compile(responseSchema.schema)
 const shapeFixture = {
   answer: { mode: 'research', title: 'SYNTHETIC schema fixture', directAnswer: 'SYNTHETIC',
-    directAnswerEvidenceIds: ['E1'], sections: INITIAL_MOVE_EXPLANATION_SECTION_IDS.map(id => ({
-      id, heading: 'SYNTHETIC', claims: [{ id: 'C1', text: 'SYNTHETIC', evidenceIds: ['E1'], findingIds: [], causal: null }]
+    directAnswerEvidenceIds: ['E1'], sections: INITIAL_MOVE_EXPLANATION_SECTION_IDS.map((id, index) => ({
+      id, heading: 'SYNTHETIC', claims: (index === 3 ? ['C4a', 'C4b'] : [`C${index === 4 ? 5 : index + 1}`]).map(claimId => ({
+        id: claimId, text: 'SYNTHETIC', evidenceIds: [index === 3 ? 'E2' : 'E1'], findingIds: [], causal: null
+      }))
     })), generalNotes: [], warnings: [] },
   audit: { bestMovePurpose: 'SYNTHETIC', userMoveProblem: 'SYNTHETIC',
     consequences: [{ id: 'K1', category: 'central_control', claimId: 'C4a', verified: false },
@@ -72,6 +74,14 @@ for (const mutation of ['missing', 'empty', 'foreign'] as const) {
 const invalidSection = structuredClone(shapeFixture)
 invalidSection.answer.sections[0].id = 'follow_up' as typeof invalidSection.answer.sections[0]['id']
 assert.equal(validateShape(invalidSection), false)
+for (const [sectionIndex, wrongEvidence] of [[2, 'E2'], [3, 'E1']] as const) {
+  const crossLine = structuredClone(shapeFixture)
+  crossLine.answer.sections[sectionIndex].claims[0].evidenceIds = [wrongEvidence]
+  assert.equal(validateShape(crossLine), false, 'Schema must not assign a valid ID from the other line to a single-line section')
+}
+const missingSecondConsequence = structuredClone(shapeFixture)
+missingSecondConsequence.answer.sections[3].claims.pop()
+assert.equal(validateShape(missingSecondConsequence), false, 'Both visible consequence claims are required by the role contract')
 for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-27b-preview:free', 'nvidia/nemotron-3-super-120b-a12b:free', 'vendor/other:free', 'nvidia/nemotron-3-ultra-550b-a55b:free']) {
   await withServer(() => ({ model, choices: [{ message: { content: JSON.stringify(shapeFixture) }, finish_reason: 'stop' }] }),
     async (baseUrl, requests) => {
