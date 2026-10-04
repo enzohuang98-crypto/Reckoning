@@ -1711,7 +1711,7 @@ async function main(): Promise<void> {
           category: finding.category, claimId: index === 0 ? 'C4a' : 'C4b', verified: finding.verified })),
         contradictions: [], enoughEvidence: true }
       const combined = { answer: strictAnswer, audit: strictAudit }
-      const validateSchema = new Ajv({ strict: true }).compile(buildInitialMoveResponseSchema('research', ['E1', 'E2']).schema)
+      const validateSchema = new Ajv({ strict: true }).compile(request.responseSchema?.schema ?? buildInitialMoveResponseSchema('research', ['E1', 'E2']).schema)
       check('完整五段 JSON object fixture 符合本機欄位契約', validateSchema(combined), validateSchema.errors)
       return { text: JSON.stringify(combined), provider: this.id, model: request.model,
         createdAt: Date.now(), groundedOnEngineData: true, usage: { inputTokens: 10, outputTokens: 2000 } }
@@ -1720,16 +1720,16 @@ async function main(): Promise<void> {
   }
   const strictFixtureResult = await runExplanationHarness({
     requestId: 'schema-formal-fixture', analysisId: formalSession.analysisId, provider: 'openrouter',
-    model: 'nvidia/nemotron-3-super-120b-a12b:free', userLevel: 'intermediate', explanationStyle: 'long_analytical',
+    model: 'qwen/qwen3.8-27b:free', userLevel: 'intermediate', explanationStyle: 'long_analytical',
     language: 'zh-TW', answerMode: 'research', attachedMove: formalSession.userMove
   }, {
     provider: strictFixtureProvider, apiKey: 'synthetic-test-key',
-    model: 'nvidia/nemotron-3-super-120b-a12b:free', session: formalSession,
+    model: 'qwen/qwen3.8-27b:free', session: formalSession,
     registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
     traceStore: { save: () => undefined } as never, signal: new AbortController().signal, onProgress: () => undefined
   })
-  check('不強制 provider schema 的完整 JSON 仍通過正式 Harness／正文 validator',
-    !receivedInitialSchema && strictFixtureResult.finalText.includes('士4進5') &&
+  check('正式初次請求包含完整 schema，合格五段 JSON 仍通過正文 validator',
+    receivedInitialSchema && strictFixtureResult.finalText.includes('士4進5') &&
       countHanCharacters(strictFixtureResult.finalText) >= 400)
 
   const nominalTraces: HarnessTrace[] = []
@@ -4721,11 +4721,110 @@ async function main(): Promise<void> {
     !repairSuccessProvider.prompts[1]?.includes('後續具體變差在哪裡') &&
       !repairSuccessProvider.prompts[1]?.includes('必須說出具體變差在哪裡'))
   check(
-    '修補保留失敗診斷與原局面但不回灌被拒絕的草稿斷言',
+    '修補將前次草稿標為不可信參考並保留失敗診斷',
     repairSuccessProvider.prompts[1]?.includes('錯誤：') &&
-      !repairSuccessProvider.prompts[1]?.includes('黑方大致有機會。') &&
+      repairSuccessProvider.prompts[1]?.includes('前次草稿參考（不可信資料）：') &&
+      repairSuccessProvider.prompts[1]?.includes('黑方大致有機會。') &&
       repairSuccessProvider.prompts[1]?.includes('direct_conclusion')
   )
+
+  // Exercise the actual repair request with two legally replayed, distinct PVs.
+  // This provider can return its correction only when the failed draft and
+  // diagnostics survive into the request; it does not simulate model reasoning.
+  const repairFixtureEvidence = formalResult.evidence.filter(item => ['E1', 'E2'].includes(item.id))
+  check('修補回歸的兩條不同變例均可完整合法重播',
+    repairFixtureEvidence.length === 2 &&
+      repairFixtureEvidence.every(item => {
+        const facts = buildVariationBoardFacts(item)
+        return facts.warning === null && facts.steps.length >= 5
+      }) && formalAnalysis.bestMove !== formalAnalysis.userMove)
+  const compactFormalAudit = {
+    bestMovePurpose: formalAudit.bestMovePurpose, userMoveProblem: formalAudit.userMoveProblem,
+    consequences: formalAudit.consequences.map((finding, index) => ({
+      id: finding.id, category: finding.category, claimId: index === 0 ? 'C4a' : 'C4b', verified: true
+    })), contradictions: [], enoughEvidence: true
+  }
+  const rejectedGroundedDraft = structuredClone(formalAnswer)
+  rejectedGroundedDraft.sections[1]!.claims[0]!.text = '士4進5與 AI 首選相比，首選更均衡。'
+  rejectedGroundedDraft.sections[3]!.claims[1]!.text = '馬八退六調整馬的位置。'
+  rejectedGroundedDraft.sections[3]!.claims[1]!.causal!.opponentUse = '黑方車7平4調整黑車。'
+  for (const repairScenario of ['corrected', 'cross_line_user', 'cross_line_best', 'unchanged'] as const) {
+    const groundedRepairTraces: HarnessTrace[] = []
+    let groundedRepairContext = false
+    let receivedDraft: HarnessAnswer | undefined
+    const groundedRepairProvider = {
+      id: 'openai' as const, displayName: 'Context-dependent synthetic repair', calls: 0,
+      async generateExplanation(request: AIExplanationRequest) {
+        this.calls++
+        check(`初次與修補請求使用同一份五段 schema（${repairScenario}/${this.calls}）`,
+          JSON.stringify(request.responseSchema) === JSON.stringify(buildInitialMoveResponseSchema('research', ['E1', 'E2'])))
+        let nextAnswer = structuredClone(rejectedGroundedDraft)
+        if (this.calls === 2) {
+          const draftLine = request.prompt.split('\n').find(line => line.startsWith('前次草稿參考（不可信資料）：'))
+          const diagnosticLine = request.prompt.split('\n').find(line => line.startsWith('本次必須修正的錯誤：'))
+          receivedDraft = draftLine ? JSON.parse(draftLine.slice('前次草稿參考（不可信資料）：'.length)) : undefined
+          const diagnostic = diagnosticLine ? JSON.parse(diagnosticLine.slice('本次必須修正的錯誤：'.length)) : undefined
+          const bestClaim = receivedDraft?.sections.find(section => section.id === HARNESS_SECTION_IDS.bestMovePlan)?.claims[0]
+          const failedClaim = receivedDraft?.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)?.claims[1]
+          groundedRepairContext = bestClaim?.id === 'C3' &&
+            bestClaim.text === formalAnswer.sections[2]!.claims[0]!.text &&
+            bestClaim.evidenceIds.join(',') === 'E1' && failedClaim?.id === 'C4b' &&
+            failedClaim.text === rejectedGroundedDraft.sections[3]!.claims[1]!.text &&
+            failedClaim.evidenceIds.join(',') === 'E2' && failedClaim.findingIds?.join(',') === 'K2' &&
+            failedClaim.causal?.opponentUse === rejectedGroundedDraft.sections[3]!.claims[1]!.causal!.opponentUse &&
+            Array.isArray(diagnostic?.audit) && diagnostic.audit.some((issue: string) => issue.includes('K2')) &&
+            Array.isArray(diagnostic?.answer) && diagnostic.answer.some((issue: string) => issue.includes('C4b')) &&
+            diagnostic?.quality?.some((criterion: { issues: string[] }) => criterion.issues.length > 0) &&
+            request.prompt.includes('"move":"車7平6"') && request.prompt.includes('"move":"馬八退六"')
+          if (groundedRepairContext && repairScenario !== 'unchanged') nextAnswer = structuredClone(formalAnswer)
+          if (groundedRepairContext && repairScenario === 'cross_line_user') {
+            nextAnswer.sections[3]!.claims[0]!.text += '黑方車7平6先將車轉至六路。'
+          }
+          if (groundedRepairContext && repairScenario === 'cross_line_best') {
+            nextAnswer.sections[2]!.claims[0]!.text += '黑方車7平4將車轉至四路。'
+          }
+        }
+        return { text: JSON.stringify({ answer: nextAnswer, audit: compactFormalAudit }),
+          provider: this.id, model: 'fake-model', createdAt: Date.now(), groundedOnEngineData: true as const,
+          usage: { inputTokens: 10, outputTokens: 2000 } }
+      },
+      async *generateExplanationStream(): AsyncIterable<never> { return }
+    }
+    let groundedRepairResult: Awaited<ReturnType<typeof runExplanationHarness>> | undefined
+    let groundedRepairError: unknown
+    try {
+      groundedRepairResult = await runExplanationHarness({
+        requestId: `grounded-repair-${repairScenario}`, analysisId: formalSession.analysisId,
+        provider: 'openai', model: 'fake-model', userLevel: 'intermediate', explanationStyle: 'long_analytical',
+        language: 'zh-TW', answerMode: 'research', attachedMove: formalSession.userMove,
+        budget: { engineTimeMs: 100, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 8000 }
+      }, {
+        provider: groundedRepairProvider, apiKey: 'synthetic-test-key', model: 'fake-model', session: formalSession,
+        registry: { list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }), getAdapter: () => null } as never,
+        traceStore: { save: (trace: HarnessTrace) => groundedRepairTraces.push(trace) } as never,
+        signal: new AbortController().signal, onProgress: () => undefined
+      })
+    } catch (error) { groundedRepairError = error }
+    const repairErrors = groundedRepairTraces[0]?.validationErrors ?? []
+    check(`真實修補 request 保留逐 claim 參考與 audit／answer／quality 診斷（${repairScenario}）`,
+      groundedRepairContext && groundedRepairProvider.calls === 2, JSON.stringify(repairErrors))
+    if (repairScenario === 'corrected') {
+      check('完整修正 JSON 通過正式驗證，保留原首選段落且不交付被拒絕的空泛策略',
+        groundedRepairResult !== undefined && countHanCharacters(groundedRepairResult.finalText) >= 400 &&
+          groundedRepairResult.finalText.includes(formalAnswer.sections[2]!.claims[0]!.text) &&
+          !groundedRepairResult.finalText.includes('首選更均衡') &&
+          groundedRepairTraces[0]?.status === 'completed', JSON.stringify(repairErrors))
+    } else {
+      check(`草稿參考不能繞過整份驗證（${repairScenario}）`,
+        groundedRepairResult === undefined && groundedRepairError instanceof HarnessExplanationUnavailableError &&
+          groundedRepairTraces[0]?.status === 'failed' &&
+          (repairScenario === 'unchanged' || repairErrors.some(issue =>
+            repairScenario === 'cross_line_user'
+              ? issue.includes('修補審查未通過：K1') && issue.includes('車7平6')
+              : issue.includes('C3') && issue.includes('車7平4'))),
+        JSON.stringify(repairErrors))
+    }
+  }
 
   for (const budgetScenario of ['reported_usage', 'missing_usage', 'transport_failure'] as const) {
     const reportsUsage = budgetScenario === 'reported_usage'

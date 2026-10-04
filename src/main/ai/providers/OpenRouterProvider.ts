@@ -162,6 +162,11 @@ export class OpenRouterProvider implements AIProvider {
       request.model,
       request.responseFormat === 'json' ? 'json' : 'text'
     )
+    // Endpoint capability is structured_outputs, not the legacy JSON-mode flag.
+    // Confirmed against the exact free endpoint on 2026-10-04; require_parameters
+    // fails closed if that support disappears rather than silently ignoring it.
+    const useSchema = request.model === OPENROUTER_QWEN38_FREE_MODEL &&
+      request.responseFormat === 'json' && request.responseSchema !== undefined
     const response = await fetchOpenRouterResponse(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       signal,
@@ -171,14 +176,18 @@ export class OpenRouterProvider implements AIProvider {
         max_tokens: request.maxOutputTokens ?? 4096,
         temperature: 0.2,
         stream: false,
-        // The exact free Ultra and Qwen3.8 endpoints advertise reasoning but no JSON-mode
-        // parameter. Harness still requests and validates JSON in its prompt.
+        // Ultra has no confirmed JSON-mode policy. The exact free Qwen endpoint
+        // supports structured_outputs; only phase-specific contracts use it.
         // Super advertises schema support, but the live fixed-case comparison
         // exhausted 6,000 output tokens with strict schema and zero reasoning;
         // JSON object finished within 1,900. This observed format difference
         // selects JSON object; it does not establish the decoder's root cause.
         // All local content validation remains required.
-        ...(request.responseFormat === 'json' &&
+        ...(useSchema
+          ? { response_format: { type: 'json_schema', json_schema: {
+                ...request.responseSchema, strict: true
+              } }, provider: { require_parameters: true } }
+          : request.responseFormat === 'json' &&
           request.model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL &&
           request.model !== OPENROUTER_QWEN38_FREE_MODEL
           ? { response_format: { type: 'json_object' } }

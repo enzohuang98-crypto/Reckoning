@@ -72,7 +72,7 @@ for (const mutation of ['missing', 'empty', 'foreign'] as const) {
 const invalidSection = structuredClone(shapeFixture)
 invalidSection.answer.sections[0].id = 'follow_up' as typeof invalidSection.answer.sections[0]['id']
 assert.equal(validateShape(invalidSection), false)
-for (const model of ['nvidia/nemotron-3-super-120b-a12b:free', 'vendor/other:free', 'nvidia/nemotron-3-ultra-550b-a55b:free']) {
+for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-27b-preview:free', 'nvidia/nemotron-3-super-120b-a12b:free', 'vendor/other:free', 'nvidia/nemotron-3-ultra-550b-a55b:free']) {
   await withServer(() => ({ model, choices: [{ message: { content: JSON.stringify(shapeFixture) }, finish_reason: 'stop' }] }),
     async (baseUrl, requests) => {
       const request: AIExplanationRequest = { provider: 'openrouter', model, apiKey: 'synthetic-test-key',
@@ -80,7 +80,12 @@ for (const model of ['nvidia/nemotron-3-super-120b-a12b:free', 'vendor/other:fre
         metadata: { requestId: 'schema-test', analysisId: 'schema-test', userLevel: 'intermediate', explanationStyle: 'long_analytical' } }
       await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
       const body = requests[0].body as Record<string, unknown>
-      if (model.includes('-super-')) {
+      if (model === 'qwen/qwen3.8-27b:free') {
+        assert.deepEqual(body.response_format, { type: 'json_schema', json_schema: { ...responseSchema, strict: true } },
+          'The exact free Qwen endpoint advertises structured_outputs, which is the documented JSON-schema capability')
+        assert.deepEqual(body.provider, { require_parameters: true }, 'Schema requests must require a supporting endpoint')
+        assert.deepEqual(body.reasoning, { enabled: false, exclude: true })
+      } else if (model.includes('-super-')) {
         assert.deepEqual(body.response_format, { type: 'json_object' }, 'Super must use the bounded JSON-object contract confirmed by the live comparison')
         assert.equal(body.provider, undefined, 'Schema routing must not force the regressed constrained decoder')
         assert.deepEqual(body.reasoning, { effort: 'none', exclude: true })
@@ -89,6 +94,8 @@ for (const model of ['nvidia/nemotron-3-super-120b-a12b:free', 'vendor/other:fre
         assert.equal(body.provider, undefined, 'Unsupported model must not inherit schema routing')
       }
       assert.equal(body.max_tokens, 4_000)
+      assert.equal(body.models, undefined, 'Schema routing must not change or fall back to another model')
+      assert.equal(body.plugins, undefined, 'No response healing may repair incomplete model output')
     })
 }
 await withServer(
@@ -207,6 +214,30 @@ for (const format of ['json', 'text', undefined] as const) {
   })
 }
 
+for (const responseFormat of ['text', undefined] as const) {
+  await withServer(() => ({ model: 'qwen/qwen3.8-27b:free', choices: [{ message: { content: 'SYNTHETIC short answer' }, finish_reason: 'stop' }] }),
+    async (baseUrl, requests) => {
+      await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model: 'qwen/qwen3.8-27b:free', apiKey: 'synthetic-test-key',
+        prompt: 'SYNTHETIC short answer', responseFormat, responseSchema, maxOutputTokens: 600,
+        metadata: { requestId: 'short-schema', analysisId: 'short-schema', userLevel: 'basic', explanationStyle: 'long_analytical' }
+      })
+      const body = requests[0].body as Record<string, unknown>
+      assert.equal(body.response_format, undefined, 'A schema supplied outside a JSON phase must not force the full five-section contract')
+      assert.equal(body.provider, undefined)
+      assert.equal(body.max_tokens, 600)
+    })
+}
+await withServer(() => ({ error: { code: 400, message: 'SYNTHETIC endpoint no longer supports schema' } }),
+  async (baseUrl, requests) => {
+    await assert.rejects(new OpenRouterProvider({ baseUrl }).generateExplanation({
+      provider: 'openrouter', model: 'qwen/qwen3.8-27b:free', apiKey: 'synthetic-test-key',
+      prompt: 'SYNTHETIC unsupported schema', responseFormat: 'json', responseSchema, maxOutputTokens: 6000,
+      metadata: { requestId: 'unsupported-schema', analysisId: 'unsupported-schema', userLevel: 'basic', explanationStyle: 'long_analytical' }
+    }), /OpenRouter 上游服務回報錯誤 \(400\)/)
+    assert.equal(requests.length, 1, 'Unsupported schema must fail without a model or format fallback')
+  })
+
 for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-27b-preview:free']) {
   for (const responseFormat of ['json', 'text'] as const) {
     await withServer(() => ({ model, choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
@@ -222,7 +253,7 @@ for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-
       assert.deepEqual(body.reasoning, exactFree ? { enabled: false, exclude: true } : undefined,
         'Only the confirmed optional-thinking Qwen free route disables reasoning after both measured effort settings exhausted visible-output room')
       assert.deepEqual(body.response_format, !exactFree && responseFormat === 'json' ? { type: 'json_object' } : undefined,
-        'The exact Qwen free endpoint does not advertise response_format; prompted JSON still goes through the Harness validator')
+        'Without a phase-specific schema the exact Qwen route remains prompted JSON; other model IDs do not inherit the schema policy')
       assert.equal(body.max_tokens, 6000, 'Selecting the strongest candidate must not silently increase its total output cap')
       assert.equal(body.provider, undefined, 'The request must not introduce provider or model fallback routing')
       assert.equal(result.model, model)
@@ -237,7 +268,7 @@ for (const content of ['', '{"partial":true}']) {
   }), async baseUrl => {
     await assert.rejects(new OpenRouterProvider({ baseUrl }).generateExplanation({
       provider: 'openrouter', model: 'qwen/qwen3.8-27b:free', apiKey: 'synthetic-test-key',
-      prompt: 'Offline incomplete response', responseFormat: 'json', maxOutputTokens: 6000,
+      prompt: 'Offline incomplete response', responseFormat: 'json', responseSchema, maxOutputTokens: 6000,
       metadata: { requestId: 'qwen-length', analysisId: 'qwen-length', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
     }), error => error instanceof AIResponseValidationError && error.category === 'generation_incomplete' &&
       error.details.finishReason === 'length' && error.details.outputTokens === 6000 &&
