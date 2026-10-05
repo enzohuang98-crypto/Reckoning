@@ -24,7 +24,10 @@ export function buildInitialMoveResponseSchema(
       id: { type: 'string', enum: ids },
       ...(premiseIdsByEvidence ? {
         premiseIds: { type: 'array', minItems: requirePremises && premiseIds.length > 0 ? 1 : 0,
-          maxItems: premiseIds.length > 0 ? 4 : 0, uniqueItems: true,
+          // Keep reference uniqueness in the formal validator: provider schema
+          // subsets differ, and a declared structured-output capability is not
+          // a guarantee that every JSON Schema keyword is accepted.
+          maxItems: premiseIds.length > 0 ? 4 : 0,
           items: premiseIds.length > 0 ? { type: 'string', enum: premiseIds } : string,
           description: '先選本段實際解釋的1–4項盤面前提；text必須引用對應中文著法。前提只提供觀察，不證明策略推論。' },
         interpretation: { type: 'string', enum: ['observation', 'inference'] }

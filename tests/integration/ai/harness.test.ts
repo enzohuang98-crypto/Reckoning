@@ -1782,7 +1782,7 @@ async function main(): Promise<void> {
       for (const [name, refs] of [
         ['另一條線', ['E2:P1:move']], ['未知前提', ['E1:P999:move']],
         ['超過四項', ['E1:P1:move', 'E1:P2:move', 'E1:P3:move', 'E1:P4:move', 'E1:P5:move']],
-        ['缺少選擇', []], ['重複前提', ['E1:P1:move', 'E1:P1:move']]
+        ['缺少選擇', []]
       ] as const) {
         const invalid = structuredClone(combined)
         invalid.answer.sections[2]!.claims[0]!.premiseIds = [...refs]
@@ -1791,6 +1791,10 @@ async function main(): Promise<void> {
       const invalidUserPremise = structuredClone(combined)
       invalidUserPremise.answer.sections[3]!.claims[0]!.premiseIds = ['E1:P1:move']
       check('初始 native schema 的實戰 claim 只能選實戰池', !validateSchema(invalidUserPremise))
+      const duplicateNativePremises = structuredClone(combined)
+      duplicateNativePremises.answer.sections[2]!.claims[0]!.premiseIds = ['E1:P1:move', 'E1:P1:move']
+      check('native schema 僅做可攜形狀約束，引用重複交由正式 validator 拒絕',
+        validateSchema(duplicateNativePremises) && !JSON.stringify(request.responseSchema?.schema).includes('"uniqueItems"'))
       const bestClaimSchema = (request.responseSchema?.schema as any).properties.answer.properties.sections.items.anyOf[2]
         .properties.claims.items.properties
       check('schema 解碼順序先選前提並聲明解讀，再寫正文',
