@@ -56,6 +56,32 @@ function Get-ProbeSaveBarrierTimeline {
   $timeline.releaseMarkerPresent = Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-release')
   return $timeline
 }
+function Get-ProbeShortcutObservation([string]$Path) {
+  $observation = @{
+    path = $Path; reader = 'Shell.Application:System.Link.TargetParsingPath'
+    exists = (Test-Path -LiteralPath $Path -PathType Leaf); target = $null; targetExists = $false
+  }
+  if (-not $observation.exists) { return $observation }
+  $shell = $null; $folder = $null; $item = $null
+  try {
+    # The installer writes Unicode shell links. WScript.Shell can interpret
+    # their names through the ANSI code page and return a blank target.
+    # Use the same canonical shell property as the initial installer smoke test.
+    $shell = New-Object -ComObject Shell.Application
+    $folder = $shell.Namespace([IO.Path]::GetDirectoryName($Path))
+    $item = $folder.ParseName([IO.Path]::GetFileName($Path))
+    $observation.target = [string]$item.ExtendedProperty('System.Link.TargetParsingPath')
+    if ($observation.target) { $observation.targetExists = Test-Path -LiteralPath $observation.target -PathType Leaf }
+  } catch { $observation.failure = $_.Exception.Message }
+  finally {
+    foreach ($value in @($item, $folder, $shell)) {
+      if ($null -ne $value -and [Runtime.InteropServices.Marshal]::IsComObject($value)) {
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($value)
+      }
+    }
+  }
+  return $observation
+}
 function Get-ProbeVisibleFen {
   # Native read-only BoardEditor textbox: its role/name identify the current
   # board even when Chromium omits ClassName. Labels, status and FEN elsewhere
@@ -390,9 +416,12 @@ try {
   $report.savedPositionUiRestored = 'passed'
   $report.savedDataPreserved = 'passed'
   $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) '象棋AI分析講解.lnk'
-  $shell = New-Object -ComObject WScript.Shell
-  if ($shell.CreateShortcut($shortcut).TargetPath -ne $script:probeExe) { throw 'Updated desktop shortcut points at a different executable.' }
-  $report.desktopShortcutTarget = $script:probeExe
+  $report.desktopShortcutObservation = Get-ProbeShortcutObservation $shortcut
+  if (-not $report.desktopShortcutObservation.exists -or -not $report.desktopShortcutObservation.targetExists -or
+      -not [string]::Equals($report.desktopShortcutObservation.target, $script:probeExe, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Updated desktop shortcut is missing, unreadable, or does not point at the installed executable; see desktopShortcutObservation.'
+  }
+  $report.desktopShortcutTarget = $report.desktopShortcutObservation.target
   $installNetwork = Read-Feed
   $installPhase = $installNetwork.phases.install
   $report.installPayloadBytes = if ($installPhase) { [long]$installPhase.installerBytes } else { 0 }
