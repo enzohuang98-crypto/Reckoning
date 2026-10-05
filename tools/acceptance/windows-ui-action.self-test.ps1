@@ -123,3 +123,4 @@ Write-Output '9/9 offline action cases passed; actual packaged VM input remains 
 & (Join-Path $PSScriptRoot 'windows-ui-input.self-test.ps1') -SourcePath $SourcePath
 & (Join-Path $PSScriptRoot 'windows-save-race.self-test.ps1')
 & (Join-Path $PSScriptRoot 'windows-shortcut.self-test.ps1')
+& (Join-Path $PSScriptRoot 'windows-foreground.self-test.ps1') -SourcePath $SourcePath

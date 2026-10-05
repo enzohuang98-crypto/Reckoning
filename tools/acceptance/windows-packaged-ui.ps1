@@ -11,7 +11,8 @@ public static class UpdateProbeWindow {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
   [StructLayout(LayoutKind.Sequential)] public struct Mouse { public int dx, dy; public uint data, flags, time; public UIntPtr extra; }
-  [StructLayout(LayoutKind.Explicit)] public struct Union { [FieldOffset(0)] public Mouse mouse; }
+  [StructLayout(LayoutKind.Sequential)] public struct Keyboard { public ushort key, scan; public uint flags, time; public UIntPtr extra; }
+  [StructLayout(LayoutKind.Explicit)] public struct Union { [FieldOffset(0)] public Mouse mouse; [FieldOffset(0)] public Keyboard keyboard; }
   [StructLayout(LayoutKind.Sequential)] public struct Input { public uint type; public Union data; }
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, Input[] inputs, int size);
@@ -21,9 +22,16 @@ public static class UpdateProbeWindow {
     var up = new Input(); up.data.mouse.flags = 4;
     return SendInput(2, new [] { down, up }, Marshal.SizeOf(typeof(Input))) == 2;
   }
+  public static bool EscapeForForeground(IntPtr expectedWindow) {
+    if (GetForegroundWindow() != expectedWindow) return false;
+    var down = new Input(); down.type = 1; down.data.keyboard.key = 0x1b;
+    var up = down; up.data.keyboard.flags = 2;
+    return SendInput(2, new [] { down, up }, Marshal.SizeOf(typeof(Input))) == 2;
+  }
 }
 '@
 $script:probeFocusClicks = 0
+$script:probeWslCancelCount = 0
 $script:probeUiActions = @()
 function Get-ProbeControlDiagnostic($Control) {
   try {
@@ -114,24 +122,104 @@ function Assert-ProbeUiVersion([string]$Version, [string]$Stage) {
     $action.result = 'completed'
   } catch { $action.result = 'failed'; $action.failure = $_.Exception.Message; throw }
 }
+function Test-ProbeWslPromptText([string]$Text) {
+  # Exact text from the failed isolated VM. Ignore only terminal line wrapping;
+  # extra commands, different prompts or appended security text cannot match.
+  $expected = "Windows Subsystem for Linux must be updated to the latest version to proceed. You can update by running 'wsl.exe --update'. For more information please visit https://aka.ms/wslinstall Press any key to install Windows Subsystem for Linux. Press ESC or CTRL-C to cancel. This prompt will time out in 60 seconds."
+  return $Text.Length -le 4096 -and ([regex]::Replace($Text, '\s', '') -ceq [regex]::Replace($expected, '\s', ''))
+}
+function Test-ProbeWslPromptIdentity([string]$ProcessPath, [string]$SignatureStatus, [string]$SignerSubject, [string]$WindowTitle) {
+  $terminalRoot = [regex]::Escape((Join-Path $env:ProgramFiles 'WindowsApps'))
+  $terminalPath = '^' + $terminalRoot + '\\Microsoft\.WindowsTerminal_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_(?:arm64|x64)__8wekyb3d8bbwe\\WindowsTerminal\.exe$'
+  $wslTitle = Join-Path $env:WINDIR 'system32\wsl.exe'
+  $titleMatches = [string]::Equals($WindowTitle, $wslTitle, [StringComparison]::OrdinalIgnoreCase) -or
+    [string]::Equals($WindowTitle, "Administrator: $wslTitle", [StringComparison]::OrdinalIgnoreCase)
+  return $ProcessPath -match $terminalPath -and $SignatureStatus -ceq 'Valid' -and
+    $SignerSubject -match '(?:^|,\s*)O=Microsoft Corporation(?:,|$)' -and
+    $titleMatches
+}
+function Get-ProbeForegroundObservation {
+  $handle = [UpdateProbeWindow]::GetForegroundWindow()
+  $observation = @{ at = [DateTime]::UtcNow.ToString('o'); handle = $handle.ToInt64(); trustedWslPrompt = $false }
+  try {
+    $window = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+    $current = $window.Current
+    $process = Get-Process -Id $current.ProcessId -ErrorAction Stop
+    $observation.processId = $current.ProcessId; $observation.processName = $process.ProcessName
+    $observation.processPath = $process.Path; $observation.className = $current.ClassName
+    # Keep arbitrary window/terminal text out of artifacts. Only the observed
+    # WSL title and exact allowlisted prompt may be recorded or acted on.
+    $wslTitle = Join-Path $env:WINDIR 'system32\wsl.exe'
+    $observation.windowTitle = '(unrecognized)'
+    $titleMatches = [string]::Equals($current.Name, $wslTitle, [StringComparison]::OrdinalIgnoreCase) -or
+      [string]::Equals($current.Name, "Administrator: $wslTitle", [StringComparison]::OrdinalIgnoreCase)
+    if ($titleMatches -and
+        [IO.Path]::GetFileName($process.Path) -ieq 'WindowsTerminal.exe') {
+      $observation.windowTitle = $current.Name
+      $signature = Get-AuthenticodeSignature -LiteralPath $process.Path
+      $observation.signatureStatus = [string]$signature.Status
+      $observation.trustedTerminalIdentity = Test-ProbeWslPromptIdentity $process.Path ([string]$signature.Status) $signature.SignerCertificate.Subject $current.Name
+      if ($observation.trustedTerminalIdentity) {
+        $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::IsTextPatternAvailableProperty, $true)
+        $candidates = @($window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object { -not $_.Current.IsOffscreen })
+        $observation.visibleTextProviders = $candidates.Count
+        if ($candidates.Count -eq 1) {
+          $pattern = $null
+          if ($candidates[0].TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) {
+            $observation.exactPrompt = Test-ProbeWslPromptText ([string]$pattern.DocumentRange.GetText(4097))
+          }
+        }
+        $observation.foregroundUnchanged = [UpdateProbeWindow]::GetForegroundWindow() -eq $handle
+        $observation.trustedWslPrompt = $observation.exactPrompt -eq $true -and $observation.foregroundUnchanged
+        if ($observation.trustedWslPrompt) { $observation.allowedCancelInstruction = 'Press ESC or CTRL-C to cancel.' }
+      }
+    }
+  } catch { $observation.observationFailure = 'Foreground identity or allowlisted content could not be verified.' }
+  return $observation
+}
+function Try-CancelProbeWslPrompt($Observation) {
+  if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or
+      $env:GITHUB_RUN_ID -notmatch '^[1-9][0-9]{0,19}$' -or $script:probeWslCancelCount -ge 1 -or
+      $Observation.trustedWslPrompt -ne $true) { return $false }
+  $fresh = Get-ProbeForegroundObservation
+  if ($fresh.trustedWslPrompt -ne $true -or $fresh.handle -ne $Observation.handle -or
+      $fresh.processId -ne $Observation.processId) { return $false }
+  $script:probeWslCancelCount++
+  if (-not [UpdateProbeWindow]::EscapeForForeground([IntPtr]$fresh.handle)) { throw 'Verified WSL prompt lost foreground before its one cancellation attempt.' }
+  return $true
+}
 function Assert-ProbeForeground {
   $window = Wait-Probe { Get-ProbeWindow } 'Installed application window is missing.'
-  if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -ne [long]$window.Current.NativeWindowHandle) {
-    [void][UpdateProbeWindow]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
-    try { $window.SetFocus() } catch { }
+  $action = $null
+  try {
     if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -ne [long]$window.Current.NativeWindowHandle) {
-      $bounds = $window.Current.BoundingRectangle
-      if ($script:probeFocusClicks -ge 3 -or $bounds.Left -lt 0 -or $bounds.Top -lt 0 -or $bounds.Width -lt 400 -or $bounds.Height -lt 300) {
-        throw 'The verified application window cannot be brought into the foreground.'
+      $action = @{ at = [DateTime]::UtcNow.ToString('o'); method = 'Win32_Foreground'; result = 'not_run'; before = (Get-ProbeForegroundObservation) }
+      $script:probeUiActions += $action
+      $action.wslCancelAttempted = Try-CancelProbeWslPrompt $action.before
+      [void][UpdateProbeWindow]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
+      try { $window.SetFocus() } catch { }
+      if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -ne [long]$window.Current.NativeWindowHandle) {
+        $bounds = $window.Current.BoundingRectangle
+        if ($script:probeFocusClicks -ge 3 -or $bounds.Left -lt 0 -or $bounds.Top -lt 0 -or $bounds.Width -lt 400 -or $bounds.Height -lt 300) {
+          throw 'The verified application window cannot be brought into the foreground.'
+        }
+        $script:probeFocusClicks++
+        if (-not [UpdateProbeWindow]::Click([int]($bounds.Left + 80), [int]($bounds.Top + 12))) { throw 'App title-bar focus input failed.' }
       }
-      $script:probeFocusClicks++
-      if (-not [UpdateProbeWindow]::Click([int]($bounds.Left + 80), [int]($bounds.Top + 12))) { throw 'App title-bar focus input failed.' }
     }
-  }
-  [void](Wait-Probe {
-    $current = Get-ProbeWindow
-    $current -and [UpdateProbeWindow]::GetForegroundWindow().ToInt64() -eq [long]$current.Current.NativeWindowHandle
-  } 'An OS overlay still owns the foreground; no background UI acceptance is allowed.' 10)
+    [void](Wait-Probe {
+      $current = Get-ProbeWindow
+      $current -and [UpdateProbeWindow]::GetForegroundWindow().ToInt64() -eq [long]$current.Current.NativeWindowHandle
+    } 'An OS overlay still owns the foreground; no background UI acceptance is allowed.' 10)
+    if ($action) { $action.result = 'completed' }
+  } catch {
+    if (-not $action) {
+      $action = @{ at = [DateTime]::UtcNow.ToString('o'); method = 'Win32_Foreground'; before = (Get-ProbeForegroundObservation) }
+      $script:probeUiActions += $action
+    }
+    $action.result = 'failed'; $action.failure = $_.Exception.Message
+    throw
+  } finally { if ($action) { $action.after = Get-ProbeForegroundObservation } }
 }
 function Find-ProbeAction([string]$Name, [switch]$Prefix) {
   foreach ($control in Get-ProbeControls) {
