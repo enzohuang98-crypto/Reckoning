@@ -2,6 +2,12 @@
 
 公開能力核對日期：2026-10-02，2026-10-03／04 重新核對精確 Qwen route。公開研究限定 Reckoning 免費目錄的 17 個精確 ID；下方另標明正式 App 服務的真實探測與完整生成，兩類證據分開。
 
+## 2026-10-05 實際推理模式與比較限制
+
+當日重新核對公開免費文字目錄仍17個，精確Qwen免費endpoint仍宣告`structured_outputs`，prompt／completion價格皆0。先前「Qwen34／首選」的比較資料使用 **xhigh推理模式**，不能移作本次`reasoning.enabled=false`模式的能力證明。[AA的同版比較](https://artificialanalysis.ai/models/comparisons/qwen3-8-27b-non-reasoning-vs-nvidia-nemotron-3-ultra-550b-a55b)列Qwen non-reasoning為20、Nemotron Ultra reasoning為23；[Inkling Small reasoning](https://artificialanalysis.ai/models/inkling-small)為26。這些一般評測仍不能證明特定免費route或象棋解釋品質。
+
+目前saved model保留精確Qwen，沒有自動切換、付費模型或榜單即通過的判定。停用推理解決了已重現的reasoning耗尽與空正文，但本次`155ebb6`兩次正式完整題仍有策略與路數錯誤，因此不能宣稱在實際模式中使用了最強已驗收模型。先修具體前提選擇與解釋連結，保留全局呼叫／token／deadline與正文檢查；後續選擇或推理設定須另取得正式答案證據。
+
 ## 2026-10-04 Structured Outputs 能力更正
 
 使用者提供的 [OpenRouter 官方 Structured Outputs 文件](https://openrouter.ai/docs/guides/features/structured-outputs) 明確以 endpoint 的 `structured_outputs` 作為 JSON Schema 能力指標；請求欄位則是 `response_format.type=json_schema`，搭配 `json_schema.strict=true` 與 `provider.require_parameters=true`。**未列 legacy `response_format` 不代表不支援 schema**。本文件下方原始 metadata 記錄仍保留，但不能再由缺少該 legacy 名稱推導 Qwen 無結構化輸出能力。
