@@ -20,6 +20,8 @@ import {
   validateConsequenceAudit
 } from '../../../src/main/ai/HarnessOrchestrator'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import { buildVariationEvidencePremises, type VariationEvidencePremises } from '../../../src/main/ai/VariationEvidencePremises'
+import { chineseMoveIsMentioned } from '../../../src/shared/logic/board/ChineseNotation'
 import { buildVariationBoardFacts } from '../../../src/main/ai/VariationBoardFacts'
 import { AIHttpError, AIResponseValidationError } from '../../../src/main/ai/http'
 import { OpenRouterProvider } from '../../../src/main/ai/providers/OpenRouterProvider'
@@ -185,6 +187,38 @@ function combineAuditAndAnswer(
   })
 }
 
+/** Synthetic fixture protocol only: select replayed observations actually named in
+ * each visible claim. It never changes prose or evidence IDs, never runs in the
+ * product, and missing-field negative tests deliberately bypass this helper. */
+function selectSyntheticPremises(answer: HarnessAnswer, evidence: HarnessEvidence[]): void {
+  selectSyntheticPremisesFromPools(answer, evidence.map(buildVariationEvidencePremises))
+}
+
+function selectSyntheticPremisesFromPools(answer: HarnessAnswer, pools: VariationEvidencePremises[]): void {
+  for (const section of answer.sections) for (const claim of section.claims) {
+    claim.premiseIds = pools.filter(pool => claim.evidenceIds.includes(pool.evidenceId))
+      .flatMap(pool => pool.items).filter(item => item.kind === 'move_observation' &&
+        item.moves.every(move => chineseMoveIsMentioned(claim.text, move)))
+      .slice(0, 4).map(item => item.id)
+    claim.interpretation = 'inference'
+  }
+}
+
+function syntheticInitialProtocol(json: string, prompt: string): string {
+  const packet = JSON.parse(/^證據：(.*)$/m.exec(prompt)?.[1] ?? '[]') as Array<{
+    id: string; role: string; boardPremises: VariationEvidencePremises
+  }>
+  if (!packet.length || !packet.every(item => item.boardPremises)) return json
+  const combined = JSON.parse(json) as { answer: HarnessAnswer }
+  const best = packet.find(item => item.role === 'best_move')
+  // Legacy positive fixture has a heading-based best section. Its visible text
+  // names the same cannon move as the real best line; update only that fixture.
+  const legacyBest = combined.answer.sections.find(section => section.heading.includes('最佳著法'))
+  if (best && legacyBest) for (const claim of legacyBest.claims) claim.evidenceIds = [best.id]
+  selectSyntheticPremisesFromPools(combined.answer, packet.map(item => item.boardPremises))
+  return JSON.stringify(combined)
+}
+
 const NO_USER_REQUIRED_SECTION_IDS = [
   HARNESS_SECTION_IDS.directConclusion,
   HARNESS_SECTION_IDS.bestMovePlan,
@@ -216,11 +250,11 @@ class FakeProvider implements AIProvider {
     return {
       text:
         this.calls === 1
-          ? combineAuditAndAnswer(
+          ? syntheticInitialProtocol(combineAuditAndAnswer(
               outputs[0].replaceAll('"E2"', `"${scopedEvidenceId}"`),
               outputs[1].replaceAll('"E2"', `"${scopedEvidenceId}"`),
               this.ensureCompleteDepth
-            )
+            ), request.prompt)
           : outputs[2] ?? '{}',
       provider: this.id,
       model: 'fake-model',
@@ -266,7 +300,7 @@ class SameMoveProvider implements AIProvider {
               opponentUse: '黑方以馬8進7發展右翼馬並協防中卒。',
               boardImpact: '炮二平五與馬8進7走完後，雙方子力圍繞中線展開。',
               supportingMoves: ['炮二平五', '馬8進7'],
-              evidenceIds: ['E1'],
+              evidenceIds: ['E2'],
               verified: true
             },
             {
@@ -276,7 +310,7 @@ class SameMoveProvider implements AIProvider {
               opponentUse: '黑方走馬8進7後，以右翼馬增加中央防守。',
               boardImpact: '中炮與右翼馬在中線形成可見的攻防關係。',
               supportingMoves: ['炮二平五', '馬8進7'],
-              evidenceIds: ['E1'],
+              evidenceIds: ['E2'],
               verified: true
             }
           ],
@@ -290,9 +324,9 @@ class SameMoveProvider implements AIProvider {
           directAnswerEvidenceIds: ['E1'],
           sections: [
             { id: HARNESS_SECTION_IDS.directConclusion, heading: '直接結論', claims: [{ id: 'S1', text: '炮二平五就是引擎首選，兩者是同一著法。', evidenceIds: ['E1'] }] },
-            { id: HARNESS_SECTION_IDS.actualMoveProblem, heading: '與首選一致', claims: [{ id: 'S2', text: '實戰的炮二平五與首選一致，能立即建立中炮並控制中路。', evidenceIds: ['E1'], findingIds: ['K1'], causal }] },
-            { id: HARNESS_SECTION_IDS.bestMovePlan, heading: '這步的好處', claims: [{ id: 'S3', text: '炮二平五把炮移到中線，關注中卒並保留馬八進七的協調發展。', evidenceIds: ['E1'] }] },
-            { id: HARNESS_SECTION_IDS.opponentExploitation, heading: '對手合理應對', claims: [{ id: 'S4', text: longNeutralText, evidenceIds: ['E1'], findingIds: ['K1', 'K2'], causal }] },
+            { id: HARNESS_SECTION_IDS.actualMoveProblem, heading: '與首選一致', claims: [{ id: 'S2', premiseIds: ['E1:P1:move'], interpretation: 'inference', text: '實戰的炮二平五與首選一致，能立即建立中炮並控制中路。', evidenceIds: ['E1', 'E2'], findingIds: ['K1'], causal }] },
+            { id: HARNESS_SECTION_IDS.bestMovePlan, heading: '這步的好處', claims: [{ id: 'S3', premiseIds: ['E1:P1:move'], interpretation: 'inference', text: '炮二平五把炮移到中線，關注中卒並保留馬八進七的協調發展。', evidenceIds: ['E1'] }] },
+            { id: HARNESS_SECTION_IDS.opponentExploitation, heading: '對手合理應對', claims: [{ id: 'S4', premiseIds: ['E2:P1:move', 'E2:P2:move'], interpretation: 'inference', text: longNeutralText, evidenceIds: ['E2'], findingIds: ['K1', 'K2'], causal }] },
             { id: HARNESS_SECTION_IDS.practicalPrinciple, heading: '實戰原則', claims: [{ id: 'S5', text: '著法與首選一致時，應理解它改善哪條線，以及對手有哪些合理回應。', evidenceIds: ['E1'] }] }
           ],
           generalNotes: [],
@@ -1130,7 +1164,7 @@ async function main(): Promise<void> {
         (provider.prompts[0]?.indexOf('"audit":{') ?? -1)
   )
   check('實戰原則的示意引用涵蓋兩種著法，不預填成只能引用首選線',
-    provider.prompts[0]?.includes('"id":"C5","text":"約70–100漢字的一條可操作原則，說明本局先檢查什麼、如何判斷與適用限制","evidenceIds":["E1","E2"]'))
+    provider.prompts[0]?.includes('"id":"C5","premiseIds":[],"interpretation":"inference","text":"約70–100漢字的一條可操作原則，說明本局先檢查什麼、如何判斷與適用限制","evidenceIds":["E1","E2"]'))
   check(
     '首次比較 prompt 禁止把跨引擎分歧或主線外後續寫成確定事實',
     provider.prompts[0]?.includes('若兩個引擎的對手首應不同') &&
@@ -1268,6 +1302,22 @@ async function main(): Promise<void> {
     inventedMoveRejected = error instanceof HarnessExplanationUnavailableError && error.reason === 'quality_validation_failed'
   }
   check('完整 Harness 不交付合法 ID 搭配主線外編造吃子與將軍', inventedMoveRejected)
+  for (const invalidProtocol of ['missing', 'invalid-interpretation', 'too-many', 'unrelated'] as const) {
+    const invalidPremiseProvider = new MutatedSameMoveProvider(answer => {
+      const claim = answer.sections[2]!.claims[0]!
+      if (invalidProtocol === 'missing') {
+        delete claim.premiseIds
+        delete claim.interpretation
+      } else if (invalidProtocol === 'invalid-interpretation') claim.interpretation = 'verified' as never
+      else if (invalidProtocol === 'too-many') claim.premiseIds = Array(8).fill('E1:P1:move')
+      else claim.premiseIds = ['E1:P4:move']
+    })
+    let rejected = false
+    try { await runSameMoveVariant(invalidPremiseProvider) } catch (error) {
+      rejected = error instanceof HarnessExplanationUnavailableError && error.reason === 'quality_validation_failed'
+    }
+    check(`完整 Harness 正規化後仍拒絕不合格前提契約（${invalidProtocol}），未啟用測試欄位補填`, rejected)
+  }
   const deniedCriticismProvider = new MutatedSameMoveProvider((answer) => {
     answer.sections[1]!.claims[0]!.text += '這不是失誤，也沒有錯失機會。'
   })
@@ -1324,23 +1374,20 @@ async function main(): Promise<void> {
       sameMoveProvider.prompt.includes('"actualCapture":"本手未吃子。","actualCheck":"本手未將軍。"')
   )
   const sameMovePromptEvidence = JSON.parse(/^證據：(.*)$/m.exec(sameMoveProvider.prompt)?.[1] ?? '[]') as Array<{
-    id: string
-    computedMechanismFacts: { evidenceId: string; scope: { wingPerspective: string }; steps: Array<{
-      move: string; side: string; fromFile: number; toFile: number; fromWing: string; toWing: string
-      actualCapture: unknown
-      captureOpportunities: { added: Array<{ square: string; side: string; piece: string }> }
-    }> }
+    id: string; boardPremises: VariationEvidencePremises
+    computedBoardFacts: { steps: Array<{ move: string; side: string; actualCapture: string; actualCheck: string }> }
   }>
-  const firstCannonPremise = sameMovePromptEvidence[0]?.computedMechanismFacts.steps[0]
-  check('完整正式請求提供走前右翼炮至中路與新吃中卒機會，沒有把機會寫成已吃',
-    firstCannonPremise?.move === '炮二平五' && firstCannonPremise.side === 'red' &&
-      firstCannonPremise.fromFile === 2 && firstCannonPremise.toFile === 5 &&
-      firstCannonPremise.fromWing === 'right' && firstCannonPremise.toWing === 'center' &&
-      firstCannonPremise.actualCapture === null &&
-      firstCannonPremise.captureOpportunities.added.some(target => target.square === 'e6' && target.side === 'black' && target.piece === 'pawn'))
-  check('機制前提保持逐線身分並聲明有限觀察不證明策略優劣',
+  const firstCannonPremise = sameMovePromptEvidence[0]?.boardPremises.items.find(item => item.id === 'E1:P1:move')
+  const cannonCapturePremise = sameMovePromptEvidence[0]?.boardPremises.items.find(item => item.id === 'E1:P1:add:e6')
+  check('完整正式請求提供精簡走前右翼炮至中路與新吃中卒機會，沒有把機會寫成已吃',
+    firstCannonPremise?.text.includes('2路右翼') === true && firstCannonPremise.text.includes('5路中路') &&
+      firstCannonPremise.text.includes('本手未吃子') && cannonCapturePremise?.text.includes('黑方5路中路卒') === true)
+  check('精簡前提保持逐線身分，原始機制 JSON 不重複且每手棋盤事實完整保留',
     sameMovePromptEvidence.length === 2 && sameMovePromptEvidence.every(item =>
-      item.computedMechanismFacts.evidenceId === item.id && item.computedMechanismFacts.scope.wingPerspective === 'piece_owner') &&
+      item.boardPremises.evidenceId === item.id && item.boardPremises.scope.wingPerspective === 'piece_owner' &&
+      item.computedBoardFacts.steps.length === 4 && item.computedBoardFacts.steps.every(step =>
+        Boolean(step.move && step.side && step.actualCapture && step.actualCheck))) &&
+      !sameMoveProvider.prompt.includes('"computedMechanismFacts"') &&
       sameMoveProvider.prompt.includes('不證明唯一原因、強迫應手或相對優勢'))
   check(
     '實戰步等同首選時保留五段 id 並改用正向顯示標題',
@@ -1562,19 +1609,19 @@ async function main(): Promise<void> {
     directAnswer: '士4進5先調整士，車7平6則先移動黑車；問題在於兩條主線的子力次序不同。',
     directAnswerEvidenceIds: ['E1', 'E2'],
     sections: [
-      { id: HARNESS_SECTION_IDS.directConclusion, heading: '直接結論', claims: [{ id: 'C1', evidenceIds: ['E1', 'E2'],
+      { id: HARNESS_SECTION_IDS.directConclusion, heading: '直接結論', claims: [{ id: 'C1', premiseIds: [], interpretation: 'inference', evidenceIds: ['E1', 'E2'],
         text: '士4進5與車7平6的差別，是黑方先調整士還是先移動車。實戰線接著紅方車一平五，黑車再走車7平4；首選線則先有紅方兵四平三，黑方再調整士。這些是兩條主線的具體次序，問題不能只用評估數字解釋，也不能把某條線說成對手唯一的應法。' }] },
-      { id: HARNESS_SECTION_IDS.actualMoveProblem, heading: '實戰步問題', claims: [{ id: 'C2', evidenceIds: ['E1', 'E2'], findingIds: ['K1'], causal: formalCausal,
+      { id: HARNESS_SECTION_IDS.actualMoveProblem, heading: '實戰步問題', claims: [{ id: 'C2', premiseIds: ['E2:P1:move', 'E1:P1:move'], interpretation: 'inference', evidenceIds: ['E1', 'E2'], findingIds: ['K1'], causal: formalCausal,
         text: '士4進5的問題應從黑車的調整次序看，而不是把士的移動直接當成丟子的原因。實戰線先讓紅方車一平五，黑方才走車7平4，把車移向四路；車7平6這條首選線則先改變黑車位置，紅方以兵四平三回應，黑方下一步才補士。比較時要分清士、車與紅兵各在哪一步移動，不能將兩條線拼成同一串棋譜，更遠的得失仍需另外的主線支持。' }] },
-      { id: HARNESS_SECTION_IDS.bestMovePlan, heading: 'AI 首選', claims: [{ id: 'C3', evidenceIds: ['E1'],
+      { id: HARNESS_SECTION_IDS.bestMovePlan, heading: 'AI 首選', claims: [{ id: 'C3', premiseIds: ['E1:P1:move', 'E1:P2:move'], interpretation: 'inference', evidenceIds: ['E1'],
         text: '車7平6先把黑車從七路移到六路，主線中的紅方兵四平三隨後橫移過河兵。黑方接著士4進5調整士，紅方再車一平五，把車放到中央。再往下是黑方車6平2，說明這條主線中車還會繼續橫向轉移。理解這步時可以追蹤黑車所在的路數，以及紅兵和紅車如何逐步換位；這裡只解釋可見的子力位置，沒有自行補算攻殺，也沒有把單一回應當作必走。' }] },
       { id: HARNESS_SECTION_IDS.opponentExploitation, heading: '對手利用與後果', claims: [
-        { id: 'C4a', evidenceIds: ['E2'], findingIds: ['K1'], causal: formalCausal,
+        { id: 'C4a', premiseIds: ['E2:P1:move', 'E2:P2:move'], interpretation: 'inference', evidenceIds: ['E2'], findingIds: ['K1'], causal: formalCausal,
           text: '士4進5後，紅方用車一平五將車從一路轉到中央，這是本條主線的合理應對。黑方車7平4再把車移到四路，因此雙方車的路數與原局面已經不同。閱讀後果時應核對這些可見的移動，區分紅車的中央位置與黑車的橫向調整；主線沒有在這幾步顯示直接吃子，不能額外宣稱已經得車或失車。' },
-        { id: 'C4b', evidenceIds: ['E2'], findingIds: ['K2'], causal: formalSecondCausal,
+        { id: 'C4b', premiseIds: ['E2:P3:move', 'E2:P4:move'], interpretation: 'inference', evidenceIds: ['E2'], findingIds: ['K2'], causal: formalSecondCausal,
           text: '車7平4之後，紅方接著馬八退六，將馬調回六路，再由黑方象5進3移象。這項後果關注馬與象的重新部署，與前面的雙車位置是不同面向。因為兩個子力都依主線改變位置，後續盤面應以新的馬、象位置繼續觀察；這不能直接推出強制戰術，也不能用一般殘局口訣替代本局已回傳的步序。' }
       ] },
-      { id: HARNESS_SECTION_IDS.practicalPrinciple, heading: '實戰原則', claims: [{ id: 'C5', evidenceIds: ['E1', 'E2'],
+      { id: HARNESS_SECTION_IDS.practicalPrinciple, heading: '實戰原則', claims: [{ id: 'C5', premiseIds: [], interpretation: 'inference', evidenceIds: ['E1', 'E2'],
         text: '比較士4進5與車7平6時，先逐步核對車、士及對手子力的換位次序，再檢查每條主線實際呈現的盤面關係；同一步士的調整出現在不同時機，不能只憑著法名稱判斷整條線的好壞。' }] }
     ],
     generalNotes: [], evidence: [], warnings: []
@@ -1732,6 +1779,23 @@ async function main(): Promise<void> {
       const combined = { answer: strictAnswer, audit: strictAudit }
       const validateSchema = new Ajv({ strict: true }).compile(request.responseSchema?.schema ?? buildInitialMoveResponseSchema('research', ['E1', 'E2']).schema)
       check('完整五段 JSON object fixture 符合本機欄位契約', validateSchema(combined), validateSchema.errors)
+      for (const [name, refs] of [
+        ['另一條線', ['E2:P1:move']], ['未知前提', ['E1:P999:move']],
+        ['超過四項', ['E1:P1:move', 'E1:P2:move', 'E1:P3:move', 'E1:P4:move', 'E1:P5:move']],
+        ['缺少選擇', []], ['重複前提', ['E1:P1:move', 'E1:P1:move']]
+      ] as const) {
+        const invalid = structuredClone(combined)
+        invalid.answer.sections[2]!.claims[0]!.premiseIds = [...refs]
+        check(`初始 native schema 拒絕首選 claim 的${name}`, !validateSchema(invalid))
+      }
+      const invalidUserPremise = structuredClone(combined)
+      invalidUserPremise.answer.sections[3]!.claims[0]!.premiseIds = ['E1:P1:move']
+      check('初始 native schema 的實戰 claim 只能選實戰池', !validateSchema(invalidUserPremise))
+      const bestClaimSchema = (request.responseSchema?.schema as any).properties.answer.properties.sections.items.anyOf[2]
+        .properties.claims.items.properties
+      check('schema 解碼順序先選前提並聲明解讀，再寫正文',
+        Object.keys(bestClaimSchema).indexOf('premiseIds') < Object.keys(bestClaimSchema).indexOf('text') &&
+        Object.keys(bestClaimSchema).indexOf('interpretation') < Object.keys(bestClaimSchema).indexOf('text'))
       return { text: JSON.stringify(combined), provider: this.id, model: request.model,
         createdAt: Date.now(), groundedOnEngineData: true, usage: { inputTokens: 10, outputTokens: 2000 } }
     },
@@ -1899,8 +1963,8 @@ async function main(): Promise<void> {
       await runPreparedExplanationHarness(execution, {
         provider: {
           id: 'openai', displayName: 'Nominal frozen fixture',
-          async generateExplanation() {
-            return { text: JSON.stringify({ audit: nominalAudit, answer: nominalAnswer }),
+          async generateExplanation(request: AIExplanationRequest) {
+            return { text: syntheticInitialProtocol(JSON.stringify({ audit: nominalAudit, answer: nominalAnswer }), request.prompt),
               provider: 'openai', model: 'fake-model', createdAt: Date.now(),
               groundedOnEngineData: true, usage: { inputTokens: 10, outputTokens: 2000 } }
           },
@@ -3824,6 +3888,9 @@ async function main(): Promise<void> {
   ).answer
   normalContractAnswer.title = '實戰著法解析'
   normalContractAnswer.generalNotes = []
+  normalContractAnswer.sections.flatMap(section => section.claims).find(claim => claim.id === 'C3')!.text = '黑方以馬8進7發展右翼馬，與中路的炮形成可見部署。'
+  normalContractAnswer.sections.find(section => section.heading.includes('最佳著法'))!.claims[0]!.evidenceIds = ['E1']
+  selectSyntheticPremises(normalContractAnswer, validatorEvidence)
   const normalContractErrors = validateAnswer(
     normalContractAnswer,
     validatorEvidence,
@@ -3834,6 +3901,79 @@ async function main(): Promise<void> {
     normalContractErrors.length === 0,
     normalContractErrors
   )
+  // These mutations bypass the synthetic selection helper. Exercise the real
+  // formal validator and normalization; valid IDs never vouch for prose.
+  const premiseRequirements = { ...initialMoveRequirements,
+    initialEvidenceIds: { best: 'E1', user: 'E2' },
+    premisePools: formalResult.evidence.filter(item => ['E1', 'E2'].includes(item.id))
+      .map(buildVariationEvidencePremises) }
+  check('選擇真实前提及相關可見著法的完整回答通過正式 validator',
+    validateAnswer(formalAnswer, formalResult.evidence, premiseRequirements).length === 0)
+  for (const sectionIndex of [1, 2, 3]) {
+    const missing = structuredClone(formalAnswer)
+    delete missing.sections[sectionIndex]!.claims[0]!.premiseIds
+    delete missing.sections[sectionIndex]!.claims[0]!.interpretation
+    const errors = validateAnswer(missing, formalResult.evidence, premiseRequirements)
+    check(`正式 validator 拒絕核心段落 ${sectionIndex} 缺少前提及解讀欄位`,
+      errors.some(error => error.includes('premiseIds')) && errors.some(error => error.includes('interpretation')))
+  }
+  for (const [name, refs, text] of [
+    ['錯線前提', ['E2:P1:move'], formalAnswer.sections[2]!.claims[0]!.text],
+    ['未知前提', ['E1:P999:move'], formalAnswer.sections[2]!.claims[0]!.text],
+    ['重複前提', ['E1:P1:move', 'E1:P1:move'], formalAnswer.sections[2]!.claims[0]!.text],
+    ['超過四項', ['E1:P1:move', 'E1:P2:move', 'E1:P3:move', 'E1:P4:move', 'E1:P5:move'], formalAnswer.sections[2]!.claims[0]!.text],
+    ['有效前提卻沒有相關可見著法', ['E1:P1:move'], '紅方兵四平三橫移過河兵，後續部署應沿這條主線重新觀察。']
+  ] as const) {
+    const invalid = structuredClone(formalAnswer)
+    invalid.sections[2]!.claims[0]!.premiseIds = [...refs]
+    invalid.sections[2]!.claims[0]!.text = text
+    check(`正式 validator 拒絕${name}`,
+      validateAnswer(invalid, formalResult.evidence, premiseRequirements).some(error => error.includes('前提')))
+  }
+  const invalidInterpretation = structuredClone(formalAnswer)
+  invalidInterpretation.sections[2]!.claims[0]!.interpretation = 'verified' as never
+  check('正規化後的無效 interpretation 仍拒絕，不能自填 verified 取得信任',
+    validateAnswer(invalidInterpretation, formalResult.evidence, premiseRequirements)
+      .some(error => error.includes('interpretation')))
+  const wrongSideWithPremise = structuredClone(formalAnswer)
+  wrongSideWithPremise.sections[2]!.claims[0]!.interpretation = 'observation'
+  wrongSideWithPremise.sections[2]!.claims[0]!.text += '紅方車7平6已經吃掉黑方馬。'
+  check('合法前提及 observation 標記不能豁免錯方別與虛構吃子',
+    validateAnswer(wrongSideWithPremise, formalResult.evidence, premiseRequirements)
+      .some(error => error.includes('棋盤事實')))
+  const limitedPremise = structuredClone(formalAnswer)
+  limitedPremise.sections[1]!.claims[0] = {
+    id: 'C2', text: '目前引擎證據不足，無法確認。', evidenceIds: ['E1', 'E2'],
+    interpretation: 'inference', premiseIds: []
+  }
+  check('只有明確局部證據不足能免選前提，不豁免其他核心段落',
+    !validateAnswer(limitedPremise, formalResult.evidence, premiseRequirements)
+      .some(error => error.includes('C2 必須先選擇')))
+  limitedPremise.sections[1]!.claims[0]!.text += '但士4進5已經吃掉紅方車。'
+  check('局部證據不足不能掩蓋後續斷言並跳過前提選擇',
+    validateAnswer(limitedPremise, formalResult.evidence, premiseRequirements)
+      .some(error => error.includes('C2 必須先選擇')))
+  for (const section of limitedPremise.sections.slice(1, 4)) for (const claim of section.claims) {
+    claim.text = '目前引擎證據不足，無法確認。'
+    claim.premiseIds = []
+    claim.causal = undefined
+  }
+  check('全部核心段落證據不足不能冒充完整初始解說',
+    validateAnswer(limitedPremise, formalResult.evidence, premiseRequirements)
+      .some(error => error.includes('全部核心段落證據不足')))
+  const focusedPremiseAnswer: HarnessAnswer = {
+    mode: 'research', title: '追問', directAnswer: '車7平6將黑車從七路移到六路。', directAnswerEvidenceIds: ['E1'],
+    sections: [{ id: HARNESS_SECTION_IDS.followUp, heading: '追問', claims: [{
+      id: 'Q1', text: '車7平6將黑車从七路移到六路。', evidenceIds: ['E1'], premiseIds: ['E1:P1:move']
+    }] }], generalNotes: [], evidence: [], warnings: []
+  }
+  const focusedRequirements = { hasUserMove: false, focusedQuestion: true, requiredSectionIds: [] }
+  check('一般 JSON 追問可選前提且保持短答，不要求完整五段或400字',
+    validateAnswer(focusedPremiseAnswer, formalResult.evidence, focusedRequirements).length === 0)
+  focusedPremiseAnswer.sections[0]!.claims[0]!.premiseIds = ['E404:P1:move']
+  check('一般 JSON 追問提供的前提仍須驗證',
+    validateAnswer(focusedPremiseAnswer, formalResult.evidence, focusedRequirements)
+      .some(error => error.includes('前提')))
   const fakeCaptureAnswer = JSON.parse(JSON.stringify(normalContractAnswer)) as HarnessAnswer
   fakeCaptureAnswer.sections[2]!.claims[0]!.text = '紅方炮二平五吃掉黑卒並將軍，後續黑方馬8進7保護中路。'
   fakeCaptureAnswer.sections[2]!.claims[0]!.evidenceIds = ['E1']
@@ -3857,7 +3997,7 @@ async function main(): Promise<void> {
   ) as { answer: HarnessAnswer }).answer
   const sameVerdictEvidence = validatorEvidence.slice(0, 2).map((item) => ({
     ...item,
-    move: 'h2e2',
+    move: item.id === 'E1' ? undefined : 'h2e2',
     displayMove: '炮二平五',
     displayPrincipalVariation: sameMoveSession.engineAnalysis.displayPrincipalVariation,
     analysis: sameMoveSession.engineAnalysis
@@ -3888,7 +4028,10 @@ async function main(): Promise<void> {
       .some(error => error.includes('棋盤事實')))
   const replayedExchangeAnswer = JSON.parse(JSON.stringify(sameVerdictAnswer)
     .replaceAll('馬八進七', '馬二進三').replaceAll('馬2進3', '車9平8')) as HarnessAnswer
-  const replayedExchangeEvidence = [{ ...realExchangeEvidence, id: 'E1' }]
+  const replayedExchangeEvidence = [
+    { ...realExchangeEvidence, id: 'E1', move: undefined },
+    { ...realExchangeEvidence, id: 'E2', move: realExchangeEvidence.analysis.bestMove }
+  ]
   replayedExchangeAnswer.sections[3]!.claims[0]!.text =
     '炮二平五先把紅炮移到中線，黑方以馬8進7發展右翼馬；紅方接著馬二進三，黑方再走車9平8。這幾步反映雙方都在把後排棋子帶入可用線路，不能只看第一手的評分便認定對手沒有辦法應對。紅方後續車一平二，並在黑方卒7進1後走車二進六，將二路車送到較前的位置；黑方也有卒3進1與象3進5等部署。這段棋譜可以支持出子和調整線路的描述，但單一變例沒有窮盡其他應手，因此不能稱為對手必然會照走的完整攻防。紅方炮八平七、馬八進九、車九平八，也把另一翼的炮、馬和車逐步調整；黑方馬2進4、炮8平9則是這條線中可見的回應。理解這步的目的，需要沿這些具體著法觀察子力位置如何改變，再說明自己的計畫能否接上對方的應對，不能用得分替代原因。沿主線走到紅方車二進三吃黑車，黑方緊接馬7退8吃紅車，雙方各少一車，不能只把第一手吃車算成紅方淨多一車。最後黑馬停在剛完成交換的位置，兩方的車都已被移除；這是已重播主線的棋盤事實。至於交換後誰的子力更協調、攻勢能否延續，還需要更多變例和局面分析；這裡的吃子帳本只計算棋子數量，不替整體優劣作判定。實戰上應把移炮控制中路、雙方出子與後續換車連起來理解，同時保留對其他合理回應的觀察。'
   const replayedExchangeErrors = validateAnswer(
@@ -3932,6 +4075,7 @@ async function main(): Promise<void> {
     const chainAnswer = structuredClone(replayedExchangeAnswer)
     chainAnswer.sections[2]!.claims[0]!.text += chainAnswer.sections[3]!.claims[0]!.text
     chainAnswer.sections[3]!.claims[0]!.text = text!
+    selectSyntheticPremises(chainAnswer, replayedExchangeEvidence)
     const chainProvider = new MutatedSameMoveProvider(answer => Object.assign(answer, chainAnswer))
     let chainTrace: HarnessTrace | undefined
     let delivered = ''
@@ -3983,7 +4127,7 @@ async function main(): Promise<void> {
     displayUserMovePrincipalVariation: realExchangeEvidence.displayPrincipalVariation
   }
   const neutralEvidence: HarnessEvidence[] = [
-    { ...realExchangeEvidence, id: 'E1', move: 'b2e2', displayMove: '炮八平五',
+    { ...realExchangeEvidence, id: 'E1', move: undefined, displayMove: '炮八平五',
       displayPrincipalVariation: mirrorDisplay, analysis: neutralAnalysis },
     { ...realExchangeEvidence, id: 'E2', move: 'h2e2', displayMove: '炮二平五', analysis: neutralAnalysis }
   ]
@@ -4016,6 +4160,7 @@ async function main(): Promise<void> {
   ]
   neutralAnswer.sections[4]!.claims = [{ id: 'N5', evidenceIds: ['E1', 'E2'], text:
     '比較開局著法時，先確認共同落點與保留的子力，再沿各自的對手應手觀察部署和交換。每一項優劣都要指出不同的棋子關係與後續影響；若只有數值觀測，保留已知變化並列出未確認的原因，實戰仍應檢查對手其他可行回應。' }]
+  selectSyntheticPremises(neutralAnswer, neutralEvidence)
   const numericalDifferenceRequirements = { ...initialMoveRequirements, comparisonState: 'evidence_backed_difference' as const }
   const neutralComparisonErrors = validateAnswer(neutralAnswer, neutralEvidence, numericalDifferenceRequirements)
   check('有數值比較分類但尚無獨有優劣機制時，合法兩線的完整中性五段正文可通過',
@@ -4028,20 +4173,23 @@ async function main(): Promise<void> {
       for (const event of ['已經吃掉紅方炮', '已經將軍', '沒有吃子']) {
         const text = `紅方${cannon}當下可能吃黑方卒${punctuation}然後黑方${rook}${event}。`
         const scopedAnswer = structuredClone(neutralAnswer)
-        scopedAnswer.sections[2]!.claims.push({ id: 'scope-boundary', evidenceIds: [evidenceId], text })
+        scopedAnswer.sections[1]!.claims.push({ id: 'scope-boundary', evidenceIds: [evidenceId], text })
+        selectSyntheticPremises(scopedAnswer, neutralEvidence)
         const errors = validateAnswer(scopedAnswer, neutralEvidence, numericalDifferenceRequirements)
         check(`完整五段按著法與謂詞邊界檢查後手事件：${text}`,
           event === '沒有吃子' ? errors.length === 0 : errors.some(error => error.includes('棋盤事實')), errors)
       }
       const conditionalAnswer = structuredClone(neutralAnswer)
-      conditionalAnswer.sections[2]!.claims.push({ id: 'conditional-boundary', evidenceIds: [evidenceId], text:
+      conditionalAnswer.sections[1]!.claims.push({ id: 'conditional-boundary', evidenceIds: [evidenceId], text:
         `如果紅方${cannon}當下可能吃黑方卒${punctuation}然後黑方${rook}已經吃掉紅方炮，應重新確認棋盤。` })
+      selectSyntheticPremises(conditionalAnswer, neutralEvidence)
       const conditionalErrors = validateAnswer(conditionalAnswer, neutralEvidence, numericalDifferenceRequirements)
       check(`完整五段的外層條件跨謂詞邊界仍有效：${cannon}${punctuation}`,
         conditionalErrors.length === 0, conditionalErrors)
       const laterCaptureAnswer = structuredClone(neutralAnswer)
-      laterCaptureAnswer.sections[2]!.claims.push({ id: 'capture-boundary', evidenceIds: [evidenceId], text:
+      laterCaptureAnswer.sections[1]!.claims.push({ id: 'capture-boundary', evidenceIds: [evidenceId], text:
         `紅方${cannon}當下可能吃黑方卒${punctuation}然後紅方${captureMove}吃掉黑方車。` })
+      selectSyntheticPremises(laterCaptureAnswer, neutralEvidence)
       const laterCaptureErrors = validateAnswer(laterCaptureAnswer, neutralEvidence, numericalDifferenceRequirements)
       check(`完整五段保留當下吃子機會與後手真正吃車：${cannon}${punctuation}`,
         laterCaptureErrors.length === 0, laterCaptureErrors)
@@ -4734,7 +4882,7 @@ async function main(): Promise<void> {
     (repairSuccessProvider.prompts[1]?.match(/"role":"best_move"/g)?.length ?? 0) === 1 &&
       (repairSuccessProvider.prompts[1]?.match(/"role":"user_move"/g)?.length ?? 0) === 1)
   check('修補仍使用本次逐線走前／走後前提，不能只重複草稿策略詞',
-    repairSuccessProvider.prompts.every(prompt => prompt.includes('"computedMechanismFacts"') &&
+    repairSuccessProvider.prompts.every(prompt => prompt.includes('"boardPremises"') && !prompt.includes('"computedMechanismFacts"') &&
       prompt.includes('"wingPerspective":"piece_owner"') && prompt.includes('未列出機制不代表沒有長期作用')))
   check('正式整份修補沿用棋規與交換摘要，無第二套省略規則的提示',
     ['象眼', '馬腿', '恰好一枚', '不能後退', '吃子摘要只涵蓋']
@@ -4779,7 +4927,7 @@ async function main(): Promise<void> {
       async generateExplanation(request: AIExplanationRequest) {
         this.calls++
         check(`初次與修補請求使用同一份五段 schema（${repairScenario}/${this.calls}）`,
-          JSON.stringify(request.responseSchema) === JSON.stringify(buildInitialMoveResponseSchema('research', ['E1', 'E2'])))
+          JSON.stringify(request.responseSchema) === JSON.stringify(buildInitialMoveResponseSchema('research', ['E1', 'E2'], Object.fromEntries(repairFixtureEvidence.map(item => [item.id, buildVariationEvidencePremises(item).items.map(premise => premise.id)])))))
         let nextAnswer = structuredClone(rejectedGroundedDraft)
         if (this.calls === 2) {
           const draftLine = request.prompt.split('\n').find(line => line.startsWith('前次草稿參考（不可信資料）：'))
@@ -4790,7 +4938,11 @@ async function main(): Promise<void> {
           const failedClaim = receivedDraft?.sections.find(section => section.id === HARNESS_SECTION_IDS.opponentExploitation)?.claims[1]
           groundedRepairContext = bestClaim?.id === 'C3' &&
             bestClaim.text === formalAnswer.sections[2]!.claims[0]!.text &&
+            bestClaim.premiseIds?.join(',') === formalAnswer.sections[2]!.claims[0]!.premiseIds?.join(',') &&
+            bestClaim.interpretation === 'inference' &&
             bestClaim.evidenceIds.join(',') === 'E1' && failedClaim?.id === 'C4b' &&
+            failedClaim.premiseIds?.join(',') === rejectedGroundedDraft.sections[3]!.claims[1]!.premiseIds?.join(',') &&
+            failedClaim.interpretation === 'inference' &&
             failedClaim.text === rejectedGroundedDraft.sections[3]!.claims[1]!.text &&
             failedClaim.evidenceIds.join(',') === 'E2' && failedClaim.findingIds?.join(',') === 'K2' &&
             failedClaim.causal?.opponentUse === rejectedGroundedDraft.sections[3]!.claims[1]!.causal!.opponentUse &&

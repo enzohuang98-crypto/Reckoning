@@ -47,7 +47,8 @@ test('moving the opening horse frees the real rook destination without relocatin
   const result = facts(openingMoves)
   assert.deepEqual(result.steps[2].futureMoveLegalityChanges, [{
     futurePly: 5, move: '車九平八', side: 'red', piece: 'rook',
-    fromSquare: 'a0', toSquare: 'b0', beforeLegal: false, afterLegal: true
+    fromSquare: 'a0', toSquare: 'b0', beforeLegal: false, afterLegal: true,
+    beforeConstraint: '終點 b0 已有己方棋子。', afterConstraint: null
   }])
   assert.equal(result.steps[0].futureMoveLegalityChanges.some(change => change.futurePly === 7), false,
     'the cannon must not borrow a future b0 origin for a rook still at a0')
@@ -59,7 +60,8 @@ test('a cannon vacates a vertical lane only when the future rook already occupie
   assert.equal(step.toSquare, 'e2')
   assert.deepEqual(step.futureMoveLegalityChanges, [{
     futurePly: 3, move: '車八進六', side: 'red', piece: 'rook',
-    fromSquare: 'b0', toSquare: 'b6', beforeLegal: false, afterLegal: true
+    fromSquare: 'b0', toSquare: 'b6', beforeLegal: false, afterLegal: true,
+    beforeConstraint: '車的路徑上有棋子阻擋。', afterConstraint: null
   }])
 })
 
@@ -156,6 +158,19 @@ test('resolving check changes future legality without inventing a geometric lane
   const step = facts(['d1d0', 'a0a1', 'e1f1'], fen).steps[0]
   assert.deepEqual(step.futureMoveLegalityChanges.map(change => [change.move, change.beforeLegal, change.afterLegal]),
     [['車五平四', false, true]])
+  assert.match(step.futureMoveLegalityChanges[0].beforeConstraint ?? '', /被將軍/)
+  assert.equal(step.futureMoveLegalityChanges[0].afterConstraint, null)
+  assert.equal(/馬腿/.test(step.futureMoveLegalityChanges[0].beforeConstraint ?? ''), false)
+})
+
+test('advancing the actual horse-leg pawn exposes the existing checker reason rather than a guessed strategic purpose', () => {
+  const result = facts(['h2e2', 'h9g7', 'h0g2', 'i9h9', 'g3g4', 'h7i7', 'b0c2', 'c6c5', 'b2b6', 'g9e7', 'g2f4'])
+  const change = result.steps[4].futureMoveLegalityChanges.find(item => item.futurePly === 11)
+  assert.ok(change)
+  assert.equal(change.beforeLegal, false)
+  assert.equal(change.afterLegal, true)
+  assert.equal(change.beforeConstraint, '蹩馬腿：馬腿位置有棋子。')
+  assert.equal(change.afterConstraint, null)
 })
 
 test('moved-piece capture opportunities compare different before and after targets', () => {

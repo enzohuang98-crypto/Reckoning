@@ -28,6 +28,9 @@ export interface FutureMoveLegalityChange {
   /** Hypothetical same-side turn on each fixed board, not an extra played ply. */
   beforeLegal: boolean
   afterLegal: boolean
+  /** Existing legal-move checker diagnostic; never a strategic or unique-cause verdict. */
+  beforeConstraint: string | null
+  afterConstraint: string | null
 }
 
 export interface VariationMechanismStep {
@@ -186,11 +189,15 @@ export function buildVariationMechanismFacts(evidence: HarnessEvidence): Variati
       alreadyMoved.add(future.moving)
       if (!eligible) continue
       futurePliesChecked.push(next + 1)
-      const beforeLegal = legalMoveCheck(frame.before.grid, frame.moving.color, future.uci).ok
-      const afterLegal = legalMoveCheck(frame.after.grid, frame.moving.color, future.uci).ok
+      const beforeCheck = legalMoveCheck(frame.before.grid, frame.moving.color, future.uci)
+      const afterCheck = legalMoveCheck(frame.after.grid, frame.moving.color, future.uci)
+      const beforeLegal = beforeCheck.ok
+      const afterLegal = afterCheck.ok
       if (beforeLegal !== afterLegal) {
         changes.push({ futurePly: next + 1, move: future.move, side: future.moving.color,
-          piece: future.moving.type, fromSquare: future.uci.slice(0, 2), toSquare: future.uci.slice(2), beforeLegal, afterLegal })
+          piece: future.moving.type, fromSquare: future.uci.slice(0, 2), toSquare: future.uci.slice(2), beforeLegal, afterLegal,
+          beforeConstraint: beforeCheck.ok ? null : beforeCheck.message ?? null,
+          afterConstraint: afterCheck.ok ? null : afterCheck.message ?? null })
       }
     }
     return {

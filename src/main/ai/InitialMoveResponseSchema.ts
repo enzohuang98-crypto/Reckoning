@@ -1,7 +1,11 @@
 import { INITIAL_MOVE_EXPLANATION_SECTION_IDS, type HarnessAnswerMode } from '@shared/types/Harness'
 
 /** Shape and reference IDs only. The formal validator still checks prose and board facts. */
-export function buildInitialMoveResponseSchema(mode: HarnessAnswerMode, evidenceIds: string[]): {
+export function buildInitialMoveResponseSchema(
+  mode: HarnessAnswerMode,
+  evidenceIds: string[],
+  premiseIdsByEvidence?: Record<string, readonly string[]>
+): {
   name: string; schema: Record<string, unknown>
 } {
   if (evidenceIds.length === 0) throw new Error('Initial explanation schema requires engine evidence.')
@@ -14,13 +18,23 @@ export function buildInitialMoveResponseSchema(mode: HarnessAnswerMode, evidence
   const causal = object({ cause: string, mechanism: string, affected: string,
     opponentUse: string, consequence: string })
   const [bestId, userId = bestId] = evidenceIds
-  const claim = (ids: string[], allowedEvidenceIds: string[], description: string): Record<string, unknown> => object({
-    id: { type: 'string', enum: ids },
-    text: { type: 'string', description },
-    evidenceIds: { ...references, items: { type: 'string', enum: allowedEvidenceIds } },
-    findingIds: { type: 'array', items: { type: 'string', enum: ['K1', 'K2'] } },
-    causal: { anyOf: [causal, { type: 'null' }] }
-  })
+  const claim = (ids: string[], allowedEvidenceIds: string[], description: string, requirePremises: boolean): Record<string, unknown> => {
+    const premiseIds = [...new Set(allowedEvidenceIds.flatMap(id => premiseIdsByEvidence?.[id] ?? []))]
+    return object({
+      id: { type: 'string', enum: ids },
+      ...(premiseIdsByEvidence ? {
+        premiseIds: { type: 'array', minItems: requirePremises && premiseIds.length > 0 ? 1 : 0,
+          maxItems: premiseIds.length > 0 ? 4 : 0, uniqueItems: true,
+          items: premiseIds.length > 0 ? { type: 'string', enum: premiseIds } : string,
+          description: '先選本段實際解釋的1–4項盤面前提；text必須引用對應中文著法。前提只提供觀察，不證明策略推論。' },
+        interpretation: { type: 'string', enum: ['observation', 'inference'] }
+      } : {}),
+      text: { type: 'string', description },
+      evidenceIds: { ...references, items: { type: 'string', enum: allowedEvidenceIds } },
+      findingIds: { type: 'array', items: { type: 'string', enum: ['K1', 'K2'] } },
+      causal: { anyOf: [causal, { type: 'null' }] }
+    })
+  }
   // Carry each section's actual role into the decoder contract as well as the
   // prompt. IDs/shapes are constraints; descriptions remain instructions, not
   // independent proof of prose length, distinctness or strategic correctness.
@@ -35,7 +49,8 @@ export function buildInitialMoveResponseSchema(mode: HarnessAnswerMode, evidence
     id: { type: 'string', enum: [id] }, heading: string,
     claims: { type: 'array', minItems: index === 3 ? 2 : 1, maxItems: index === 3 ? 2 : 1,
       items: claim(index === 3 ? ['C4a', 'C4b'] : [`C${index === 4 ? 5 : index + 1}`],
-        index === 2 ? [bestId!] : index === 3 ? [userId!] : [...new Set(evidenceIds)], descriptions[index]!) }
+        index === 2 ? [bestId!] : index === 3 ? [userId!] : [...new Set(evidenceIds)], descriptions[index]!,
+        index >= 1 && index <= 3) }
   })) }
   return { name: 'initial_move_explanation', schema: object({
     answer: object({

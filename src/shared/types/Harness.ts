@@ -182,6 +182,10 @@ export interface CausalChain {
 
 export interface HarnessClaim {
   id: string
+  /** Selected computed premises; IDs locate facts but do not verify the prose. */
+  premiseIds?: string[]
+  /** Model's declared reading of the premises, never an independent verdict. */
+  interpretation?: 'observation' | 'inference'
   text: string
   evidenceIds: string[]
   /** 直接連到已通過具體後果審查的 K 編號，讓系統可確定性驗證寫作者沒有另造結論。 */
