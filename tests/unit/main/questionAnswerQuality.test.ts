@@ -15,5 +15,7 @@ assert.equal(extractDirectQuestionText(JSON.stringify(JSON.stringify({ directAns
 const prompt=buildQuestionRecoveryPrompt({question,language:'zh-TW',fen:'test-fen',boardFacts:['紅兵在 g4，尚未過河'],engineFacts:'主線只有馬二進三'})
 assert(prompt.includes(question) && prompt.includes('紅兵在 g4，尚未過河'))
 assert(prompt.includes('只輸出給棋手閱讀的短文') && prompt.includes('不能用推薦另一手棋代替棋規'))
+assert(prompt.includes('computedMechanismFacts') && prompt.includes('未列出不代表沒有作用') &&
+  prompt.includes('不證明強迫應手、唯一原因或相對優勢'), '短追問 recovery 也需區分可計算前提與策略推論')
 assert(['象眼','馬腿','恰好一枚','不能後退'].every(rule => prompt.includes(rule)), '文字 recovery 也必須使用同一份棋規基礎')
 console.log('Question-answer relevance and recovery tests passed')

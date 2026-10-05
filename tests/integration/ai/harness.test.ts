@@ -1323,6 +1323,25 @@ async function main(): Promise<void> {
       sameMoveProvider.prompt.includes('"move":"馬8進7","side":"black"') &&
       sameMoveProvider.prompt.includes('"actualCapture":"本手未吃子。","actualCheck":"本手未將軍。"')
   )
+  const sameMovePromptEvidence = JSON.parse(/^證據：(.*)$/m.exec(sameMoveProvider.prompt)?.[1] ?? '[]') as Array<{
+    id: string
+    computedMechanismFacts: { evidenceId: string; scope: { wingPerspective: string }; steps: Array<{
+      move: string; side: string; fromFile: number; toFile: number; fromWing: string; toWing: string
+      actualCapture: unknown
+      captureOpportunities: { added: Array<{ square: string; side: string; piece: string }> }
+    }> }
+  }>
+  const firstCannonPremise = sameMovePromptEvidence[0]?.computedMechanismFacts.steps[0]
+  check('完整正式請求提供走前右翼炮至中路與新吃中卒機會，沒有把機會寫成已吃',
+    firstCannonPremise?.move === '炮二平五' && firstCannonPremise.side === 'red' &&
+      firstCannonPremise.fromFile === 2 && firstCannonPremise.toFile === 5 &&
+      firstCannonPremise.fromWing === 'right' && firstCannonPremise.toWing === 'center' &&
+      firstCannonPremise.actualCapture === null &&
+      firstCannonPremise.captureOpportunities.added.some(target => target.square === 'e6' && target.side === 'black' && target.piece === 'pawn'))
+  check('機制前提保持逐線身分並聲明有限觀察不證明策略優劣',
+    sameMovePromptEvidence.length === 2 && sameMovePromptEvidence.every(item =>
+      item.computedMechanismFacts.evidenceId === item.id && item.computedMechanismFacts.scope.wingPerspective === 'piece_owner') &&
+      sameMoveProvider.prompt.includes('不證明唯一原因、強迫應手或相對優勢'))
   check(
     '實戰步等同首選時保留五段 id 並改用正向顯示標題',
     sameMoveResult.finalText.includes('## 與首選一致') &&
@@ -4714,6 +4733,9 @@ async function main(): Promise<void> {
   check('修補只使用一份首選與實戰逐手來源，避免重複主線造成混淆',
     (repairSuccessProvider.prompts[1]?.match(/"role":"best_move"/g)?.length ?? 0) === 1 &&
       (repairSuccessProvider.prompts[1]?.match(/"role":"user_move"/g)?.length ?? 0) === 1)
+  check('修補仍使用本次逐線走前／走後前提，不能只重複草稿策略詞',
+    repairSuccessProvider.prompts.every(prompt => prompt.includes('"computedMechanismFacts"') &&
+      prompt.includes('"wingPerspective":"piece_owner"') && prompt.includes('未列出機制不代表沒有長期作用')))
   check('正式整份修補沿用棋規與交換摘要，無第二套省略規則的提示',
     ['象眼', '馬腿', '恰好一枚', '不能後退', '吃子摘要只涵蓋']
       .every(rule => repairSuccessProvider.prompts[1]?.includes(rule)))

@@ -1,5 +1,6 @@
 import { buildBoardQuestionFacts } from './BoardQuestionFacts'
 import { buildVariationBoardFacts, hasAffirmedConcreteVariationRelation, modelFacingVariationStep, summarizeVariationCaptures, validateVariationBoardStatements, VARIATION_BOARD_FACT_MAX_PLIES } from './VariationBoardFacts'
+import { buildVariationMechanismFacts } from './VariationMechanismFacts'
 import { buildQuestionRecoveryPrompt, extractDirectQuestionText, isFocusedQuestionAnswer } from './QuestionAnswerQuality'
 import { randomUUID } from 'node:crypto'
 import type { AIProvider, TokenUsage } from '@shared/types/AIProviderTypes'
@@ -369,6 +370,7 @@ function publicScopedEvidence(item: HarnessEvidence): object {
     id: item.id, purpose: item.purpose, engineName: item.engineName,
     positionFen: item.positionFen, move: item.displayMove, depth: item.depth,
     principalVariation: item.displayPrincipalVariation.slice(0, VARIATION_BOARD_FACT_MAX_PLIES),
+    computedMechanismFacts: buildVariationMechanismFacts(item),
     computedBoardFacts: { ...facts, steps: facts.steps.map(modelFacingVariationStep),
       captureOpportunityScope: 'captureOpportunities只列固定走後盤面，假如此手走子方再次輪走的合法可吃目標；實際下一手仍由對手走。機會尚未發生，不表示必然威脅。' }
   }
@@ -380,12 +382,17 @@ function publicComparisonEvidence(item: HarnessEvidence, role: 'best_move' | 'us
   return {
     id: item.id, role, engineName: item.engineName, positionFen: item.positionFen,
     move: item.displayMove, depth: item.depth,
+    computedMechanismFacts: buildVariationMechanismFacts(item),
     computedBoardFacts: { ...facts, steps: facts.steps.map(modelFacingVariationStep) },
     // Preserve an unreplayable tail as explicitly unverified engine notation;
     // it must never borrow side/capture/check facts from the other line.
     ...(facts.warning ? { unreplayedMoves: item.displayPrincipalVariation.slice(facts.steps.length, VARIATION_BOARD_FACT_MAX_PLIES) } : {})
   }
 }
+
+const MECHANISM_FACTS_GUIDANCE = `computedMechanismFacts 是本線合法重播的有限走前／走後比較。fromWing、toWing 的 left／right 依走子方視角，不能用觀看棋盤的方向判定左右翼。
+解釋「為什麼」時先挑有關的盤面前提：captureOpportunities.added／removed 是該枚走子新取得／失去的合法吃子機會，實際吃子另看 actualCapture；futureMoveLegalityChanges 的 beforeLegal→afterLegal 只比較仍在原格、未移動的另一同方棋子，說明本手是否讓該線稍後著法在固定盤面變成合法／不合法。這些不是額外下出的棋步，也不證明唯一原因、強迫應手或相對優勢。
+把前提連回對應中文著法、具體目標或空出的通路，再解釋主線如何運用它；單純換位不能直接推成「形成壓力」「必須補防」。若用後續部署推論計畫，說清楚中間步與限制。coverage／warning／truncated 明示未檢查範圍；未列出機制不代表沒有長期作用，也不能用其他變例補造前提。`
 
 function isAmbiguousQuestion(question: string | undefined, attachedMove?: string): boolean {
   if (!question?.trim() || attachedMove) return false
@@ -3062,6 +3069,7 @@ ${knowledgeContext}
                   : '第一段中性說明目前可支持的比較結論，不得把證據強度不足寫成確定優劣。'
             }
 - 說清楚「原因 → 棋盤機制 → 受影響棋子／線路 → 對手合理應對 → 後果」。
+${MECHANISM_FACTS_GUIDANCE}
 - 解釋計畫時要用初著以外的後續主線著法，指出哪枚棋子移動後空出、占據或改變了哪條線，以及對手應手如何影響這個計畫。逐線可見的部署是觀察；相對優勢是另需具體差異支持的推論。兩線共有的作用先說共同點，只有次序不同時就解釋次序與後續盤面，不把抽象評語當作比較原因。
 - 對手合理應對與後果至少逐字引用兩步真實引擎主線；不得拿分數當理由或把共有機制說成獨有優勢。
 - 不得虛構戰術、錯認輪走方、顯示 FEN、UCI、token、trace、證據編號或模型輪次。
@@ -3243,6 +3251,7 @@ ${dualComparison?.status === 'disagreement' ? `雙引擎比較：${JSON.stringif
             await callModel(`
 你是象棋分析 Harness 的「具體後果審查器」。只輸出 JSON，不要輸出思考過程。
 你可以根據棋盤 FEN 與引擎主線推導棋理，但每項結論必須指出主線中實際出現的中文著法。
+${MECHANISM_FACTS_GUIDANCE}
 目標不是比較分數，而是回答：
 ${hasUserMove ? comparisonContract : ''}
 ${
@@ -3409,6 +3418,7 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
 ${languageRule}
 ${hasUserMove ? comparisonContract : ''}
 你只能使用「已通過結構與引用檢查的模型後果摘要」與引擎證據，不得自行新增戰術事實。摘要的檢查不代表模型棋理解釋已獨立證實；verified 僅是模型欄位，不能當作引擎證明。
+${MECHANISM_FACTS_GUIDANCE}
 正文完全禁止使用分數高低、評估差距或可信度作為理由，也不要報告這些數字。
 著法只能使用證據中的中文名稱，不得顯示 h2e2 之類座標。
 
