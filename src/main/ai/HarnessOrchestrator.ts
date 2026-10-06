@@ -2480,7 +2480,7 @@ export async function runExplanationHarness(
       const callStartedAt = Date.now()
       const requestMaxOutputTokens = Math.min(remainingTokens, preferredMaxTokens)
       const reasoningConfig = payload.provider === 'openrouter'
-        ? openRouterReasoningConfig(deps.model, responseFormat) : undefined
+        ? openRouterReasoningConfig(deps.model, responseFormat, requestMaxOutputTokens) : undefined
       const reasoningPolicy = reasoningConfig
           ? reasoningConfig.effort === 'none' || reasoningConfig.enabled === false
             ? 'reasoning_disabled' as const
@@ -2568,6 +2568,7 @@ export async function runExplanationHarness(
           maxOutputTokens: requestMaxOutputTokens,
           responseFormat,
           reasoningPolicy,
+          ...(reasoningConfig?.max_tokens === undefined ? {} : { reasoningMaxTokens: reasoningConfig.max_tokens }),
           ...(phaseTimeoutMs === undefined ? {} : { timeoutMs: phaseTimeoutMs }),
           durationMs: Date.now() - callStartedAt,
           status: 'completed',
@@ -2606,6 +2607,7 @@ export async function runExplanationHarness(
           maxOutputTokens: requestMaxOutputTokens,
           responseFormat,
           reasoningPolicy,
+          ...(reasoningConfig?.max_tokens === undefined ? {} : { reasoningMaxTokens: reasoningConfig.max_tokens }),
           ...(phaseTimeoutMs === undefined ? {} : { timeoutMs: phaseTimeoutMs }),
           durationMs: Date.now() - callStartedAt,
           status: 'failed',

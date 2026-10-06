@@ -160,7 +160,8 @@ export class OpenRouterProvider implements AIProvider {
   ): Promise<AIExplanationResponse> {
     const reasoningConfig = openRouterReasoningConfig(
       request.model,
-      request.responseFormat === 'json' ? 'json' : 'text'
+      request.responseFormat === 'json' ? 'json' : 'text',
+      request.maxOutputTokens ?? 4096
     )
     // Endpoint capability is structured_outputs, not the legacy JSON-mode flag.
     // Confirmed against the exact free endpoint on 2026-10-04; require_parameters

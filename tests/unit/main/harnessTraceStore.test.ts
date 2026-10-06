@@ -125,7 +125,7 @@ const update = { requestId: 'research-r', operationId: 'research-op', phase: 'ro
   omittedPlies: 3, provisional: true, ...privateFields }
 const researchRecord = { ...trace,
   modelCallDiagnostics: [{ callIndex: 1, stage: 'research_planner', model: 'synthetic-model',
-    maxOutputTokens: 1000, responseFormat: 'json', reasoningPolicy: 'provider_managed',
+    maxOutputTokens: 1000, responseFormat: 'json', reasoningPolicy: 'bounded_1000_excluded', reasoningMaxTokens: 250,
     durationMs: 20, status: 'completed', ...privateFields }],
   evidence: [{ id: 'E2', engineId: 'test', engineName: 'test', purpose: 'legal continuation',
     positionFen: trace.positionFen, displayMove: '炮二平五', depth: null, score: null,
@@ -146,6 +146,14 @@ const researchRecord = { ...trace,
 const researchStore = new HarnessTraceStore({ read: () => [researchRecord] } as never)
 const persistedResearch = researchStore.listForExport()[0]!
 assert.equal(persistedResearch.modelCallDiagnostics?.[0]?.stage, 'research_planner')
+assert.equal(persistedResearch.modelCallDiagnostics?.[0]?.reasoningMaxTokens, 250)
+assert.equal(persistedResearch.modelCallDiagnostics?.[0]?.reasoningTokens, undefined,
+  'the requested ceiling cannot become measured reasoning consumption')
+for (const invalidCeiling of [-1, 0, 1.5, 1001, '250']) {
+  const invalid = { ...researchRecord, modelCallDiagnostics: researchRecord.modelCallDiagnostics.map(item =>
+    ({ ...item, reasoningMaxTokens: invalidCeiling })) }
+  assert.equal(new HarnessTraceStore({ read: () => [invalid] } as never).listForExport()[0]?.modelCallDiagnostics?.[0]?.reasoningMaxTokens, undefined)
+}
 assert.equal(persistedResearch.evidence[0]?.researchOrigin?.lineRole, 'hypothesis')
 assert.equal(persistedResearch.evidence[0]?.researchOrigin?.searchDepth, 18)
 assert.equal(persistedResearch.evidence[0]?.researchOrigin?.searchSideToMove, 'black')

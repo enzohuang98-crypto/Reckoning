@@ -212,6 +212,8 @@ export interface HarnessModelCallDiagnostic {
   maxOutputTokens: number
   responseFormat: 'json' | 'text'
   reasoningPolicy: 'bounded_1000_excluded' | 'effort_low_excluded' | 'reasoning_disabled' | 'provider_managed'
+  /** Requested reasoning ceiling; distinct from reported token consumption. */
+  reasoningMaxTokens?: number
   timeoutMs?: number
   durationMs: number
   status: 'completed' | 'failed'

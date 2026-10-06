@@ -345,6 +345,21 @@ await withServer(
   }
 )
 
+// Short research milestones share max_tokens with reasoning. The exact Ultra
+// policy must retain visible JSON room without increasing the request budget.
+await withServer(() => ({ model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  choices: [{ message: { content: '{"decision":"answer","reason":"observed","tasks":[]}' }, finish_reason: 'stop' }]
+}), async (baseUrl, requests) => {
+  await new OpenRouterProvider({ baseUrl }).generateExplanation({
+    provider: 'openrouter', model: 'nvidia/nemotron-3-ultra-550b-a55b:free', apiKey: 'synthetic-test-key',
+    prompt: 'Return a short legal research decision', responseFormat: 'json', maxOutputTokens: 1000,
+    metadata: { requestId: 'ultra-short-research', analysisId: 'ultra-short-research', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+  })
+  const body = requests[0].body as { max_tokens: number; reasoning: { max_tokens: number } }
+  assert.equal(body.max_tokens, 1000)
+  assert.equal(body.reasoning.max_tokens, 250, 'short milestones reserve three quarters for visible output')
+})
+
 await withServer(
   () => ({
     model: 'nvidia/nemotron-3-super-120b-a12b:free',

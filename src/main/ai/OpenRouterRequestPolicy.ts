@@ -15,7 +15,8 @@ export interface OpenRouterReasoningConfig {
 
 export function openRouterReasoningConfig(
   model: string,
-  responseFormat: 'json' | 'text'
+  responseFormat: 'json' | 'text',
+  maxOutputTokens = 4_096
 ): OpenRouterReasoningConfig | undefined {
   if (model === OPENROUTER_QWEN38_FREE_MODEL) {
     // This exact free endpoint advertises optional thinking, but no hard
@@ -42,8 +43,12 @@ export function openRouterReasoningConfig(
     return { enabled: false, exclude: true }
   }
   if (model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL) return undefined
+  // Ultra's exact free metadata advertises supports_max_tokens=true. Planner
+  // JSON has a smaller total allowance than the full writer; reasoning shares
+  // that allowance. Retain visible output room without enlarging either cap.
   return {
-    max_tokens: OPENROUTER_NEMOTRON_JSON_REASONING_MAX_TOKENS,
+    max_tokens: Math.min(OPENROUTER_NEMOTRON_JSON_REASONING_MAX_TOKENS,
+      Math.max(1, Math.floor(maxOutputTokens / 4))),
     exclude: true
   }
 }

@@ -381,6 +381,9 @@ function sanitizeModelCallDiagnostics(value: unknown): HarnessModelCallDiagnosti
       maxOutputTokens: item.maxOutputTokens as number,
       responseFormat: item.responseFormat as 'json' | 'text',
       reasoningPolicy: item.reasoningPolicy as HarnessModelCallDiagnostic['reasoningPolicy'],
+      ...(typeof item.reasoningMaxTokens === 'number' && Number.isSafeInteger(item.reasoningMaxTokens) &&
+        item.reasoningMaxTokens > 0 && item.reasoningMaxTokens <= 1000
+        ? { reasoningMaxTokens: item.reasoningMaxTokens } : {}),
       ...(typeof item.timeoutMs === 'number' ? { timeoutMs: item.timeoutMs } : {}),
       durationMs: item.durationMs as number,
       status: item.status as 'completed' | 'failed',
