@@ -512,9 +512,15 @@ try {
     },
     updater: {
       evidenceClass: 'isolated-packaged-predecessor-to-candidate', os,
-      gates: gates('isolated packagedPredecessorInstalled newUpdaterPresent normalInstallCompleted backgroundDownloadUiUsable noAutomaticQuit cacheReopenVerified cacheRestartVerified cacheCorruptionRejected downloadFailureRecovered earlyPrepareSafe installRetryPassed userDataPreserved draftProtected exactCandidateInstalled candidateLaunched'),
+      evidenceScope: 'exact-candidate-with-separate-fault-variant', canonicalInstallerFaultInjection: 'not_run',
+      gates: { ...gates('isolated packagedPredecessorInstalled newUpdaterPresent normalInstallCompleted backgroundDownloadUiUsable noAutomaticQuit cacheReopenVerified cacheRestartVerified cacheCorruptionRejected downloadFailureRecovered earlyPrepareSafe userDataPreserved draftProtected exactCandidateInstalled candidateLaunched'),
+        installRetryPassed: { result: 'passed', scope: 'same-source-fault-variant', runId: '67890' } },
+      runs: {
+        exact: { runId: '67891', harnessCommit: 'e'.repeat(40), artifactId: '101', reportSha256: 'f'.repeat(64) },
+        fault: { runId: '67890', harnessCommit: 'a'.repeat(40), artifactId: '102', reportSha256: 'a'.repeat(64) }
+      },
       targetVersion: '0.4.15', targetInstallerSha256: 'b'.repeat(64), predecessorVersion: '0.4.14',
-      predecessorInstallerSha256: 'c'.repeat(64), predecessorCommitSha: 'd'.repeat(40),
+      predecessorInstallerSha256: 'c'.repeat(64), predecessorCommitSha: 'a'.repeat(40),
       installerPayloadBytesOnCacheReuse: 0, testedAt: new Date().toISOString()
     }
   }
@@ -538,9 +544,16 @@ try {
   check('Unsigned evidence rejects teacher-candidate mode and NOT_RUN samples',
     runEvidence(value => { value.releaseMode = 'teacher-candidate' }) !== 0 &&
     runEvidence(value => { value.result = 'NOT_RUN' }) !== 0)
-  check('Every candidate and updater gate requires typed explicit true',
+  check('Every candidate and updater gate requires typed explicit evidence',
     ['candidate', 'updater'].every(section => Object.keys(synthetic[section as 'candidate' | 'updater'].gates).every(field =>
       [false, 'true', undefined].every(replacement => runEvidence(value => { value[section].gates[field] = replacement }) !== 0))))
+  check('Unsigned updater requires separate attributable exact and fault run identities',
+    runEvidence(value => { delete value.updater.runs }) !== 0 &&
+      runEvidence(value => { value.updater.runs.fault.runId = value.updater.runs.exact.runId }) !== 0 &&
+      runEvidence(value => { value.updater.runs.fault.harnessCommit = 'e'.repeat(40) }) !== 0 &&
+      runEvidence(value => { value.updater.predecessorCommitSha = 'e'.repeat(40) }) !== 0 &&
+      runEvidence(value => { value.updater.gates.installRetryPassed = true }) !== 0 &&
+      runEvidence(value => { value.updater.canonicalInstallerFaultInjection = 'passed' }) !== 0)
   check('Unsigned evidence rejects source runner and SDK fixture substitutions',
     runEvidence(value => { value.candidate.evidenceClass = 'source-runner' }) !== 0 &&
     runEvidence(value => { value.candidate.analysis.evidenceClass = 'sdk-fixture' }) !== 0 &&

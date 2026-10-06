@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { request } from 'node:https'
 import { pathToFileURL } from 'node:url'
+import { validateRunBindings, verifyGithubArtifacts } from './verify-updater-run-evidence.mjs'
 
 const REPOSITORY = 'enzohuang98-crypto/Reckoning'
 const MAX_BYTES = 128 * 1024
@@ -90,7 +91,10 @@ export function validateEvidenceBytes(bytes, expected, now = Date.now()) {
   const u = e.updater
   requireValue(u?.evidenceClass === 'isolated-packaged-predecessor-to-candidate', 'Updater evidence must use an actual isolated packaged predecessor')
   requireClient(u.os, false, 'updater.os')
-  requireTrueFields(u.gates, updaterGates, 'updater.gates')
+  requireTrueFields(u.gates, updaterGates.filter(gate => gate !== 'installRetryPassed'), 'updater.gates')
+  // NSIS fault injection changes installer bytes. Keep its actual result
+  // attributable to a separate same-source run, never to the canonical hash.
+  validateRunBindings(u, e)
   requireValue(u.targetVersion === expected.version && u.targetInstallerSha256 === e.installerSha256, 'Updater target must be exact candidate')
   requireValue(typeof u.predecessorVersion === 'string' && VERSION.test(u.predecessorVersion), 'Updater must record a valid predecessor version')
   const previousParts = u.predecessorVersion.split('.').map(BigInt)
@@ -145,7 +149,11 @@ async function main(args) {
     releaseTag: options.tag, commitSha: options.commit, candidateReleaseRunId: options['run-id'],
     installerSha256: options['setup-sha256'], version: options.version
   })
-  console.log(`Unsigned candidate evidence validated: ${evidence.releaseTag}, ${evidence.commitSha}, run ${evidence.candidateReleaseRunId}; candidate ${evidence.candidate.os.architecture}/${evidence.candidate.os.executionMode}, updater ${evidence.updater.os.architecture}/${evidence.updater.os.executionMode}; NotSigned, SmartScreen may warn or block.`)
+  if (options.url) {
+    const verified = verifyGithubArtifacts(evidence)
+    console.log(`GitHub artifacts verified: exact candidate run ${verified.exactRunId}; separate same-source NSIS fault run ${verified.faultRunId}.`)
+  }
+  console.log(`${options.url ? 'Unsigned candidate evidence validated' : 'Offline schema validated only; no GitHub, Windows or provider acceptance'}: ${evidence.releaseTag}, ${evidence.commitSha}, run ${evidence.candidateReleaseRunId}; candidate ${evidence.candidate.os.architecture}/${evidence.candidate.os.executionMode}, updater ${evidence.updater.os.architecture}/${evidence.updater.os.executionMode}; NotSigned, SmartScreen may warn or block.`)
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main(process.argv.slice(2)).catch(error => { console.error(`Unsigned candidate evidence rejected: ${error.message}`); process.exitCode = 1 })

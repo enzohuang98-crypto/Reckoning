@@ -8,10 +8,13 @@ const assert = require('node:assert/strict')
 
 function createFeed(directory, evidencePath) {
   const root = resolve(directory)
-  const manifest = JSON.parse(readFileSync(join(root, 'isolated-package-manifest.json'), 'utf8').replace(/^\uFEFF/, ''))
-  assert.equal(manifest.productionRelease, false)
+  let manifest = JSON.parse(readFileSync(join(root, 'isolated-package-manifest.json'), 'utf8').replace(/^\uFEFF/, ''))
+  if (manifest.role === 'release-candidate') manifest = require('./windows-exact-candidate.cjs').validateManifest(root)
+  else {
+    assert.equal(manifest.productionRelease, false)
+    assert.equal(manifest.role, 'test-candidate')
+  }
   assert.equal(manifest.signature, 'NotSigned')
-  assert.equal(manifest.role, 'test-candidate')
   assert.match(manifest.sourceCommit, /^[a-f0-9]{40}$/i)
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/)
   const assets = new Map()

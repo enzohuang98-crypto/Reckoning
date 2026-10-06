@@ -22,9 +22,22 @@ $report = [ordered]@{
 $launched = $null
 try {
   $manifest = Get-Content -Raw -Encoding UTF8 release/isolated-package-manifest.json | ConvertFrom-Json
-  if ($manifest.sourceCommit -ne $report.sourceCommit -or $manifest.productionRelease -ne $false -or $manifest.signature -ne 'NotSigned') {
+  $mode = if ($env:ACCEPTANCE_MODE) { $env:ACCEPTANCE_MODE } else { 'test-pair' }
+  if ($mode -notin @('test-pair', 'exact-candidate')) { throw 'Unknown acceptance mode.' }
+  $expectedSource = $report.sourceCommit
+  if ($mode -eq 'exact-candidate') {
+    node tools/acceptance/windows-exact-candidate.cjs verify release/update-candidate
+    if ($LASTEXITCODE -ne 0) { throw 'Exact candidate verification failed before predecessor install.' }
+    $candidateManifest = Get-Content -Raw -Encoding UTF8 release/update-candidate/isolated-package-manifest.json | ConvertFrom-Json
+    $expectedSource = $candidateManifest.sourceCommit
+    if ($manifest.version -cne $candidateManifest.predecessorVersion) { throw 'Predecessor version differs from explicit exact-candidate input.' }
+  }
+  if ($manifest.sourceCommit -cne $expectedSource -or $manifest.harnessCommit -cne $report.sourceCommit -or
+      $manifest.mode -cne $mode -or $manifest.role -cne 'predecessor' -or $manifest.probeRunId -cne $env:GITHUB_RUN_ID -or
+      $manifest.productionRelease -ne $false -or $manifest.signature -ne 'NotSigned') {
     throw 'Artifact provenance does not match this isolated source checkout.'
   }
+  $report.mode = $mode; $report.harnessCommit = $report.sourceCommit; $report.sourceCommit = $manifest.sourceCommit
   foreach ($artifact in $manifest.artifacts) {
     if ([string]::IsNullOrWhiteSpace($artifact.name) -or [IO.Path]::GetFileName($artifact.name) -ne $artifact.name -or $artifact.sha256 -notmatch '^[A-Fa-f0-9]{64}$') { throw 'Invalid artifact filename or SHA-256.' }
     $item = Get-Item -LiteralPath (Join-Path 'release' $artifact.name)
@@ -39,7 +52,7 @@ try {
   # real bundled engine/NNUE, unsigned status and both shortcut targets.
   # The existing smoke script is UTF-8 without BOM. PowerShell 7 preserves its
   # Chinese executable paths; Windows PowerShell 5 would decode those as ANSI.
-  & pwsh.exe -NoProfile -ExecutionPolicy Bypass -File tools/release/smoke-installer.ps1 -Phase Install -AllowUnsigned -ExpectedSha256 ($setup[0].sha256)
+  & pwsh.exe -NoProfile -ExecutionPolicy Bypass -File tools/release/smoke-installer.ps1 -Phase Install -AllowUnsigned -ExpectedSha256 ($setup[0].sha256) -ExpectedVersion $manifest.version
   if ($LASTEXITCODE -ne 0) { throw 'Actual installer acceptance failed.' }
   $report.installer = 'passed'
   $report.installerSha256 = $setup[0].sha256

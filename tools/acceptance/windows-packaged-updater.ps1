@@ -5,9 +5,14 @@ $os = Get-CimInstance Win32_OperatingSystem
 if ([int]$os.ProductType -ne 1 -or [int]$os.BuildNumber -lt 22000) { throw 'A Windows 11 client VM is required.' }
 $script:probeExe = Join-Path $env:LOCALAPPDATA 'Programs\xiangqi-analyzer\象棋AI分析講解.exe'
 $script:probeOutputPath = $OutputPath
+$mode = if ($env:ACCEPTANCE_MODE) { $env:ACCEPTANCE_MODE } else { 'test-pair' }
+if ($mode -notin @('test-pair', 'exact-candidate')) { throw 'Unknown acceptance mode.' }
+$exactMode = $mode -eq 'exact-candidate'
 $report = [ordered]@{
   sourceCommit = (git rev-parse HEAD).Trim(); runId = $env:GITHUB_RUN_ID
+  harnessCommit = (git rev-parse HEAD).Trim(); mode = $mode
   capturedAtUtc = [DateTime]::UtcNow.ToString('o'); os = [string]$os.Caption
+  osProductType = [int]$os.ProductType; osBuild = [string]$os.BuildNumber
   nativeArchitecture = $env:PROCESSOR_ARCHITECTURE
   differences = @('ARM64 Windows 11 client with x64 emulation', 'Unpublished test versions with generic loopback feed; not final Release assets')
   formalCandidateAcceptance = 'not_run'; providerAcceptance = 'not_run'; signature = 'NotSigned'
@@ -158,21 +163,40 @@ function Get-ValidatedPendingInstaller([string]$ExpectedHash) {
 try {
   $predecessor = Get-Content -Raw -Encoding UTF8 release/isolated-package-manifest.json | ConvertFrom-Json
   $candidate = Get-Content -Raw -Encoding UTF8 release/update-candidate/isolated-package-manifest.json | ConvertFrom-Json
-  if ($predecessor.sourceCommit -ne $report.sourceCommit -or $candidate.sourceCommit -ne $report.sourceCommit -or
-      $predecessor.role -ne 'predecessor' -or $candidate.role -ne 'test-candidate' -or
-      $predecessor.productionRelease -ne $false -or $candidate.productionRelease -ne $false -or
+  if ($exactMode) {
+    node tools/acceptance/windows-exact-candidate.cjs verify release/update-candidate
+    if ($LASTEXITCODE -ne 0) { throw 'Exact candidate provenance verification failed.' }
+    $report.sourceCommit = $candidate.sourceCommit
+    $report.candidateManifest = $candidate
+    $report.faultRun = $candidate.faultRun
+    $report.differences = @('ARM64 Windows 11 client with x64 emulation',
+      'Unchanged public candidate; only predecessor has lower version, loopback feed and declared observation hooks',
+      'NSIS exit-73 retry is separate same-source test-pair evidence, not executed with canonical candidate bytes')
+    $report.exactCandidateUpdaterAcceptance = 'not_run'
+    $report.installFailureRetryScope = 'not-run-on-canonical-installer; separate-same-source-fault-variant'
+    if ($predecessor.version -cne $candidate.predecessorVersion) { throw 'Explicit predecessor version mismatch.' }
+  }
+  if ($predecessor.sourceCommit -cne $report.sourceCommit -or $candidate.sourceCommit -cne $report.sourceCommit -or
+      $predecessor.harnessCommit -cne $report.harnessCommit -or $predecessor.mode -cne $mode -or
+      $predecessor.role -ne 'predecessor' -or
+      $candidate.role -cne $(if ($exactMode) { 'release-candidate' } else { 'test-candidate' }) -or
+      $predecessor.productionRelease -ne $false -or $candidate.productionRelease -ne $exactMode -or
       $predecessor.signature -ne 'NotSigned' -or $candidate.signature -ne 'NotSigned') { throw 'Unpublished package provenance mismatch.' }
   if ([version]$candidate.version -le [version]$predecessor.version) { throw 'Updater exercise requires a newer real package identity.' }
   if ((Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion -notin @($predecessor.version, "$($predecessor.version).0")) { throw 'Installed predecessor version mismatch.' }
   $feed = Get-Content -Raw -LiteralPath (Join-Path (Split-Path $script:probeExe) 'resources\app-update.yml')
   if ($feed -notmatch '(?m)^provider:\s*generic\s*$' -or $feed -notmatch 'http://127\.0\.0\.1:18765/') { throw 'Installed updater is not isolated from production.' }
   $report.predecessorVersion = $predecessor.version
+  $report.predecessorCommit = $predecessor.sourceCommit
+  $predecessorSetup = @($predecessor.artifacts | Where-Object { $_.name -ceq "xiangqi-analyzer-$($predecessor.version)-setup.exe" })
+  if ($predecessorSetup.Count -ne 1) { throw 'Predecessor lacks a unique installer entry.' }
+  $report.predecessorInstallerSha256 = $predecessorSetup[0].sha256
   $report.candidateVersion = $candidate.version
   $setupEntry = @($candidate.artifacts | Where-Object { $_.name -ceq "xiangqi-analyzer-$($candidate.version)-setup.exe" })
   if ($setupEntry.Count -ne 1) { throw 'Candidate manifest lacks a unique actual installer.' }
   $report.candidateInstallerSha256 = $setupEntry[0].sha256
   $report.candidateInstallerSize = [long]$setupEntry[0].size
-  if ($predecessor.probeRunId -cne $env:GITHUB_RUN_ID -or $candidate.probeRunId -cne $env:GITHUB_RUN_ID -or
+  if ($predecessor.probeRunId -cne $env:GITHUB_RUN_ID -or (-not $exactMode -and $candidate.probeRunId -cne $env:GITHUB_RUN_ID) -or
       $env:GITHUB_RUN_ID -notmatch '^[1-9][0-9]{0,19}$') { throw 'Compile-time probe identity mismatch.' }
   $script:probeFaultRoot = Join-Path ([IO.Path]::GetTempPath()) "reckoning-updater-probe-$($env:GITHUB_RUN_ID)"
   [void](New-Item -ItemType Directory -Path $script:probeFaultRoot -Force)
@@ -277,6 +301,8 @@ try {
   if ($cacheNetwork.phases.'valid-cache-reopen'.installerBytes -gt 0 -or $cacheNetwork.phases.'valid-cache-reopen'.installerRequests -gt 0) { throw 'Valid same-version cache was downloaded again after reopening.' }
   if ($cacheNetwork.phases.'valid-cache-reopen'.metadataBytes -le 0) { throw 'Cache acceptance lacked a fresh actual metadata check.' }
   $report.validCacheReopen = 'passed'
+  $report.cacheReusePayloadBytes = [long]$cacheNetwork.phases.'valid-cache-reopen'.installerBytes
+  $report.cacheReusePayloadRequests = [long]$cacheNetwork.phases.'valid-cache-reopen'.installerRequests
   Record-Probe 'valid-cache-reopen'
 
   Invoke-ProbeAction '分析'
@@ -340,6 +366,7 @@ try {
   # SDK owns launching the actual hash-validated NSIS executable. Its one-shot
   # customInit fault exits before installation. SDK quits the App on spawn,
   # so the real recovery mode is normal reopening, not an in-process retry.
+  if (-not $exactMode) {
   Set-FeedPhase 'install' 'healthy'
   # Subscribe before SDK launch so even a fast customInit failure is retained.
   # Only the matching NSIS PID's OS stop event is recorded, never other processes.
@@ -380,7 +407,10 @@ try {
       $retryNetwork.phases.'install-failure-recovery'.installerRequests -gt 0) { throw 'Installer failure recovery did not revalidate and reuse the actual cached installer.' }
   $report.installFailureRecoveryMode = 'normal-reopen-and-UI-retry-after-real-NSIS-exit-73'
   $report.installFailureEvidence = @{ configuredFault = $installFault; actualOsExit = $actualInstallerExit }
+  }
   Set-FeedPhase 'install' 'healthy'
+  $preparedInstaller = Get-ValidatedPendingInstaller $report.candidateInstallerSha256
+  $report.preparedInstallerSha256 = (Get-FileHash -LiteralPath $preparedInstaller -Algorithm SHA256).Hash
   Invoke-ProbeAction '重新啟動完成更新'
   Confirm-ProbeRestart
   [void](Wait-Probe {
@@ -388,6 +418,7 @@ try {
   } 'Normal updater did not install the expected candidate version.' 180)
   Start-ProbeApplication
   if ((Get-FileHash -LiteralPath $dataPath -Algorithm SHA256).Hash -ne $report.savedDataSha256Before) { throw 'Actual saved application data changed during install.' }
+  $report.savedDataSha256After = (Get-FileHash -LiteralPath $dataPath -Algorithm SHA256).Hash
   $report.savedDataFilePreserved = 'passed'
   $report.finalInstalledVersion = (Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion
   Open-ProbeSystemSettings
@@ -428,7 +459,8 @@ try {
   $report.installPayloadRequests = if ($installPhase) { [long]$installPhase.installerRequests } else { 0 }
   if ($report.installPayloadBytes -ne 0 -or $report.installPayloadRequests -ne 0) { throw 'Restart/install phase requested installer payload again.' }
   $report.normalInstallationRestart = 'passed'
-  $report.installFailureRetry = 'passed'
+  if ($exactMode) { $report.exactCandidateUpdaterAcceptance = 'passed' }
+  else { $report.installFailureRetry = 'passed' }
   Record-Probe 'updated-workspace'
   $report.result = 'passed'
   $report.remainingPackagedGates = @()
