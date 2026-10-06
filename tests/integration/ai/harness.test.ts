@@ -2232,12 +2232,12 @@ async function main(): Promise<void> {
     provider: researchProvider, apiKey: 'synthetic-only', model: 'fake-model', session,
     registry: { list: () => ({ activeEngineId: 'engine-1' }), getAdapter: () => ({
       analyzePosition: async (input: { positionFen: string }, _config: unknown,
-        options: { onProgress?: (value: unknown) => void }) => {
+        options: { onInfo?: (value: unknown) => void }) => {
         researchEngineInputs.push(input.positionFen)
         const line = ['h2e2', 'b9c7', 'a0b0', 'a9b9']
         const replay = replayResearchLine(input.positionFen, line)
         if (!replay) throw new Error('invalid synthetic continuation')
-        for (const depth of [15, 18]) options.onProgress?.({ phase: 'root_analysis', elapsedMs: 1, targetMs: 3000,
+        for (const depth of [15, 18]) options.onInfo?.({ phase: 'root_analysis', elapsedMs: 1, targetMs: 3000,
           depth, candidateRank: 1, principalVariation: line, displayPrincipalVariation: replay.display, score: null })
         return { ...engineAnalysis, positionFen: input.positionFen, sideToMove: 'red', depth: 18,
           bestMove: line[0], displayBestMove: replay.display[0], principalVariation: line,
