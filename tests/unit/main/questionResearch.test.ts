@@ -148,7 +148,7 @@ test('every legal live update is local and provisional with bounded explicit omi
 
 const shortAnswer = '炮二平五把紅炮移到中路，黑方馬8進7則發展左翼馬。這條主線顯示兩步部署，尚不能證明黑方必須採用這個應手。'
 const answerDecision = { decision: 'answer', reason: '已取得可說明的部署；其餘差異證據不足', tasks: [] }
-type EngineOptions = { signal: AbortSignal; onProgress?: (live: EngineLiveAnalysisProgress) => void }
+type EngineOptions = { signal: AbortSignal; onInfo?: (live: EngineLiveAnalysisProgress) => void }
 type EngineInput = { positionFen: string; userMove?: string }
 async function runScenario(options: {
   decisions?: unknown[]; budget?: HarnessBudget; adapter?: boolean; controller?: AbortController;
@@ -198,7 +198,7 @@ async function runScenario(options: {
           engineCalls.push({ input, config, options: opts })
           if (options.engine) return options.engine(input, config, opts)
           const line = input.positionFen === START_FEN ? rootLine : rootLine.slice(1)
-          opts.onProgress?.(progress(line, 12)); opts.onProgress?.(progress(line, 18))
+          opts.onInfo?.(progress(line, 12)); opts.onInfo?.(progress(line, 18))
           return analysis(input.positionFen, line, 18)
         } } } as never,
       traceStore: { save: (value: HarnessTrace) => { trace = value } } as never,
@@ -238,7 +238,7 @@ async function main() {
     assert(branchRun.requests[2]?.prompt.includes('"rootRelativeEvaluation":"unknown"'))
     assert.deepEqual(branchRun.trace?.modelCallDiagnostics?.map(item => item.stage), ['research_planner', 'research_planner', 'writer'])
     const before = JSON.stringify(branchRun.trace)
-    branchRun.engineCalls[0]?.options.onProgress?.(progress(rootLine.slice(1), 99))
+    branchRun.engineCalls[0]?.options.onInfo?.(progress(rootLine.slice(1), 99))
     assert.equal(JSON.stringify(branchRun.trace), before, 'late engine callbacks cannot change completed evidence')
   })
   const early = await runScenario({ decisions: [answerDecision, answerDecision] })
@@ -288,7 +288,7 @@ async function main() {
   })
   const controller = new AbortController()
   const cancelled = await runScenario({ controller, engine: async (_input, _config, opts) => {
-    opts.onProgress?.(progress()); controller.abort(); return analysis()
+    opts.onInfo?.(progress()); controller.abort(); return analysis()
   } })
   test('cancellation stops before writer, saves cancelled operation, and leaves old answer intact', () => {
     assert.equal((cancelled.error as Error)?.name, 'AbortError')

@@ -388,6 +388,36 @@ async function main(): Promise<void> {
     )
   }
 
+  section('E2E：公開 UCI 深度更新不受畫面節流影響（FAKE_ENGINE_MODE=burst）')
+  process.env.FAKE_ENGINE_MODE = 'burst'
+  {
+    const allInfo: EngineLiveAnalysisProgress[] = []
+    const uiProgress: EngineLiveAnalysisProgress[] = []
+    const originalNow = Date.now
+    const frozenNow = originalNow()
+    Date.now = () => frozenNow
+    try {
+      const adapter = new PikafishAdapter(FAKE_ENGINE)
+      await adapter.analyzePosition({ positionFen: START_FEN, userMove: 'g3g4' }, config, {
+        onInfo: progress => allInfo.push(progress),
+        onProgress: progress => uiProgress.push(progress)
+      })
+    } finally {
+      Date.now = originalNow
+    }
+    check('研究接收 root 全部十層的兩條 MultiPV',
+      allInfo.filter(item => item.phase === 'root_analysis').length === 20, allInfo.length)
+    check('研究接收二次局面的全部十層，排除越界候選',
+      allInfo.filter(item => item.phase === 'user_move_analysis').length === 10)
+    check('研究接收正確階段與主線起點',
+      allInfo.filter(item => item.phase === 'user_move_analysis').every(item =>
+        item.principalVariation[0] === 'h9g7' && item.displayMove === '馬8進7'))
+    check('UI 仍按階段及候選節流，沒有為研究放大量畫面事件', uiProgress.length === 3, uiProgress.length)
+    check('逐層資料保留自己的深度，不把最後深度覆蓋每筆更新',
+      allInfo.filter(item => item.phase === 'user_move_analysis').map(item => item.depth).join(',') ===
+      '1,2,3,4,5,6,7,8,9,10')
+  }
+
   section('E2E：Pikafish 分數正規化（FAKE_ENGINE_MODE=uci-score-type）')
   process.env.FAKE_ENGINE_MODE = 'uci-score-type'
   {
@@ -479,9 +509,11 @@ async function main(): Promise<void> {
     const adapter = new PikafishAdapter(FAKE_ENGINE)
     const controller = new AbortController()
     let phaseSeen: string | null = null
+    const cancelledInfo: EngineLiveAnalysisProgress[] = []
     const t0 = Date.now()
     const pending = adapter.analyzePosition({ positionFen: START_FEN }, config, {
       signal: controller.signal,
+      onInfo: info => cancelledInfo.push(info),
       onPhase: (phase) => {
         phaseSeen = phase
       }
@@ -501,6 +533,7 @@ async function main(): Promise<void> {
     )
     check('取消即時生效（停止等引擎跑完）', elapsed < 3000, elapsed)
     check('onPhase 回報 root_analysis', phaseSeen === 'root_analysis')
+    check('取消後 stop 回傳的公開 info 不再送進研究紀錄', cancelledInfo.length === 0)
   }
 
   section('E2E：搜尋結束與取消競態不會造成 EPIPE')

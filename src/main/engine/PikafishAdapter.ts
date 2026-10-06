@@ -580,6 +580,7 @@ export class PikafishAdapter {
     signal?: AbortSignal
     onControls?: (controls: { sendStop: () => void; killEngine: () => void }) => void
     onProgress?: (progress: SearchProgress) => void
+    onInfo?: (progress: SearchProgress) => void
   }): Promise<SearchResult> {
     if (options.signal?.aborted) throw abortError()
 
@@ -682,9 +683,8 @@ export class PikafishAdapter {
         const lastProgressAt = parsed
           ? lastProgressAtByRank.get(parsed.multipv) ?? 0
           : 0
-        if (parsed && (lastProgressAt === 0 || now - lastProgressAt >= 80)) {
-          lastProgressAtByRank.set(parsed.multipv, now)
-          options.onProgress?.({
+        if (parsed && !settled && !options.signal?.aborted) {
+          const progress: SearchProgress = {
             elapsedMs: now - searchStartedAt,
             targetMs: options.movetimeMs,
             depth: parsed.depth,
@@ -695,7 +695,14 @@ export class PikafishAdapter {
             candidateRank: parsed.multipv,
             move: parsed.pv[0],
             principalVariation: parsed.pv
-          })
+          }
+          // Background research consumes each parsed public observation before
+          // the renderer's existing per-rank throttle. Neither is a search node.
+          options.onInfo?.(progress)
+          if (lastProgressAt === 0 || now - lastProgressAt >= 80) {
+            lastProgressAtByRank.set(parsed.multipv, now)
+            options.onProgress?.(progress)
+          }
         }
         // bestmove xxx / bestmove (none)（UCI）、nobestmove（UCCI）都代表搜尋結束
         if (line.startsWith('bestmove') || line.startsWith('nobestmove')) {
@@ -772,6 +779,8 @@ export class PikafishAdapter {
       onPhase?: (phase: AnalysisPhase, controls: EngineProcessControls) => void
       /** 搜尋期間持續回報目前深度、評估與主要變例 */
       onProgress?: (progress: EngineLiveAnalysisProgress) => void
+      /** 每筆已解析的公開 info；只供本機研究，畫面仍使用節流的 onProgress */
+      onInfo?: (progress: EngineLiveAnalysisProgress) => void
     }
   ): Promise<EngineAnalysis> {
     const enginePath = this.resolveEnginePath()
@@ -824,9 +833,11 @@ export class PikafishAdapter {
         options?.onPhase?.(phase, { phase, ...c })
       }
     const forwardProgress =
-      (phase: AnalysisPhase, progressBoard: typeof parsed.board) =>
+      (phase: AnalysisPhase, progressBoard: typeof parsed.board,
+        callback: ((progress: EngineLiveAnalysisProgress) => void) | undefined) =>
       (progress: SearchProgress): void => {
-        options?.onProgress?.({
+        if (!callback) return
+        callback({
           phase,
           elapsedMs: progress.elapsedMs,
           targetMs: progress.targetMs,
@@ -859,7 +870,8 @@ export class PikafishAdapter {
       scoreSource: 'candidate_move',
       signal,
       onControls: registerControls('root_analysis'),
-      onProgress: forwardProgress('root_analysis', parsed.board)
+      onProgress: forwardProgress('root_analysis', parsed.board, options?.onProgress),
+      onInfo: forwardProgress('root_analysis', parsed.board, options?.onInfo)
     })
     if (signal?.aborted) throw abortError()
     this.detectedEngineName = root.engineId ?? this.fallbackName
@@ -922,7 +934,8 @@ export class PikafishAdapter {
             scoreSource: 'separate_engine_call',
             signal,
             onControls: registerControls('user_move_analysis'),
-            onProgress: forwardProgress('user_move_analysis', userMoveBoard)
+            onProgress: forwardProgress('user_move_analysis', userMoveBoard, options?.onProgress),
+            onInfo: forwardProgress('user_move_analysis', userMoveBoard, options?.onInfo)
           })
           userMoveRawLines = second.rawLines
           const opponentLine = second.candidateMoves[0]?.principalVariation ?? []

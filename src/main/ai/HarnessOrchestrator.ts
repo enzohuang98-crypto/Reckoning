@@ -2982,7 +2982,7 @@ conditional researchOrigin表明由可信前綴接上後續真實搜尋；search
           try {
             const completed = await primaryAdapter.analyzePosition({ positionFen: action.positionFen, userMove: action.userMove },
               { rootAnalysisMovetimeMs: rootMs, userMoveEvalMovetimeMs: userMs, multiPv: 3 },
-              { signal: operationController.signal, onProgress: live => {
+              { signal: operationController.signal, onInfo: live => {
                 if (!acceptingUpdates || deps.signal.aborted || operationController.signal.aborted) return
                 const update = recordResearchUpdate(researchTrace!, { requestId: payload.requestId,
                   operationId: savedOperation.id, action, live })
