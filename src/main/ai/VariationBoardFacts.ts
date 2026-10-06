@@ -267,11 +267,18 @@ export function summarizeVariationCaptures(evidence: readonly HarnessEvidence[])
  * Only this claim's cited variations are replayed; ambiguous move identities
  * cannot establish a capture/check or numerical material-count statement.
  */
+export interface VariationClaimMoveBinding {
+  evidenceId: string
+  ply: number
+  move: string
+}
+
 export function validateVariationBoardStatements(
   text: string,
-  evidence: HarnessEvidence[]
+  evidence: HarnessEvidence[],
+  declaredBindings: readonly VariationClaimMoveBinding[] = []
 ): string[] {
-  return inspectVariationBoardStatements(text, evidence).issues
+  return inspectVariationBoardStatements(text, evidence, declaredBindings).issues
 }
 
 /**
@@ -284,15 +291,17 @@ export function validateVariationBoardStatements(
  */
 export function hasAffirmedConcreteVariationRelation(
   text: string,
-  evidence: HarnessEvidence[]
+  evidence: HarnessEvidence[],
+  declaredBindings: readonly VariationClaimMoveBinding[] = []
 ): boolean {
-  const inspection = inspectVariationBoardStatements(text, evidence)
+  const inspection = inspectVariationBoardStatements(text, evidence, declaredBindings)
   return inspection.affirmations > 0 && inspection.issues.length === 0 && !inspection.unboundPredicates
 }
 
 function inspectVariationBoardStatements(
   text: string,
-  evidence: HarnessEvidence[]
+  evidence: HarnessEvidence[],
+  declaredBindings: readonly VariationClaimMoveBinding[] = []
 ): { issues: string[]; affirmations: number; unboundPredicates: boolean } {
   const issues: string[] = []
   let affirmations = 0
@@ -304,6 +313,13 @@ function inspectVariationBoardStatements(
   // Keep each replay separate: temporally related moves must share this variation
   // and its starting FEN, never borrow their neighbours from another line.
   const replays = evidence.map((item) => ({ item, ...buildVariationBoardFacts(item) }))
+  for (const binding of declaredBindings) {
+    if (!Number.isInteger(binding.ply) || binding.ply < 1 || !replays.some(replay =>
+      replay.item.id === binding.evidenceId && replay.steps.some(step => step.ply === binding.ply &&
+        canonicalChineseMoveNotation(step.move) === canonicalChineseMoveNotation(binding.move)))) {
+      issues.push('前提所宣告的著法與步數不屬於本次合法重播證據。')
+    }
+  }
   const textMentions = chineseMoveMentions(text)
   const mentionIndices = new Map(textMentions.map((mention, index) => [mention.index, index]))
   const moveBindings = new Map<number, { replay: typeof replays[number]; step: VariationStepFact }[]>()
@@ -406,8 +422,14 @@ function inspectVariationBoardStatements(
     const qualified = /^\s*(?:在|本變例(?:的)?|紅方|红方|黑方|紅|红|黑)?第/.test(prefix)
     const ply = ordinal ? explicitBoardCount(ordinal[1]!) : null
     const snapshot = snapshotAt(mention.index)
+    // A validated premise declares a move occurrence before the prose is
+    // checked. Intersect it with explicit time/order constraints; never choose
+    // an occurrence because its capture result would make the claim pass.
+    const selected = declaredBindings.filter(binding =>
+      canonicalChineseMoveNotation(binding.move) === canonicalChineseMoveNotation(mention.move))
     return replays.flatMap((replay) => replay.steps.flatMap((step) =>
       canonicalChineseMoveNotation(step.move) === canonicalChineseMoveNotation(mention.move) &&
+      (selected.length === 0 || selected.some(binding => binding.evidenceId === replay.item.id && binding.ply === step.ply)) &&
       (!snapshot || (snapshot.valid && step.ply <= snapshot.ply!)) &&
       (!qualified || (ply !== null && ply > 0 && step.ply === ply)) ? [{ replay, step }] : []))
   })

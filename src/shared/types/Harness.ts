@@ -131,6 +131,64 @@ export interface HarnessEvidence {
   score: EngineScore | null
   displayPrincipalVariation: string[]
   analysis: EngineAnalysis
+  /** Actual search origin for a legally replayed conditional continuation. */
+  researchOrigin?: HarnessResearchOrigin
+}
+
+/** Three bounded operations can each advance at most eight verified plies. */
+export const HARNESS_RESEARCH_MAX_TOTAL_PREFIX_PLIES = 24
+
+export interface HarnessResearchOrigin {
+  operationId: string
+  sourceEvidenceId?: string
+  searchPositionFen: string
+  searchSideToMove: 'red' | 'black'
+  prefix: string[]
+  searchDepth: number | null
+  searchPrincipalVariation: string[]
+  omittedSearchPlies: number
+  searchUserMove?: string
+  lineRole: 'root' | 'continuation' | 'hypothesis'
+  rootRelativeEvaluation: 'unknown' | 'searched_at_root'
+}
+
+/** UCI info is provisional until the engine operation completes. No raw lines or scores. */
+export interface HarnessResearchUpdate {
+  requestId: string
+  operationId: string
+  phase: 'root_analysis' | 'user_move_analysis'
+  positionFen: string
+  sideToMove: 'red' | 'black'
+  depth: number | null
+  candidateRank: number
+  principalVariation: string[]
+  displayPrincipalVariation: string[]
+  omittedPlies: number
+  provisional: true
+}
+
+export interface HarnessResearchOperation {
+  id: string
+  kind: 'root' | 'evaluate_move' | 'continue_line'
+  purpose: string
+  positionFen: string
+  userMove?: string
+  sourceEvidenceId?: string
+  prefix: string[]
+  allocatedMs: number
+  status: 'running' | 'completed' | 'unavailable' | 'invalid_result' | 'cancelled'
+  evidenceIds: string[]
+  novel: boolean
+}
+
+export interface HarnessResearchTrace {
+  stopReason: 'answered' | 'query_budget' | 'engine_time_budget' | 'model_budget' | 'deadline' |
+    'no_new_evidence' | 'engine_unavailable' | 'invalid_plan' | 'cancelled' | 'provider_error'
+  operations: HarnessResearchOperation[]
+  updates: HarnessResearchUpdate[]
+  updatesSeen: number
+  omittedUpdates: number
+  invalidUpdates: number
 }
 
 export interface HarnessProgressPayload {
@@ -149,7 +207,7 @@ export interface HarnessProgressPayload {
 
 export interface HarnessModelCallDiagnostic {
   callIndex: number
-  stage: 'question_recovery' | 'initial_combined' | 'audit' | 'writer' | 'repair'
+  stage: 'question_recovery' | 'initial_combined' | 'audit' | 'writer' | 'repair' | 'research_planner'
   model: string
   maxOutputTokens: number
   responseFormat: 'json' | 'text'
@@ -238,6 +296,7 @@ export interface HarnessTrace {
   usage?: TokenUsage
   /** Safe per-call telemetry only; never includes prompts, keys, headers or response bodies. */
   modelCallDiagnostics?: HarnessModelCallDiagnostic[]
+  research?: HarnessResearchTrace
   providerDiagnostic?: AICredentialDiagnostic
   feedback?: 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
   /** 正式 teacher run 才會存在；舊 trace 保持相容。 */

@@ -20,6 +20,7 @@ import {
   validateConsequenceAudit
 } from '../../../src/main/ai/HarnessOrchestrator'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import { replayResearchLine } from '../../../src/main/ai/QuestionResearch'
 import { buildVariationEvidencePremises, type VariationEvidencePremises } from '../../../src/main/ai/VariationEvidencePremises'
 import { chineseMoveIsMentioned } from '../../../src/shared/logic/board/ChineseNotation'
 import { buildVariationBoardFacts } from '../../../src/main/ai/VariationBoardFacts'
@@ -196,9 +197,10 @@ function selectSyntheticPremises(answer: HarnessAnswer, evidence: HarnessEvidenc
 
 function selectSyntheticPremisesFromPools(answer: HarnessAnswer, pools: VariationEvidencePremises[]): void {
   for (const section of answer.sections) for (const claim of section.claims) {
-    claim.premiseIds = pools.filter(pool => claim.evidenceIds.includes(pool.evidenceId))
-      .flatMap(pool => pool.items).filter(item => item.kind === 'move_observation' &&
-        item.moves.every(move => chineseMoveIsMentioned(claim.text, move)))
+    const selectedPools = pools.filter(pool => claim.evidenceIds.includes(pool.evidenceId))
+    claim.premiseIds = selectedPools.flatMap(pool => pool.items.filter(item => item.kind === 'move_observation' &&
+      item.moves.every(move => chineseMoveIsMentioned(claim.text, move)))
+      .slice(0, Math.max(1, Math.floor(4 / selectedPools.length))))
       .slice(0, 4).map(item => item.id)
     claim.interpretation = 'inference'
   }
@@ -267,6 +269,27 @@ class FakeProvider implements AIProvider {
   async *generateExplanationStream(): AsyncIterable<never> {
     return
   }
+}
+
+/** Explicit synthetic planner protocol; the established writer fixture remains
+ * separately responsible for generating its complete answer. */
+class ResearchPlanProvider implements AIProvider {
+  readonly id = 'openai' as const
+  readonly displayName = 'Synthetic research planner and writer'
+  readonly writer = new FakeProvider()
+  readonly requests: AIExplanationRequest[] = []
+  plannerCalls = 0
+  async generateExplanation(request: AIExplanationRequest) {
+    this.requests.push(request)
+    if (request.responseSchema?.name !== 'question_research_decision') return this.writer.generateExplanation(request)
+    this.plannerCalls++
+    return { provider: this.id, model: 'fake-model', createdAt: Date.now(), groundedOnEngineData: true as const,
+      usage: { inputTokens: 50, outputTokens: 80 }, text: JSON.stringify(this.plannerCalls === 1
+        ? { decision: 'research', reason: '確認實戰線之後的出車次序', tasks: [
+          { kind: 'continue_line', purpose: '確認實戰線之後的出車次序', evidenceId: 'E2', prefixPlies: 2, move: null }
+        ] } : { decision: 'answer', reason: '已取得實戰線後續部署，可限定比較原因', tasks: [] }) }
+  }
+  async *generateExplanationStream(): AsyncIterable<never> { return }
 }
 
 class SameMoveProvider implements AIProvider {
@@ -1738,6 +1761,9 @@ async function main(): Promise<void> {
     '正式案例固定問題進入真正的 answer-writing prompt',
     formalProvider.prompts.some((prompt) => prompt.includes(formalQuestionMarker))
   )
+  check('凍結教師案例保持原快照且不進入模型研究規劃',
+    formalTraces[0]?.research === undefined &&
+    formalTraces[0]?.modelCallDiagnostics?.every(item => item.stage !== 'research_planner') === true)
   check(
     '正式案例不把 prelude 或既有 history 送入任何 provider prompt',
     formalProvider.prompts.every((prompt) => !prompt.includes(excludedHistoryMarker))
@@ -2196,6 +2222,47 @@ async function main(): Promise<void> {
     })
   )
 
+  const researchProvider = new ResearchPlanProvider()
+  const researchTraces: HarnessTrace[] = []
+  const researchEngineInputs: string[] = []
+  const unchangedResearchSession = JSON.stringify(session)
+  const researchedResult = await runExplanationHarness({ requestId: 'ordinary-research-full', analysisId: session.analysisId,
+    provider: 'openai', model: 'fake-model', userLevel: 'intermediate', explanationStyle: 'long_analytical',
+    language: 'zh-TW', answerMode: 'research', attachedMove: engineAnalysis.userMove }, {
+    provider: researchProvider, apiKey: 'synthetic-only', model: 'fake-model', session,
+    registry: { list: () => ({ activeEngineId: 'engine-1' }), getAdapter: () => ({
+      analyzePosition: async (input: { positionFen: string }, _config: unknown,
+        options: { onProgress?: (value: unknown) => void }) => {
+        researchEngineInputs.push(input.positionFen)
+        const line = ['h2e2', 'b9c7', 'a0b0', 'a9b9']
+        const replay = replayResearchLine(input.positionFen, line)
+        if (!replay) throw new Error('invalid synthetic continuation')
+        for (const depth of [15, 18]) options.onProgress?.({ phase: 'root_analysis', elapsedMs: 1, targetMs: 3000,
+          depth, candidateRank: 1, principalVariation: line, displayPrincipalVariation: replay.display, score: null })
+        return { ...engineAnalysis, positionFen: input.positionFen, sideToMove: 'red', depth: 18,
+          bestMove: line[0], displayBestMove: replay.display[0], principalVariation: line,
+          displayPrincipalVariation: replay.display, userMove: undefined, userMovePrincipalVariation: undefined,
+          displayUserMovePrincipalVariation: undefined }
+      }
+    }) } as never,
+    traceStore: { save: (trace: HarnessTrace) => researchTraces.push(trace) } as never,
+    signal: new AbortController().signal, onProgress: () => undefined
+  })
+  const researchedTrace = researchTraces.at(-1)
+  check('普通完整比較由模型選擇可信實戰前綴後的真實搜尋，並保留完整五段',
+    researchProvider.plannerCalls === 2 && researchEngineInputs.length === 1 &&
+    researchEngineInputs[0] === replayResearchLine(START_FEN, ['b0c2', 'h9g7'])?.board.fen &&
+    countHanCharacters(researchedResult.finalText) >= 400 &&
+    ['直接結論', '實戰步評價', 'AI 首選', '對手合理應對與後續', '實戰原則'].every(heading =>
+      researchedResult.finalText.includes(`### ${heading}`)), researchedTrace?.validationErrors)
+  check('完整寫作確實收到新主線及未知原局面評估，不改使用者 session',
+    researchProvider.writer.prompts[0]?.includes('"rootRelativeEvaluation":"unknown"') &&
+    researchProvider.writer.prompts[0]?.includes('"searchDepth":18') &&
+    researchProvider.writer.prompts[0]?.includes('車九平八') &&
+    researchedTrace?.research?.updatesSeen === 2 &&
+    researchedTrace.research.stopReason === 'answered' &&
+    JSON.stringify(session) === unchangedResearchSession)
+
   const shallowAnalysis: EngineAnalysis = {
     ...engineAnalysis,
     principalVariation: [engineAnalysis.bestMove],
@@ -2275,13 +2342,15 @@ async function main(): Promise<void> {
   const deepUserEvidence = shallowEvidenceTraces.at(-1)?.evidence
     .filter((item) => item.move === shallowAnalysis.userMove)
     .sort((a, b) => b.displayPrincipalVariation.length - a.displayPrincipalVariation.length)[0]
+  const deepBestEvidence = shallowEvidenceTraces.at(-1)?.evidence.filter(item => item.move === undefined)
+    .sort((a, b) => b.displayPrincipalVariation.length - a.displayPrincipalVariation.length)[0]
   check(
     '實戰線加深後 prompt 改引用較完整的變例，不能仍把淺層 E2 當作唯一實戰線',
     deepUserEvidence?.displayPrincipalVariation.length === 4 &&
       deepUserEvidence.id !== 'E2' &&
-      (shallowEvidenceTraces.at(-1)?.evidence[0]?.displayPrincipalVariation.length ?? 0) >= 2 &&
+      (deepBestEvidence?.displayPrincipalVariation.length ?? 0) >= 2 &&
       shallowEvidenceProvider.prompts[0]?.includes(`${deepUserEvidence.id} 作實戰步主線`) &&
-      shallowEvidenceProvider.prompts[0]?.includes(`"directAnswerEvidenceIds":["E1","${deepUserEvidence.id}"]`) &&
+      shallowEvidenceProvider.prompts[0]?.includes(`"directAnswerEvidenceIds":["${deepBestEvidence?.id}","${deepUserEvidence.id}"]`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K1"]`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"evidenceIds":["${deepUserEvidence.id}"],"findingIds":["K2"]`) &&
       shallowEvidenceProvider.prompts[0]?.includes(`"id":"${deepUserEvidence.id}","role":"user_move"`) &&
@@ -2312,7 +2381,9 @@ async function main(): Promise<void> {
       attachedMove: shallowAnalysis.userMove,
       answerMode: 'research',
       budget: {
-        engineTimeMs: 3000,
+        // Two actual comparison queries use the fixed 3s root + 1s played
+        // move allocation. The shared budget must cover both operations.
+        engineTimeMs: 8000,
         maxEngineRounds: 2,
         maxModelCalls: 4,
         maxOutputTokens: 8000
@@ -4523,7 +4594,8 @@ async function main(): Promise<void> {
     '首次比較不進入等待確認或逾時保守版',
     Boolean(
       timeoutResult &&
-        timeoutTraces[0]?.engineRounds === 0 &&
+        timeoutTraces[0]?.engineRounds === 1 &&
+        timeoutTraces[0]?.phases.every(phase => phase.phase !== 'waiting_for_user') &&
         !timeoutResult.finalText.includes('等待使用者確認')
     )
   )

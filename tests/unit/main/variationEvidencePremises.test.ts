@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildVariationEvidencePremises, validatePremiseReferences } from '../../../src/main/ai/VariationEvidencePremises'
+import { buildClaimMoveBindings, buildVariationEvidencePremises, validatePremiseReferences } from '../../../src/main/ai/VariationEvidencePremises'
 import { buildVariationMechanismFacts } from '../../../src/main/ai/VariationMechanismFacts'
 import { formatChineseVariation } from '../../../src/shared/logic/board/ChineseNotation'
 import { parseFen } from '../../../src/shared/logic/board/fen'
@@ -48,10 +48,11 @@ test('the opening horse and rook observations expose the actual useful computed 
   assert.match(release.text, /尚未移動/)
   const rookCapture = result.items.find(item => item.kind === 'capture_opportunity_added' && item.ply === 5)
   assert.ok(rookCapture)
-  assert.match(rookCapture.text, /黑方.*炮.*b7/)
+  assert.match(rookCapture.text, /黑方.*炮/)
+  assert.equal(rookCapture.identity.targetSquare, 'b7')
   const advancedRook = result.items.filter(item => item.kind === 'capture_opportunity_added' && item.ply === 7)
-  assert.ok(advancedRook.some(item => item.text.includes('a6')))
-  assert.ok(advancedRook.some(item => item.text.includes('e6')))
+  assert.ok(advancedRook.some(item => item.identity.targetSquare === 'a6'))
+  assert.ok(advancedRook.some(item => item.identity.targetSquare === 'e6'))
 })
 
 test('the actual line exposes pawn-to-horse legality and real capture targets without inventing rook threats', () => {
@@ -61,8 +62,8 @@ test('the actual line exposes pawn-to-horse legality and real capture targets wi
   assert.deepEqual(release.moves, ['兵三進一', '馬三進四'])
   assert.match(release.text, /走前棋規檢查：蹩馬腿/)
   const horseTargets = result.items.filter(item => item.kind === 'capture_opportunity_added' && item.ply === 11)
-  assert.ok(horseTargets.some(item => item.text.includes('e6')))
-  assert.ok(horseTargets.some(item => item.text.includes('g6')))
+  assert.ok(horseTargets.some(item => item.identity.targetSquare === 'e6'))
+  assert.ok(horseTargets.some(item => item.identity.targetSquare === 'g6'))
   assert.equal(result.items.some(item => item.kind === 'capture_opportunity_added' && item.ply === 4), false)
   const blackRelease = result.items.find(item => item.kind === 'future_move_legality_change' && item.ply === 2)
   assert.deepEqual(blackRelease?.moves, ['馬8進7', '車9平8'])
@@ -74,11 +75,12 @@ test('black file three is its right wing, never the center or the opponent persp
   assert.ok(pawn)
   assert.match(pawn.text, /黑方/)
   assert.match(pawn.text, /3路.*右翼/)
-  assert.ok(pawn.text.includes('c6') && pawn.text.includes('c5'))
+  assert.deepEqual(pawn.identity, { fromSquare: 'c6', toSquare: 'c5' })
   assert.equal(pawn.text.includes('中路'), false)
   const cannonTarget = result.items.find(item => item.kind === 'capture_opportunity_added' && item.ply === 6)
   assert.ok(cannonTarget)
-  assert.match(cannonTarget.text, /紅方.*1路.*右翼.*兵.*i3/)
+  assert.match(cannonTarget.text, /紅方.*1路.*右翼.*兵/)
+  assert.equal(cannonTarget.identity.targetSquare, 'i3')
 })
 
 test('rotating and swapping the moving side preserves its own file eight and left wing', () => {
@@ -99,10 +101,11 @@ test('ordinary observations separate a real capture from capture-opportunity add
   const removed = result.items.find(premise => premise.kind === 'capture_opportunity_removed')
   const added = result.items.find(premise => premise.kind === 'capture_opportunity_added')
   assert.ok(ordinary && removed && added)
-  assert.match(ordinary.text, /本手吃掉黑方.*卒.*a5/)
+  assert.match(ordinary.text, /本手吃掉黑方.*卒/)
+  assert.equal(ordinary.identity.targetSquare, 'a5')
   assert.match(removed.text, /機會.*減少|減少.*機會/)
-  assert.ok(removed.text.includes('a5'))
-  assert.ok(added.text.includes('b5'))
+  assert.equal(removed.identity.targetSquare, 'a5')
+  assert.equal(added.identity.targetSquare, 'b5')
   assert.equal(removed.text.includes('本手未吃子'), false)
   assert.equal(added.text.includes('本手吃掉'), false)
 })
@@ -200,6 +203,23 @@ test('invalid display tails yield no premise IDs beyond the verified prefix', ()
   assert.ok(result.items.every(premise => premise.relatedPlies.every(ply => ply <= 2)))
   assert.ok(result.warning)
   assert.equal(result.truncated, true)
+})
+
+test('prose-ready premise sentences keep coordinates in separate exact identity metadata', () => {
+  const pools = [bestEvidence, userEvidence].map(buildVariationEvidencePremises)
+  assert.ok(pools.flatMap(pool => pool.items).every(item => !/[a-i][0-9]/i.test(item.text)))
+  const release = pools[0].items.find(item => item.kind === 'future_move_legality_change' && item.ply === 3)!
+  assert.deepEqual(release.identity, { fromSquare: 'b0', toSquare: 'c2', futureFromSquare: 'a0', futureToSquare: 'b0' })
+})
+
+test('valid selections declare exact occurrences before prose checks without resolving by a capture target', () => {
+  const pool = buildVariationEvidencePremises(bestEvidence)
+  const claim = { text: '馬八進七前後比較，車九平八由不合法變合法。', evidenceIds: ['E1'], premiseIds: ['E1:P3:future5'] }
+  assert.deepEqual(buildClaimMoveBindings(claim, [pool]), [
+    { evidenceId: 'E1', ply: 3, move: '馬八進七' }, { evidenceId: 'E1', ply: 5, move: '車九平八' }
+  ])
+  assert.deepEqual(buildClaimMoveBindings({ ...claim, text: '只談炮二平五的作用。' }, [pool]), [])
+  assert.deepEqual(buildClaimMoveBindings({ ...claim, evidenceIds: ['E2'] }, [pool]), [])
 })
 
 console.log(`Variation evidence premises: ${passed} passed, ${failed} failed`)

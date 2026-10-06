@@ -778,5 +778,26 @@ for (const { line, cannon, rook } of [
   }
 }
 
+const declaredPawnLine = evidence(['a6a5', 'a3a4', 'a5a4'], ['卒1進1', '兵九進一', '卒1進1'], START_FEN.replace(' w ', ' b '))
+const declaredCapture = [{ evidenceId: 'E1', ply: 3, move: '卒1進1' }]
+const declaredQuiet = [{ evidenceId: 'E1', ply: 1, move: '卒1進1' }]
+check('相同記譜未宣告步數時，不能用吃子結果反選正確那手',
+  validate('黑方卒1進1吃掉紅方兵。', [declaredPawnLine]).length > 0)
+check('正文先選定同線第三手的前提後，可核對該手真實吃子',
+  validate('黑方卒1進1吃掉紅方兵。', [declaredPawnLine], declaredCapture).length === 0 &&
+  hasAffirmedConcreteVariationRelation('黑方卒1進1吃掉紅方兵。', [declaredPawnLine], declaredCapture))
+check('選定第一手安靜步不能借第三手的吃子事實通過',
+  validate('黑方卒1進1吃掉紅方兵。', [declaredPawnLine], declaredQuiet).length > 0)
+check('明示手序仍須與前提步數一致，不能被宣告覆蓋',
+  validate('第1手黑方卒1進1吃掉紅方兵。', [declaredPawnLine], declaredCapture).length > 0)
+check('有效宣告不豁免錯誤被吃棋子',
+  validate('黑方卒1進1吃掉紅方車。', [declaredPawnLine], declaredCapture).length > 0)
+check('有效宣告不豁免錯誤吃子方別',
+  validate('紅方卒1進1吃掉黑方兵。', [declaredPawnLine], declaredCapture).length > 0)
+check('不存在的變例宣告不能混用另一條線',
+  validate('黑方卒1進1吃掉紅方兵。', [declaredPawnLine], [{ evidenceId: 'E2', ply: 3, move: '卒1進1' }]).length > 0)
+check('同時宣告兩個同記譜步數仍不代表單一吃子已確定',
+  validate('黑方卒1進1吃掉紅方兵。', [declaredPawnLine], [...declaredQuiet, ...declaredCapture]).length > 0)
+
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1

@@ -1,6 +1,7 @@
 import { chineseMoveIsMentioned } from '@shared/logic/board/ChineseNotation'
 import type { PieceColor, PieceType } from '@shared/types/BoardState'
 import type { HarnessEvidence } from '@shared/types/Harness'
+import type { VariationClaimMoveBinding } from './VariationBoardFacts'
 import {
   buildVariationMechanismFacts,
   type MechanismCaptureTarget,
@@ -19,6 +20,8 @@ export interface VariationEvidencePremise {
   moves: string[]
   /** Deterministic prompt input, never a generated explanation or fallback body. */
   text: string
+  /** Exact squares stay as machine metadata, away from prose-ready sentences. */
+  identity: { fromSquare: string; toSquare: string; targetSquare?: string; futureFromSquare?: string; futureToSquare?: string }
 }
 
 export interface VariationPremiseOmission {
@@ -60,7 +63,7 @@ function targetText(target: MechanismCaptureTarget): string {
   const column = target.square.charCodeAt(0) - 97
   const file = target.side === 'red' ? 9 - column : column + 1
   const wing = file < 5 ? '右翼' : file === 5 ? '中路' : '左翼'
-  return `${sideName(target.side)}${file}路${wing}${PIECE_NAMES[target.side][target.piece]}（${target.square}）`
+  return `${sideName(target.side)}${file}路${wing}${PIECE_NAMES[target.side][target.piece]}`
 }
 
 /** Present the existing bounded computations; do not add chess rules or strategic conclusions. */
@@ -72,26 +75,31 @@ export function buildVariationEvidencePremises(evidence: HarnessEvidence): Varia
     const prefix = `${evidence.id}:P${step.ply}`
     const ownPiece = `${sideName(step.side)}${PIECE_NAMES[step.side][step.piece]}`
     const add = (suffix: string, kind: VariationEvidencePremise['kind'], text: string,
-      relatedPlies = [step.ply], moves = [step.move]): void => {
-      items.push({ id: `${prefix}:${suffix}`, evidenceId: evidence.id, kind, ply: step.ply, relatedPlies, moves, text })
+      relatedPlies = [step.ply], moves = [step.move],
+      identity: VariationEvidencePremise['identity'] = { fromSquare: step.fromSquare, toSquare: step.toSquare,
+        ...(step.actualCapture ? { targetSquare: step.actualCapture.square } : {}) }): void => {
+      items.push({ id: `${prefix}:${suffix}`, evidenceId: evidence.id, kind, ply: step.ply, relatedPlies, moves, text, identity })
     }
     add('move', 'move_observation',
-      `${sideName(step.side)}${step.move}：${PIECE_NAMES[step.side][step.piece]}從己方${step.fromFile}路${WING_NAMES[step.fromWing]}（${step.fromSquare}）到${step.toFile}路${WING_NAMES[step.toWing]}（${step.toSquare}）；` +
+      `${sideName(step.side)}${step.move}：${PIECE_NAMES[step.side][step.piece]}從己方${step.fromFile}路${WING_NAMES[step.fromWing]}到${step.toFile}路${WING_NAMES[step.toWing]}；` +
       (step.actualCapture ? `本手吃掉${targetText(step.actualCapture)}。` : '本手未吃子。'))
     for (const target of step.captureOpportunities.added) {
       add(`add:${target.square}`, 'capture_opportunity_added',
-        `${step.move}前後固定盤面相比，${ownPiece}新增可合法吃${targetText(target)}的機會。`)
+        `${step.move}前後固定盤面相比，${ownPiece}新增可合法吃${targetText(target)}的機會。`, [step.ply], [step.move],
+        { fromSquare: step.fromSquare, toSquare: step.toSquare, targetSquare: target.square })
     }
     for (const target of step.captureOpportunities.removed) {
       add(`remove:${target.square}`, 'capture_opportunity_removed',
-        `${step.move}前後固定盤面相比，${ownPiece}減少可合法吃${targetText(target)}的機會。`)
+        `${step.move}前後固定盤面相比，${ownPiece}減少可合法吃${targetText(target)}的機會。`, [step.ply], [step.move],
+        { fromSquare: step.fromSquare, toSquare: step.toSquare, targetSquare: target.square })
     }
     for (const change of step.futureMoveLegalityChanges) {
       add(`future${change.futurePly}`, 'future_move_legality_change',
-        `${step.move}前後固定盤面，尚未移動的${sideName(change.side)}${PIECE_NAMES[change.side][change.piece]}以本線第${change.futurePly}手${change.move}（${change.fromSquare}→${change.toSquare}），由${change.beforeLegal ? '合法' : '不合法'}變${change.afterLegal ? '合法' : '不合法'}；假設再輪${sideName(change.side)}。` +
-        (change.beforeConstraint ? `走前棋規檢查：${change.beforeConstraint}` : '') +
-        (change.afterConstraint ? `走後棋規檢查：${change.afterConstraint}` : ''),
-        [step.ply, change.futurePly], [step.move, change.move])
+        `${step.move}前後固定盤面，尚未移動的${sideName(change.side)}${PIECE_NAMES[change.side][change.piece]}以本線第${change.futurePly}手${change.move}，由${change.beforeLegal ? '合法' : '不合法'}變${change.afterLegal ? '合法' : '不合法'}；假設再輪${sideName(change.side)}。` +
+        (change.beforeConstraint ? `走前棋規檢查：${change.beforeConstraint.replace(/[a-i][0-9]/g, '').replace(/ +/g, ' ')}` : '') +
+        (change.afterConstraint ? `走後棋規檢查：${change.afterConstraint.replace(/[a-i][0-9]/g, '').replace(/ +/g, ' ')}` : ''),
+        [step.ply, change.futurePly], [step.move, change.move],
+        { fromSquare: step.fromSquare, toSquare: step.toSquare, futureFromSquare: change.fromSquare, futureToSquare: change.toSquare })
     }
     const omission: VariationPremiseOmission = { ply: step.ply }
     if (step.coverage.omittedFutureOwnPlies) omission.futureOwnPlies = step.coverage.omittedFutureOwnPlies
@@ -166,4 +174,17 @@ export function validatePremiseReferences(
     }
   }
   return errors
+}
+
+/** Declared identities only; callers must still check board facts and prose. */
+export function buildClaimMoveBindings(
+  claim: PremiseReferenceClaim,
+  premisePools: readonly Pick<VariationEvidencePremises, 'evidenceId' | 'items'>[]
+): VariationClaimMoveBinding[] {
+  if (validatePremiseReferences(claim, premisePools).length > 0) return []
+  const selected = new Set(claim.premiseIds ?? [])
+  const bindings = premisePools.flatMap(pool => pool.items.filter(item => selected.has(item.id)).flatMap(item =>
+    item.relatedPlies.map((ply, index) => ({ evidenceId: item.evidenceId, ply, move: item.moves[index]! }))))
+  return bindings.filter((binding, index) => bindings.findIndex(other =>
+    other.evidenceId === binding.evidenceId && other.ply === binding.ply && other.move === binding.move) === index)
 }
