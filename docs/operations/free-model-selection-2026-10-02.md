@@ -2,6 +2,16 @@
 
 公開能力核對日期：2026-10-02，2026-10-03／04 重新核對精確 Qwen route。公開研究限定 Reckoning 免費目錄的 17 個精確 ID；下方另標明正式 App 服務的真實探測與完整生成，兩類證據分開。
 
+## 2026-10-06 免費資格變動與現用模型
+
+正式main-process metadata與公開endpoint重新核對：免費文字目錄降為16個，原保存 `qwen/qwen3.8-27b:free` 已不在可用清單，其[精確endpoint](https://openrouter.ai/api/v1/models/qwen/qwen3.8-27b:free/endpoints) 為 `endpoints=[]`。先前的17個清單與Qwen選擇均為歷史證據，不能當作現在仍可生成。
+
+依使用者既有授權選擇免費模型，正式同key服務先探測 [Inkling Small](https://openrouter.ai/api/v1/models/thinkingmachines/inkling-small:free/endpoints)：permission、不可重試，保存模型未變；沒有更改帳戶權限。再明確選擇 [Nemotron Ultra免費route](https://openrouter.ai/api/v1/models/nvidia/nemotron-3-ultra-550b-a55b:free/endpoints)，probe與原子保存成功，現在saved model為 `nvidia/nemotron-3-ultra-550b-a55b:free`。不是生成途中自動fallback，沒有付費模型或新key。
+
+當下Ultra prompt／completion價格0，官方model reasoning metadata為optional、default high、supported efforts high／medium、supports_max_tokens=true。完整JSON保留最多1000 reasoning；1000-token research planner按四分之一預留250 reasoning，總output與共享限制不增加。[官方reasoning規格](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) 指出reasoning通常與正文共用max_tokens，exclude只隱藏它，不降低消耗。
+
+[AA Inkling Small reasoning26](https://artificialanalysis.ai/models/inkling-small)、[Ultra reasoning23](https://artificialanalysis.ai/models/nvidia-nemotron-3-ultra-550b-a55b) 僅為當下已取得的同版一般比較。未取得覆蓋全部免費route、相同有限預算的象棋評測；不能宣稱本次1000 reasoning cap與AA模式相同或絕對最強。真正完整題兩次在research_planner收到502／503，usage與finish未提供，尚無合格正文；probe成功不代替正式答案或設定頁UI驗收。詳細commit／wire／耗時與去敏證據見進度紀錄。
+
 ## 2026-10-05 實際推理模式與比較限制
 
 當日重新核對公開免費文字目錄仍17個，精確Qwen免費endpoint仍宣告`structured_outputs`，prompt／completion價格皆0。先前「Qwen34／首選」的比較資料使用 **xhigh推理模式**，不能移作本次`reasoning.enabled=false`模式的能力證明。[AA的同版比較](https://artificialanalysis.ai/models/comparisons/qwen3-8-27b-non-reasoning-vs-nvidia-nemotron-3-ultra-550b-a55b)列Qwen non-reasoning為20、Nemotron Ultra reasoning為23；[Inkling Small reasoning](https://artificialanalysis.ai/models/inkling-small)為26。這些一般評測仍不能證明特定免費route或象棋解釋品質。
