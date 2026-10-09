@@ -183,7 +183,7 @@ export interface HarnessResearchOperation {
 
 export interface HarnessResearchTrace {
   stopReason: 'answered' | 'query_budget' | 'engine_time_budget' | 'model_budget' | 'deadline' |
-    'no_new_evidence' | 'engine_unavailable' | 'invalid_plan' | 'cancelled' | 'provider_error'
+    'no_new_evidence' | 'engine_unavailable' | 'invalid_plan' | 'cancelled' | 'provider_error' | 'planner_timeout'
   operations: HarnessResearchOperation[]
   updates: HarnessResearchUpdate[]
   updatesSeen: number

@@ -161,6 +161,10 @@ assert.equal(persistedResearch.evidence[0]?.researchOrigin?.rootRelativeEvaluati
 assert.equal(persistedResearch.evidence[0]?.researchOrigin?.searchPrincipalVariation.length, 32)
 assert.equal(persistedResearch.evidence[0]?.researchOrigin?.omittedSearchPlies, 10)
 assert.equal(persistedResearch.research?.stopReason, 'no_new_evidence')
+const plannerTimedOut = structuredClone(researchRecord)
+plannerTimedOut.research.stopReason = 'planner_timeout'
+assert.equal(new HarnessTraceStore({ read: () => [plannerTimedOut] } as never).listForExport()[0]?.research?.stopReason,
+  'planner_timeout', 'phase timeout remains distinct from an exhausted overall deadline')
 assert.equal(persistedResearch.research?.updates.length, 96)
 assert.equal(persistedResearch.research?.updatesSeen, 104)
 assert.equal(persistedResearch.research?.omittedUpdates, 8)

@@ -254,7 +254,7 @@ function sanitizeResearchOrigin(value: unknown): HarnessResearchOrigin | undefin
 function sanitizeResearch(value: unknown): HarnessResearchTrace | undefined {
   if (!isRecord(value) || !Array.isArray(value.operations) || !Array.isArray(value.updates)) return undefined
   const stopReasons: HarnessResearchTrace['stopReason'][] = ['answered', 'query_budget', 'engine_time_budget',
-    'model_budget', 'deadline', 'no_new_evidence', 'engine_unavailable', 'invalid_plan', 'cancelled', 'provider_error']
+    'model_budget', 'deadline', 'no_new_evidence', 'engine_unavailable', 'invalid_plan', 'cancelled', 'provider_error', 'planner_timeout']
   if (!stopReasons.includes(value.stopReason as HarnessResearchTrace['stopReason'])) return undefined
   const operations: HarnessResearchTrace['operations'] = value.operations.filter(isRecord).filter(item =>
     typeof item.id === 'string' && typeof item.purpose === 'string' && typeof item.positionFen === 'string' &&

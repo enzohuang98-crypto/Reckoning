@@ -2960,7 +2960,9 @@ export async function runExplanationHarness(
         }
         if (budget.engineTimeMs - allocatedEngineMs < 100) { researchTrace.stopReason = 'engine_time_budget'; break }
         progress('planning', '正在判斷需要哪條引擎主線才能回答這次的原因與應對。')
-        const decisionText = canPlan ? await callModel(`你是象棋研究任務規劃器，只輸出 JSON，不寫答案或思考過程。
+        let decisionText = ''
+        try {
+          if (canPlan) decisionText = await callModel(`你是象棋研究任務規劃器，只輸出 JSON，不寫答案或思考過程。
 目標是回答這次問題的棋理原因、最佳計畫、對手反擊或兩種著法差異。若還欠具體機制，請提出1–2項可驗證搜尋；不能只因主線已有兩手或分差便認定原因已明白。
 允許 root（加深原局面）、evaluate_move（原局面合法UCI著法）、continue_line（提供已完成 evidenceId 與1–8手prefixPlies，從該證據的搜尋起點沿實際主線再前進；已有延續時不回到原局面重走同一前綴。move填null或該後續局面的合法著法）。不能提交FEN、設定、任意新棋譜或程式碼。已有相同搜尋沒有新結果時，改延續有關主線，不重複相同根搜尋。
 decision=research時tasks有1–2項；decision=answer時tasks=[]。reason只用一句短語指出要驗證的具體線路/目標或已取得哪些前提，不能代替最終答案。第一次即使認為可答，系統仍先完成一次有界確認。後續可在已取得足夠具體前提時結束；資訊不足時先用剩餘有意義的搜尋機會。
@@ -2978,7 +2980,22 @@ conditional researchOrigin表明由可信前綴接上後續真實搜尋；search
             omitted: researchTrace.omittedUpdates, invalid: researchTrace.invalidUpdates },
           remainingQueries: maxQueries - engineRounds, remainingEngineMs: budget.engineTimeMs - allocatedEngineMs
         })}`, Math.min(1_000, budget.maxOutputTokens - outputTokens - writerReserveTokens),
-        Math.min(15_000, remainingMs - writerReserveMs), 'json', 'research_planner', buildResearchDecisionSchema()) : ''
+        Math.min(15_000, remainingMs - writerReserveMs), 'json', 'research_planner', buildResearchDecisionSchema())
+        } catch (error) {
+          // A later planning milestone has its own soft deadline. Preserve
+          // completed engine evidence and the reserved writer/repair capacity;
+          // the writer must still generate and pass all ordinary validation.
+          if (error instanceof HarnessModelPhaseTimeoutError && !deps.signal.aborted &&
+              researchTrace.operations.some(item => item.status === 'completed') &&
+              (!isInitialMoveComparison || hasAdequateInitialMoveEvidence(evidence, canonicalMove)) &&
+              modelCalls + 2 <= modelCallLimit && budget.maxOutputTokens - outputTokens >= writerReserveTokens &&
+              105_000 - (Date.now() - startedAt) > writerReserveMs) {
+            researchTrace.stopReason = 'planner_timeout'
+            progress('planning', '後續研究規劃逾時，正在用已完成的引擎證據撰寫並檢查回答。')
+            break
+          }
+          throw error
+        }
         let decision: ReturnType<typeof parseResearchDecision>
         try { decision = parseResearchDecision(jsonFromText<unknown>(decisionText), deps.session.positionFen, evidence) }
         catch { decision = { decision: 'research', actions: [], valid: false } }

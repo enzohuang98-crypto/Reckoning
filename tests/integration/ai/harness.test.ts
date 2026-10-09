@@ -279,10 +279,18 @@ class ResearchPlanProvider implements AIProvider {
   readonly writer = new FakeProvider()
   readonly requests: AIExplanationRequest[] = []
   plannerCalls = 0
-  async generateExplanation(request: AIExplanationRequest) {
+  constructor(private readonly timeoutSecondPlan = false) {}
+  async generateExplanation(request: AIExplanationRequest, signal?: AbortSignal) {
     this.requests.push(request)
     if (request.responseSchema?.name !== 'question_research_decision') return this.writer.generateExplanation(request)
     this.plannerCalls++
+    if (this.timeoutSecondPlan && this.plannerCalls === 2) {
+      await new Promise<void>((_resolve, reject) => {
+        const abort = () => reject(new DOMException('Planner phase aborted', 'AbortError'))
+        if (signal?.aborted) abort()
+        else signal?.addEventListener('abort', abort, { once: true })
+      })
+    }
     return { provider: this.id, model: 'fake-model', createdAt: Date.now(), groundedOnEngineData: true as const,
       usage: { inputTokens: 50, outputTokens: 80 }, text: JSON.stringify(this.plannerCalls === 1
         ? { decision: 'research', reason: '確認實戰線之後的出車次序', tasks: [
@@ -2282,11 +2290,16 @@ async function main(): Promise<void> {
       wrapped.calls === 1 && countHanCharacters(complete.finalText) >= 400)
   }
 
-  const researchProvider = new ResearchPlanProvider()
+  for (const plannerTimesOut of [false, true]) {
+  const researchProvider = new ResearchPlanProvider(plannerTimesOut)
   const researchTraces: HarnessTrace[] = []
   const researchEngineInputs: string[] = []
   const unchangedResearchSession = JSON.stringify(session)
-  const researchedResult = await runExplanationHarness({ requestId: 'ordinary-research-full', analysisId: session.analysisId,
+  const actualSetTimeout = globalThis.setTimeout
+  if (plannerTimesOut) globalThis.setTimeout = ((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) =>
+    actualSetTimeout(callback, ms === 15_000 ? 0 : ms, ...args)) as typeof setTimeout
+  let researchedResult: Awaited<ReturnType<typeof runExplanationHarness>>
+  try { researchedResult = await runExplanationHarness({ requestId: 'ordinary-research-full', analysisId: session.analysisId,
     provider: 'openai', model: 'fake-model', userLevel: 'intermediate', explanationStyle: 'long_analytical',
     language: 'zh-TW', answerMode: 'research', attachedMove: engineAnalysis.userMove }, {
     provider: researchProvider, apiKey: 'synthetic-only', model: 'fake-model', session,
@@ -2307,21 +2320,22 @@ async function main(): Promise<void> {
     }) } as never,
     traceStore: { save: (trace: HarnessTrace) => researchTraces.push(trace) } as never,
     signal: new AbortController().signal, onProgress: () => undefined
-  })
+  }) } finally { globalThis.setTimeout = actualSetTimeout }
   const researchedTrace = researchTraces.at(-1)
-  check('普通完整比較由模型選擇可信實戰前綴後的真實搜尋，並保留完整五段',
+  check(`普通完整比較由模型選擇可信實戰前綴後的真實搜尋，並保留完整五段（plannerTimeout=${plannerTimesOut}）`,
     researchProvider.plannerCalls === 2 && researchEngineInputs.length === 1 &&
     researchEngineInputs[0] === replayResearchLine(START_FEN, ['b0c2', 'h9g7'])?.board.fen &&
     countHanCharacters(researchedResult.finalText) >= 400 &&
     ['直接結論', '實戰步評價', 'AI 首選', '對手合理應對與後續', '實戰原則'].every(heading =>
       researchedResult.finalText.includes(`### ${heading}`)), researchedTrace?.validationErrors)
-  check('完整寫作確實收到新主線及未知原局面評估，不改使用者 session',
+  check(`完整寫作確實收到新主線及未知原局面評估，不改使用者 session（plannerTimeout=${plannerTimesOut}）`,
     researchProvider.writer.prompts[0]?.includes('"rootRelativeEvaluation":"unknown"') &&
     researchProvider.writer.prompts[0]?.includes('"searchDepth":18') &&
     researchProvider.writer.prompts[0]?.includes('車九平八') &&
     researchedTrace?.research?.updatesSeen === 2 &&
-    researchedTrace.research.stopReason === 'answered' &&
+    researchedTrace.research.stopReason === (plannerTimesOut ? 'planner_timeout' : 'answered') &&
     JSON.stringify(session) === unchangedResearchSession)
+  }
 
   // The captured best may change during ordinary research. Both the first
   // writer and its bounded repair must describe and score the refreshed pair.

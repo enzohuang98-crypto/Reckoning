@@ -157,7 +157,7 @@ async function runScenario(options: {
   modelError?: Error; onPlan?: (index: number) => void; missingUsage?: boolean
   initialAnalysis?: EngineAnalysis; storedMove?: string; writerEvidenceId?: string
   writerText?: string; recoveryText?: string; rawWriter?: boolean; explanationPrompt?: string
-  question?: string
+  question?: string; plannerTimeoutAt?: number
 } = {}) {
   const a = options.initialAnalysis ?? analysis()
   const session: AnalysisSession = { analysisId: 'research-session', requestId: 'engine-r', createdAt: '2026-01-01',
@@ -181,12 +181,19 @@ async function runScenario(options: {
   let error: unknown
   try {
     result = await runExplanationHarness(execution, {
-      provider: { generateExplanation: async (request: AIExplanationRequest) => {
+      provider: { generateExplanation: async (request: AIExplanationRequest, signal: AbortSignal) => {
         requests.push(request)
         const planner = request.responseSchema?.name === 'question_research_decision'
         if (planner) {
           options.onPlan?.(plannerCalls)
           plannerCalls++
+          if (plannerCalls === options.plannerTimeoutAt) {
+            await new Promise<void>((_resolve, reject) => {
+              const abort = () => reject(new DOMException('Phase aborted', 'AbortError'))
+              if (signal.aborted) abort()
+              else signal.addEventListener('abort', abort, { once: true })
+            })
+          }
           if (options.modelError) throw options.modelError
         }
         const written = options.writerText ?? shortAnswer
@@ -217,6 +224,58 @@ async function runScenario(options: {
 }
 
 async function main() {
+  const actualSetTimeout = globalThis.setTimeout
+  const timeoutScenario = async (options: Parameters<typeof runScenario>[0]) => {
+    // Exercise the real phase-controller expiry without a 15-second test wait.
+    globalThis.setTimeout = ((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) =>
+      actualSetTimeout(callback, ms === 15_000 ? 0 : ms, ...args)) as typeof setTimeout
+    try { return await runScenario(options) }
+    finally { globalThis.setTimeout = actualSetTimeout }
+  }
+  const timedOutAfterEvidence = await timeoutScenario({ plannerTimeoutAt: 2 })
+  test('a planner phase timeout after completed research preserves a validated real writer within shared caps', () => {
+    assert.equal(timedOutAfterEvidence.error, undefined)
+    assert(timedOutAfterEvidence.result?.finalText.includes(shortAnswer))
+    assert.equal(timedOutAfterEvidence.trace?.research?.stopReason, 'planner_timeout')
+    assert.equal(timedOutAfterEvidence.engineCalls.length, 1)
+    assert.equal(timedOutAfterEvidence.requests.length, 3)
+    assert.deepEqual(timedOutAfterEvidence.trace?.modelCallDiagnostics?.map(item => [item.stage, item.status]),
+      [['research_planner', 'completed'], ['research_planner', 'failed'], ['writer', 'completed']])
+    assert.equal(timedOutAfterEvidence.requests[2]?.maxOutputTokens, 1200, 'the short-answer cap is unchanged')
+    assert(timedOutAfterEvidence.requests[2]?.prompt.includes('E2'))
+  })
+  const timedOutWithoutEvidence = await timeoutScenario({ plannerTimeoutAt: 1 })
+  test('a first planner timeout with no completed research still fails without manufacturing an answer', () => {
+    assert.equal((timedOutWithoutEvidence.error as Error)?.name, 'HarnessModelPhaseTimeoutError')
+    assert.equal(timedOutWithoutEvidence.trace?.status, 'failed')
+    assert.equal(timedOutWithoutEvidence.trace?.finalText, undefined)
+    assert.equal(timedOutWithoutEvidence.engineCalls.length, 0)
+    assert.equal(timedOutWithoutEvidence.requests.length, 1)
+  })
+  const rejectedAfterTimeout = await timeoutScenario({ plannerTimeoutAt: 2, storedMove: 'h2e2',
+    initialAnalysis: { ...analysis(), userMove: 'h2e2', userMovePrincipalVariation: rootLine,
+      displayUserMovePrincipalVariation: replayResearchLine(START_FEN, rootLine)!.display },
+    writerText: '炮二平五是失誤，因為紅炮移到中路後會較差。黑方馬8進7則發展馬。',
+    recoveryText: '炮二平五是失誤，因為紅炮移到中路後會較差。黑方馬8進7則發展馬。' })
+  test('planner timeout never bypasses writer and recovery comparison validation', () => {
+    assert.equal(rejectedAfterTimeout.trace?.status, 'failed')
+    assert.equal(rejectedAfterTimeout.trace?.finalText, undefined)
+    assert.equal(rejectedAfterTimeout.requests.length, 4, 'one recovery still shares the same call cap')
+    assert(rejectedAfterTimeout.trace?.validationErrors.some(value => /同一步/.test(value)))
+  })
+  const timeoutNow = Date.now
+  let timeoutOffset = 0
+  Date.now = () => timeoutNow() + timeoutOffset
+  let exhaustedDuringPlan: Awaited<ReturnType<typeof runScenario>>
+  try { exhaustedDuringPlan = await timeoutScenario({ plannerTimeoutAt: 2,
+    onPlan: index => { if (index === 1) timeoutOffset = 106_000 } }) }
+  finally { Date.now = timeoutNow }
+  test('completed evidence cannot bypass the shared deadline after a planner timeout', () => {
+    assert.equal(exhaustedDuringPlan.trace?.status, 'failed')
+    assert.equal(exhaustedDuringPlan.engineCalls.length, 1)
+    assert.equal(exhaustedDuringPlan.requests.length, 2)
+    assert.equal(exhaustedDuringPlan.trace?.finalText, undefined)
+  })
   const initial = { ...analysis(START_FEN, ['b0c2', 'h9g7', 'h2e2', 'b9c7']), userMove: 'h2e2',
     userMovePrincipalVariation: rootLine, displayUserMovePrincipalVariation: replayResearchLine(START_FEN, rootLine)!.display }
   const refreshed = await runScenario({ initialAnalysis: initial, storedMove: 'h2e2', writerEvidenceId: 'E3',
