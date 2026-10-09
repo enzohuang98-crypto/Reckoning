@@ -3,9 +3,20 @@ $ErrorActionPreference = 'Stop'
 $tokens = $null; $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($SourcePath, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'Source parse failed.' }
-foreach ($name in @('Test-ProbeWslPromptText', 'Test-ProbeWslPromptIdentity', 'Try-CancelProbeWslPrompt', 'Assert-ProbeForeground')) {
+foreach ($name in @('Test-ProbeWslPromptText', 'Test-ProbeWslPromptIdentity', 'Get-ProbeWslTextObservation', 'Try-CancelProbeWslPrompt', 'Assert-ProbeForeground')) {
   $function = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
   if ($function) { Invoke-Expression $function.Extent.Text }
+}
+Add-Type -AssemblyName UIAutomationClient
+function New-FakeTextProvider([string]$Text) {
+  $range = [pscustomobject]@{ Text = $Text }
+  $range | Add-Member ScriptMethod GetText { param($limit) return $this.Text.Substring(0, [Math]::Min($limit, $this.Text.Length)) }
+  $provider = [pscustomobject]@{
+    Current = [pscustomobject]@{ ControlType = [pscustomobject]@{ ProgrammaticName = 'Synthetic.Text' }; ClassName = 'SyntheticProvider' }
+    Pattern = [pscustomobject]@{ DocumentRange = $range }
+  }
+  $provider | Add-Member ScriptMethod TryGetCurrentPattern { param($id, $pattern) $pattern.Value = $this.Pattern; return $true }
+  return $provider
 }
 # This is an inert fake. It deliberately has no DllImport/native API calls.
 Add-Type -TypeDefinition @'
@@ -13,8 +24,11 @@ using System;
 public static class UpdateProbeWindow {
   public static long Foreground = 202;
   public static bool Blocked = true, EscapeWorks = true;
-  public static int Escapes = 0, Clicks = 0;
-  public static IntPtr GetForegroundWindow() { return new IntPtr(Foreground); }
+  public static int Escapes = 0, Clicks = 0, Reads = 0, StealOnRead = 0;
+  public static IntPtr GetForegroundWindow() {
+    Reads++; if (Reads == StealOnRead) Foreground = 202;
+    return new IntPtr(Foreground);
+  }
   public static bool SetForegroundWindow(IntPtr window) { if (!Blocked) Foreground = window.ToInt64(); return !Blocked; }
   public static bool Click(int x, int y) { Clicks++; if (!Blocked) Foreground = 101; return true; }
   public static bool EscapeForForeground(IntPtr window) {
@@ -29,7 +43,7 @@ function Get-ProbeWindow {
   return $window
 }
 function Wait-Probe([scriptblock]$Condition, [string]$Message, [int]$Seconds) {
-  for ($i = 0; $i -lt 2; $i++) { $result = & $Condition; if ($result) { return $result } }
+  for ($i = 0; $i -lt 8; $i++) { $result = & $Condition; if ($result) { return $result } }
   throw $Message
 }
 function Get-ProbeForegroundObservation {
@@ -42,6 +56,7 @@ function Get-ProbeForegroundObservation {
 function Reset-ForegroundCase {
   [UpdateProbeWindow]::Foreground = 202; [UpdateProbeWindow]::Blocked = $true; [UpdateProbeWindow]::EscapeWorks = $true
   [UpdateProbeWindow]::Escapes = 0; [UpdateProbeWindow]::Clicks = 0
+  [UpdateProbeWindow]::Reads = 0; [UpdateProbeWindow]::StealOnRead = 0
   $script:probeFocusClicks = 0; $script:probeWslCancelCount = 0; $script:probeUiActions = @()
   $script:observations = 0; $script:changedWindow = $false
   $script:foregroundObservation = @{ handle=202; processId=20; processName='WindowsTerminal'; trustedWslPrompt=$true; exactPrompt=$true }
@@ -72,11 +87,47 @@ try {
     if (Test-ProbeWslPromptText $text) { throw 'Partial, changed or additional prompt text was accepted.' }
   }
   Write-Output 'PASS exact wrapped prompt; five partial/changed/security/oversized text negatives rejected'
+  $exactProvider = New-FakeTextProvider $prompt
+  if (-not (Get-ProbeWslTextObservation @($exactProvider)).exactPrompt) { throw 'Single exact text provider rejected.' }
+  # Only the count of two was observed in the VM. These texts are synthetic
+  # guard tests, not a claim about the uncaptured provider contents.
+  foreach ($secondText in @($prompt, '', 'Windows Security: enter password', ('x' * 4097))) {
+    $observation = Get-ProbeWslTextObservation @($exactProvider, (New-FakeTextProvider $secondText))
+    if ($observation.exactPrompt -or $observation.visibleTextProviders -ne 2 -or $observation.textProviderChecks.Count -ne 2) { throw 'Two-provider observation authorized input or lost diagnostics.' }
+    if (($observation | ConvertTo-Json -Depth 5) -match 'enter password|must be updated') { throw 'Raw terminal text leaked into diagnostics.' }
+  }
+  Write-Output 'PASS observed two-provider cardinality remains untrusted; synthetic text classifications are redacted'
   $env:GITHUB_ACTIONS = 'true'; $env:RUNNER_ENVIRONMENT = 'github-hosted'; $env:GITHUB_RUN_ID = '12345'
   Reset-ForegroundCase
   Assert-ProbeForeground
   if ([UpdateProbeWindow]::Escapes -ne 1 -or [UpdateProbeWindow]::Foreground -ne 101) { throw 'Observed WSL cancellation did not restore actual App foreground.' }
   Write-Output 'PASS exact observed WSL prompt receives one cancel and App foreground is verified'
+  # Run 37440423958 failed with before/after observations but no
+  # wslCancelAttempted field: focus was lost after the initial focus check.
+  # Its signed WSL window had two text providers, so cancellation remained
+  # untrusted. Model only those captured metadata; no provider text was saved.
+  Reset-ForegroundCase
+  [UpdateProbeWindow]::Foreground = 101; [UpdateProbeWindow]::StealOnRead = 2
+  [UpdateProbeWindow]::Blocked = $false
+  $script:foregroundObservation = @{
+    handle=202; processId=8588; processName='WindowsTerminal'
+    processPath=(Join-Path $env:ProgramFiles 'WindowsApps\Microsoft.WindowsTerminal_1.24.11911.0_arm64__8wekyb3d8bbwe\WindowsTerminal.exe')
+    className='CASCADIA_HOSTING_WINDOW_CLASS'; windowTitle=$title
+    signatureStatus='Valid'; trustedTerminalIdentity=$true; visibleTextProviders=2
+    trustedWslPrompt=$false; foregroundUnchanged=$true
+  }
+  Assert-ProbeForeground
+  if ([UpdateProbeWindow]::Escapes -ne 0 -or [UpdateProbeWindow]::Foreground -ne 101 -or
+      $script:probeUiActions[-1].result -ne 'completed') { throw 'Late observed WSL overlay was not recovered through verified App focus.' }
+  Write-Output 'PASS late observed two-provider WSL overlay restores App focus without terminal input'
+  Reset-ForegroundCase
+  [UpdateProbeWindow]::Foreground = 101; [UpdateProbeWindow]::StealOnRead = 2
+  $script:foregroundObservation.trustedWslPrompt = $false
+  $failure = $null
+  try { Assert-ProbeForeground } catch { $failure = $_.Exception.Message }
+  if (-not $failure -or [UpdateProbeWindow]::Escapes -ne 0 -or [UpdateProbeWindow]::Foreground -eq 101 -or
+      $script:probeUiActions[-1].recoveryAttempts -ne 3 -or [UpdateProbeWindow]::Clicks -ne 3) { throw 'Late unknown overlay bypassed foreground verification or the recovery bound.' }
+  Write-Output 'PASS late unknown overlay stays blocked after three bounded App focus attempts'
   foreach ($case in @('unknown-window', 'changed-window', 'non-hosted', 'cancel-ineffective', 'already-attempted')) {
     Reset-ForegroundCase
     if ($case -eq 'unknown-window') { $script:foregroundObservation.trustedWslPrompt = $false }

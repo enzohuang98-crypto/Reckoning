@@ -332,6 +332,12 @@ try {
   [void](Wait-Probe { Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-entered') } 'Real save acknowledgement barrier was not entered.' 10)
   $writeBarrier = Get-Content -Raw -LiteralPath (Join-Path $script:probeFaultRoot 'save-entered') | ConvertFrom-Json
   if ($writeBarrier.actualWriteCompleted -ne $true -or $writeBarrier.timeoutMs -ne 12000) { throw 'Real atomic-write barrier evidence is invalid.' }
+  # PowerShell 7 may deserialize this JSON timestamp as an existing UTC
+  # DateTime. Reparsing that object through a string loses its timezone.
+  $writeDeadline = $writeBarrier.deadlineAt
+  if ($writeDeadline -isnot [DateTime]) {
+    $writeDeadline = [DateTime]::Parse($writeDeadline, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
+  }
   Invoke-ProbeAction '分析'
   # The guessing view was selected and its exact input verified empty before
   # opening settings. Returning preserves it; re-toggling the selected tab
@@ -341,7 +347,7 @@ try {
   if ($report.draftRaceEvidence.input.method -cne 'UIA_Value' -or $report.draftRaceEvidence.input.result -cne 'completed' -or
       (Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-timed-out')) -or
       (Test-Path -LiteralPath (Join-Path $script:probeFaultRoot 'save-completed')) -or
-      [DateTime]::UtcNow -ge [DateTime]::Parse($writeBarrier.deadlineAt).ToUniversalTime()) {
+      [DateTime]::UtcNow -ge $writeDeadline.ToUniversalTime()) {
     throw 'Verified draft input did not finish while the real save acknowledgement was pending.'
   }
   $report.draftRaceEvidence.releaseRequestedAt = [DateTime]::UtcNow.ToString('o')

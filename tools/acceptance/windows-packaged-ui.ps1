@@ -138,6 +138,31 @@ function Test-ProbeWslPromptIdentity([string]$ProcessPath, [string]$SignatureSta
     $SignerSubject -match '(?:^|,\s*)O=Microsoft Corporation(?:,|$)' -and
     $titleMatches
 }
+function Get-ProbeWslTextObservation([object[]]$Candidates) {
+  $observation = @{ visibleTextProviders = $Candidates.Count; exactPrompt = $false; textProviderChecks = @() }
+  # The failed VM exposed two providers but saved no per-provider content.
+  # Classify only a bounded set, without recording any terminal text. Multiple
+  # providers still cannot authorize input until their layout is understood.
+  if ($Candidates.Count -lt 1 -or $Candidates.Count -gt 8) { return $observation }
+  foreach ($candidate in $Candidates) {
+    $check = @{ exactPrompt = $false; hasTextPattern = $false }
+    try {
+      $check.type = $candidate.Current.ControlType.ProgrammaticName
+      $check.className = $candidate.Current.ClassName
+      $pattern = $null
+      $check.hasTextPattern = $candidate.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)
+      if ($check.hasTextPattern) {
+        $text = [string]$pattern.DocumentRange.GetText(4097)
+        $check.textLength = $text.Length
+        $check.emptyText = [string]::IsNullOrWhiteSpace($text)
+        $check.exactPrompt = Test-ProbeWslPromptText $text
+      }
+    } catch { $check.observationFailure = 'Text provider could not be classified.' }
+    $observation.textProviderChecks += $check
+  }
+  $observation.exactPrompt = $Candidates.Count -eq 1 -and $observation.textProviderChecks[0].exactPrompt
+  return $observation
+}
 function Get-ProbeForegroundObservation {
   $handle = [UpdateProbeWindow]::GetForegroundWindow()
   $observation = @{ at = [DateTime]::UtcNow.ToString('o'); handle = $handle.ToInt64(); trustedWslPrompt = $false }
@@ -162,13 +187,10 @@ function Get-ProbeForegroundObservation {
       if ($observation.trustedTerminalIdentity) {
         $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::IsTextPatternAvailableProperty, $true)
         $candidates = @($window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition) | Where-Object { -not $_.Current.IsOffscreen })
-        $observation.visibleTextProviders = $candidates.Count
-        if ($candidates.Count -eq 1) {
-          $pattern = $null
-          if ($candidates[0].TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) {
-            $observation.exactPrompt = Test-ProbeWslPromptText ([string]$pattern.DocumentRange.GetText(4097))
-          }
-        }
+        $textObservation = Get-ProbeWslTextObservation $candidates
+        $observation.visibleTextProviders = $textObservation.visibleTextProviders
+        $observation.textProviderChecks = $textObservation.textProviderChecks
+        $observation.exactPrompt = $textObservation.exactPrompt
         $observation.foregroundUnchanged = [UpdateProbeWindow]::GetForegroundWindow() -eq $handle
         $observation.trustedWslPrompt = $observation.exactPrompt -eq $true -and $observation.foregroundUnchanged
         if ($observation.trustedWslPrompt) { $observation.allowedCancelInstruction = 'Press ESC or CTRL-C to cancel.' }
@@ -189,13 +211,28 @@ function Try-CancelProbeWslPrompt($Observation) {
   return $true
 }
 function Assert-ProbeForeground {
-  $window = Wait-Probe { Get-ProbeWindow } 'Installed application window is missing.'
-  $action = $null
+  [void](Wait-Probe { Get-ProbeWindow } 'Installed application window is missing.')
+  # Wait-Probe invokes its condition in a child scope. Keep the bounded
+  # recovery state in one shared object, including a late foreground loss.
+  $recovery = @{ action = $null; attempts = 0; stableSamples = 0 }
   try {
-    if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -ne [long]$window.Current.NativeWindowHandle) {
-      $action = @{ at = [DateTime]::UtcNow.ToString('o'); method = 'Win32_Foreground'; result = 'not_run'; before = (Get-ProbeForegroundObservation) }
-      $script:probeUiActions += $action
-      $action.wslCancelAttempted = Try-CancelProbeWslPrompt $action.before
+    [void](Wait-Probe {
+      $window = Get-ProbeWindow
+      if (-not $window) { $recovery.stableSamples = 0; return $false }
+      if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -eq [long]$window.Current.NativeWindowHandle) {
+        $recovery.stableSamples++
+        return $recovery.stableSamples -ge 2
+      }
+      $recovery.stableSamples = 0
+      if ($recovery.attempts -ge 3) { return $false }
+      $before = Get-ProbeForegroundObservation
+      if (-not $recovery.action) {
+        $recovery.action = @{ at = [DateTime]::UtcNow.ToString('o'); method = 'Win32_Foreground'; result = 'not_run'; before = $before; wslCancelAttempted = $false }
+        $script:probeUiActions += $recovery.action
+      }
+      $recovery.attempts++
+      $recovery.action.recoveryAttempts = $recovery.attempts
+      if (Try-CancelProbeWslPrompt $before) { $recovery.action.wslCancelAttempted = $true }
       [void][UpdateProbeWindow]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
       try { $window.SetFocus() } catch { }
       if ([UpdateProbeWindow]::GetForegroundWindow().ToInt64() -ne [long]$window.Current.NativeWindowHandle) {
@@ -206,20 +243,19 @@ function Assert-ProbeForeground {
         $script:probeFocusClicks++
         if (-not [UpdateProbeWindow]::Click([int]($bounds.Left + 80), [int]($bounds.Top + 12))) { throw 'App title-bar focus input failed.' }
       }
-    }
-    [void](Wait-Probe {
-      $current = Get-ProbeWindow
-      $current -and [UpdateProbeWindow]::GetForegroundWindow().ToInt64() -eq [long]$current.Current.NativeWindowHandle
+      # A successful API call is not acceptance. Subsequent polls must see the
+      # actual App HWND own the foreground twice before any App action proceeds.
+      return $false
     } 'An OS overlay still owns the foreground; no background UI acceptance is allowed.' 10)
-    if ($action) { $action.result = 'completed' }
+    if ($recovery.action) { $recovery.action.result = 'completed' }
   } catch {
-    if (-not $action) {
-      $action = @{ at = [DateTime]::UtcNow.ToString('o'); method = 'Win32_Foreground'; before = (Get-ProbeForegroundObservation) }
-      $script:probeUiActions += $action
+    if (-not $recovery.action) {
+      $recovery.action = @{ at = [DateTime]::UtcNow.ToString('o'); method = 'Win32_Foreground'; before = (Get-ProbeForegroundObservation) }
+      $script:probeUiActions += $recovery.action
     }
-    $action.result = 'failed'; $action.failure = $_.Exception.Message
+    $recovery.action.result = 'failed'; $recovery.action.failure = $_.Exception.Message
     throw
-  } finally { if ($action) { $action.after = Get-ProbeForegroundObservation } }
+  } finally { if ($recovery.action) { $recovery.action.after = Get-ProbeForegroundObservation } }
 }
 function Find-ProbeAction([string]$Name, [switch]$Prefix) {
   foreach ($control in Get-ProbeControls) {
