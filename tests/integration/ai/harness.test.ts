@@ -2222,6 +2222,66 @@ async function main(): Promise<void> {
     })
   )
 
+  for (const malformed of ['missing_audit', 'null_audit', 'null_consequence', 'missing_answer', 'null_claim',
+    'truncated_array', 'unclosed_fence', 'trailing_json'] as const) {
+    const malformedTraces: HarnessTrace[] = []
+    let malformedCalls = 0
+    const malformedProvider = new SameMoveProvider()
+    const providerWithShapeFailure: AIProvider = { ...malformedProvider,
+      id: 'openai', displayName: 'Synthetic complete JSON with malformed fields',
+      generateExplanation: async request => {
+        malformedCalls++
+        const result = await malformedProvider.generateExplanation(request)
+        const json = JSON.parse(result.text)
+        if (malformed === 'missing_audit') delete json.audit
+        if (malformed === 'null_audit') json.audit = null
+        if (malformed === 'null_consequence') json.audit.consequences[0] = null
+        if (malformed === 'missing_answer') delete json.answer
+        if (malformed === 'null_claim') json.answer.sections[0].claims[0] = null
+        const complete = JSON.stringify(json)
+        const text = malformed === 'truncated_array' ? `[${complete}`
+          : malformed === 'unclosed_fence' ? `\`\`\`json\n${complete}`
+          : malformed === 'trailing_json' ? `${complete}{"unfinished":`
+          : complete
+        return { ...result, text }
+      }, generateExplanationStream: async function* () { return }
+    }
+    let malformedResult: Awaited<ReturnType<typeof runExplanationHarness>> | undefined
+    let malformedError: unknown
+    try { malformedResult = await runExplanationHarness({ requestId: `malformed-combined-${malformed}`,
+      analysisId: sameMoveSession.analysisId, provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW', attachedMove: sameMoveAnalysis.userMove,
+      answerMode: 'research' }, { provider: providerWithShapeFailure, apiKey: 'synthetic-only', model: 'fake-model',
+      session: sameMoveSession, registry: { list: () => ({ activeEngineId: 'engine-1' }), getAdapter: () => null } as never,
+      traceStore: { save: (trace: HarnessTrace) => malformedTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined }) } catch (error) { malformedError = error }
+    check(`完整JSON的錯誤欄位屬於模型格式錯誤，不冒充網路故障（${malformed}）`,
+      malformedResult === undefined && malformedError instanceof HarnessExplanationUnavailableError &&
+      malformedError.reason === 'invalid_model_response' && malformedCalls === 1 &&
+      malformedTraces.at(-1)?.status === 'failed' && !malformedTraces.at(-1)?.finalText,
+      malformedError instanceof Error ? malformedError.name : undefined)
+  }
+
+  for (const envelope of ['complete_fence', 'single_object_array', 'double_encoded'] as const) {
+    const wrapped = new SameMoveProvider()
+    const wrappedProvider: AIProvider = { id: 'openai', displayName: 'Synthetic complete envelope',
+      generateExplanation: async request => {
+        const result = await wrapped.generateExplanation(request)
+        const text = envelope === 'complete_fence' ? `\`\`\`json\n${result.text}\n\`\`\``
+          : envelope === 'single_object_array' ? `[${result.text}]` : JSON.stringify(result.text)
+        return { ...result, text }
+      }, generateExplanationStream: async function* () { return }
+    }
+    const complete = await runExplanationHarness({ requestId: `complete-envelope-${envelope}`,
+      analysisId: sameMoveSession.analysisId, provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW', attachedMove: sameMoveAnalysis.userMove,
+      answerMode: 'research' }, { provider: wrappedProvider, apiKey: 'synthetic-only', model: 'fake-model', session: sameMoveSession,
+      registry: { list: () => ({ activeEngineId: 'engine-1' }), getAdapter: () => null } as never,
+      traceStore: { save: () => undefined } as never, signal: new AbortController().signal, onProgress: () => undefined })
+    check(`完整而無歧義的既有JSON包裝仍通過正式品質檢查（${envelope}）`,
+      wrapped.calls === 1 && countHanCharacters(complete.finalText) >= 400)
+  }
+
   const researchProvider = new ResearchPlanProvider()
   const researchTraces: HarnessTrace[] = []
   const researchEngineInputs: string[] = []

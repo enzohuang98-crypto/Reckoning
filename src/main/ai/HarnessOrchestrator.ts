@@ -271,14 +271,10 @@ const CONSEQUENCE_CATEGORIES = new Set<ConsequenceCategory>([
 
 function jsonFromText<T>(text: string): T {
   const trimmed = text.trim()
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim()
-  const firstBrace = trimmed.indexOf('{')
-  const lastBrace = trimmed.lastIndexOf('}')
-  const embedded =
-    firstBrace >= 0 && lastBrace >= firstBrace
-      ? trimmed.slice(firstBrace, lastBrace + 1)
-      : null
-  const candidates = [...new Set([fenced, trimmed, embedded].filter(Boolean))] as string[]
+  // Accept a whole JSON value or a complete, single fenced envelope. Extracting
+  // an inner object could hide a truncated array/fence or unfinished trailing JSON.
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1]?.trim()
+  const candidates = [...new Set([fenced, trimmed].filter(Boolean))] as string[]
   let lastError: unknown = new SyntaxError('AI 回應中沒有 JSON 物件。')
   for (const candidate of candidates) {
     try {
@@ -305,6 +301,19 @@ function jsonFromText<T>(text: string): T {
     }
   }
   throw lastError
+}
+
+function requireModelObject(value: unknown, field: string): asserts value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new SyntaxError(`AI JSON 的 ${field} 必須是物件。`)
+  }
+}
+
+function combinedResponseFromText(text: string): { audit: ConsequenceAudit; answer: HarnessAnswer } {
+  const combined = jsonFromText<{ audit: ConsequenceAudit; answer: HarnessAnswer }>(text)
+  requireModelObject(combined.audit, 'audit')
+  requireModelObject(combined.answer, 'answer')
+  return combined
 }
 
 /** 單一模型階段用完內部軟時限；外層仍有時間用現有引擎證據安全收尾。 */
@@ -488,6 +497,7 @@ function normalizeConsequenceAudit(
   combinedAnswer?: HarnessAnswer,
   evidence: HarnessEvidence[] = []
 ): ConsequenceAudit {
+  requireModelObject(raw, 'audit')
   const dual = raw.dualEngineAdjudication
   const answerClaims = combinedAnswer
     ? normalizeSections(combinedAnswer.sections)
@@ -502,6 +512,7 @@ function normalizeConsequenceAudit(
   ).map((entry) => entry.id))
   const rawConsequences = Array.isArray(raw.consequences) ? raw.consequences.slice(0, 8) : []
   const consequences = rawConsequences.map((item) => {
+    requireModelObject(item, 'audit.consequences item')
     const claimId = (item as ConsequenceFinding & { claimId?: unknown }).claimId
     if (claimId === undefined) return item
     // A compact audit may reference model-authored prose, never manufacture it.
@@ -612,6 +623,7 @@ function normalizeClaim(claim: {
   findingIds?: unknown
   causal?: unknown
 }): HarnessClaim {
+  requireModelObject(claim, 'sections.claims item')
   return {
     id: String(claim.id || randomUUID()).slice(0, 80),
     premiseIds: Array.isArray(claim.premiseIds)
@@ -3347,10 +3359,7 @@ conditional researchOrigin表明由可信前綴接上後續真實搜尋；search
           `正在用既有${existingSnapshotLabel}快照完成一次性審查與撰寫。`
         )
         try {
-          const combined = jsonFromText<{
-            audit: ConsequenceAudit
-            answer: HarnessAnswer
-          }>(
+          const combined = combinedResponseFromText(
             await callModel(initialCombinedPrompt = `
 你是象棋教練兼證據審查器。只輸出一個 JSON 物件，不要輸出思考過程。
 這是棋手點擊實戰著法後的一鍵比較：在同一次呼叫完成具體後果審查與最終寫作。
@@ -4060,10 +4069,7 @@ answer 保留原五個 section id 與比較狀態對應標題。五段 claims.te
         repairWindowMs, 'json', 'repair',
         initialResponseSchema)
         repairCallingModel = false
-        const repaired = jsonFromText<{
-          audit: ConsequenceAudit
-          answer: HarnessAnswer
-        }>(repairText)
+        const repaired = combinedResponseFromText(repairText)
         const repairedAudit = normalizeConsequenceAudit(repaired.audit, repaired.answer, evidence)
         const repairedAuditErrors = validateConsequenceAudit(
           repairedAudit, evidence, true, dualComparison, validationLanguage,
