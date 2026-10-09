@@ -2263,6 +2263,65 @@ async function main(): Promise<void> {
     researchedTrace.research.stopReason === 'answered' &&
     JSON.stringify(session) === unchangedResearchSession)
 
+  // The captured best may change during ordinary research. Both the first
+  // writer and its bounded repair must describe and score the refreshed pair.
+  for (const needsRepair of [false, true]) {
+    const captured: EngineAnalysis = { ...sameMoveAnalysis,
+      bestMove: 'b0c2', displayBestMove: '馬八進七',
+      principalVariation: ['b0c2', 'h9g7', 'h2e2', 'b9c7'],
+      displayPrincipalVariation: ['馬八進七', '馬8進7', '炮二平五', '馬2進3'],
+      scoreAfterUserMove: engineAnalysis.scoreAfterUserMove,
+      evaluationAfterUserMove: engineAnalysis.evaluationAfterUserMove }
+    const changedSession = { ...sameMoveSession, engineAnalysis: captured, moveComparison: compareMove(captured) }
+    const originalSession = JSON.stringify(changedSession)
+    const changedPrompts: string[] = []
+    const changedTraces: HarnessTrace[] = []
+    const sameWriter = new SameMoveProvider()
+    let contentCalls = 0
+    let engineCalls = 0
+    const dynamicProvider: AIProvider = { id: 'openai', displayName: 'Synthetic refreshed best',
+      generateExplanation: async request => {
+        if (request.responseSchema?.name === 'question_research_decision') return {
+          text: JSON.stringify(engineCalls === 0
+            ? { decision: 'research', reason: '確認實戰步後的主線', tasks: [{ kind: 'evaluate_move', move: 'h2e2', purpose: '確認原局面首選與實戰步' }] }
+            : { decision: 'answer', reason: '新首選與實戰步一致且已有完整主線', tasks: [] }),
+          provider: 'openai', model: 'fake-model', createdAt: Date.now(), groundedOnEngineData: true,
+          usage: { inputTokens: 10, outputTokens: 80 } }
+        changedPrompts.push(request.prompt)
+        contentCalls++
+        const response = await sameWriter.generateExplanation(request)
+        const packet = JSON.parse(/^證據：(.*)$/m.exec(request.prompt)?.[1] ?? '[]') as Array<{ id: string; role: string }>
+        const best = packet.find(item => item.role === 'best_move')!.id
+        const user = packet.find(item => item.role === 'user_move')!.id
+        const remapped = syntheticInitialProtocol(response.text.replaceAll('"E1"', `"${best}"`).replaceAll('"E2"', `"${user}"`), request.prompt)
+        const combined = JSON.parse(remapped) as { answer: HarnessAnswer }
+        if (needsRepair && contentCalls === 1) delete combined.answer.sections.find(section => section.id === HARNESS_SECTION_IDS.bestMovePlan)!.claims[0].premiseIds
+        return { ...response, text: JSON.stringify(combined) }
+      }, generateExplanationStream: async function* () { return }
+    }
+    let changedResult: Awaited<ReturnType<typeof runExplanationHarness>> | undefined
+    let changedError: unknown
+    try { changedResult = await runExplanationHarness({ requestId: `refreshed-same-best-${needsRepair}`,
+      analysisId: changedSession.analysisId, provider: 'openai', model: 'fake-model', userLevel: 'intermediate',
+      explanationStyle: 'long_analytical', language: 'zh-TW', answerMode: 'research', attachedMove: 'h2e2' }, {
+      provider: dynamicProvider, apiKey: 'synthetic-only', model: 'fake-model', session: changedSession,
+      registry: { list: () => ({ activeEngineId: 'engine-1' }), getAdapter: () => ({ analyzePosition: async () => {
+        engineCalls++; return { ...sameMoveAnalysis, depth: 18 }
+      } }) } as never, traceStore: { save: (trace: HarnessTrace) => changedTraces.push(trace) } as never,
+      signal: new AbortController().signal, onProgress: () => undefined
+    }) } catch (error) { changedError = error }
+    check(`新首選完整正文使用目前首選，不因舊首選誤擋（repair=${needsRepair}）`,
+      changedError === undefined && changedResult !== undefined && countHanCharacters(changedResult.finalText) >= 400 &&
+      changedResult.finalText.includes('炮二平五就是引擎首選') && contentCalls === (needsRepair ? 2 : 1),
+      changedTraces.at(-1)?.validationErrors)
+    check(`初次與修補提示及診斷不再要求舊首選（repair=${needsRepair}）`,
+      changedPrompts.length > 0 && changedPrompts.every(prompt => /^AI 首選：炮二平五$/m.test(prompt) &&
+        !/^AI 首選：馬八進七$/m.test(prompt)) &&
+      !changedTraces.at(-1)?.validationErrors.some(error => error.includes('最佳著法（馬八進七）')))
+    check(`首選更新只限本次執行，原session保持不變（repair=${needsRepair}）`,
+      JSON.stringify(changedSession) === originalSession && engineCalls === 1)
+  }
+
   const shallowAnalysis: EngineAnalysis = {
     ...engineAnalysis,
     principalVariation: [engineAnalysis.bestMove],

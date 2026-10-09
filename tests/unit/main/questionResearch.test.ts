@@ -10,6 +10,7 @@ import { compareMove } from '../../../src/shared/logic/analysis/MoveComparisonSe
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
 import { runExplanationHarness } from '../../../src/main/ai/HarnessOrchestrator'
 import { AIHttpError } from '../../../src/main/ai/http'
+import { buildVariationBoardFacts } from '../../../src/main/ai/VariationBoardFacts'
 import {
   buildResearchDecisionSchema, completedResearchEvidence, latestResearchUpdates, parseResearchDecision,
   recordResearchUpdate, replayResearchLine, resolveResearchAction, type ResolvedResearchAction
@@ -155,10 +156,12 @@ async function runScenario(options: {
   engine?: (input: EngineInput, config: AnalysisConfig, opts: EngineOptions) => Promise<EngineAnalysis>;
   modelError?: Error; onPlan?: (index: number) => void; missingUsage?: boolean
   initialAnalysis?: EngineAnalysis; storedMove?: string; writerEvidenceId?: string
+  writerText?: string; recoveryText?: string; rawWriter?: boolean; explanationPrompt?: string
+  question?: string
 } = {}) {
   const a = options.initialAnalysis ?? analysis()
   const session: AnalysisSession = { analysisId: 'research-session', requestId: 'engine-r', createdAt: '2026-01-01',
-    expiresAt: '2099-01-01', positionFen: START_FEN, primaryEngineId: 'synthetic-engine', engineAnalysis: a,
+    expiresAt: '2099-01-01', positionFen: a.positionFen, primaryEngineId: 'synthetic-engine', engineAnalysis: a,
     moveComparison: compareMove(a) }
   if (options.storedMove) session.userMove = options.storedMove
   const before = JSON.stringify(session)
@@ -170,7 +173,7 @@ async function runScenario(options: {
   const controller = options.controller ?? new AbortController()
   const execution = prepareExplanationExecution({ requestId: 'research-r', analysisId: session.analysisId,
     provider: 'openai', model: 'synthetic-model', userLevel: 'intermediate', explanationStyle: 'long_analytical',
-    language: 'zh-TW', answerMode: 'research', followUpQuestion: '炮二平五後黑方為什麼馬8進7？請用兩句回答。',
+    language: 'zh-TW', answerMode: 'research', followUpQuestion: options.question ?? '炮二平五後黑方為什麼馬8進7？請用兩句回答。',
     conversationHistory: [{ id: 'prior', role: 'assistant', text: '舊的有效解說。', createdAt: '2026-01-01' }],
     ...(options.budget ? { budget: options.budget } : {}) }, session, 'synthetic-model', {
     getActiveManifest: () => null, createEvaluationLink: () => undefined })
@@ -186,10 +189,13 @@ async function runScenario(options: {
           plannerCalls++
           if (options.modelError) throw options.modelError
         }
+        const written = options.writerText ?? shortAnswer
         const text = planner ? JSON.stringify(options.decisions?.[plannerCalls - 1] ?? answerDecision)
-          : JSON.stringify({ mode: 'research', title: '後續部署', directAnswer: shortAnswer,
+          : request.responseFormat === undefined ? options.recoveryText ?? shortAnswer
+          : options.rawWriter ? written
+          : JSON.stringify({ mode: 'research', title: '後續部署', directAnswer: written,
             directAnswerEvidenceIds: [options.writerEvidenceId ?? 'E1'], sections: [{ id: 'follow_up', heading: '後續部署',
-              claims: [{ id: 'FQ1', text: shortAnswer, evidenceIds: [options.writerEvidenceId ?? 'E1'] }] }], generalNotes: [], warnings: [] })
+              claims: [{ id: 'FQ1', text: written, evidenceIds: [options.writerEvidenceId ?? 'E1'] }] }], generalNotes: [], warnings: [] })
         return { text, provider: 'openai', model: 'synthetic-model', createdAt: Date.now(), groundedOnEngineData: true,
           ...(options.missingUsage ? {} : { usage: { inputTokens: 50, outputTokens: 80 } }) }
       } } as never,
@@ -202,7 +208,8 @@ async function runScenario(options: {
           return analysis(input.positionFen, line, 18)
         } } } as never,
       traceStore: { save: (value: HarnessTrace) => { trace = value } } as never,
-      signal: controller.signal, onProgress: event => stages.push(event.phase)
+      signal: controller.signal, onProgress: event => stages.push(event.phase),
+      explanationPrompt: options.explanationPrompt
     })
   } catch (caught) { error = caught }
   assert.equal(JSON.stringify(session), before, 'background research cannot mutate session or prior answer')
@@ -220,6 +227,65 @@ async function main() {
     assert.equal(refreshed.engineCalls[0]?.input.userMove, 'h2e2')
     assert.ok(refreshed.requests.find(request => request.responseSchema?.name !== 'question_research_decision')?.prompt.includes('實戰步與引擎首選是同一著法'))
     assert.ok(refreshed.result?.finalText.includes(shortAnswer))
+  })
+  const negative = '炮二平五是失誤，因為紅炮移到中路後會較差。黑方馬8進7則發展馬，應沿主線觀察後續部署。'
+  for (const state of ['same_move', 'insufficient'] as const) {
+    const updated = { ...analysis(START_FEN, state === 'same_move' ? rootLine : ['b0c2', 'h9g7', 'h2e2', 'b9c7'], 18),
+      userMove: 'h2e2', userMovePrincipalVariation: rootLine,
+      displayUserMovePrincipalVariation: replayResearchLine(START_FEN, rootLine)!.display }
+    for (const path of ['unchanged_recovery', 'raw_salvage', 'corrected_recovery'] as const) {
+      const inspected = await runScenario({ initialAnalysis: initial, storedMove: 'h2e2', writerEvidenceId: 'E4',
+        writerText: negative, recoveryText: path === 'corrected_recovery' ? shortAnswer : negative,
+        rawWriter: path === 'raw_salvage',
+        explanationPrompt: '歷史資料：最佳著法馬八進七，舊比較狀態有分差。', engine: async () => updated })
+      test(`${state} ${path} keeps comparison validation through recovery and salvage`, () => {
+        if (path === 'corrected_recovery') {
+          assert.equal(inspected.error, undefined)
+          assert.equal(inspected.result?.finalText, shortAnswer)
+          assert.equal(inspected.trace?.status, 'completed')
+        } else {
+          assert.equal(inspected.result, undefined, 'recovery cannot deliver the same rejected negative judgment')
+          assert.equal(inspected.trace?.status, 'failed')
+          assert.equal(inspected.trace?.finalText, undefined)
+        }
+        assert.equal(inspected.requests.length, 4, 'two planner milestones, writer and at most one recovery')
+        assert(inspected.trace?.validationErrors.some(value => /同一步|比較證據不足/.test(value)))
+      })
+      test(`${state} ${path} supplies the current comparison without treating old prompt facts as current`, () => {
+        for (const request of inspected.requests.filter(request => request.responseSchema?.name !== 'question_research_decision')) {
+          assert(request.prompt.includes('"currentComparison"'))
+          assert(request.prompt.includes(`"state":"${state}"`))
+          assert(request.prompt.includes(`"displayBestMove":"${updated.displayBestMove}"`))
+          assert(request.prompt.includes('歷史'), 'retained original context must be scoped as historical')
+        }
+      })
+    }
+  }
+  // A legal tactical fixture: moving the horse leaves the red cannon on the
+  // black rook's open file; the cannon move instead clears that capture target.
+  const tacticalFen = '4k2n1/9/7r1/4p4/9/9/4P4/7C1/9/1N2K4 w - - 0 1'
+  const goodLine = ['h2e2', 'h9g7', 'b0c2', 'h7h2']
+  const badLine = ['b0c2', 'h7h2', 'c2b4', 'h2e2']
+  const capturedTactical = { ...analysis(tacticalFen, badLine), userMove: 'h2e2',
+    userMovePrincipalVariation: goodLine, displayUserMovePrincipalVariation: replayResearchLine(tacticalFen, goodLine)!.display }
+  const freshTactical = { ...analysis(tacticalFen, goodLine, 18), userMove: 'b0c2',
+    userMovePrincipalVariation: badLine, displayUserMovePrincipalVariation: replayResearchLine(tacticalFen, badLine)!.display }
+  const tacticalText = '另一候選馬八進七是失誤，因為這條線留下紅炮失根，黑方車8進5吃掉紅炮。紅方再走馬七進八是轉移馬的位置，這條變化仍留下紅炮的子力損失。'
+  const alternative = await runScenario({ initialAnalysis: capturedTactical, storedMove: 'h2e2',
+    question: '另一候選馬八進七為什麼是失誤，對手如何反制？請用兩句回答。',
+    decisions: [{ decision: 'research', reason: '檢查另一候選的實際反制', tasks: [
+      { kind: 'evaluate_move', move: 'b0c2', purpose: '檢查馬步後黑車的反制' }
+    ] }, answerDecision], engine: async () => freshTactical,
+    writerText: tacticalText, recoveryText: tacticalText, writerEvidenceId: 'E4' })
+  test('same reviewed best allows a separately evidenced alternative criticism without confusing the subject', () => {
+    const alternativeEvidence = alternative.trace?.evidence.find(item => item.id === 'E4')
+    assert(alternativeEvidence)
+    const facts = buildVariationBoardFacts(alternativeEvidence)
+    assert.deepEqual(facts.steps[1]?.captured, { side: 'red', piece: 'cannon' },
+      'the positive alternative contains an actual legal cannon capture')
+    assert.equal(alternative.error, undefined, JSON.stringify(alternative.trace?.validationErrors))
+    assert(alternative.result?.finalText.endsWith(`\n\n${tacticalText}`), 'structured rendering keeps the accepted two-sentence answer intact')
+    assert.equal(alternative.requests.length, 3)
   })
   const branchRun = await runScenario({ decisions: [ { decision: 'research', reason: '檢查黑馬後續部署', tasks: [
     { kind: 'continue_line', purpose: '檢查黑馬後續部署', evidenceId: 'E1', prefixPlies: 1, move: null }
