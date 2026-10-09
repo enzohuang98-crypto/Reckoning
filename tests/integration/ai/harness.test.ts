@@ -1795,6 +1795,7 @@ async function main(): Promise<void> {
   )
 
   let receivedInitialSchema = false
+  let strictFixtureEnvelope = ''
   const strictFixtureProvider: AIProvider = {
     id: 'openrouter', displayName: 'SYNTHETIC strict fixture provider',
     async generateExplanation(request: AIExplanationRequest) {
@@ -1813,10 +1814,16 @@ async function main(): Promise<void> {
       const combined = { answer: strictAnswer, audit: strictAudit }
       const validateSchema = new Ajv({ strict: true }).compile(request.responseSchema?.schema ?? buildInitialMoveResponseSchema('research', ['E1', 'E2']).schema)
       check('完整五段 JSON object fixture 符合本機欄位契約', validateSchema(combined), validateSchema.errors)
+      const limitedComparison = structuredClone(combined)
+      Object.assign(limitedComparison.answer.sections[1]!.claims[0]!, {
+        text: '目前引擎證據不足，無法確認兩種著法的完整比較。',
+        premiseIds: [], findingIds: [], causal: null
+      })
+      check('native schema 保留正式 validator 允許的局部不足空前提',
+        validateSchema(limitedComparison), validateSchema.errors)
       for (const [name, refs] of [
         ['另一條線', ['E2:P1:move']], ['未知前提', ['E1:P999:move']],
-        ['超過四項', ['E1:P1:move', 'E1:P2:move', 'E1:P3:move', 'E1:P4:move', 'E1:P5:move']],
-        ['缺少選擇', []]
+        ['超過四項', ['E1:P1:move', 'E1:P2:move', 'E1:P3:move', 'E1:P4:move', 'E1:P5:move']]
       ] as const) {
         const invalid = structuredClone(combined)
         invalid.answer.sections[2]!.claims[0]!.premiseIds = [...refs]
@@ -1834,7 +1841,8 @@ async function main(): Promise<void> {
       check('schema 解碼順序先選前提並聲明解讀，再寫正文',
         Object.keys(bestClaimSchema).indexOf('premiseIds') < Object.keys(bestClaimSchema).indexOf('text') &&
         Object.keys(bestClaimSchema).indexOf('interpretation') < Object.keys(bestClaimSchema).indexOf('text'))
-      return { text: JSON.stringify(combined), provider: this.id, model: request.model,
+      strictFixtureEnvelope = JSON.stringify(combined)
+      return { text: strictFixtureEnvelope, provider: this.id, model: request.model,
         createdAt: Date.now(), groundedOnEngineData: true, usage: { inputTokens: 10, outputTokens: 2000 } }
     },
     async *generateExplanationStream(): AsyncIterable<never> { return }
@@ -1852,6 +1860,52 @@ async function main(): Promise<void> {
   check('正式初次請求包含完整 schema，合格五段 JSON 仍通過正文 validator',
     receivedInitialSchema && strictFixtureResult.finalText.includes('士4進5') &&
       countHanCharacters(strictFixtureResult.finalText) >= 400)
+  for (const kind of ['limited_insufficiency', 'substantive_empty_premises'] as const) {
+    const envelope = JSON.parse(strictFixtureEnvelope)
+    const claim = envelope.answer.sections[1].claims[0]
+    claim.premiseIds = []
+    if (kind === 'limited_insufficiency') {
+      Object.assign(claim, {
+        text: '目前引擎證據不足，無法確認兩種著法的完整比較。', findingIds: [], causal: null
+      })
+      envelope.answer.directAnswer = '士4進5先調整士，車7平6則先移動黑車；因為兩條主線先移動不同棋子，這裡只能確認走子次序不同，不能斷定更遠的得失。'
+    }
+    let calls = 0
+    let result: Awaited<ReturnType<typeof runExplanationHarness>> | undefined
+    let error: unknown
+    const traces: HarnessTrace[] = []
+    try {
+      result = await runExplanationHarness({ requestId: `schema-premise-${kind}`, analysisId: formalSession.analysisId,
+        provider: 'openrouter', model: 'qwen/qwen3.8-27b:free', userLevel: 'intermediate',
+        explanationStyle: 'long_analytical', language: 'zh-TW', answerMode: 'research', attachedMove: formalSession.userMove }, {
+        provider: { id: 'openrouter', displayName: 'SYNTHETIC schema premise boundary',
+          generateExplanation: async (request: AIExplanationRequest) => {
+            calls++
+            const validate = new Ajv({ strict: true }).compile(request.responseSchema!.schema)
+            if (!validate(envelope)) throw new Error(`complete native shape rejected: ${JSON.stringify(validate.errors)}`)
+            return { text: JSON.stringify(envelope), provider: 'openrouter', model: request.model,
+              createdAt: Date.now(), groundedOnEngineData: true, usage: { inputTokens: 10, outputTokens: 2000 } }
+          }, generateExplanationStream: async function* () { return } },
+        apiKey: 'synthetic-only', model: 'qwen/qwen3.8-27b:free', session: formalSession,
+        registry: { list: () => ({ activeEngineId: 'engine-1' }), getAdapter: () => null } as never,
+        traceStore: { save: (trace: HarnessTrace) => traces.push(trace) } as never,
+        signal: new AbortController().signal, onProgress: () => undefined
+      })
+    } catch (caught) { error = caught }
+    if (kind === 'limited_insufficiency') {
+      check('native schema 與正式 Harness 都接受完整正文中的局部不足空前提',
+        error === undefined && calls === 1 && traces.at(-1)?.status === 'completed' &&
+        result?.finalText.includes(claim.text) === true && countHanCharacters(result.finalText) >= 400,
+        traces.at(-1)?.validationErrors ?? String(error))
+    } else {
+      check('native shape 通過不能豁免實質敘述的空前提，修補仍拒絕且不存正文',
+        result === undefined && calls === 2 && error instanceof HarnessExplanationUnavailableError &&
+        error.reason === 'quality_validation_failed' && traces.at(-1)?.status === 'failed' &&
+        traces.at(-1)?.finalText === undefined &&
+        traces.at(-1)?.validationErrors.some(issue => issue.includes('C2 必須先選擇')) === true,
+        traces.at(-1)?.validationErrors)
+    }
+  }
 
   const nominalTraces: HarnessTrace[] = []
   const nominalCatalog = getTeacherTestCatalog()

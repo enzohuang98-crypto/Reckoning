@@ -18,18 +18,21 @@ export function buildInitialMoveResponseSchema(
   const causal = object({ cause: string, mechanism: string, affected: string,
     opponentUse: string, consequence: string })
   const [bestId, userId = bestId] = evidenceIds
-  const claim = (ids: string[], allowedEvidenceIds: string[], description: string, requirePremises: boolean): Record<string, unknown> => {
+  const claim = (ids: string[], allowedEvidenceIds: string[], description: string): Record<string, unknown> => {
     const premiseIds = [...new Set(allowedEvidenceIds.flatMap(id => premiseIdsByEvidence?.[id] ?? []))]
     return object({
       id: { type: 'string', enum: ids },
       ...(premiseIdsByEvidence ? {
-        premiseIds: { type: 'array', minItems: requirePremises && premiseIds.length > 0 ? 1 : 0,
+        premiseIds: { type: 'array', minItems: 0,
+          // The formal validator allows a bounded insufficiency statement to
+          // omit premises. Schema cannot decide that from arbitrary prose;
+          // substantive core claims still require premises in that validator.
           // Keep reference uniqueness in the formal validator: provider schema
           // subsets differ, and a declared structured-output capability is not
           // a guarantee that every JSON Schema keyword is accepted.
           maxItems: premiseIds.length > 0 ? 4 : 0,
           items: premiseIds.length > 0 ? { type: 'string', enum: premiseIds } : string,
-          description: '先選本段實際解釋的1–4項盤面前提；text必須引用對應中文著法。前提只提供觀察，不證明策略推論。' },
+          description: '需要前提的實質敘述先選本段實際解釋的1–4項盤面前提；text必須引用對應中文著法。明確局部證據不足可填[]，是否符合豁免由正式內容驗證判定。前提只提供觀察，不證明策略推論。' },
         interpretation: { type: 'string', enum: ['observation', 'inference'] }
       } : {}),
       text: { type: 'string', description },
@@ -52,8 +55,7 @@ export function buildInitialMoveResponseSchema(
     id: { type: 'string', enum: [id] }, heading: string,
     claims: { type: 'array', minItems: index === 3 ? 2 : 1, maxItems: index === 3 ? 2 : 1,
       items: claim(index === 3 ? ['C4a', 'C4b'] : [`C${index === 4 ? 5 : index + 1}`],
-        index === 2 ? [bestId!] : index === 3 ? [userId!] : [...new Set(evidenceIds)], descriptions[index]!,
-        index >= 1 && index <= 3) }
+        index === 2 ? [bestId!] : index === 3 ? [userId!] : [...new Set(evidenceIds)], descriptions[index]!) }
   })) }
   return { name: 'initial_move_explanation', schema: object({
     answer: object({
