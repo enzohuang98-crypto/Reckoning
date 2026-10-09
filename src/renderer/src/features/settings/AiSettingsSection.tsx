@@ -56,6 +56,7 @@ export function AiSettingsSection({
   const active = secretStatus.activeCredential
   const savedOpenRouterActive = active?.provider === 'openrouter'
   const selectedModelUnavailable =
+    !savedModelsError && (openRouterModels.length > 0 || savedModelsLoaded) &&
     selectedOpenRouterModel !== '' &&
     !openRouterModels.some((model) => model.id === selectedOpenRouterModel)
 

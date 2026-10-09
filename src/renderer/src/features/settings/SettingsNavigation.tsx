@@ -8,7 +8,7 @@ const categories: Array<{
   icon: IconName
 }> = [
   { id: 'ai', label: 'AI 與金鑰', description: '自动连线与解说语言', icon: 'brain' },
-  { id: 'engines', label: '本機引擎', description: '引擎安裝、複核與分析時間', icon: 'board' },
+  { id: 'engines', label: '本機引擎', description: '引擎安裝與連線驗證', icon: 'board' },
   { id: 'system', label: '資料與系統', description: '備份與更新', icon: 'settings' }
 ]
 

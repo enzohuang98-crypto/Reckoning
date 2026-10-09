@@ -19,6 +19,8 @@ function render(options: {
   openRouterModels?: AIModelInfo[]
   selectedOpenRouterModel?: string
   onOpenRouterModelChange?: (model: string) => void
+  savedModelsLoaded?: boolean
+  savedModelsError?: string | null
 } = {}): TestRenderer.ReactTestRenderer {
   return TestRenderer.create(
     <AiSettingsSection
@@ -41,6 +43,8 @@ function render(options: {
       onRefreshOpenRouterModels={options.onRefreshOpenRouterModels}
       onLoadSavedOpenRouterModels={options.onLoadSavedOpenRouterModels}
       onSwitchSavedOpenRouterModel={options.onSwitchSavedOpenRouterModel}
+      savedModelsLoaded={options.savedModelsLoaded}
+      savedModelsError={options.savedModelsError}
       onDeleteKey={options.onDeleteKey ?? (() => undefined)}
     />
   )
@@ -192,6 +196,19 @@ const useSaved = savedOpenRouter.root.findAllByType('button').find(
 assert(useSaved)
 assert.equal(useSaved.props.disabled, true, '尚未讀取候選清單時不可提交草稿模型')
 assert.equal(savedSwitchCalls, 0)
+const unavailableText = '目前選擇的模型已不在最新清單'
+assert(!JSON.stringify(savedOpenRouter.toJSON()).includes(unavailableText),
+  '尚未讀取目錄不能把已保存模型判成已不可用')
+const savedStatus: SecretStatus = { configured: true, needsReentry: false,
+  activeCredential: { provider: 'openrouter', model: 'vendor/model-a:free' }, credentials: [] }
+const catalogFailure = render({ status: savedStatus, selectedOpenRouterModel: 'vendor/model-a:free',
+  savedModelsLoaded: true, savedModelsError: 'Controlled catalog timeout' })
+assert(!JSON.stringify(catalogFailure.toJSON()).includes(unavailableText),
+  '目錄讀取失敗表示未知，不能代替模型下架證據')
+const genuinelyMissing = render({ status: savedStatus, selectedOpenRouterModel: 'vendor/model-a:free',
+  savedModelsLoaded: true, openRouterModels: [{ id: 'vendor/model-b:free', label: 'Other free model' }] })
+assert(JSON.stringify(genuinelyMissing.toJSON()).includes(unavailableText),
+  '成功的新目錄確實缺少已保存模型時仍必須顯示重新選擇提示')
 
 const wizard = TestRenderer.create(
   <SetupWizard

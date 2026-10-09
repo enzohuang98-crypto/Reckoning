@@ -223,7 +223,7 @@ export function SettingsPage({
       const currentModel = selectedOpenRouterModel || source.model
       setOpenRouterModels(result.models)
       setSelectedOpenRouterModel(currentModel)
-      setConnectionStage('awaiting-model')
+      setConnectionStage(currentModel === result.status.activeCredential?.model ? 'enabled' : 'awaiting-model')
     } catch (error) {
       if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
       setSavedModelsLoaded(true)
