@@ -96,8 +96,9 @@ for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-
         assert.deepEqual(body.provider, { require_parameters: true }, 'Schema requests must require a supporting endpoint')
         assert.deepEqual(body.reasoning, { enabled: false, exclude: true })
       } else if (model.includes('-super-')) {
-        assert.deepEqual(body.response_format, { type: 'json_object' }, 'Super must use the bounded JSON-object contract confirmed by the live comparison')
-        assert.equal(body.provider, undefined, 'Schema routing must not force the regressed constrained decoder')
+        assert.deepEqual(body.response_format, { type: 'json_schema', json_schema: { ...responseSchema, strict: true } },
+          'The current portable initial/repair schema preserves the exact Super envelope and role fields')
+        assert.deepEqual(body.provider, { require_parameters: true })
         assert.deepEqual(body.reasoning, { effort: 'none', exclude: true })
       } else {
         assert.deepEqual(body.response_format, model.includes('-ultra-') ? undefined : { type: 'json_object' })
@@ -108,6 +109,21 @@ for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-
       assert.equal(body.plugins, undefined, 'No response healing may repair incomplete model output')
     })
 }
+for (const contractName of ['question_research_decision', 'unverified_schema']) {
+  await withServer(() => ({ model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }] }), async (baseUrl, requests) => {
+    await new OpenRouterProvider({ baseUrl }).generateExplanation({
+      provider: 'openrouter', model: 'nvidia/nemotron-3-super-120b-a12b:free', apiKey: 'synthetic-test-key',
+      prompt: 'SYNTHETIC phase isolation', responseFormat: 'json',
+      responseSchema: { ...responseSchema, name: contractName }, maxOutputTokens: 1000,
+      metadata: { requestId: 'schema-phase', analysisId: 'schema-phase', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+    })
+    const body = requests[0].body as Record<string, unknown>
+    assert.deepEqual(body.response_format, { type: 'json_object' })
+    assert.equal(body.provider, undefined, 'Only the confirmed full initial/repair contract uses strict schema')
+  })
+}
+
 await withServer(
   ({ url }) => {
     if (url === '/api/v1/key') return { data: { label: 'test-key' } }

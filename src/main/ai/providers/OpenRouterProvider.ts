@@ -22,6 +22,7 @@ import {
 } from '../http'
 import {
   OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL,
+  OPENROUTER_NEMOTRON_SUPER_FREE_MODEL,
   OPENROUTER_QWEN38_FREE_MODEL,
   openRouterReasoningConfig
 } from '../OpenRouterRequestPolicy'
@@ -166,8 +167,9 @@ export class OpenRouterProvider implements AIProvider {
     // Endpoint capability is structured_outputs, not the legacy JSON-mode flag.
     // Confirmed against the exact free endpoint on 2026-10-04; require_parameters
     // fails closed if that support disappears rather than silently ignoring it.
-    const useSchema = request.model === OPENROUTER_QWEN38_FREE_MODEL &&
-      request.responseFormat === 'json' && request.responseSchema !== undefined
+    const useSchema = request.responseFormat === 'json' && request.responseSchema !== undefined &&
+      (request.model === OPENROUTER_QWEN38_FREE_MODEL ||
+        (request.model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL && request.responseSchema.name === 'initial_move_explanation'))
     const response = await fetchOpenRouterResponse(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       signal,
@@ -179,10 +181,11 @@ export class OpenRouterProvider implements AIProvider {
         stream: false,
         // Ultra has no confirmed JSON-mode policy. The exact free Qwen endpoint
         // supports structured_outputs; only phase-specific contracts use it.
-        // Super advertises schema support, but the live fixed-case comparison
-        // exhausted 6,000 output tokens with strict schema and zero reasoning;
-        // JSON object finished within 1,900. This observed format difference
-        // selects JSON object; it does not establish the decoder's root cause.
+        // The older Super schema exhausted its output cap. On 2026-10-09 the
+        // portable role/premise schema completed at 2,111/2,033 tokens with stop
+        // and no reasoning; JSON object had returned a malformed envelope.
+        // Use only the verified initial/repair contract. Planner/follow-up
+        // requests retain JSON object; schema shape does not prove chess truth.
         // All local content validation remains required.
         ...(useSchema
           ? { response_format: { type: 'json_schema', json_schema: {
