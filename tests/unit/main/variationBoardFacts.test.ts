@@ -799,5 +799,76 @@ check('不存在的變例宣告不能混用另一條線',
 check('同時宣告兩個同記譜步數仍不代表單一吃子已確定',
   validate('黑方卒1進1吃掉紅方兵。', [declaredPawnLine], [...declaredQuiet, ...declaredCapture]).length > 0)
 
+const publicPawnCaptures = [
+  { line: replayEvidence('E1', ['g3g4', 'h7g7', 'b2e2', 'c9e7', 'h0g2', 'g6g5', 'g4g5'], START_FEN),
+    move: '兵三進一', ply: 7 },
+  { line: replayEvidence('E5', ['h2e2', 'h9g7', 'g3g4', 'h7i7', 'c3c4', 'i9h9', 'h0g2', 'c6c5', 'c4c5'], START_FEN),
+    move: '兵七進一', ply: 9 }
+]
+for (const { line, move, ply } of publicPawnCaptures) {
+  const facts = buildVariationBoardFacts(line)
+  check(`public ${line.id} replay independently confirms the red pawn capture at ply ${ply}`,
+    facts.warning === null && facts.steps[ply - 1]?.captured?.side === 'black' &&
+    facts.steps[ply - 1]?.captured?.piece === 'pawn' && facts.steps[ply - 1]?.move === move)
+  const text = `紅方${move}在第${ply}手吃掉黑方卒。`
+  check(`a suffix ordinal identifies the exact public pawn capture: ${text}`,
+    validate(text, [line]).length === 0 && concreteRelation(text, [line]))
+  const quietPly = facts.steps.find(step => step.move === move)!.ply
+  const captureBinding = [{ evidenceId: line.id, ply, move }]
+  const quietBinding = [{ evidenceId: line.id, ply: quietPly, move }]
+  for (const qualifiedMove of [
+    `第${ply}手紅方${move}`, `紅方在第${ply}手${move}`, `紅方${move}在第${ply}手`,
+    `第${ply}手紅方${move}在第${ply}手`
+  ]) {
+    check(`prefix and suffix ordinals retain a factual capture: ${qualifiedMove}`,
+      validate(`${qualifiedMove}吃掉黑方卒。`, [line]).length === 0 &&
+      concreteRelation(`${qualifiedMove}吃掉黑方卒。`, [line]))
+    check(`an exact capture cannot be denied or change target: ${qualifiedMove}`,
+      [`${qualifiedMove}沒有吃子。`, `${qualifiedMove}吃掉黑方車。`,
+        `${qualifiedMove}吃掉紅方兵。`, `${qualifiedMove.replace('紅方', '黑方')}吃掉黑方卒。`]
+        .every(wrong => validate(wrong, [line]).length > 0 && !concreteRelation(wrong, [line])))
+  }
+  check(`${line.id} quiet and nonexistent suffix plies cannot borrow the later capture`,
+    [quietPly, ply - 1, ply + 1].every(wrongPly =>
+      validate(`紅方${move}在第${wrongPly}手吃掉黑方卒。`, [line]).length > 0))
+  check(`${line.id} suffix denial checks the selected quiet occurrence`,
+    validate(`紅方${move}在第${quietPly}手沒有吃子。`, [line]).length === 0 &&
+    !concreteRelation(`紅方${move}在第${quietPly}手沒有吃子。`, [line]))
+  check(`${line.id} conflicting prefix and suffix ordinals cannot select either favourable ply`,
+    validate(`第${quietPly}手紅方${move}在第${ply}手吃掉黑方卒。`, [line]).length > 0 &&
+    validate(`紅方在第${ply}手${move}在第${quietPly}手沒有吃子。`, [line]).length > 0)
+  check(`${line.id} visible suffix and declared premise bindings are intersected`,
+    validate(text, [line], captureBinding).length === 0 &&
+    validate(text, [line], quietBinding).length > 0 &&
+    validate(`紅方${move}在第${quietPly}手没有吃子。`, [line], captureBinding).length > 0)
+  check(`${line.id} another cited line cannot supply the declared capture occurrence`,
+    validate(text, publicPawnCaptures.filter(other => other.line.id !== line.id).map(other => other.line)).length > 0 &&
+    validate(text, [line], [{ evidenceId: 'other-line', ply, move }]).length > 0)
+  check(`${line.id} ordinals cannot cross a clause boundary to resolve an ambiguous event`,
+    validate(`紅方${move}吃掉黑方卒，在第${ply}手。`, [line]).length > 0 &&
+    validate(`紅方在第${ply}手，${move}吃掉黑方卒。`, [line]).length > 0)
+  check(`${line.id} both ordinal forms preserve chronological anchor order`,
+    validate(`紅方${move}在第${quietPly}手後，紅方在第${ply}手${move}吃掉黑方卒。`, [line]).length === 0 &&
+    validate(`紅方${move}在第${ply}手後，紅方在第${quietPly}手${move}沒有吃子。`, [line]).length > 0)
+  check(`${line.id} suffix chronology cannot skip an explicitly immediate reply`,
+    validate(`紅方${move}在第${quietPly}手後，緊接著紅方${move}在第${ply}手吃掉黑方卒。`, [line]).length > 0)
+  check(`${line.id} an explicit snapshot still excludes a later suffix capture`,
+    validate(`截至第${ply - 1}手，${text}`, [line]).length > 0 &&
+    validate(`截至第${ply}手，${text}`, [line]).length === 0)
+  for (const ordinal of ['第0手', '第257手', '第十二十手', `第${ply}步`, `第${ply}回合`]) {
+    check(`${line.id} unsupported suffix ordinal fails closed: ${ordinal}`,
+      validate(`紅方${move}在${ordinal}吃掉黑方卒。`, [line]).length > 0)
+  }
+}
+check('Chinese suffix ordinals preserve the same capture and actor identity',
+  validate('紅方兵三進一在第七手吃掉黑方卒。', [publicPawnCaptures[0]!.line]).length === 0 &&
+  validate('紅方在第七手兵三進一吃掉黑方卒。', [publicPawnCaptures[0]!.line]).length === 0)
+const quietSeventhPly = replayEvidence('other-line',
+  ['g3g4', 'h7g7', 'b2e2', 'c9e7', 'h0g2', 'a6a5', 'g4g5'], START_FEN)
+check('a suffix ordinal cannot pick a favourable capture among conflicting cited replays',
+  buildVariationBoardFacts(quietSeventhPly).warning === null &&
+  validate('紅方兵三進一在第7手吃掉黑方卒。', [publicPawnCaptures[0]!.line, quietSeventhPly]).length > 0 &&
+  !concreteRelation('紅方兵三進一在第7手吃掉黑方卒。', [publicPawnCaptures[0]!.line, quietSeventhPly]))
+
 console.log(`\nVariation board statements: ${passed} passed, ${failed} failed`)
 if (failed) process.exitCode = 1

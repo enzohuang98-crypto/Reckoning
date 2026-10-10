@@ -374,7 +374,7 @@ function inspectVariationBoardStatements(
   // 後/然後/接著 establish order, not adjacency. Only an explicit immediate
   // connector requires the next replay ply. 前 reverses the order. The entire
   // local gap must match; comparisons and remote narrative supply no anchor.
-  const temporalGap = /^\s*[」』”"'’]?\s*(?:(之?[後后前])\s*[，,]?\s*(隨即|随即|下一手|緊接著|紧接着|緊接|紧接|接著|接着|然後|然后)?|[，,]?\s*(隨即|随即|下一手|緊接著|紧接着|緊接|紧接|接著|接着|然後|然后))\s*((?:第\s*[0-9零一二三四五六七八九十百]+\s*(?:手|步|回合)\s*)?(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?)?\s*[「『“"'‘]?\s*)$/
+  const temporalGap = /^\s*[」』”"'’]?\s*(?:(之?[後后前])\s*[，,]?\s*(隨即|随即|下一手|緊接著|紧接着|緊接|紧接|接著|接着|然後|然后)?|[，,]?\s*(隨即|随即|下一手|緊接著|紧接着|緊接|紧接|接著|接着|然後|然后))\s*((?:(?:在?第\s*[0-9零一二三四五六七八九十百]+\s*(?:手|步|回合)\s*)?(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?)?|(?:紅方|红方|黑方|紅|红|黑)\s*在第\s*[0-9零一二三四五六七八九十百]+\s*(?:手|步|回合)\s*(?:以|走)?)\s*[「『“"'‘]?\s*)$/
   const temporalRelation = (gap: string): { before: boolean; immediate: boolean; prefix: string; valid: boolean } | null => {
     if (/[。！？；.!?;\r\n]/.test(gap)) return null
     const match = temporalGap.exec(gap)
@@ -391,9 +391,18 @@ function inspectVariationBoardStatements(
     const end = predicates.reduce((last, predicate) => Math.max(last, predicate.index! + predicate[0].length), 0)
     return gap.slice(end)
   }
+  // A postposed ordinal belongs only to this move's immediate clause. Parse it
+  // before chronology so it can constrain an anchor as well as a later fact.
+  const suffixOrdinals = textMentions.map((mention, index) => {
+    const suffix = text.slice(mention.index + mention.move.length, textMentions[index + 1]?.index)
+      .split(/[。！？；，,.!?;\r\n]/)[0]!
+    const ordinal = /^\s*[」』”"'’]?\s*在第\s*([0-9零一二三四五六七八九十百]+)\s*手/.exec(suffix)
+    return { qualified: /^\s*[」』”"'’]?\s*在第/.test(suffix),
+      ply: ordinal ? explicitBoardCount(ordinal[1]!) : null, length: ordinal?.[0].length ?? 0 }
+  })
   const links = textMentions.slice(1).flatMap((right, index) => {
     const left = textMentions[index]!
-    const gap = text.slice(left.index + left.move.length, right.index)
+    const gap = text.slice(left.index + left.move.length + suffixOrdinals[index]!.length, right.index)
     let relation = temporalRelation(gap)
     // Read chronology only after the preceding event, never use its modal or
     // target to choose a replay occurrence. Punctuation is optional here.
@@ -416,11 +425,15 @@ function inspectVariationBoardStatements(
   })
   // Resolve identity before inspecting predicates: ordinals, cutoffs and actor
   // declarations constrain temporal anchors as well as the asserted move.
+  const actorOrdinals = localPrefixes.map(prefix =>
+    /^\s*(紅方|红方|黑方|紅|红|黑)\s*在第\s*([0-9零一二三四五六七八九十百]+)\s*手\s*(?:以|走)?\s*[「『“"'‘]?\s*$/.exec(prefix))
   const temporalBindings = textMentions.map((mention, index) => {
     const prefix = localPrefixes[index]!
     const ordinal = /^\s*(?:在|本變例(?:的)?)?第\s*([0-9零一二三四五六七八九十百]+)\s*手\s*(?:(?:紅方|红方|黑方|紅|红|黑)(?:以|走)?)?\s*[「『“"'‘]?\s*$/.exec(prefix)
-    const qualified = /^\s*(?:在|本變例(?:的)?|紅方|红方|黑方|紅|红|黑)?第/.test(prefix)
-    const ply = ordinal ? explicitBoardCount(ordinal[1]!) : null
+    const qualified = /^\s*(?:在|本變例(?:的)?|(?:紅方|红方|黑方|紅|红|黑)(?:\s*在)?)?第/.test(prefix)
+    const ordinalToken = ordinal?.[1] ?? actorOrdinals[index]?.[2]
+    const ply = ordinalToken ? explicitBoardCount(ordinalToken) : null
+    const suffix = suffixOrdinals[index]!
     const snapshot = snapshotAt(mention.index)
     // A validated premise declares a move occurrence before the prose is
     // checked. Intersect it with explicit time/order constraints; never choose
@@ -431,10 +444,11 @@ function inspectVariationBoardStatements(
       canonicalChineseMoveNotation(step.move) === canonicalChineseMoveNotation(mention.move) &&
       (selected.length === 0 || selected.some(binding => binding.evidenceId === replay.item.id && binding.ply === step.ply)) &&
       (!snapshot || (snapshot.valid && step.ply <= snapshot.ply!)) &&
-      (!qualified || (ply !== null && ply > 0 && step.ply === ply)) ? [{ replay, step }] : []))
+      (!qualified || (ply !== null && ply > 0 && step.ply === ply)) &&
+      (!suffix.qualified || (suffix.ply !== null && suffix.ply > 0 && step.ply === suffix.ply)) ? [{ replay, step }] : []))
   })
-  const temporalActors = localPrefixes.map((prefix) =>
-    /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(prefix)?.[1])
+  const temporalActors = localPrefixes.map((prefix, index) =>
+    actorOrdinals[index]?.[1] ?? /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(prefix)?.[1])
   // The local links form a chain. Pruning in both directions preserves every
   // compatible occurrence, so a repeated name remains ambiguous when order
   // alone cannot resolve it. No capture outcome participates in this choice.
@@ -487,7 +501,7 @@ function inspectVariationBoardStatements(
       const predicateBefore = precedingLink && predicateScope(linkedGap) === linkedGap
         ? (movePredicatePrefixes.get(previousMention!.index) ?? '') + localPrefix
         : localPrefix
-      const explicitActor = /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)
+      const explicitActor = actorOrdinals[textIndex]?.[1] ?? /(紅方|红方|黑方|紅|红|黑)(?:以|走|先走|再走|接著走|接着走|選擇|选择)?\s*[「『“"'‘]?\s*$/.exec(before)?.[1]
       // Only adjacent literal list members inherit an actor. Narrative and
       // comparison words break the list; a named next actor starts a new one.
       const isListMember = index > 0 && literalListGap.test(before)
@@ -498,7 +512,7 @@ function inspectVariationBoardStatements(
       const listTail = clause.slice(mentions[lastMember]!.index + mentions[lastMember]!.move.length)
       const comparisonObjects = /^[」』”"'’]?\s*(?:作|做|進行|进行)?(?:比較|比较|對照|对照)/.test(listTail)
       listActor = comparisonObjects ? null : explicitActor
-        ? { side: sideOf(explicitActor[1]!), prefix: before }
+        ? { side: sideOf(explicitActor), prefix: before }
         : isListMember ? listActor : null
       const side = listActor?.side
       // A local denial may govern a literal predicate list: 未發生吃子或將軍.
