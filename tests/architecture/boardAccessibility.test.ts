@@ -3,12 +3,16 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import TestRenderer from 'react-test-renderer'
 import {
   XiangqiBoard,
   boardCellAriaLabel,
   nextBoardCell
 } from '../../src/renderer/src/features/board/XiangqiBoard'
 import type { BoardGrid } from '../../src/shared/types/BoardState'
+import { BoardEditor } from '../../src/renderer/src/features/board/BoardEditor'
+import { parseFen } from '../../src/shared/logic/board/fen'
+import { START_FEN } from '../../src/shared/types/BoardState'
 
 const emptyGrid: BoardGrid = Array.from({ length: 10 }, () => Array(9).fill(null))
 emptyGrid[0][0] = { type: 'rook', color: 'black', code: 'r' }
@@ -66,3 +70,50 @@ assert.match(source, /aria-hidden="true"/)
 assert.match(source, /highlightedMove \? parseUciMove\(highlightedMove\) : null/)
 
 console.log('  ✓ 棋盤具備 10×9 grid 語義、座標名稱、roving tabindex 與完整鍵盤操作')
+
+const parsed = parseFen(START_FEN)
+assert.equal(parsed.valid, true)
+if (!parsed.valid) throw new Error(parsed.message)
+const originalWindow = globalThis.window
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: { addEventListener: () => undefined, removeEventListener: () => undefined }
+})
+let editor: TestRenderer.ReactTestRenderer | undefined
+try {
+  const props = {
+    board: parsed.board,
+    onChange: () => undefined,
+    toolsOpen: true,
+    guessSelectionActive: false,
+    onGuessMoveSelected: () => undefined,
+    onGuessSelectionCancel: () => undefined,
+    savedPositions: [],
+    onSavePosition: () => undefined,
+    onLoadSavedPosition: () => undefined,
+    onDeleteSavedPosition: () => undefined,
+    replayCandidates: []
+  }
+  TestRenderer.act(() => { editor = TestRenderer.create(createElement(BoardEditor, props)) })
+  assert.ok(editor)
+  const field = editor.root.findAllByType('textarea').filter(
+    (node) => node.props['aria-label'] === '目前 FEN'
+  )
+  assert.equal(field.length, 1, 'Current FEN must have one native textbox with a stable accessible name')
+  assert.equal(field[0].props.readOnly, true)
+  assert.equal(field[0].props.value, START_FEN)
+  assert.notEqual(field[0].props.disabled, true, 'Read-only FEN remains keyboard selectable for copying')
+
+  const blackFen = 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b - - 0 1'
+  TestRenderer.act(() => {
+    editor!.update(createElement(BoardEditor, {
+      ...props, board: { ...parsed.board, fen: blackFen, sideToMove: 'black' }
+    }))
+  })
+  assert.equal(field[0].props.value, blackFen, 'The same accessible field follows the current board')
+  assert.equal(field[0].props['aria-label'], '目前 FEN')
+  console.log('  ✓ 目前 FEN 具有穩定名称、原生唯讀文字框與隨棋盤更新的完整值')
+} finally {
+  TestRenderer.act(() => { editor?.unmount() })
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
+}

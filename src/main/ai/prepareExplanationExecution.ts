@@ -116,14 +116,12 @@ function assertFormalSessionMatches(
   const fenValues = [
     session.positionFen,
     session.engineAnalysis.positionFen,
-    session.moveComparison.positionFen,
-    session.verificationEngineAnalysis?.positionFen
+    session.moveComparison.positionFen
   ].filter((value): value is string => value !== undefined)
   const moveValues = [
     session.userMove,
     session.engineAnalysis.userMove,
-    session.moveComparison.userMove,
-    session.verificationEngineAnalysis?.userMove
+    session.moveComparison.userMove
   ].filter((value): value is string => value !== undefined)
   if (
     fenValues.length < 3 ||
@@ -143,7 +141,16 @@ export function prepareExplanationExecution(
   resolvedModel: string,
   teacherRun: TeacherRunEvaluationCapability
 ): PreparedExplanationExecution {
-  const session = cloneAndFreeze(authoritativeSession)
+  // Old saved sessions may contain a second engine. It must not influence the
+  // current single-engine evidence or reject a valid formal case.
+  const session = cloneAndFreeze({
+    ...authoritativeSession,
+    verificationEngineId: undefined,
+    verificationEngineAnalysis: undefined,
+    engineDisagreement: undefined,
+    dualEngineComparison: undefined,
+    verificationWarning: undefined
+  })
   const sourceHistory = cloneAndFreeze(validatedPayload.conversationHistory ?? [])
   const answerMode = validatedPayload.answerMode ?? 'research'
   const attachedMove =
@@ -186,7 +193,7 @@ export function prepareExplanationExecution(
       throw new TeacherCaseRejectedError('問題、局面、著法或模式未命中凍結題目，正式案例已阻止。')
     }
     assertFormalSessionMatches(
-      authoritativeSession,
+      session,
       frozenCase.positionFen,
       frozenCase.attachedMove
     )
@@ -228,9 +235,6 @@ export function prepareExplanationExecution(
     answerMode,
     ...(validatedPayload.budget ? { budget: validatedPayload.budget } : {}),
     ...(validatedPayload.engineId ? { engineId: validatedPayload.engineId } : {}),
-    ...(validatedPayload.verificationEngineId
-      ? { verificationEngineId: validatedPayload.verificationEngineId }
-      : {}),
     ...(validatedPayload.reuseEvidence !== undefined
       ? { reuseEvidence: validatedPayload.reuseEvidence }
       : {}),

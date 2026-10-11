@@ -1,0 +1,160 @@
+{
+  "inputEvidenceName": "oct10-super-bounded2000-4eb.json",
+  "evidenceClass": "Real saved-key source Harness attempt; rejected, not accepted application output or candidate binary",
+  "sourceCommit": "4eb14de03df129445c333ecdce50a1a1e8999672",
+  "case": "START_FEN h2e2 炮二平五",
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "freeCatalogEligible": true,
+  "answerStrategy": "move-comparison",
+  "status": "failed",
+  "durationMs": 74662,
+  "modelCallCount": 5,
+  "errorName": "HarnessExplanationUnavailableError",
+  "providerDiagnostic": null,
+  "controlledRequestDifference": "Only exact free Super initial/repair reasoning changed from none to max_tokens=2000 after current official metadata supports_max_tokens=true. Planner policy, model, key, formal Harness/validator and all token/time/call caps unchanged. Not production acceptance; safeWireRequests records actual policy.",
+  "requests": [
+    {
+      "callIndex": 1,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 2,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 3,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 4,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 6000,
+      "reasoning": {
+        "maxTokens": 2000,
+        "exclude": true
+      },
+      "responseFormat": "json_schema",
+      "strictSchema": true,
+      "requireParameters": true
+    },
+    {
+      "callIndex": 5,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 5778,
+      "reasoning": {
+        "maxTokens": 2000,
+        "exclude": true
+      },
+      "responseFormat": "json_schema",
+      "strictSchema": true,
+      "requireParameters": true
+    }
+  ],
+  "calls": [
+    {
+      "callIndex": 1,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 1197,
+      "status": "completed",
+      "outputTokens": 107,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 2,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 1476,
+      "status": "completed",
+      "outputTokens": 103,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 3,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 2109,
+      "status": "completed",
+      "outputTokens": 124,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 4,
+      "stage": "initial_combined",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 6000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 100000,
+      "durationMs": 31284,
+      "status": "completed",
+      "outputTokens": 3888,
+      "reasoningTokens": 1999,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 5,
+      "stage": "repair",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 5778,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 58523,
+      "durationMs": 28084,
+      "status": "completed",
+      "outputTokens": 3915,
+      "reasoningTokens": 1999,
+      "finishReason": "stop"
+    }
+  ],
+  "validatorErrors": [
+    "C4a 的對手利用沒有引用所屬變例中輪到對手走的著法。",
+    "C4b 的對手利用沒有引用所屬變例中輪到對手走的著法。",
+    "一鍵解說含有棋手不需要的內部格式或診斷資訊。",
+    "一次修補後仍未通過完整驗證。",
+    "C4a 的對手利用沒有引用所屬變例中輪到對手走的著法。",
+    "C4b 的對手利用沒有引用所屬變例中輪到對手走的著法。",
+    "一鍵解說含有棋手不需要的內部格式或診斷資訊。",
+    "一鍵首輪回答未通過品質檢查，未交付五段模板或未驗證內容。"
+  ],
+  "acceptedFinalText": false
+}

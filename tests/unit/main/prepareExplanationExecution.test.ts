@@ -127,6 +127,22 @@ async function main(): Promise<void> {
   assert.equal(ordinaryMove.answerStrategy, 'move-comparison')
   assert.equal(ordinaryMove.evaluation, undefined)
 
+  const legacySession = {
+    ...mutableSession, verificationEngineId: 'retired-secondary',
+    verificationEngineAnalysis: { ...mutableSession.engineAnalysis, positionFen: 'wrong legacy position' },
+    verificationWarning: 'old secondary engine warning'
+  }
+  const singleEngine = prepareExplanationExecution(
+    { ...mutablePayload, verificationEngineId: 'retired-secondary' },
+    legacySession, 'gpt-5.6-sol', service
+  )
+  assert.equal(singleEngine.effective.verificationEngineId, undefined)
+  assert.equal(singleEngine.effective.session.verificationEngineAnalysis, undefined)
+  assert.equal(singleEngine.effective.session.verificationWarning, undefined)
+  assert.equal(singleEngine.effective.session.engineAnalysis.bestMove, mutableSession.engineAnalysis.bestMove)
+  assert.equal(legacySession.verificationEngineId, 'retired-secondary', 'preparation must not mutate saved history')
+  assert.ok(Object.isFrozen(singleEngine.effective.session.engineAnalysis))
+
   const ordinaryPosition = prepareExplanationExecution(
     { ...mutablePayload, attachedMove: undefined },
     { ...mutableSession, userMove: undefined, engineAnalysis: { ...mutableSession.engineAnalysis, userMove: undefined } },
@@ -177,6 +193,9 @@ async function main(): Promise<void> {
     assert.equal(prelude.evaluation, undefined)
 
     const testCaseIds = new Set<string>()
+    const legacyFormal = prepareExplanationExecution(payloadFor(ordinaryCase), legacySession, 'gpt-5.6-sol', service)
+    assert.equal(legacyFormal.interactionKind, 'teacher-formal-case')
+    assert.equal(legacyFormal.effective.session.verificationEngineAnalysis, undefined)
     let firstPrepared: ReturnType<typeof prepareExplanationExecution> | null = null
     for (const testCase of catalog.cases) {
       const prepared = prepareExplanationExecution(

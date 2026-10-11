@@ -2,6 +2,7 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
+import { isolatedUpdaterProbeId } from './tools/acceptance/isolated-build-policy'
 
 function contentSecurityPolicyPlugin(): Plugin {
   return {
@@ -28,8 +29,11 @@ function contentSecurityPolicyPlugin(): Plugin {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const define = { __ISOLATED_UPDATER_PROBE_ID__: JSON.stringify(isolatedUpdaterProbeId(mode, process.env)) }
+  return {
   main: {
+    define,
     plugins: [externalizeDepsPlugin()],
     resolve: {
       alias: {
@@ -38,6 +42,7 @@ export default defineConfig({
     }
   },
   preload: {
+    define,
     plugins: [externalizeDepsPlugin()],
     resolve: {
       alias: {
@@ -46,6 +51,7 @@ export default defineConfig({
     }
   },
   renderer: {
+    define,
     resolve: {
       alias: {
         '@shared': resolve('src/shared'),
@@ -53,5 +59,6 @@ export default defineConfig({
       }
     },
     plugins: [contentSecurityPolicyPlugin(), react()]
+  }
   }
 })

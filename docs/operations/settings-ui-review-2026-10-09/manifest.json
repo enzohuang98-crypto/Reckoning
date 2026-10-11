@@ -1,0 +1,44 @@
+{
+  "evidenceClass": "Isolated synthetic source React/CSS fixture; no provider, saved key, installed app or candidate binary",
+  "viewport": {
+    "width": 1008,
+    "height": 900,
+    "zoom": 1
+  },
+  "overriddenFiles": [
+    "src/renderer/src/features/settings/AiSettingsSection.tsx",
+    "src/renderer/src/features/settings/SettingsNavigation.tsx",
+    "src/renderer/src/pages/SettingsPage.tsx"
+  ],
+  "otherFixtureSource": "8cbc5d4c21d82965115f4e2f738af76e0f6cb9cb",
+  "captures": [
+    {
+      "file": "before-unknown-catalog.png",
+      "sourceCommit": "62e0da16732a5888b3480cec7f68c0f60fe1d49c",
+      "state": "unknown-catalog",
+      "size": 208843,
+      "sha256": "43200e64bdab00a27e54db91ee7cfa52927d0353723b1ba03f4b1f5d27c95bdf"
+    },
+    {
+      "file": "before-loaded-current-model.png",
+      "sourceCommit": "62e0da16732a5888b3480cec7f68c0f60fe1d49c",
+      "state": "loaded-current-model",
+      "size": 210976,
+      "sha256": "b03776307e9dee95e9e82d041ee0c248a82152f621ba31d8eed7426a8d2d2534"
+    },
+    {
+      "file": "after-unknown-catalog.png",
+      "sourceCommit": "8cbc5d4c21d82965115f4e2f738af76e0f6cb9cb",
+      "state": "unknown-catalog",
+      "size": 203947,
+      "sha256": "af4eed739128f835810c504e27271e5839777a8069495b85053fd213b9e334c3"
+    },
+    {
+      "file": "after-loaded-current-model.png",
+      "sourceCommit": "8cbc5d4c21d82965115f4e2f738af76e0f6cb9cb",
+      "state": "loaded-current-model",
+      "size": 208582,
+      "sha256": "e89256b4eed68abdf92ba29f67ea8a29d06e2acc94df6fe9c57fb6cb710766d8"
+    }
+  ]
+}

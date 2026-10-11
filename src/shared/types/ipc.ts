@@ -26,7 +26,6 @@ import type {
 } from './AIProviderTypes'
 import type { ExplanationLanguage, ExplanationStyle } from './AIExplanationTypes'
 import type { UserLevel } from './Settings'
-import type { LicenseStatus } from './License'
 import type {
   AppDataImportSummary,
   AppDataSnapshot,
@@ -46,6 +45,7 @@ import type {
 } from './Harness'
 import type { AppUpdateStatus, LegacyUpdatePreferences } from './AppUpdate'
 import type { DualEngineComparison } from './DualEngine'
+import type { IsolatedUpdaterProbeApi } from './IsolatedUpdaterProbe'
 
 /** IPC 通道名稱常數 */
 export const IPC = {
@@ -96,10 +96,6 @@ export const IPC = {
   SECRET_ACTIVATE: 'secret:activate',
   SECRET_DELETE: 'secret:delete',
   SECRET_IS_AVAILABLE: 'secret:isAvailable',
-  // 買斷授權 (License Key，SDS Q5)
-  LICENSE_STATUS: 'license:status',
-  LICENSE_ACTIVATE: 'license:activate',
-  LICENSE_DEACTIVATE: 'license:deactivate',
   // 應用程式更新
   APP_UPDATE_STATUS: 'app-update:status',
   APP_UPDATE_CHECK: 'app-update:check',
@@ -433,6 +429,8 @@ export type TeacherTestActionResult =
 /* ---------- preload API 形狀 ---------- */
 
 export interface RendererApi {
+  /** Absent from ordinary builds; metadata-only instrumentation in unpublished VM packages. */
+  isolatedUpdaterProbe?: IsolatedUpdaterProbeApi
   engine: {
     /** 開始分析（事件式）；結果經 onAnalysisResult / onAnalysisError 回傳 */
     startAnalysis(payload: AnalyzePositionStartPayload): void
@@ -526,12 +524,6 @@ export interface RendererApi {
     activate(credential: SecretCredentialRef): Promise<SecretMutationResult>
     delete(credential: SecretCredentialRef): Promise<SecretMutationResult>
     isAvailable(): Promise<boolean>
-  }
-  license: {
-    status(): Promise<LicenseStatus>
-    /** 驗證並啟用 License Key；失敗時回傳 activated=false + message */
-    activate(licenseKey: string): Promise<LicenseStatus>
-    deactivate(): Promise<LicenseStatus>
   }
   update: {
     status(): Promise<AppUpdateStatus>

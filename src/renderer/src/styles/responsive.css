@@ -24,6 +24,22 @@
 }
 
 @media (max-width: 1179px) {
+  html,
+  body,
+  #root {
+    min-width: 0;
+  }
+
+  .app-main-analyze {
+    overflow: auto;
+  }
+
+  .analyze-page {
+    height: auto;
+    min-height: 100%;
+    grid-template-rows: auto auto;
+  }
+
   .app-header {
     gap: 6px;
     padding: 0 10px;
@@ -79,10 +95,13 @@
 
   .analyze-layout,
   .analyze-layout.board-expanded {
+    height: auto;
     grid-template-columns: 1fr;
-    overflow: auto;
+    grid-template-rows: auto auto;
+    overflow: visible;
   }
 
+  .left-col,
   .right-col {
     position: static;
     height: auto;
@@ -93,6 +112,16 @@
   .analyze-layout.board-expanded .board-editor,
   .board-editor.tools-open {
     width: min(100%, 682px);
+  }
+
+  .board-editor:not(.tools-open) {
+    height: auto;
+    grid-template-rows: auto auto;
+  }
+
+  .analyze-layout .board-editor:not(.tools-open) .xiangqi-board {
+    width: min(100%, 500px);
+    height: auto;
   }
 }
 
@@ -107,6 +136,7 @@
   }
 
   .settings-grid,
+  .settings-section-grid,
   .engine-add-box,
   .engine-selection-grid,
   .settings-number-grid,
@@ -270,6 +300,73 @@
     height: 40px;
     margin-bottom: 8px;
     font-size: 18px;
+  }
+}
+
+@media (max-width: 1179px) and (max-height: 900px) {
+  .analyze-page {
+    grid-template-rows: auto auto;
+  }
+}
+
+/* A short workspace cannot fit a readable board above the live dock. Let
+   content determine its height and scroll, including in wide windows. */
+@media (max-height: 680px) {
+  .app-main-analyze {
+    overflow: auto;
+  }
+
+  .analyze-page {
+    height: auto;
+    min-height: 100%;
+    grid-template-rows: auto auto;
+  }
+
+  .analyze-layout {
+    height: auto;
+    align-items: start;
+    overflow: visible;
+  }
+
+  .left-col,
+  .right-col {
+    height: auto;
+    overflow: visible;
+  }
+
+  .board-editor:not(.tools-open) {
+    height: auto;
+    grid-template-rows: auto auto;
+  }
+
+  .analyze-layout .board-editor:not(.tools-open) .xiangqi-board {
+    width: min(100%, 500px);
+    height: auto;
+  }
+
+  .settings-navigation {
+    position: static;
+  }
+}
+
+/* At high display scaling the command row's minimum width must not overlap
+   the main navigation. Keep both rows operable and let the workspace scroll. */
+@media (max-width: 600px) {
+  .app-header {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  .analysis-command-mount {
+    flex: 1 0 100%;
+    height: 50px;
+    justify-content: flex-start;
+  }
+
+  .analysis-command-mount .app-toolbar {
+    width: 100%;
+    height: 50px;
   }
 }
 

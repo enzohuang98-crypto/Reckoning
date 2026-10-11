@@ -1,32 +1,25 @@
 import type { EngineRegistrySnapshot } from '@shared/types/EngineRegistry'
-import type { AppSettings } from '@shared/types/Settings'
 import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import { EngineResultSummary } from './EngineResultSummary'
 
 interface Props {
   result: EngineAnalysisResultPayload | null
-  settings: AppSettings
   registry: EngineRegistrySnapshot
   primaryEngineId: string | null
-  verificationEngineId: string | null
   busy: boolean
   aiBusy: boolean
   diagnostics: string[]
   onSelectPrimary: (id: string) => void
-  onSelectVerification: (id: string | null) => void
 }
 
 export function DetailsView({
   result,
-  settings,
   registry,
   primaryEngineId,
-  verificationEngineId,
   busy,
   aiBusy,
   diagnostics,
-  onSelectPrimary,
-  onSelectVerification
+  onSelectPrimary
 }: Props): JSX.Element {
   const analysis = result?.engineAnalysis
 
@@ -62,26 +55,6 @@ export function DetailsView({
                 ))}
               </select>
             </div>
-            {settings.crossEngineEnabled && registry.installations.length > 1 && (
-              <div className="field">
-                <label className="field-label">複核引擎</label>
-                <select
-                  className="select"
-                  value={verificationEngineId ?? ''}
-                  disabled={busy || aiBusy}
-                  onChange={(event) => onSelectVerification(event.target.value || null)}
-                >
-                  <option value="">不複核</option>
-                  {registry.installations
-                    .filter((engine) => engine.id !== primaryEngineId)
-                    .map((engine) => (
-                      <option key={engine.id} value={engine.id}>
-                        {engine.displayName}{engine.verified ? '' : '（未驗證）'}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            )}
           </div>
         ) : (
           <div className="engine-status warn">尚未加入可用引擎，請到設定頁完成設定。</div>
@@ -114,15 +87,6 @@ export function DetailsView({
               <div className="muted">本次分析沒有保留原始輸出。</div>
             )}
 
-            {result.verificationEngineAnalysis?.rawAnalysis && (
-              <details className="raw-engine-analysis">
-                <summary>{result.verificationEngineAnalysis.engineName} 複核原始分析</summary>
-                <pre>
-                  {result.verificationEngineAnalysis.rawAnalysis.root.join('\n') ||
-                    '（沒有原始輸出）'}
-                </pre>
-              </details>
-            )}
           </section>
         </>
       ) : (

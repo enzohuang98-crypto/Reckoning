@@ -66,3 +66,20 @@ export const DEFAULT_SETTINGS: AppSettings = {
   harnessFocusedMaxOutputTokens: 4_000,
   version: 4
 }
+
+/** Fixed product analysis policy; credential/model and user data are independent. */
+export const FIXED_ANALYSIS_SETTINGS = {
+  rootAnalysisMovetimeMs: DEFAULT_SETTINGS.rootAnalysisMovetimeMs,
+  userMoveEvalMovetimeMs: DEFAULT_SETTINGS.userMoveEvalMovetimeMs,
+  multiPv: DEFAULT_SETTINGS.multiPv,
+  crossEngineEnabled: DEFAULT_SETTINGS.crossEngineEnabled,
+  harnessAnswerMode: DEFAULT_SETTINGS.harnessAnswerMode,
+  harnessAutoRun: DEFAULT_SETTINGS.harnessAutoRun,
+  harnessReuseEvidence: DEFAULT_SETTINGS.harnessReuseEvidence,
+  harnessEngineTimeMs: DEFAULT_SETTINGS.harnessEngineTimeMs,
+  harnessMaxEngineRounds: DEFAULT_SETTINGS.harnessMaxEngineRounds,
+  harnessResearchMaxModelCalls: DEFAULT_SETTINGS.harnessResearchMaxModelCalls,
+  harnessResearchMaxOutputTokens: DEFAULT_SETTINGS.harnessResearchMaxOutputTokens,
+  harnessFocusedMaxModelCalls: DEFAULT_SETTINGS.harnessFocusedMaxModelCalls,
+  harnessFocusedMaxOutputTokens: DEFAULT_SETTINGS.harnessFocusedMaxOutputTokens,
+}

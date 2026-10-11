@@ -51,8 +51,13 @@ export function isOpenAIProModel(model: string): boolean {
 
 /** Token 用量 */
 export interface TokenUsage {
-  inputTokens: number
-  outputTokens: number
+  /** Missing provider counts stay unknown; zero means explicitly reported zero. */
+  inputTokens?: number
+  outputTokens?: number
+  /** Provider-reported subset of output tokens spent on hidden reasoning. */
+  reasoningTokens?: number
+  /** Safe completion status; never contains response text or reasoning. */
+  finishReason?: string
 }
 
 /** 模型資訊（UI 下拉用；定價與完整資料於 SDS Stage 7 移交 ModelRegistry） */
@@ -110,6 +115,7 @@ export interface AICredentialDiagnostic {
   retryAfterMs?: number
   finishReason?: string
   outputTokens?: number
+  reasoningTokens?: number
   message: string
 }
 

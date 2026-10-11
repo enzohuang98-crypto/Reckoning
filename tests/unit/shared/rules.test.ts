@@ -130,8 +130,8 @@ section('開局合法著法')
 check('炮二平五 h2e2', legal(start, 'h2e2').ok)
 check('馬八進七 b0c2', legal(start, 'b0c2').ok)
 check('車九進一 a0a1', legal(start, 'a0a1').ok)
-check('兵七進一 g3g4', legal(start, 'g3g4').ok)
-check('相三進五 c0e2', legal(start, 'c0e2').ok)
+check('兵三進一 g3g4', legal(start, 'g3g4').ok)
+check('相七進五 c0e2', legal(start, 'c0e2').ok)
 check('仕四進五 d0e1', legal(start, 'd0e1').ok)
 
 section('開局非法著法（兵種規則）')
@@ -163,7 +163,7 @@ check('帥宮內平移合法 e2f2', legal(kingEdge, 'e2f2').ok, legal(kingEdge, 
 check('帥平移走進對臉被拒 e2d2（黑將在 d9）', !legal(kingEdge, 'e2d2').ok)
 const advisorEdge = '3k5/9/9/9/9/9/9/9/4A4/4K4 w - - 0 1' // 紅仕 e1（宮心）
 check('仕斜走宮內合法 e1d2', legal(advisorEdge, 'e1d2').ok)
-check('仕斜走出宮被拒 e1f2', legal(advisorEdge, 'e1f2').ok) // f2 仍在宮內（col 5, row 7）
+check('仕斜走宮內另一側合法 e1f2', legal(advisorEdge, 'e1f2').ok)
 check('仕直走被拒 e1e2', !legal(advisorEdge, 'e1e2').ok)
 
 section('過河兵')
@@ -179,9 +179,35 @@ check('沿線移動仍有遮擋合法 e4e8', legal(facing, 'e4e8').ok, legal(fac
 const inCheck = '4k4/9/9/9/4r4/9/9/9/9/4K4 w - - 0 1' // 黑車 e5 將軍紅帥 e0（黑將 e9 有車遮擋不對臉）
 check('解將不完全（仍在車線上）被拒 e0e1', !legal(inCheck, 'e0e1').ok)
 check('閃出車線合法 e0d0', legal(inCheck, 'e0d0').ok, legal(inCheck, 'e0d0'))
-check('直接吃將被拒（炮有架也不行）', !legal(start, 'b2b9') || true) // b2b9 吃馬非吃將
+check('炮隔一架吃馬合法，不把普通吃子誤作吃將', legal(start, 'b2b9').ok)
 const captureKing = '3k5/9/9/9/9/9/9/9/9/3RK4 w - - 0 1' // 紅車 d0、黑將 d9 同欄無遮擋
 check('車吃將被拒 d0d9', !legal(captureKing, 'd0d9').ok, legal(captureKing, 'd0d9'))
+
+section('AXF 2017 第一章棋子走法：紅黑方與邊界對照')
+// Expected outcomes are independently set from the published rules, not from
+// another implementation of the same move generator. Kings use separate files.
+const ruleCases: { name: string; fen: string; move: string; expected: boolean }[] = [
+  { name: '炮可以吃敵炮，不能套用朝鮮將棋限制', fen: '3k5/9/1c7/9/9/9/1P7/1C7/9/5K3 w - - 0 1', move: 'b2b7', expected: true },
+  { name: '敵方棋子也能當炮架', fen: '3k5/9/1r7/9/9/9/1p7/1C7/9/5K3 w - - 0 1', move: 'b2b7', expected: true },
+  { name: '炮有兩個炮架不能吃子', fen: '3k5/9/1r7/9/1p7/9/1P7/1C7/9/5K3 w - - 0 1', move: 'b2b7', expected: false },
+  { name: '炮不能隔一架跳到空格', fen: '3k5/9/1r7/9/9/9/1P7/1C7/9/5K3 w - - 0 1', move: 'b2b4', expected: false },
+  { name: '黑卒未過河可前進', fen: '3k5/9/9/2p6/9/9/9/9/9/5K3 b - - 0 1', move: 'c6c5', expected: true },
+  { name: '黑卒未過河不能橫走', fen: '3k5/9/9/2p6/9/9/9/9/9/5K3 b - - 0 1', move: 'c6d6', expected: false },
+  { name: '黑卒不能向本方底線後退', fen: '3k5/9/9/2p6/9/9/9/9/9/5K3 b - - 0 1', move: 'c6c7', expected: false },
+  { name: '黑卒過河後可橫走', fen: '3k5/9/9/9/9/2p6/9/9/9/5K3 b - - 0 1', move: 'c4d4', expected: true },
+  { name: '黑卒在本方河岸尚不可橫走', fen: '3k5/9/9/9/2p6/9/9/9/9/5K3 b - - 0 1', move: 'c5d5', expected: false },
+  { name: '紅兵在本方河岸尚不可橫走', fen: '3k5/9/9/9/9/2P6/9/9/9/5K3 w - - 0 1', move: 'c4d4', expected: false },
+  { name: '紅兵可從本方河岸走到對岸', fen: '3k5/9/9/9/9/2P6/9/9/9/5K3 w - - 0 1', move: 'c4c5', expected: true },
+  { name: '黑馬同樣受馬腿阻擋', fen: '3k5/9/9/2n6/2P6/9/9/9/9/5K3 b - - 0 1', move: 'c6b4', expected: false },
+  { name: '黑馬另一方向馬腿未被堵仍可走', fen: '3k5/9/9/2n6/2P6/9/9/9/9/5K3 b - - 0 1', move: 'c6e5', expected: true },
+  { name: '黑象不能跨越河界', fen: '3k5/9/9/9/2b6/9/9/9/9/5K3 b - - 0 1', move: 'c5e3', expected: false },
+  { name: '黑象回到己方地盤合法', fen: '3k5/9/9/9/2b6/9/9/9/9/5K3 b - - 0 1', move: 'c5a7', expected: true },
+  { name: '黑士不能斜移出九宮', fen: '3k5/9/5a3/9/9/9/9/9/9/5K3 b - - 0 1', move: 'f7g8', expected: false }
+]
+for (const entry of ruleCases) {
+  const outcome = legal(entry.fen, entry.move)
+  check(entry.name, outcome.ok === entry.expected, { move: entry.move, ...outcome })
+}
 
 section('applyUciMove 回合計數與 FEN')
 {

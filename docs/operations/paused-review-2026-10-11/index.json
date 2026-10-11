@@ -1,0 +1,56 @@
+{
+  "evidenceClass": "Allowlisted paused-review evidence only",
+  "excluded": [
+    "keys",
+    "ciphertext",
+    "headers",
+    "raw account responses",
+    "hidden reasoning",
+    "private profiles",
+    "raw player headers"
+  ],
+  "reports": [
+    {
+      "status": "failed",
+      "file": "oct09-super-production-d598-summary.json",
+      "sourceCommit": "d598922cbeab23b5f2665a5dada6f89dd1829a27",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    {
+      "status": "failed",
+      "file": "oct09-super-production-8cbc-summary.json",
+      "sourceCommit": "8cbc5d4c21d82965115f4e2f738af76e0f6cb9cb",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    {
+      "status": "failed",
+      "file": "oct09-super-bounded-reasoning-8cbc-summary.json",
+      "sourceCommit": "8cbc5d4c21d82965115f4e2f738af76e0f6cb9cb",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    {
+      "status": "failed",
+      "file": "oct10-super-production-7e0-summary.json",
+      "sourceCommit": "7e0e75ac73d4fffaa4c786c86c4a9d426c271cbb",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    {
+      "status": "failed",
+      "file": "oct10-super-bounded2000-4eb-summary.json",
+      "sourceCommit": "4eb14de03df129445c333ecdce50a1a1e8999672",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    {
+      "status": "failed",
+      "file": "oct10-playok102-ply22-4eb-summary.json",
+      "sourceCommit": "4eb14de03df129445c333ecdce50a1a1e8999672",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    {
+      "status": "failed",
+      "file": "oct10-apodex-mini-production-4eb-summary.json",
+      "sourceCommit": "4eb14de03df129445c333ecdce50a1a1e8999672",
+      "model": "apodex/apodex-1.1-mini:free"
+    }
+  ]
+}

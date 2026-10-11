@@ -1,0 +1,157 @@
+{
+  "inputEvidenceName": "oct09-super-production-8cbc.json",
+  "evidenceClass": "Real saved-key source Harness attempt; rejected, not accepted application output or candidate binary",
+  "sourceCommit": "8cbc5d4c21d82965115f4e2f738af76e0f6cb9cb",
+  "case": "START_FEN h2e2 炮二平五",
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "freeCatalogEligible": true,
+  "answerStrategy": "move-comparison",
+  "status": "failed",
+  "durationMs": 57598,
+  "modelCallCount": 5,
+  "errorName": "HarnessExplanationUnavailableError",
+  "providerDiagnostic": null,
+  "controlledRequestDifference": null,
+  "requests": [
+    {
+      "callIndex": 1,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 2,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 3,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 4,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 6000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_schema",
+      "strictSchema": true,
+      "requireParameters": true
+    },
+    {
+      "callIndex": 5,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 6000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_schema",
+      "strictSchema": true,
+      "requireParameters": true
+    }
+  ],
+  "calls": [
+    {
+      "callIndex": 1,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 2307,
+      "status": "completed",
+      "outputTokens": 116,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 2,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 2675,
+      "status": "completed",
+      "outputTokens": 123,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 3,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 2378,
+      "status": "completed",
+      "outputTokens": 129,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 4,
+      "stage": "initial_combined",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 6000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 100000,
+      "durationMs": 21065,
+      "status": "completed",
+      "outputTokens": 1886,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 5,
+      "stage": "repair",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 6000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 66228,
+      "durationMs": 18789,
+      "status": "completed",
+      "outputTokens": 1772,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    }
+  ],
+  "validatorErrors": [
+    "C4b 前提 E2:P3:move 缺少可見正文中的相關著法：馬二進三。",
+    "C4b 前提 E2:P4:move 缺少可見正文中的相關著法：車9平8。",
+    "一鍵解說含有棋手不需要的內部格式或診斷資訊。",
+    "修補審查未通過：最佳著法的目的太空泛，必須說出具體要達成什麼。",
+    "一鍵首輪回答未通過品質檢查，未交付五段模板或未驗證內容。"
+  ],
+  "acceptedFinalText": false
+}

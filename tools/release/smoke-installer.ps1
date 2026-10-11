@@ -3,7 +3,9 @@ param(
   [string]$Phase = 'Lifecycle',
   [switch]$AllowUnsigned,
   [ValidatePattern('^[A-Fa-f0-9]{64}$')]
-  [string]$ExpectedSha256
+  [string]$ExpectedSha256,
+  [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')]
+  [string]$ExpectedVersion
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $package = Get-Content -Raw -Encoding UTF8 (Join-Path $projectRoot 'package.json') |
   ConvertFrom-Json
-$version = [string]$package.version
+$version = if ($ExpectedVersion) { $ExpectedVersion } else { [string]$package.version }
 $setup = Join-Path $projectRoot "release\xiangqi-analyzer-$version-setup.exe"
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\xiangqi-analyzer'
 $mainExe = Join-Path $installDir '象棋AI分析講解.exe'
@@ -98,6 +100,7 @@ function Invoke-InstallValidation {
 
   Wait-Until { Test-Path -LiteralPath $mainExe } 'Installed application did not appear.'
   Assert-Path (Join-Path $installDir 'resources\engine\pikafish.exe') 'Bundled Pikafish'
+  Assert-Path (Join-Path $installDir 'resources\engine\pikafish-sse41-popcnt.exe') 'Compatible bundled Pikafish'
   Assert-Path (Join-Path $installDir 'resources\engine\pikafish.nnue') 'Bundled NNUE'
   Assert-Path (Join-Path $installDir 'resources\app-update.yml') 'Updater configuration'
   Assert-Path $uninstaller 'Uninstaller'
@@ -161,13 +164,13 @@ if ($Phase -eq 'Uninstall') {
 # separate child processes so the smoke test matches two real user sessions.
 $powerShellExe = (Get-Process -Id $PID).Path
 & $powerShellExe -NoProfile -ExecutionPolicy Bypass `
-  -File $PSCommandPath -Phase Install -AllowUnsigned:$AllowUnsigned -ExpectedSha256 $ExpectedSha256
+  -File $PSCommandPath -Phase Install -AllowUnsigned:$AllowUnsigned -ExpectedSha256 $ExpectedSha256 -ExpectedVersion $version
 $installExitCode = $LASTEXITCODE
 
 $uninstallExitCode = 0
 if (-not (Test-CleanState)) {
   & $powerShellExe -NoProfile -ExecutionPolicy Bypass `
-    -File $PSCommandPath -Phase Uninstall -AllowUnsigned:$AllowUnsigned -ExpectedSha256 $ExpectedSha256
+    -File $PSCommandPath -Phase Uninstall -AllowUnsigned:$AllowUnsigned -ExpectedSha256 $ExpectedSha256 -ExpectedVersion $version
   $uninstallExitCode = $LASTEXITCODE
 }
 

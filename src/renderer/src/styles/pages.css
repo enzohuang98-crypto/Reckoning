@@ -132,6 +132,22 @@
   min-height: 280px;
 }
 
+.background-update-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.background-update-choice input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.background-update-choice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .settings-key-input,
 .settings-path-input {
   display: flex;

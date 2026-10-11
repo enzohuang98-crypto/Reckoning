@@ -8,6 +8,7 @@
 //   mate-after-move — UCI 引擎；root 正常，但 position 含 moves 時 go 回 mate 0 +
 //                     bestmove (none)（測試二次分析殺棋的視角反轉）
 //   progress        — UCI 引擎；逐步回報深度 4/8/12（測試即時分析狀態）
+//   burst           — UCI 引擎；一次送出多個深度（測試研究接收不受 UI 節流影響）
 //   slow            — UCI 引擎；go 後不回應，收到 stop 才回 bestmove（測試取消機制）
 // 編譯：csc /nologo /out:fake-engine.exe FakeEngine.cs
 using System;
@@ -28,7 +29,7 @@ class FakeEngine
             if (line == "uci")
             {
                 if (mode == "ucci-strict") return; // 收到未知指令就退出的引擎
-                if (mode == "uci" || mode == "uci-score-type" || mode == "mate" || mode == "mate-after-move" || mode == "progress" || mode == "slow")
+                if (mode == "uci" || mode == "uci-score-type" || mode == "mate" || mode == "mate-after-move" || mode == "progress" || mode == "burst" || mode == "slow")
                 {
                     Console.WriteLine("id name FakeUCI 1.0");
                     Console.WriteLine("option name MultiPV type spin default 1 min 1 max 128");
@@ -83,6 +84,17 @@ class FakeEngine
                     int score = pawnValueNormalized ? 100 : 6;
                     Console.WriteLine("info depth 10 multipv 1 score cp " + score + " pv h2e2 h9g7");
                     Console.WriteLine("bestmove h2e2");
+                }
+                else if (mode == "burst")
+                {
+                    for (int depth = 1; depth <= 10; depth++)
+                    {
+                        Console.WriteLine("info depth " + depth + " multipv 1 score cp 42 pv " +
+                            (positionHasMoves ? "h9g7 h2e2" : "h2e2 h9g7"));
+                        Console.WriteLine("info depth " + depth + " multipv 2 score cp 15 pv " +
+                            (positionHasMoves ? "b9c7 b2e2" : "b2e2 b9c7"));
+                    }
+                    Console.WriteLine("bestmove " + (positionHasMoves ? "h9g7" : "h2e2"));
                 }
                 else if (mode == "progress")
                 {

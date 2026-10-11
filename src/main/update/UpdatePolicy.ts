@@ -4,8 +4,9 @@ export interface UpdatePolicyAdapter {
 }
 
 /**
- * 自动检查只负责发现新版本。使用者确认一次后才下载，并在下载完成后
- * 直接安装与重新启动，避免在未询问时占用频宽或改变本机版本。
+ * Discovery and background preparation are controlled by AppUpdaterService.
+ * Keep the SDK from downloading implicitly or installing when the app quits:
+ * only an explicit restart action may call quitAndInstall after data is saved.
  */
 export function configureUpdatePolicy(updater: UpdatePolicyAdapter): void {
   updater.autoDownload = false

@@ -1,0 +1,44 @@
+{
+  "evidenceClass": "Real isolated Windows engineering package; not formal candidate or installed-user acceptance",
+  "runId": "38005496441",
+  "headCommit": "7e0e75ac73d4fffaa4c786c86c4a9d426c271cbb",
+  "prMergeCommit": "f8355adb4bbc018fa276cf08dfd1052191fce68a",
+  "result": "failed",
+  "failure": "Reopened packaged workspace did not become ready.",
+  "candidateVersion": "0.4.15",
+  "installerSha256": "6F7C315C635EA609F1E86C57D0B494CD529C7E010015C33D3193A00E66B6C6D7",
+  "installerSize": 170427014,
+  "signature": "NotSigned",
+  "formalCandidateAcceptance": "not_run",
+  "providerAcceptance": "not_run",
+  "gates": {
+    "downloadFailureRecovery": "passed",
+    "backgroundUsable": "passed",
+    "noAutoQuit": "passed",
+    "cacheCorruptionRecovery": "passed",
+    "validCacheReopen": "passed",
+    "draftBlocksRestart": "passed",
+    "draftAddedDuringSave": "passed",
+    "earlyPrepareRecovery": "passed",
+    "installFailureRetry": "not_run",
+    "normalInstallationRestart": "not_run",
+    "savedDataFilePreserved": "not_run",
+    "savedPositionUiRestored": "not_run",
+    "savedDataPreserved": "not_run"
+  },
+  "observedFailedInstaller": {
+    "configuredFault": {
+      "configuredExitCode": 73,
+      "failureKind": "one-shot-customInit",
+      "processId": 6140
+    },
+    "actualOsExit": {
+      "processId": 6140,
+      "exitStatus": 73,
+      "processName": "xiangqi-analyz",
+      "source": "Win32_ProcessStopTrace",
+      "atUtc": "2026-10-09T23:49:43.6665486Z"
+    }
+  },
+  "finalInstallerPayloadBytes": null
+}

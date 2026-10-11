@@ -1,8 +1,12 @@
 import type {
   HarnessEvidence,
+  HarnessModelCallDiagnostic,
+  HarnessResearchOrigin,
+  HarnessResearchTrace,
   HarnessRegressionCase,
   HarnessTrace
 } from '@shared/types/Harness'
+import { HARNESS_RESEARCH_MAX_TOTAL_PREFIX_PLIES } from '@shared/types/Harness'
 import type {
   EngineAnalysis,
   EngineCandidateMove,
@@ -218,8 +222,76 @@ function sanitizeEvidence(value: unknown): HarnessEvidence | null {
     depth: value.depth as number | null,
     score: value.score === null ? null : sanitizeScore(value.score),
     displayPrincipalVariation: [...value.displayPrincipalVariation] as string[],
-    analysis
+    analysis,
+    ...(sanitizeResearchOrigin(value.researchOrigin) ? { researchOrigin: sanitizeResearchOrigin(value.researchOrigin) } : {})
   }
+}
+
+const safeCount = (value: unknown): number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
+const safeMoves = (value: unknown, limit: number): string[] => Array.isArray(value)
+  ? value.filter((move): move is string => typeof move === 'string' && /^[a-i][0-9][a-i][0-9]$/.test(move)).slice(0, limit) : []
+
+function sanitizeResearchOrigin(value: unknown): HarnessResearchOrigin | undefined {
+  if (!isRecord(value) || typeof value.operationId !== 'string' || typeof value.searchPositionFen !== 'string' ||
+    !['red', 'black'].includes(String(value.searchSideToMove)) ||
+    !['unknown', 'searched_at_root'].includes(String(value.rootRelativeEvaluation))) return undefined
+  return {
+    operationId: value.operationId.slice(0, 160),
+    ...(typeof value.sourceEvidenceId === 'string' ? { sourceEvidenceId: value.sourceEvidenceId.slice(0, 80) } : {}),
+    searchPositionFen: value.searchPositionFen.slice(0, 200), searchSideToMove: value.searchSideToMove as 'red' | 'black',
+    prefix: safeMoves(value.prefix, HARNESS_RESEARCH_MAX_TOTAL_PREFIX_PLIES), searchDepth: value.searchDepth === null ? null : safeCount(value.searchDepth),
+    searchPrincipalVariation: safeMoves(value.searchPrincipalVariation, 32),
+    omittedSearchPlies: safeCount(value.omittedSearchPlies) + Math.max(0,
+      (Array.isArray(value.searchPrincipalVariation) ? value.searchPrincipalVariation.length : 0) - 32),
+    ...(typeof value.searchUserMove === 'string' && /^[a-i][0-9][a-i][0-9]$/.test(value.searchUserMove)
+      ? { searchUserMove: value.searchUserMove } : {}),
+    lineRole: ['root', 'continuation', 'hypothesis'].includes(String(value.lineRole))
+      ? value.lineRole as HarnessResearchOrigin['lineRole'] : 'hypothesis',
+    rootRelativeEvaluation: value.rootRelativeEvaluation as HarnessResearchOrigin['rootRelativeEvaluation']
+  }
+}
+
+function sanitizeResearch(value: unknown): HarnessResearchTrace | undefined {
+  if (!isRecord(value) || !Array.isArray(value.operations) || !Array.isArray(value.updates)) return undefined
+  const stopReasons: HarnessResearchTrace['stopReason'][] = ['answered', 'query_budget', 'engine_time_budget',
+    'model_budget', 'deadline', 'no_new_evidence', 'engine_unavailable', 'invalid_plan', 'cancelled', 'provider_error', 'planner_timeout']
+  if (!stopReasons.includes(value.stopReason as HarnessResearchTrace['stopReason'])) return undefined
+  const operations: HarnessResearchTrace['operations'] = value.operations.filter(isRecord).filter(item =>
+    typeof item.id === 'string' && typeof item.purpose === 'string' && typeof item.positionFen === 'string' &&
+    ['root', 'evaluate_move', 'continue_line'].includes(String(item.kind)) &&
+    ['running', 'completed', 'unavailable', 'invalid_result', 'cancelled'].includes(String(item.status))
+  ).slice(0, 3).map(item => ({
+    id: String(item.id).slice(0, 160), kind: item.kind as HarnessResearchTrace['operations'][number]['kind'],
+    purpose: String(item.purpose).slice(0, 160), positionFen: String(item.positionFen).slice(0, 200),
+    ...(typeof item.userMove === 'string' && /^[a-i][0-9][a-i][0-9]$/.test(item.userMove) ? { userMove: item.userMove } : {}),
+    ...(typeof item.sourceEvidenceId === 'string' ? { sourceEvidenceId: item.sourceEvidenceId.slice(0, 80) } : {}),
+    prefix: safeMoves(item.prefix, HARNESS_RESEARCH_MAX_TOTAL_PREFIX_PLIES), allocatedMs: Math.min(10_000, safeCount(item.allocatedMs)),
+    status: item.status as HarnessResearchTrace['operations'][number]['status'],
+    evidenceIds: Array.isArray(item.evidenceIds) ? item.evidenceIds.filter((id): id is string => typeof id === 'string').slice(0, 2).map(id => id.slice(0, 80)) : [],
+    novel: item.novel === true
+  }))
+  const validUpdates = value.updates.filter(isRecord).filter(item => typeof item.requestId === 'string' &&
+    typeof item.operationId === 'string' && operations.some(operation => operation.id === item.operationId) &&
+    typeof item.positionFen === 'string' && ['red', 'black'].includes(String(item.sideToMove)) &&
+    ['root_analysis', 'user_move_analysis'].includes(String(item.phase)) && item.provisional === true &&
+    (item.depth === null || (typeof item.depth === 'number' && Number.isSafeInteger(item.depth) && item.depth >= 0)) &&
+    typeof item.candidateRank === 'number' && Number.isSafeInteger(item.candidateRank) && item.candidateRank >= 1 && item.candidateRank <= 3 &&
+    Array.isArray(item.principalVariation) && item.principalVariation.length > 0 &&
+    item.principalVariation.every(move => typeof move === 'string' && /^[a-i][0-9][a-i][0-9]$/.test(move)))
+  const updates: HarnessResearchTrace['updates'] = validUpdates.slice(-96).map(item => ({
+    requestId: String(item.requestId).slice(0, 100), operationId: String(item.operationId).slice(0, 160),
+    phase: item.phase as 'root_analysis' | 'user_move_analysis', positionFen: String(item.positionFen).slice(0, 200),
+    sideToMove: item.sideToMove as 'red' | 'black', depth: item.depth === null ? null : safeCount(item.depth),
+    candidateRank: item.candidateRank as number,
+    principalVariation: safeMoves(item.principalVariation, 32),
+    displayPrincipalVariation: Array.isArray(item.displayPrincipalVariation)
+      ? item.displayPrincipalVariation.filter((move): move is string => typeof move === 'string').slice(0, 32).map(move => move.slice(0, 24)) : [],
+    omittedPlies: safeCount(item.omittedPlies) + Math.max(0, (Array.isArray(item.principalVariation) ? item.principalVariation.length : 0) - 32),
+    provisional: true
+  }))
+  return { stopReason: value.stopReason as HarnessResearchTrace['stopReason'], operations, updates,
+    updatesSeen: safeCount(value.updatesSeen), omittedUpdates: safeCount(value.omittedUpdates) + Math.max(0, validUpdates.length - 96),
+    invalidUpdates: safeCount(value.invalidUpdates) + value.updates.length - validUpdates.length }
 }
 
 function sanitizeEvaluation(value: unknown): HarnessTrace['evaluation'] | undefined {
@@ -270,8 +342,62 @@ function sanitizeProviderDiagnostic(value: unknown): AICredentialDiagnostic | un
       ? { finishReason: value.finishReason.slice(0, 64) }
       : {}),
     ...(typeof value.outputTokens === 'number' ? { outputTokens: value.outputTokens } : {}),
+    ...(typeof value.reasoningTokens === 'number'
+      ? { reasoningTokens: value.reasoningTokens }
+      : {}),
     message: value.message.slice(0, 500)
   }
+}
+
+function sanitizeModelCallDiagnostics(value: unknown): HarnessModelCallDiagnostic[] {
+  if (!Array.isArray(value)) return []
+  const stages: HarnessModelCallDiagnostic['stage'][] = [
+    'question_recovery',
+    'initial_combined',
+    'audit',
+    'writer',
+    'repair',
+    'research_planner'
+  ]
+  return value
+    .filter((item): item is Record<string, unknown> =>
+      isRecord(item) &&
+      typeof item.callIndex === 'number' &&
+      stages.includes(item.stage as HarnessModelCallDiagnostic['stage']) &&
+      typeof item.model === 'string' &&
+      typeof item.maxOutputTokens === 'number' &&
+      (item.responseFormat === 'json' || item.responseFormat === 'text') &&
+      (item.reasoningPolicy === 'bounded_1000_excluded' ||
+        item.reasoningPolicy === 'reasoning_disabled' ||
+        item.reasoningPolicy === 'provider_managed') &&
+      typeof item.durationMs === 'number' &&
+      (item.status === 'completed' || item.status === 'failed')
+    )
+    .slice(-12)
+    .map((item) => ({
+      callIndex: item.callIndex as number,
+      stage: item.stage as HarnessModelCallDiagnostic['stage'],
+      model: String(item.model).slice(0, 256),
+      maxOutputTokens: item.maxOutputTokens as number,
+      responseFormat: item.responseFormat as 'json' | 'text',
+      reasoningPolicy: item.reasoningPolicy as HarnessModelCallDiagnostic['reasoningPolicy'],
+      ...(typeof item.reasoningMaxTokens === 'number' && Number.isSafeInteger(item.reasoningMaxTokens) &&
+        item.reasoningMaxTokens > 0 && item.reasoningMaxTokens <= 1000
+        ? { reasoningMaxTokens: item.reasoningMaxTokens } : {}),
+      ...(typeof item.timeoutMs === 'number' ? { timeoutMs: item.timeoutMs } : {}),
+      durationMs: item.durationMs as number,
+      status: item.status as 'completed' | 'failed',
+      ...(typeof item.outputTokens === 'number' ? { outputTokens: item.outputTokens } : {}),
+      ...(typeof item.reasoningTokens === 'number'
+        ? { reasoningTokens: item.reasoningTokens }
+        : {}),
+      ...(typeof item.finishReason === 'string'
+        ? { finishReason: item.finishReason.slice(0, 64) }
+        : {}),
+      ...(typeof item.errorCategory === 'string'
+        ? { errorCategory: item.errorCategory.slice(0, 64) }
+        : {})
+    }))
 }
 
 function sanitizeTrace(value: unknown): HarnessTrace | null {
@@ -341,11 +467,21 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
       .slice(-30),
     modelCalls: typeof trace.modelCalls === 'number' ? trace.modelCalls : 0,
     engineRounds: typeof trace.engineRounds === 'number' ? trace.engineRounds : 0,
-    ...(trace.usage &&
-    typeof trace.usage.inputTokens === 'number' &&
-    typeof trace.usage.outputTokens === 'number'
-      ? { usage: { ...trace.usage } }
+    ...(trace.usage && isRecord(trace.usage)
+      ? { usage: {
+          ...(typeof trace.usage.inputTokens === 'number' && Number.isFinite(trace.usage.inputTokens) && trace.usage.inputTokens >= 0
+            ? { inputTokens: trace.usage.inputTokens } : {}),
+          ...(typeof trace.usage.outputTokens === 'number' && Number.isFinite(trace.usage.outputTokens) && trace.usage.outputTokens >= 0
+            ? { outputTokens: trace.usage.outputTokens } : {}),
+          ...(typeof trace.usage.reasoningTokens === 'number' && Number.isFinite(trace.usage.reasoningTokens) && trace.usage.reasoningTokens >= 0
+            ? { reasoningTokens: trace.usage.reasoningTokens } : {}),
+          ...(typeof trace.usage.finishReason === 'string' ? { finishReason: trace.usage.finishReason.slice(0, 64) } : {})
+        } }
       : {}),
+    ...(sanitizeModelCallDiagnostics(trace.modelCallDiagnostics).length > 0
+      ? { modelCallDiagnostics: sanitizeModelCallDiagnostics(trace.modelCallDiagnostics) }
+      : {}),
+    ...(sanitizeResearch(trace.research) ? { research: sanitizeResearch(trace.research) } : {}),
     ...(sanitizeProviderDiagnostic(trace.providerDiagnostic)
       ? { providerDiagnostic: sanitizeProviderDiagnostic(trace.providerDiagnostic) }
       : {}),

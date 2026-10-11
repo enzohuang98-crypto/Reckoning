@@ -12,6 +12,7 @@ import type {
   AICredentialTestStage,
   AITestCredentialResult
 } from '@shared/types/AIProviderTypes'
+import { getCACertificates, setDefaultCACertificates } from 'node:tls'
 
 export const MAX_AI_HTTP_RESPONSE_BYTES = 5 * 1024 * 1024
 
@@ -19,6 +20,18 @@ export const MAX_AI_HTTP_RESPONSE_BYTES = 5 * 1024 * 1024
 export const CREDENTIAL_TEST_TIMEOUT_MS = 8_000
 
 const MAX_RETRY_AFTER_MS = 60 * 60 * 1000
+let windowsTrustConfigured = false
+
+function ensureWindowsSystemTrust(): void {
+  if (windowsTrustConfigured || process.platform !== 'win32') return
+  const systemCAs = getCACertificates('system')
+  if (systemCAs.length > 0) {
+    // Node fetch otherwise misses enterprise roots already trusted by Windows.
+    // Keep the bundled roots and normal TLS certificate validation enabled.
+    setDefaultCACertificates([...getCACertificates('default'), ...systemCAs])
+  }
+  windowsTrustConfigured = true
+}
 
 /** 可安全傳給憑證測試分類器的 HTTP 錯誤；message 不包含回應本文。 */
 export class AIHttpError extends Error {
@@ -49,6 +62,7 @@ export class AIResponseValidationError extends Error {
       reason?: AIGenerationIncompleteReason
       finishReason?: string
       outputTokens?: number
+      reasoningTokens?: number
     } = {}
   ) {
     super(message)
@@ -145,6 +159,7 @@ export async function fetchAiResponseBounded(
   init?: RequestInit,
   maxBytes = MAX_AI_HTTP_RESPONSE_BYTES
 ): Promise<Response> {
+  ensureWindowsSystemTrust()
   const response = await fetch(input, { ...init, redirect: 'error' })
   if (!response.body) return response
 

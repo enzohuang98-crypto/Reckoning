@@ -3,12 +3,14 @@
  *
  * 背景：`npm audit --audit-level=moderate` 對整棵樹一視同仁，但本專案的
  * 執行期相依（會被打包進使用者安裝的 App）與建置工具相依（只在開發者/CI
- * 機器上跑 electron-builder）風險等級完全不同。electron-builder 的相依鏈
- * 目前卡在 minimatch 3.x/5.x/9.x，而它們需要的 brace-expansion 1.x/2.x
- * 沒有任何 backport 修正版；唯一修好的 5.0.8 改了匯出形式
+ * 機器上跑 electron-builder）風險等級完全不同。當初 electron-builder 的相依鏈
+ * 卡在 minimatch 3.x/5.x/9.x，而它們需要的 brace-expansion 1.x/2.x
+ * 尚無 backport 修正版；當時修好的 5.0.8 改了匯出形式
  * （`module.exports = expand` → `{ expand }`），強制覆蓋會讓舊 minimatch
  * 在含大括號的 glob pattern 上丟 `TypeError: expand is not a function`，
  * 直接弄壞 `npm run dist` 打包。
+ * 上游後來提供相容 patch，已在 2026-09-30 更新 1.x/2.x/5.x lock entries。
+ * 下方政策仍以當下 audit 結果決定，不能沿用歷史缺少修正版的理由。
  *
  * 因此政策為：
  *

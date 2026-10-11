@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { OpenRouterProvider } from '../../../src/main/ai/providers/OpenRouterProvider'
+import { AIResponseValidationError } from '../../../src/main/ai/http'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
+import Ajv from 'ajv'
+import { buildInitialMoveResponseSchema } from '../../../src/main/ai/InitialMoveResponseSchema'
+import { INITIAL_MOVE_EXPLANATION_SECTION_IDS } from '../../../src/shared/types/Harness'
 
 interface RecordedRequest {
   url: string
@@ -43,6 +47,104 @@ async function withServer(
 }
 
 async function main(): Promise<void> {
+const responseSchema = buildInitialMoveResponseSchema('research', ['E1', 'E2'])
+for (const [model, schemaName, format] of [
+  ['apodex/apodex-1.1-mini:free', 'question_research_decision', 'json'],
+  ['apodex/apodex-1.1-mini:free', 'initial_move_explanation', 'json'],
+  ['apodex/apodex-1.1-mini:free', 'question_research_decision', 'text'],
+  ['apodex/apodex-1.1:free', 'question_research_decision', 'json']
+] as const) {
+  await withServer(() => ({ model, choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }] }),
+    async (baseUrl, requests) => {
+      await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model, apiKey: 'synthetic-only', prompt: 'SYNTHETIC planner',
+        responseFormat: format, responseSchema: { name: schemaName, schema: { type: 'object' } }, maxOutputTokens: 1000,
+        metadata: { requestId: 'apodex-budget', analysisId: 'synthetic-only', userLevel: 'basic', explanationStyle: 'long_analytical' }
+      })
+      const body = requests[0].body as Record<string, unknown>
+      assert.equal(body.max_tokens, 1000)
+      assert.deepEqual(body.reasoning,
+        model === 'apodex/apodex-1.1-mini:free' && schemaName === 'question_research_decision' && format === 'json'
+          ? { enabled: false, exclude: true } : undefined,
+        'Only the exact optional-reasoning Mini planner protects its small JSON budget; writer/text/other models keep their policy')
+    })
+}
+// Ajv is already locked with the build tooling; this validates the actual schema,
+// not a second hand-written list of required properties. These are offline shapes.
+const validateShape = new Ajv({ strict: true }).compile(responseSchema.schema)
+const shapeFixture = {
+  answer: { mode: 'research', title: 'SYNTHETIC schema fixture', directAnswer: 'SYNTHETIC',
+    directAnswerEvidenceIds: ['E1'], sections: INITIAL_MOVE_EXPLANATION_SECTION_IDS.map((id, index) => ({
+      id, heading: 'SYNTHETIC', claims: (index === 3 ? ['C4a', 'C4b'] : [`C${index === 4 ? 5 : index + 1}`]).map(claimId => ({
+        id: claimId, text: 'SYNTHETIC', evidenceIds: [index === 3 ? 'E2' : 'E1'], findingIds: [], causal: null
+      }))
+    })), generalNotes: [], warnings: [] },
+  audit: { bestMovePurpose: 'SYNTHETIC', userMoveProblem: 'SYNTHETIC',
+    consequences: [{ id: 'K1', category: 'central_control', claimId: 'C4a', verified: false },
+      { id: 'K2', category: 'piece_development', claimId: 'C4b', verified: false }],
+    contradictions: [], enoughEvidence: false }
+}
+assert(validateShape(shapeFixture), JSON.stringify(validateShape.errors))
+for (const mutation of ['missing', 'empty', 'foreign'] as const) {
+  const invalid = structuredClone(shapeFixture)
+  const principle = invalid.answer.sections[4].claims[0]
+  if (mutation === 'missing') Reflect.deleteProperty(principle, 'evidenceIds')
+  else principle.evidenceIds = mutation === 'empty' ? [] : ['E999']
+  assert.equal(validateShape(invalid), false, `Principle ${mutation} evidence must fail actual schema`)
+}
+const invalidSection = structuredClone(shapeFixture)
+invalidSection.answer.sections[0].id = 'follow_up' as typeof invalidSection.answer.sections[0]['id']
+assert.equal(validateShape(invalidSection), false)
+for (const [sectionIndex, wrongEvidence] of [[2, 'E2'], [3, 'E1']] as const) {
+  const crossLine = structuredClone(shapeFixture)
+  crossLine.answer.sections[sectionIndex].claims[0].evidenceIds = [wrongEvidence]
+  assert.equal(validateShape(crossLine), false, 'Schema must not assign a valid ID from the other line to a single-line section')
+}
+const missingSecondConsequence = structuredClone(shapeFixture)
+missingSecondConsequence.answer.sections[3].claims.pop()
+assert.equal(validateShape(missingSecondConsequence), false, 'Both visible consequence claims are required by the role contract')
+for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-27b-preview:free', 'nvidia/nemotron-3-super-120b-a12b:free', 'vendor/other:free', 'nvidia/nemotron-3-ultra-550b-a55b:free']) {
+  await withServer(() => ({ model, choices: [{ message: { content: JSON.stringify(shapeFixture) }, finish_reason: 'stop' }] }),
+    async (baseUrl, requests) => {
+      const request: AIExplanationRequest = { provider: 'openrouter', model, apiKey: 'synthetic-test-key',
+        prompt: 'SYNTHETIC offline contract', responseFormat: 'json', responseSchema, maxOutputTokens: 4_000,
+        metadata: { requestId: 'schema-test', analysisId: 'schema-test', userLevel: 'intermediate', explanationStyle: 'long_analytical' } }
+      await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
+      const body = requests[0].body as Record<string, unknown>
+      if (model === 'qwen/qwen3.8-27b:free') {
+        assert.deepEqual(body.response_format, { type: 'json_schema', json_schema: { ...responseSchema, strict: true } },
+          'The exact free Qwen endpoint advertises structured_outputs, which is the documented JSON-schema capability')
+        assert.deepEqual(body.provider, { require_parameters: true }, 'Schema requests must require a supporting endpoint')
+        assert.deepEqual(body.reasoning, { enabled: false, exclude: true })
+      } else if (model.includes('-super-')) {
+        assert.deepEqual(body.response_format, { type: 'json_schema', json_schema: { ...responseSchema, strict: true } },
+          'The current portable initial/repair schema preserves the exact Super envelope and role fields')
+        assert.deepEqual(body.provider, { require_parameters: true })
+        assert.deepEqual(body.reasoning, { effort: 'none', exclude: true })
+      } else {
+        assert.deepEqual(body.response_format, model.includes('-ultra-') ? undefined : { type: 'json_object' })
+        assert.equal(body.provider, undefined, 'Unsupported model must not inherit schema routing')
+      }
+      assert.equal(body.max_tokens, 4_000)
+      assert.equal(body.models, undefined, 'Schema routing must not change or fall back to another model')
+      assert.equal(body.plugins, undefined, 'No response healing may repair incomplete model output')
+    })
+}
+for (const contractName of ['question_research_decision', 'unverified_schema']) {
+  await withServer(() => ({ model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }] }), async (baseUrl, requests) => {
+    await new OpenRouterProvider({ baseUrl }).generateExplanation({
+      provider: 'openrouter', model: 'nvidia/nemotron-3-super-120b-a12b:free', apiKey: 'synthetic-test-key',
+      prompt: 'SYNTHETIC phase isolation', responseFormat: 'json',
+      responseSchema: { ...responseSchema, name: contractName }, maxOutputTokens: 1000,
+      metadata: { requestId: 'schema-phase', analysisId: 'schema-phase', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+    })
+    const body = requests[0].body as Record<string, unknown>
+    assert.deepEqual(body.response_format, { type: 'json_object' })
+    assert.equal(body.provider, undefined, 'Only the confirmed full initial/repair contract uses strict schema')
+  })
+}
+
 await withServer(
   ({ url }) => {
     if (url === '/api/v1/key') return { data: { label: 'test-key' } }
@@ -159,6 +261,98 @@ for (const format of ['json', 'text', undefined] as const) {
   })
 }
 
+for (const responseFormat of ['text', undefined] as const) {
+  await withServer(() => ({ model: 'qwen/qwen3.8-27b:free', choices: [{ message: { content: 'SYNTHETIC short answer' }, finish_reason: 'stop' }] }),
+    async (baseUrl, requests) => {
+      await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model: 'qwen/qwen3.8-27b:free', apiKey: 'synthetic-test-key',
+        prompt: 'SYNTHETIC short answer', responseFormat, responseSchema, maxOutputTokens: 600,
+        metadata: { requestId: 'short-schema', analysisId: 'short-schema', userLevel: 'basic', explanationStyle: 'long_analytical' }
+      })
+      const body = requests[0].body as Record<string, unknown>
+      assert.equal(body.response_format, undefined, 'A schema supplied outside a JSON phase must not force the full five-section contract')
+      assert.equal(body.provider, undefined)
+      assert.equal(body.max_tokens, 600)
+    })
+}
+await withServer(() => ({ error: { code: 400, message: 'SYNTHETIC endpoint no longer supports schema' } }),
+  async (baseUrl, requests) => {
+    await assert.rejects(new OpenRouterProvider({ baseUrl }).generateExplanation({
+      provider: 'openrouter', model: 'qwen/qwen3.8-27b:free', apiKey: 'synthetic-test-key',
+      prompt: 'SYNTHETIC unsupported schema', responseFormat: 'json', responseSchema, maxOutputTokens: 6000,
+      metadata: { requestId: 'unsupported-schema', analysisId: 'unsupported-schema', userLevel: 'basic', explanationStyle: 'long_analytical' }
+    }), /OpenRouter 上游服務回報錯誤 \(400\)/)
+    assert.equal(requests.length, 1, 'Unsupported schema must fail without a model or format fallback')
+  })
+
+for (const model of ['qwen/qwen3.8-27b:free', 'qwen/qwen3.8-27b', 'qwen/qwen3.8-27b-preview:free']) {
+  for (const responseFormat of ['json', 'text'] as const) {
+    await withServer(() => ({ model, choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
+      usage: { completion_tokens: 2500, completion_tokens_details: { reasoning_tokens: 1000 } }
+    }), async (baseUrl, requests) => {
+      const result = await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model, apiKey: 'synthetic-test-key', prompt: 'Offline exact endpoint contract',
+        responseFormat, maxOutputTokens: 6000,
+        metadata: { requestId: 'qwen-exact-policy', analysisId: 'qwen-exact-policy', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+      })
+      const body = requests[0].body as Record<string, unknown>
+      const exactFree = model === 'qwen/qwen3.8-27b:free'
+      assert.deepEqual(body.reasoning, exactFree ? { enabled: false, exclude: true } : undefined,
+        'Only the confirmed optional-thinking Qwen free route disables reasoning after both measured effort settings exhausted visible-output room')
+      assert.deepEqual(body.response_format, !exactFree && responseFormat === 'json' ? { type: 'json_object' } : undefined,
+        'Without a phase-specific schema the exact Qwen route remains prompted JSON; other model IDs do not inherit the schema policy')
+      assert.equal(body.max_tokens, 6000, 'Selecting the strongest candidate must not silently increase its total output cap')
+      assert.equal(body.provider, undefined, 'The request must not introduce provider or model fallback routing')
+      assert.equal(result.model, model)
+      assert.equal(result.usage?.reasoningTokens, 1000, 'Excluded reasoning still counts toward the reported output usage')
+    })
+  }
+}
+for (const content of ['', '{"partial":true}']) {
+  await withServer(() => ({ model: 'qwen/qwen3.8-27b:free',
+    choices: [{ message: { content }, finish_reason: 'length' }],
+    usage: { completion_tokens: 6000, completion_tokens_details: { reasoning_tokens: content ? 3000 : 6000 } }
+  }), async baseUrl => {
+    await assert.rejects(new OpenRouterProvider({ baseUrl }).generateExplanation({
+      provider: 'openrouter', model: 'qwen/qwen3.8-27b:free', apiKey: 'synthetic-test-key',
+      prompt: 'Offline incomplete response', responseFormat: 'json', responseSchema, maxOutputTokens: 6000,
+      metadata: { requestId: 'qwen-length', analysisId: 'qwen-length', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+    }), error => error instanceof AIResponseValidationError && error.category === 'generation_incomplete' &&
+      error.details.finishReason === 'length' && error.details.outputTokens === 6000 &&
+      error.details.reasoningTokens === (content ? 3000 : 6000))
+  })
+}
+
+for (const model of ['dots-studio/dots-3-note-preview:free', 'dots-studio/dots-3-note-preview', 'test/other:free']) {
+  for (const responseFormat of ['json', 'text'] as const) {
+    await withServer(() => ({ model, choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }] }), async (baseUrl, requests) => {
+      await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model, apiKey: 'synthetic-test-key', prompt: 'Offline protocol contract',
+        responseFormat, maxOutputTokens: 6000,
+        metadata: { requestId: 'dots-exact-policy', analysisId: 'dots-exact-policy', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+      })
+      const body = requests[0].body as Record<string, unknown>
+      assert.deepEqual(body.reasoning,
+        model === 'dots-studio/dots-3-note-preview:free' && responseFormat === 'json'
+          ? { enabled: false, exclude: true } : undefined,
+        'Only the confirmed exact free Dots JSON endpoint gets its own optional-reasoning control')
+      assert.equal(body.max_tokens, 6000, 'The policy must preserve the requested output cap')
+    })
+  }
+}
+
+await withServer(() => ({ model: 'dots-studio/dots-3-note-preview:free',
+  choices: [{ message: { content: '{"partial":true}' }, finish_reason: 'length' }],
+  usage: { completion_tokens: 6000, completion_tokens_details: { reasoning_tokens: 0 } }
+}), async baseUrl => {
+  await assert.rejects(new OpenRouterProvider({ baseUrl }).generateExplanation({
+    provider: 'openrouter', model: 'dots-studio/dots-3-note-preview:free', apiKey: 'synthetic-test-key',
+    prompt: 'Offline truncated response', responseFormat: 'json', maxOutputTokens: 6000,
+    metadata: { requestId: 'dots-length', analysisId: 'dots-length', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+  }), error => error instanceof AIResponseValidationError && error.category === 'generation_incomplete' &&
+    error.details.finishReason === 'length' && error.details.outputTokens === 6000)
+})
+
 await withServer(
   () => ({
     model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
@@ -182,9 +376,145 @@ await withServer(
     await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
     const body = requests[0].body as Record<string, unknown>
     assert.deepEqual(body.reasoning, { max_tokens: 1_000, exclude: true })
+    assert.equal(body.response_format, undefined,
+      'The exact free Ultra endpoint does not advertise response_format support')
     assert.equal(body.max_tokens, 4_000)
   }
 )
+
+// Short research milestones share max_tokens with reasoning. The exact Ultra
+// policy must retain visible JSON room without increasing the request budget.
+await withServer(() => ({ model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  choices: [{ message: { content: '{"decision":"answer","reason":"observed","tasks":[]}' }, finish_reason: 'stop' }]
+}), async (baseUrl, requests) => {
+  await new OpenRouterProvider({ baseUrl }).generateExplanation({
+    provider: 'openrouter', model: 'nvidia/nemotron-3-ultra-550b-a55b:free', apiKey: 'synthetic-test-key',
+    prompt: 'Return a short legal research decision', responseFormat: 'json', maxOutputTokens: 1000,
+    metadata: { requestId: 'ultra-short-research', analysisId: 'ultra-short-research', userLevel: 'intermediate', explanationStyle: 'long_analytical' }
+  })
+  const body = requests[0].body as { max_tokens: number; reasoning: { max_tokens: number } }
+  assert.equal(body.max_tokens, 1000)
+  assert.equal(body.reasoning.max_tokens, 250, 'short milestones reserve three quarters for visible output')
+})
+
+await withServer(
+  () => ({
+    model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
+    usage: {
+      prompt_tokens: 20,
+      completion_tokens: 900,
+      completion_tokens_details: { reasoning_tokens: 600 }
+    }
+  }),
+  async (baseUrl, requests) => {
+    const request: AIExplanationRequest = {
+      provider: 'openrouter',
+      model: 'nvidia/nemotron-3-super-120b-a12b:free',
+      apiKey: 'synthetic-test-key',
+      prompt: 'Return structured coaching JSON',
+      responseFormat: 'json',
+      maxOutputTokens: 4_000,
+      metadata: {
+        requestId: 'nemotron-super-reasoning-budget',
+        analysisId: 'nemotron-super-reasoning-budget',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical'
+      }
+    }
+    const response = await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
+    const body = requests[0].body as Record<string, unknown>
+    assert.deepEqual(body.reasoning, { effort: 'none', exclude: true })
+    assert.deepEqual(body.response_format, { type: 'json_object' })
+    assert.equal(body.max_tokens, 4_000)
+    assert.deepEqual(response.usage, {
+      inputTokens: 20,
+      outputTokens: 900,
+      reasoningTokens: 600,
+      finishReason: 'stop'
+    })
+  }
+)
+
+await withServer(
+  () => ({
+    model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    choices: [{ message: { content: 'plain text' }, finish_reason: 'stop' }]
+  }),
+  async (baseUrl, requests) => {
+    await new OpenRouterProvider({ baseUrl }).generateExplanation({
+      provider: 'openrouter',
+      model: 'nvidia/nemotron-3-super-120b-a12b:free',
+      apiKey: 'synthetic-test-key',
+      prompt: 'Return plain text',
+      responseFormat: 'text',
+      responseSchema,
+      metadata: {
+        requestId: 'nemotron-super-text',
+        analysisId: 'nemotron-super-text',
+        userLevel: 'intermediate',
+        explanationStyle: 'long_analytical'
+      }
+    })
+    const body = requests[0].body as Record<string, unknown>
+    assert.deepEqual(body.reasoning, { effort: 'none', exclude: true }, '已確認的 Super 文字 recovery 也必須保留正文預算')
+    assert.equal(body.response_format, undefined, '短文字路徑不得誤套用完整講解 schema')
+    assert.equal(body.provider, undefined)
+  }
+)
+
+await withServer(
+  () => ({
+    model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    choices: [{ message: { content: '{"partial":true}' }, finish_reason: 'length' }],
+    usage: {
+      prompt_tokens: 20,
+      completion_tokens: 4_000,
+      completion_tokens_details: { reasoning_tokens: 1_000 }
+    }
+  }),
+  async (baseUrl) => {
+    await assert.rejects(
+      new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter',
+        model: 'nvidia/nemotron-3-super-120b-a12b:free',
+        apiKey: 'synthetic-test-key',
+        prompt: 'Return structured coaching JSON',
+        responseFormat: 'json',
+        responseSchema,
+        maxOutputTokens: 4_000,
+        metadata: {
+          requestId: 'nemotron-super-length',
+          analysisId: 'nemotron-super-length',
+          userLevel: 'intermediate',
+          explanationStyle: 'long_analytical'
+        }
+      }),
+      (error: unknown) =>
+        error instanceof AIResponseValidationError &&
+        error.category === 'generation_incomplete' &&
+        error.details.finishReason === 'length' &&
+        error.details.outputTokens === 4_000 &&
+        error.details.reasoningTokens === 1_000
+    )
+  }
+)
+for (const reportedUsage of [{ prompt_tokens: 20 }, { completion_tokens: 0 }, { prompt_tokens: -1, completion_tokens: -1 }]) {
+  await withServer(
+    () => ({ model: 'nvidia/nemotron-3-super-120b-a12b:free',
+      choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }], usage: reportedUsage }),
+    async baseUrl => {
+      const response = await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model: 'nvidia/nemotron-3-super-120b-a12b:free',
+        apiKey: 'synthetic-test-key', prompt: 'Synthetic partial usage', maxOutputTokens: 6000,
+        metadata: { requestId: 'partial-usage', analysisId: 'partial-usage', userLevel: 'basic', explanationStyle: 'long_analytical' }
+      })
+      assert.equal(response.usage?.inputTokens, reportedUsage.prompt_tokens !== undefined && reportedUsage.prompt_tokens >= 0 ? reportedUsage.prompt_tokens : undefined)
+      assert.equal(response.usage?.outputTokens, reportedUsage.completion_tokens !== undefined && reportedUsage.completion_tokens >= 0 ? reportedUsage.completion_tokens : undefined)
+      assert.equal(response.usage?.finishReason, 'stop')
+    }
+  )
+}
 console.log('OpenRouter free-model binding, response-format, and reasoning-budget tests passed')
 }
 

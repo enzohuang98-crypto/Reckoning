@@ -1,0 +1,35 @@
+{
+  "viewport": {
+    "zoom": 1,
+    "width": 960,
+    "height": 900
+  },
+  "captures": [
+    {
+      "size": 329488,
+      "sha256": "d80bf6d37e8c19f6abd494b5e0f06adf70f770a6120ff80d59bef69c89a2cc45",
+      "sourceCommit": "4ef3e8491f693813f056bbd31b8aeadd8af590b5",
+      "file": "fen-before-4ef3e84.png"
+    },
+    {
+      "size": 322552,
+      "sha256": "940ff9398fde1cf5c5fb31befc45389aac664cd9cd8815b2af12d049cd394eb4",
+      "sourceCommit": "4de38ce5dad84fda04e5111378f7b8a6058ae6e1",
+      "file": "fen-after-4de38ce.png"
+    },
+    {
+      "size": 216631,
+      "sha256": "1c46545450b33b725d919e86beadd4b5c63e517cd1437ca63643865a12680210",
+      "sourceCommit": "4ef3e8491f693813f056bbd31b8aeadd8af590b5",
+      "file": "headings-before-4ef3e84.png"
+    },
+    {
+      "size": 217152,
+      "sha256": "51c542245b421476f30a4ac2afb1d563a0c48cb916748b4e266a8c6b02cf93dd",
+      "sourceCommit": "4de38ce5dad84fda04e5111378f7b8a6058ae6e1",
+      "file": "headings-after-4de38ce.png"
+    }
+  ],
+  "comparisonState": "evidence_backed_difference",
+  "evidenceClass": "isolated source React/CSS fixture; no provider or installed binary"
+}

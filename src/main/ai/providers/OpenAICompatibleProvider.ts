@@ -88,12 +88,14 @@ export class OpenAICompatibleProvider implements AIProvider {
     const message = data.choices?.[0]?.message
     const text = (message?.content ?? message?.reasoning_content ?? '').trim()
     if (!text) throw new Error('OpenAI-compatible 回應中沒有文字內容。')
+    const inputTokens = data.usage?.prompt_tokens ?? data.usage?.input_tokens
+    const outputTokens = data.usage?.completion_tokens ?? data.usage?.output_tokens
     const usage = data.usage
       ? {
-          inputTokens:
-            data.usage.prompt_tokens ?? data.usage.input_tokens ?? 0,
-          outputTokens:
-            data.usage.completion_tokens ?? data.usage.output_tokens ?? 0
+          ...(typeof inputTokens === 'number' && Number.isFinite(inputTokens) && inputTokens >= 0
+            ? { inputTokens } : {}),
+          ...(typeof outputTokens === 'number' && Number.isFinite(outputTokens) && outputTokens >= 0
+            ? { outputTokens } : {})
         }
       : undefined
     return {

@@ -21,13 +21,17 @@ import {
   toAITransportError
 } from '../http'
 import {
+  OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL,
+  OPENROUTER_NEMOTRON_SUPER_FREE_MODEL,
+  OPENROUTER_QWEN38_FREE_MODEL,
+  openRouterReasoningConfig
+} from '../OpenRouterRequestPolicy'
+import {
   credentialTestRequest,
   credentialTestSucceeded
 } from '../credentialTest'
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
-const NEMOTRON_ULTRA_FREE_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free'
-
 /** OpenRouter 首輪驗收的生成階段必須比舊的 8 秒上限寬鬆。 */
 export const OPENROUTER_CREDENTIAL_TEST_GENERATION_TIMEOUT_MS = 25_000
 export const OPENROUTER_CREDENTIAL_TEST_MAX_OUTPUT_TOKENS = 512
@@ -64,6 +68,7 @@ interface OpenRouterChatResponse {
   usage?: {
     prompt_tokens?: number
     completion_tokens?: number
+    completion_tokens_details?: { reasoning_tokens?: number }
   }
 }
 
@@ -154,6 +159,17 @@ export class OpenRouterProvider implements AIProvider {
     request: AIExplanationRequest,
     signal?: AbortSignal
   ): Promise<AIExplanationResponse> {
+    const reasoningConfig = openRouterReasoningConfig(
+      request.model,
+      request.responseFormat === 'json' ? 'json' : 'text',
+      request.maxOutputTokens ?? 4096
+    )
+    // Endpoint capability is structured_outputs, not the legacy JSON-mode flag.
+    // Confirmed against the exact free endpoint on 2026-10-04; require_parameters
+    // fails closed if that support disappears rather than silently ignoring it.
+    const useSchema = request.responseFormat === 'json' && request.responseSchema !== undefined &&
+      (request.model === OPENROUTER_QWEN38_FREE_MODEL ||
+        (request.model === OPENROUTER_NEMOTRON_SUPER_FREE_MODEL && request.responseSchema.name === 'initial_move_explanation'))
     const response = await fetchOpenRouterResponse(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       signal,
@@ -163,12 +179,24 @@ export class OpenRouterProvider implements AIProvider {
         max_tokens: request.maxOutputTokens ?? 4096,
         temperature: 0.2,
         stream: false,
-        ...(request.responseFormat === 'json'
+        // Ultra has no confirmed JSON-mode policy. The exact free Qwen endpoint
+        // supports structured_outputs; only phase-specific contracts use it.
+        // The older Super schema exhausted its output cap. On 2026-10-09 the
+        // portable role/premise schema completed at 2,111/2,033 tokens with stop
+        // and no reasoning; JSON object had returned a malformed envelope.
+        // Use only the verified initial/repair contract. Planner/follow-up
+        // requests retain JSON object; schema shape does not prove chess truth.
+        // All local content validation remains required.
+        ...(useSchema
+          ? { response_format: { type: 'json_schema', json_schema: {
+                ...request.responseSchema, strict: true
+              } }, provider: { require_parameters: true } }
+          : request.responseFormat === 'json' &&
+          request.model !== OPENROUTER_NEMOTRON_ULTRA_FREE_MODEL &&
+          request.model !== OPENROUTER_QWEN38_FREE_MODEL
           ? { response_format: { type: 'json_object' } }
           : {}),
-        ...(request.model === NEMOTRON_ULTRA_FREE_MODEL && request.responseFormat === 'json'
-          ? { reasoning: { max_tokens: 1_000, exclude: true } }
-          : {}),
+        ...(reasoningConfig ? { reasoning: reasoningConfig } : {}),
         messages: [{ role: 'user', content: request.prompt }]
       })
     }, 'generation')
@@ -209,13 +237,14 @@ export class OpenRouterProvider implements AIProvider {
     const message = data.choices?.[0]?.message
     const finishReason = data.choices?.[0]?.finish_reason ?? undefined
     const outputTokens = data.usage?.completion_tokens
+    const reasoningTokens = data.usage?.completion_tokens_details?.reasoning_tokens
     const text = typeof message?.content === 'string' ? message.content.trim() : ''
     if (!text) {
       throw new AIResponseValidationError(
         'generation',
         'generation_incomplete',
         'OpenRouter 回應中沒有正式文字答案。',
-        { reason: 'empty_content', finishReason, outputTokens }
+        { reason: 'empty_content', finishReason, outputTokens, reasoningTokens }
       )
     }
     if (finishReason === 'length') {
@@ -223,17 +252,21 @@ export class OpenRouterProvider implements AIProvider {
         'generation',
         'generation_incomplete',
         'OpenRouter 解說因輸出長度限制而未完成。',
-        { reason: 'output_truncated', finishReason, outputTokens }
+        { reason: 'output_truncated', finishReason, outputTokens, reasoningTokens }
       )
     }
     return {
       text,
       provider: this.id,
       model: request.model,
-      usage: data.usage
+      usage: data.usage || finishReason !== undefined
         ? {
-            inputTokens: data.usage.prompt_tokens ?? 0,
-            outputTokens: data.usage.completion_tokens ?? 0
+            ...(typeof data.usage?.prompt_tokens === 'number' && Number.isFinite(data.usage.prompt_tokens) && data.usage.prompt_tokens >= 0
+              ? { inputTokens: data.usage.prompt_tokens } : {}),
+            ...(typeof outputTokens === 'number' && Number.isFinite(outputTokens) && outputTokens >= 0
+              ? { outputTokens } : {}),
+            ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+            ...(finishReason === undefined ? {} : { finishReason })
           }
         : undefined,
       createdAt: Date.now(),

@@ -5,7 +5,7 @@
  * 與 renderer 嚴格分離：renderer 只透過 preload 暴露的 window.api 溝通。
  */
 
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, screen, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { EngineRegistryService } from './engine/EngineRegistryService'
@@ -13,10 +13,8 @@ import { SecretStore } from './storage/SecretStore'
 import { StorageService } from './storage/StorageService'
 import { registerEngineAnalysisHandlers } from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
-import { registerLicenseHandlers } from './ipc/licenseHandlers'
 import { registerDataHandlers } from './ipc/dataHandlers'
 import { registerTeacherTestHandlers } from './ipc/teacherTestHandlers'
-import { LicenseService } from './license/LicenseService'
 import {
   InMemoryAnalysisSessionStore,
   startAnalysisSessionCleanup
@@ -69,11 +67,12 @@ function getRendererUrl(): string {
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(rendererUrl: string): void {
+  const workArea = screen.getPrimaryDisplay().workAreaSize
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 860,
-    minWidth: 1024,
-    minHeight: 700,
+    width: Math.min(1280, workArea.width),
+    height: Math.min(860, workArea.height),
+    minWidth: Math.min(480, workArea.width),
+    minHeight: Math.min(320, workArea.height),
     show: false,
     title: '象棋 AI 分析講解 - 啟動中',
     icon: app.isPackaged
@@ -133,7 +132,7 @@ function createWindow(rendererUrl: string): void {
 function registerIpc(): AppUpdaterService {
   const storage = new StorageService()
   const packagedEnginePath = app.isPackaged
-    ? join(process.resourcesPath, 'engine', 'pikafish.exe')
+    ? join(process.resourcesPath, 'engine', 'pikafish-sse41-popcnt.exe')
     : null
   const engineRegistry = new EngineRegistryService(
     storage,
@@ -157,7 +156,6 @@ function registerIpc(): AppUpdaterService {
   )
   registerDataHandlers(storage)
   // 買斷授權（SDS Q5）：離線 Ed25519 簽章驗證
-  registerLicenseHandlers(new LicenseService(storage))
   const appUpdater = new AppUpdaterService()
   appUpdater.registerIpc()
   return appUpdater

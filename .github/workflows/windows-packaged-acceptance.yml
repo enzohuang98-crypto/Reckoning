@@ -1,0 +1,151 @@
+name: Isolated packaged Windows acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Unpublished fault pair or unchanged public candidate installation
+        type: choice
+        options: [test-pair, exact-candidate]
+        default: test-pair
+      candidate_tag:
+        description: Existing annotated unsigned prerelease tag (exact-candidate only)
+        type: string
+      candidate_run_id:
+        description: Successful unsigned Release run that produced the original assets
+        type: string
+      expected_setup_sha256:
+        description: SHA-256 of the exact public installer
+        type: string
+      predecessor_version:
+        description: Explicit lower version for the isolated predecessor
+        type: string
+      fault_run_id:
+        description: Successful test-pair dispatch at the same candidate source commit
+        type: string
+  pull_request:
+    paths:
+      - '.github/workflows/windows-packaged-acceptance.yml'
+      - 'tools/acceptance/windows-*'
+      - 'tools/acceptance/isolated-*'
+      - 'tools/acceptance/verify-no-updater-hooks.cjs'
+      - 'src/**'
+      - 'electron.vite.config.ts'
+      - 'electron-builder*'
+      - 'package*.json'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ACCEPTANCE_MODE: ${{ inputs.mode || 'test-pair' }}
+  CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+  CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+  EXPECTED_SETUP_SHA256: ${{ inputs.expected_setup_sha256 }}
+  PREDECESSOR_VERSION: ${{ inputs.predecessor_version }}
+  FAULT_RUN_ID: ${{ inputs.fault_run_id }}
+
+concurrency:
+  group: windows-packaged-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate mode and offline exact-candidate policy
+        run: |
+          node tools/acceptance/windows-exact-candidate.cjs inputs
+          node tools/acceptance/windows-exact-candidate.self-test.cjs
+      - name: Verify loopback transport accounting without installer substitution
+        run: node tools/acceptance/windows-update-feed.self-test.cjs
+      - name: Build explicitly unsigned unpublished predecessor and update candidate
+        if: env.ACCEPTANCE_MODE == 'test-pair'
+        shell: pwsh
+        run: ./tools/acceptance/windows-build-update-pair.ps1
+      - name: Acquire and verify unchanged public candidate against original artifact
+        id: exact
+        if: env.ACCEPTANCE_MODE == 'exact-candidate'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/acceptance/windows-exact-candidate.cjs acquire release/update-candidate
+      - name: Check out frozen candidate source for the lower predecessor
+        if: env.ACCEPTANCE_MODE == 'exact-candidate'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.exact.outputs.candidate_commit }}
+          path: candidate-source
+          persist-credentials: false
+      - name: Install frozen source build dependencies
+        if: env.ACCEPTANCE_MODE == 'exact-candidate'
+        run: npm ci
+        working-directory: candidate-source
+      - name: Build only the isolated lower predecessor from frozen candidate source
+        if: env.ACCEPTANCE_MODE == 'exact-candidate'
+        shell: pwsh
+        run: ./tools/acceptance/windows-build-update-pair.ps1 -Mode exact-candidate -SourceDirectory candidate-source
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: isolated-windows-package
+          path: |
+            release/*-setup.exe
+            release/*-setup.exe.blockmap
+            release/latest.yml
+            release/isolated-package-manifest.json
+            release/update-candidate/*-setup.exe
+            release/update-candidate/*-setup.exe.blockmap
+            release/update-candidate/latest.yml
+            release/update-candidate/isolated-package-manifest.json
+            release/update-candidate/SHA256SUMS.txt
+            release/update-candidate/fault-pair-evidence.json
+          retention-days: 7
+          if-no-files-found: error
+  client:
+    needs: build
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          architecture: x64
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: isolated-windows-package
+          path: release
+      - name: Verify clean Windows client VM
+        shell: pwsh
+        run: ./tools/acceptance/windows-client-preflight.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-client-preflight.json"
+      - name: Complete observed hosted VM privacy first-run screen
+        shell: powershell
+        run: ./tools/acceptance/windows-client-desktop.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-client-desktop.json"
+      - name: Install and inspect actual packaged application
+        shell: powershell
+        run: ./tools/acceptance/windows-packaged-client.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-packaged-client.json"
+      - name: Exercise actual packaged predecessor updater through normal UI
+        shell: powershell
+        run: ./tools/acceptance/windows-packaged-updater.ps1 -OutputPath "$env:RUNNER_TEMP/isolated-packaged-updater.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: isolated-windows-client-evidence
+          path: |
+            ${{ runner.temp }}/isolated-*.json
+            ${{ runner.temp }}/isolated-*.png
+            ${{ runner.temp }}/isolated-*.log
+          retention-days: 7
+          if-no-files-found: error

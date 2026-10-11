@@ -254,6 +254,7 @@
 
 .board-editor {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   width: min(100%, 560px);
@@ -269,6 +270,7 @@
 .board-editor.tools-open {
   width: min(100%, 880px);
   grid-template-columns: minmax(430px, 1fr) 240px;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: auto;
 }
 

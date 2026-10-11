@@ -12,7 +12,6 @@ import {
 import type { EngineAnalysis, EngineProtocol } from '@shared/types/EngineAnalysis'
 import { isEngineProfileId } from '@shared/types/EngineRegistry'
 import { compareMove } from '@shared/logic/analysis/MoveComparisonService'
-import { buildDualEngineComparison } from '@shared/logic/analysis/DualEngineComparison'
 import {
   EngineAnalysisError,
   type EngineProcessControls
@@ -193,13 +192,6 @@ export function registerEngineAnalysisHandlers(
         } satisfies EngineAnalysisErrorPayload)
         return
       }
-      const verificationInstallation = payload.verificationEngineId
-        ? registry.getInstallation(payload.verificationEngineId)
-        : null
-      const verificationAdapter = payload.verificationEngineId
-        ? registry.getAdapter(payload.verificationEngineId)
-        : null
-
       const previous = activeAnalyses.get(payload.requestId)
       if (!previous && activeAnalyses.size >= MAX_ACTIVE_ANALYSES) {
         event.reply(IPC.ENGINE_ANALYSIS_ERROR, {
@@ -296,30 +288,7 @@ export function registerEngineAnalysisHandlers(
         )
 
       try {
-        let verificationWarning =
-          verificationInstallation && !verificationAdapter
-            ? '複核引擎目前無法啟動；已保留主引擎結果。'
-            : undefined
-        const [engineAnalysis, verificationEngineAnalysis] = await Promise.all([
-          runEngine(primaryAdapter, primaryInstallation, 'primary'),
-          verificationAdapter && verificationInstallation
-            ? runEngine(
-                verificationAdapter,
-                verificationInstallation,
-                'verification'
-              ).catch((error: unknown) => {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                  throw error
-                }
-                verificationWarning = `複核引擎未完成：${sanitizePublicErrorMessage(
-                  error instanceof Error ? error.message : '',
-                  '複核引擎分析失敗。'
-                )}`
-                logger.warn('複核引擎分析失敗，保留主引擎結果', verificationWarning)
-                return undefined
-              })
-            : Promise.resolve(undefined)
-        ])
+        const engineAnalysis = await runEngine(primaryAdapter, primaryInstallation, 'primary')
         if (
           handle.controller.signal.aborted ||
           activeAnalyses.get(payload.requestId) !== handle
@@ -327,12 +296,6 @@ export function registerEngineAnalysisHandlers(
           throw new DOMException('Analysis cancelled', 'AbortError')
         }
         const moveComparison = compareMove(engineAnalysis)
-        const dualEngineComparison = buildDualEngineComparison(
-          engineAnalysis,
-          verificationEngineAnalysis
-        )
-        const engineDisagreement =
-          dualEngineComparison?.status === 'disagreement'
         sendProgress({
           phase: 'finalizing',
           elapsedMs: Date.now() - startedAt,
@@ -361,12 +324,7 @@ export function registerEngineAnalysisHandlers(
           positionFen: payload.positionFen,
           userMove: payload.userMove,
           primaryEngineId: primaryInstallation.id,
-          verificationEngineId: verificationInstallation?.id,
           engineAnalysis,
-          verificationEngineAnalysis,
-          engineDisagreement,
-          dualEngineComparison: dualEngineComparison ?? undefined,
-          verificationWarning,
           moveComparison
         }
         await sessionStore.save(session)
@@ -381,10 +339,6 @@ export function registerEngineAnalysisHandlers(
           requestId: payload.requestId,
           analysisId,
           engineAnalysis,
-          verificationEngineAnalysis,
-          engineDisagreement,
-          dualEngineComparison: dualEngineComparison ?? undefined,
-          verificationWarning,
           moveComparison
         })
       } catch (error) {
@@ -574,14 +528,7 @@ export function registerEngineAnalysisHandlers(
       throw new SecurityValidationError('引擎選擇格式無效。')
     }
     const input = raw as Record<string, unknown>
-    return registry.select(
-      validateEngineId(input.activeEngineId),
-      input.verificationEngineId === null ||
-        input.verificationEngineId === undefined ||
-        input.verificationEngineId === ''
-        ? null
-        : validateEngineId(input.verificationEngineId)
-    )
+    return registry.select(validateEngineId(input.activeEngineId))
   })
 
   ipcMain.handle(IPC.ENGINE_REGISTRY_TEST, (event, rawId: unknown) => {
