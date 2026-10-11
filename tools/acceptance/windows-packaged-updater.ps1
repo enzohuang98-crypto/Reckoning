@@ -27,6 +27,7 @@ $report = [ordered]@{
 }
 $server = $null
 $installerExitSource = $null
+$script:probeInstallerMonitor = $null
 function Set-FeedPhase([string]$Phase, [string]$Mode) {
   $body = @{ phase = $Phase; mode = $Mode } | ConvertTo-Json -Compress
   [void](Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:18765/__probe/control' -ContentType 'application/json' -Body $body -TimeoutSec 5)
@@ -159,6 +160,139 @@ function Get-ValidatedPendingInstaller([string]$ExpectedHash) {
   if (-not $path.StartsWith($pendingRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Cache path escapes this isolated pending directory.' }
   if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $ExpectedHash) { throw 'Prepared installer cache does not match candidate SHA-256.' }
   return $path
+}
+function Start-ProbeInstallerObservation([string]$InstallerPath, [string]$InstallerHash, [int]$AppProcessId) {
+  # Capture OS events before the UI dispatch. No candidate instrumentation or
+  # command lines are used; only the validated installer's lineage is reported.
+  $state = @{
+    installerPath = $InstallerPath; installerHash = $InstallerHash; appProcessId = $AppProcessId
+    appPath = $script:probeExe; elevatePath = (Join-Path (Split-Path $script:probeExe) 'resources\elevate.exe')
+    starts = [Collections.ArrayList]::Synchronized((New-Object Collections.ArrayList))
+    stops = [Collections.ArrayList]::Synchronized((New-Object Collections.ArrayList))
+    tracked = @{}; sources = @(); jobs = @()
+    evidence = @{ source = 'Win32_ProcessStartTrace+Win32_ProcessStopTrace'; appProcessId = $AppProcessId
+      installerPath = $InstallerPath; installerSha256 = $InstallerHash; status = 'waiting'
+      subscribedAtUtc = [DateTime]::UtcNow.ToString('o'); processes = @(); versionObservedAtUtc = $null }
+  }
+  $script:probeInstallerMonitor = $state
+  $prefix = "Reckoning-Isolated-Normal-Installer-$($env:GITHUB_RUN_ID)-$PID"
+  $state.sources += "$prefix-start"
+  $state.jobs += Register-WmiEvent -Namespace 'root\cimv2' -Class Win32_ProcessStartTrace -SourceIdentifier "$prefix-start" -MessageData $state -Action {
+    $trace = $event.SourceEventArgs.NewEvent
+    $entry = @{ processId = [uint32]$trace.ProcessID; parentProcessId = [uint32]$trace.ParentProcessID
+      startedFileTime = [long]$trace.TIME_CREATED; path = $null; sha256 = $null }
+    try {
+      $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($entry.processId)" -ErrorAction Stop
+      if ($process -and [uint32]$process.ParentProcessId -eq $entry.parentProcessId) {
+        $entry.path = [string]$process.ExecutablePath
+        if ([string]::Equals($entry.path, $event.MessageData.installerPath, [StringComparison]::OrdinalIgnoreCase)) {
+          $entry.sha256 = (Get-FileHash -LiteralPath $entry.path -Algorithm SHA256 -ErrorAction Stop).Hash
+        }
+      }
+    } catch { $entry.identityCaptureFailure = $_.Exception.GetType().Name }
+    [void]$event.MessageData.starts.Add($entry)
+  }
+  $state.sources += "$prefix-stop"
+  $state.jobs += Register-WmiEvent -Namespace 'root\cimv2' -Class Win32_ProcessStopTrace -SourceIdentifier "$prefix-stop" -MessageData $state -Action {
+    $trace = $event.SourceEventArgs.NewEvent
+    [void]$event.MessageData.stops.Add(@{ processId = [uint32]$trace.ProcessID
+      stoppedFileTime = [long]$trace.TIME_CREATED; exitStatus = [uint32]$trace.ExitStatus })
+  }
+}
+function Update-ProbeInstallerObservation {
+  $state = $script:probeInstallerMonitor
+  $starts = @($state.starts.ToArray() | Sort-Object startedFileTime)
+  # Events can arrive in either callback order. Resolve ancestry from retained
+  # start events before pairing stop events with the exact process instance.
+  do {
+    $added = $false
+    foreach ($entry in $starts) {
+      $parent = $state.tracked[[uint32]$entry.parentProcessId]
+      $direct = [uint32]$entry.parentProcessId -eq $state.appProcessId
+      $role = $null
+      if (($direct -or ($parent -and $parent.role -eq 'launcher')) -and
+          [string]::Equals($entry.path, $state.installerPath, [StringComparison]::OrdinalIgnoreCase)) {
+        $role = 'candidate-installer'
+      } elseif ($direct -and [string]::Equals($entry.path, $state.elevatePath, [StringComparison]::OrdinalIgnoreCase)) {
+        $role = 'launcher'
+      } elseif ($parent -and $parent.role -in @('candidate-installer', 'installer-child')) {
+        $role = if ([string]::Equals($entry.path, $state.appPath, [StringComparison]::OrdinalIgnoreCase)) { 'app-relaunch' } else { 'installer-child' }
+      }
+      if (-not $role) { continue }
+      $existing = $state.tracked[[uint32]$entry.processId]
+      if ($existing) {
+        if ($existing.startedFileTime -ne $entry.startedFileTime) { throw 'Installer lineage reused a PID; completion identity is ambiguous.' }
+        continue
+      }
+      $node = @{ processId = [uint32]$entry.processId; parentProcessId = [uint32]$entry.parentProcessId
+        role = $role; path = $entry.path; sha256 = $entry.sha256; startedFileTime = $entry.startedFileTime
+        startedAtUtc = [DateTime]::FromFileTimeUtc($entry.startedFileTime).ToString('o')
+        stoppedAtUtc = $null; exitStatus = $null }
+      $state.tracked[[uint32]$entry.processId] = $node
+      $state.evidence.processes = @($state.tracked.Values | Sort-Object startedFileTime)
+      if ($role -eq 'candidate-installer' -and $entry.sha256 -ne $state.installerHash) {
+        throw 'OS-observed installer path did not match the validated candidate SHA-256.'
+      }
+      $added = $true
+    }
+  } while ($added)
+  foreach ($node in $state.tracked.Values) {
+    $stops = @($state.stops.ToArray() | Where-Object {
+      $_.processId -eq $node.processId -and $_.stoppedFileTime -ge $node.startedFileTime
+    })
+    if ($stops.Count -gt 1) { throw 'Installer process-stop identity is ambiguous.' }
+    if ($stops.Count -eq 1) {
+      $node.exitStatus = $stops[0].exitStatus
+      $node.stoppedAtUtc = [DateTime]::FromFileTimeUtc($stops[0].stoppedFileTime).ToString('o')
+    }
+  }
+  $installers = @($state.tracked.Values | Where-Object role -eq 'candidate-installer')
+  if ($installers.Count -gt 1) { throw 'Multiple matching candidate installer launches were observed.' }
+  $required = @($state.tracked.Values | Where-Object role -ne 'app-relaunch')
+  foreach ($node in $required) {
+    if ($null -ne $node.exitStatus -and $node.exitStatus -ne 0) {
+      throw "Actual installer lineage PID $($node.processId) exited with status $($node.exitStatus)."
+    }
+  }
+  if ($installers.Count -ne 1 -or @($required | Where-Object { $null -eq $_.exitStatus }).Count) { return $false }
+  # A live child can precede delivery of its start callback. Do not conclude
+  # completion from the bootstrap exit while that OS process is still present.
+  $live = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+  $requiredIds = @($required | ForEach-Object { $_.processId })
+  $pending = @($live | Where-Object {
+    $_.ProcessId -in $requiredIds -or ($_.ParentProcessId -in $requiredIds -and
+      -not [string]::Equals([string]$_.ExecutablePath, $state.appPath, [StringComparison]::OrdinalIgnoreCase))
+  })
+  $state.evidence.pendingProcessIds = @($pending | ForEach-Object { [uint32]$_.ProcessId })
+  return $pending.Count -eq 0
+}
+function Wait-ProbeInstallerCompletion([string]$Version) {
+  $state = $script:probeInstallerMonitor
+  try {
+    [void](Wait-Probe {
+      $complete = Update-ProbeInstallerObservation
+      $versionMatches = $false
+      try { $versionMatches = (Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion -in @($Version, "$Version.0") } catch { }
+      if ($versionMatches -and -not $state.evidence.versionObservedAtUtc) {
+        $state.evidence.versionObservedAtUtc = [DateTime]::UtcNow.ToString('o')
+        $state.evidence.versionObservedBeforeInstallerCompletion = -not $complete
+      }
+      return $complete -and $versionMatches
+    } 'Normal updater did not complete its OS-observed installer lineage successfully with the expected candidate version.' 180)
+    $state.evidence.status = 'completed'
+    $state.evidence.completedAtUtc = [DateTime]::UtcNow.ToString('o')
+  } catch {
+    $state.evidence.status = 'failed'; $state.evidence.failure = $_.Exception.Message
+    throw
+  }
+}
+function Stop-ProbeInstallerObservation {
+  if (-not $script:probeInstallerMonitor) { return }
+  foreach ($source in $script:probeInstallerMonitor.sources) {
+    Unregister-Event -SourceIdentifier $source -ErrorAction SilentlyContinue
+    Get-Event -SourceIdentifier $source -ErrorAction SilentlyContinue | Remove-Event -ErrorAction SilentlyContinue
+  }
+  foreach ($job in $script:probeInstallerMonitor.jobs) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
 }
 try {
   $predecessor = Get-Content -Raw -Encoding UTF8 release/isolated-package-manifest.json | ConvertFrom-Json
@@ -417,11 +551,11 @@ try {
   Set-FeedPhase 'install' 'healthy'
   $preparedInstaller = Get-ValidatedPendingInstaller $report.candidateInstallerSha256
   $report.preparedInstallerSha256 = (Get-FileHash -LiteralPath $preparedInstaller -Algorithm SHA256).Hash
+  Start-ProbeInstallerObservation $preparedInstaller $report.preparedInstallerSha256 (Get-ProbeWindow).Current.ProcessId
+  $report.normalInstallerObservation = $script:probeInstallerMonitor.evidence
   Invoke-ProbeAction '重新啟動完成更新'
   Confirm-ProbeRestart
-  [void](Wait-Probe {
-    try { (Get-Item -LiteralPath $script:probeExe).VersionInfo.ProductVersion -in @($candidate.version, "$($candidate.version).0") } catch { $false }
-  } 'Normal updater did not install the expected candidate version.' 180)
+  Wait-ProbeInstallerCompletion $candidate.version
   Start-ProbeApplication
   if ((Get-FileHash -LiteralPath $dataPath -Algorithm SHA256).Hash -ne $report.savedDataSha256Before) { throw 'Actual saved application data changed during install.' }
   $report.savedDataSha256After = (Get-FileHash -LiteralPath $dataPath -Algorithm SHA256).Hash
@@ -485,6 +619,8 @@ try {
     Unregister-Event -SourceIdentifier $installerExitSource -ErrorAction SilentlyContinue
     Get-Event -SourceIdentifier $installerExitSource -ErrorAction SilentlyContinue | Remove-Event -ErrorAction SilentlyContinue
   }
+  Stop-ProbeInstallerObservation
+  $report.applicationStarts = @($script:probeApplicationStarts)
   $report.uiActions = @($script:probeUiActions)
   try {
     $report.finalControlDiagnostics = @(Get-ProbeControls | Where-Object {

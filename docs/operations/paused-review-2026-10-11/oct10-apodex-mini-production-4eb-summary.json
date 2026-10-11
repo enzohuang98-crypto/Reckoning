@@ -1,0 +1,55 @@
+{
+  "inputEvidenceName": "oct10-apodex-mini-production-4eb.json",
+  "evidenceClass": "Real saved-key source Harness attempt; rejected, not accepted application output or candidate binary",
+  "sourceCommit": "4eb14de03df129445c333ecdce50a1a1e8999672",
+  "case": "START_FEN h2e2 炮二平五",
+  "model": "apodex/apodex-1.1-mini:free",
+  "freeCatalogEligible": true,
+  "answerStrategy": "move-comparison",
+  "status": "failed",
+  "durationMs": 6736,
+  "modelCallCount": 1,
+  "errorName": "AIResponseValidationError",
+  "providerDiagnostic": {
+    "stage": "generation",
+    "category": "generation_incomplete",
+    "reason": "empty_content",
+    "httpStatus": null,
+    "retryable": false,
+    "retryAfterMs": null,
+    "finishReason": "length",
+    "outputTokens": 1000,
+    "reasoningTokens": 906
+  },
+  "controlledRequestDifference": null,
+  "requests": [
+    {
+      "callIndex": 1,
+      "model": "apodex/apodex-1.1-mini:free",
+      "maxTokens": 1000,
+      "reasoning": null,
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    }
+  ],
+  "calls": [
+    {
+      "callIndex": 1,
+      "stage": "research_planner",
+      "model": "apodex/apodex-1.1-mini:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "provider_managed",
+      "timeoutMs": 15000,
+      "durationMs": 6699,
+      "status": "failed",
+      "outputTokens": 1000,
+      "reasoningTokens": 906,
+      "finishReason": "length",
+      "errorCategory": "generation_incomplete"
+    }
+  ],
+  "validatorErrors": [],
+  "acceptedFinalText": false
+}

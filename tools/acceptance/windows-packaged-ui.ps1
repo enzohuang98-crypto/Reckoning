@@ -33,6 +33,7 @@ public static class UpdateProbeWindow {
 $script:probeFocusClicks = 0
 $script:probeWslCancelCount = 0
 $script:probeUiActions = @()
+$script:probeApplicationStarts = @()
 function Get-ProbeControlDiagnostic($Control) {
   try {
     $current = $Control.Current
@@ -404,11 +405,47 @@ function Open-ProbeSystemSettings {
   Invoke-ProbeAction '資料與系統' -Prefix
   [void](Wait-Probe { (Get-ProbeNames -join ' ') -match '版本與自動更新' } 'System update settings did not appear.')
 }
+function Get-ProbeApplicationProcessObservations {
+  return @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $script:probeExe } | ForEach-Object {
+    @{ processId = $_.Id; sessionId = $_.SessionId; startedAtUtc = $_.StartTime.ToUniversalTime().ToString('o')
+      mainWindowHandle = $_.MainWindowHandle.ToInt64(); hasExited = $_.HasExited }
+  })
+}
 function Start-ProbeApplication {
   $script:probeFocusClicks = 0
-  if (-not (Get-ProbeWindow)) { [void](Start-Process -FilePath $script:probeExe -ArgumentList '--force-renderer-accessibility' -WindowStyle Normal -PassThru) }
-  [void](Wait-Probe { Find-ProbeAction '分析' } 'Reopened packaged workspace did not become ready.' 60)
-  Assert-ProbeForeground
+  $observation = @{ requestedAtUtc = [DateTime]::UtcNow.ToString('o'); status = 'waiting'
+    before = @(Get-ProbeApplicationProcessObservations); launchedProcessId = $null }
+  $script:probeApplicationStarts += $observation
+  $launched = $null
+  try {
+    $window = Get-ProbeWindow
+    $observation.existingAppWindow = if ($window) {
+      @{ processId = $window.Current.ProcessId; nativeWindowHandle = $window.Current.NativeWindowHandle }
+    } else { $null }
+    if (-not $window) {
+      $launched = Start-Process -FilePath $script:probeExe -ArgumentList '--force-renderer-accessibility' -WindowStyle Normal -PassThru
+      $observation.launchedProcessId = $launched.Id
+      $observation.launchedSessionId = $launched.SessionId
+    }
+    [void](Wait-Probe { Find-ProbeAction '分析' } 'Reopened packaged workspace did not become ready.' 60)
+    $readyWindow = Get-ProbeWindow
+    $observation.readyAppWindow = @{ processId = $readyWindow.Current.ProcessId; nativeWindowHandle = $readyWindow.Current.NativeWindowHandle }
+    Assert-ProbeForeground
+    $observation.status = 'ready'
+  } catch {
+    $observation.status = 'failed'; $observation.failure = $_.Exception.Message
+    throw
+  } finally {
+    $observation.finishedAtUtc = [DateTime]::UtcNow.ToString('o')
+    try {
+      $observation.after = @(Get-ProbeApplicationProcessObservations)
+      if ($launched) {
+        $launched.Refresh()
+        $observation.launchedHasExited = $launched.HasExited
+        if ($launched.HasExited) { $observation.launchedExitCode = $launched.ExitCode }
+      }
+    } catch { $observation.processObservationFailure = $_.Exception.GetType().Name }
+  }
 }
 function Close-ProbeApplication {
   foreach ($process in @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $script:probeExe -and $_.MainWindowHandle -ne 0 })) {

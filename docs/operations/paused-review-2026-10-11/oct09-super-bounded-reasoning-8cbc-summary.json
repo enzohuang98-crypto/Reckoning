@@ -1,0 +1,175 @@
+{
+  "inputEvidenceName": "oct09-super-bounded-reasoning-8cbc.json",
+  "evidenceClass": "Real saved-key source Harness attempt; rejected, not accepted application output or candidate binary",
+  "sourceCommit": "8cbc5d4c21d82965115f4e2f738af76e0f6cb9cb",
+  "case": "START_FEN h2e2 炮二平五",
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "freeCatalogEligible": true,
+  "answerStrategy": "move-comparison",
+  "status": "failed",
+  "durationMs": 77920,
+  "modelCallCount": 5,
+  "errorName": "HarnessExplanationUnavailableError",
+  "providerDiagnostic": null,
+  "controlledRequestDifference": "Only exact free Super initial/repair reasoning changed from none to max_tokens=1000 after current official metadata supports_max_tokens=true. Planner policy, model, key, formal Harness/validator and all token/time/call caps unchanged. Not production acceptance; safeWireRequests records actual policy.",
+  "requests": [
+    {
+      "callIndex": 1,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 2,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 3,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 4,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 6000,
+      "reasoning": {
+        "maxTokens": 1000,
+        "exclude": true
+      },
+      "responseFormat": "json_schema",
+      "strictSchema": true,
+      "requireParameters": true
+    },
+    {
+      "callIndex": 5,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 6000,
+      "reasoning": {
+        "maxTokens": 1000,
+        "exclude": true
+      },
+      "responseFormat": "json_schema",
+      "strictSchema": true,
+      "requireParameters": true
+    }
+  ],
+  "calls": [
+    {
+      "callIndex": 1,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 1539,
+      "status": "completed",
+      "outputTokens": 100,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 2,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 2407,
+      "status": "completed",
+      "outputTokens": 103,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 3,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 2730,
+      "status": "completed",
+      "outputTokens": 106,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 4,
+      "stage": "initial_combined",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 6000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 100000,
+      "durationMs": 25692,
+      "status": "completed",
+      "outputTokens": 3326,
+      "reasoningTokens": 999,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 5,
+      "stage": "repair",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 6000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 62232,
+      "durationMs": 35068,
+      "status": "completed",
+      "outputTokens": 3265,
+      "reasoningTokens": 999,
+      "finishReason": "stop"
+    }
+  ],
+  "validatorErrors": [
+    "背景研究規劃含無效或越界動作，只執行本機驗證的有界確認。",
+    "K1 棋盤事實：炮二平五 的吃子斷言與逐手棋盤不一致。",
+    "K2 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "K2 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "C4b 前提 E5:P17:move 缺少可見正文中的相關著法：炮八平三。",
+    "直接結論 棋盤事實：炮二平五 的吃子斷言與逐手棋盤不一致。",
+    "C2 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "C2 棋盤事實：炮八平五 的吃子斷言與逐手棋盤不一致。",
+    "C3 棋盤事實：炮八平五 的吃子斷言與逐手棋盤不一致。",
+    "C4a 棋盤事實：炮二平五 的吃子斷言與逐手棋盤不一致。",
+    "C4b 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "C4b 棋盤事實：馬3進2 的吃子斷言與逐手棋盤不一致。",
+    "C4b 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "回答不得把單一引擎主線誇大為被迫、必然或唯一回應。",
+    "一鍵解說含有棋手不需要的內部格式或診斷資訊。",
+    "審查資料未通過：K1 棋盤事實：炮二平五 的吃子斷言與逐手棋盤不一致。",
+    "審查資料未通過：K2 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "審查資料未通過：K2 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "修補審查未通過：最佳著法的目的太空泛，必須說出具體要達成什麼。",
+    "修補審查未通過：K1 棋盤事實：炮二平五 的吃子斷言與逐手棋盤不一致。",
+    "修補審查未通過：K2 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "修補審查未通過：K2 棋盤事實：馬2進3 在引用變例的不同步數有不同吃子結果，必須指明所述步數。",
+    "一鍵首輪回答未通過品質檢查，未交付五段模板或未驗證內容。"
+  ],
+  "acceptedFinalText": false
+}

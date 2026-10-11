@@ -48,6 +48,27 @@ async function withServer(
 
 async function main(): Promise<void> {
 const responseSchema = buildInitialMoveResponseSchema('research', ['E1', 'E2'])
+for (const [model, schemaName, format] of [
+  ['apodex/apodex-1.1-mini:free', 'question_research_decision', 'json'],
+  ['apodex/apodex-1.1-mini:free', 'initial_move_explanation', 'json'],
+  ['apodex/apodex-1.1-mini:free', 'question_research_decision', 'text'],
+  ['apodex/apodex-1.1:free', 'question_research_decision', 'json']
+] as const) {
+  await withServer(() => ({ model, choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }] }),
+    async (baseUrl, requests) => {
+      await new OpenRouterProvider({ baseUrl }).generateExplanation({
+        provider: 'openrouter', model, apiKey: 'synthetic-only', prompt: 'SYNTHETIC planner',
+        responseFormat: format, responseSchema: { name: schemaName, schema: { type: 'object' } }, maxOutputTokens: 1000,
+        metadata: { requestId: 'apodex-budget', analysisId: 'synthetic-only', userLevel: 'basic', explanationStyle: 'long_analytical' }
+      })
+      const body = requests[0].body as Record<string, unknown>
+      assert.equal(body.max_tokens, 1000)
+      assert.deepEqual(body.reasoning,
+        model === 'apodex/apodex-1.1-mini:free' && schemaName === 'question_research_decision' && format === 'json'
+          ? { enabled: false, exclude: true } : undefined,
+        'Only the exact optional-reasoning Mini planner protects its small JSON budget; writer/text/other models keep their policy')
+    })
+}
 // Ajv is already locked with the build tooling; this validates the actual schema,
 // not a second hand-written list of required properties. These are offline shapes.
 const validateShape = new Ajv({ strict: true }).compile(responseSchema.schema)

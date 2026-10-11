@@ -1,0 +1,107 @@
+{
+  "inputEvidenceName": "oct09-super-production-d598.json",
+  "evidenceClass": "Real saved-key source Harness attempt; rejected, not accepted application output or candidate binary",
+  "sourceCommit": "d598922cbeab23b5f2665a5dada6f89dd1829a27",
+  "case": "START_FEN h2e2 炮二平五",
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "freeCatalogEligible": true,
+  "answerStrategy": "move-comparison",
+  "status": "failed",
+  "durationMs": 25561,
+  "modelCallCount": 3,
+  "errorName": "HarnessModelPhaseTimeoutError",
+  "providerDiagnostic": {
+    "stage": "generation",
+    "category": "timeout",
+    "reason": null,
+    "httpStatus": null,
+    "retryable": true,
+    "retryAfterMs": null,
+    "finishReason": null,
+    "outputTokens": null,
+    "reasoningTokens": null
+  },
+  "controlledRequestDifference": null,
+  "requests": [
+    {
+      "callIndex": 1,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 2,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 3,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    }
+  ],
+  "calls": [
+    {
+      "callIndex": 1,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 1748,
+      "status": "completed",
+      "outputTokens": 119,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 2,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 1934,
+      "status": "completed",
+      "outputTokens": 118,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 3,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 15020,
+      "status": "failed",
+      "errorCategory": "timeout"
+    }
+  ],
+  "validatorErrors": [],
+  "acceptedFinalText": false
+}

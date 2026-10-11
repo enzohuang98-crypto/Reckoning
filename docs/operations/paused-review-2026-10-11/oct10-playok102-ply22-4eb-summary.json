@@ -1,0 +1,185 @@
+{
+  "inputEvidenceName": "oct10-playok102-ply22-4eb.json",
+  "evidenceClass": "Real saved-key source Harness attempt; rejected, not accepted application output or candidate binary",
+  "sourceCommit": "4eb14de03df129445c333ecdce50a1a1e8999672",
+  "case": "complete_recorded_game_ply_22",
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "freeCatalogEligible": true,
+  "answerStrategy": "conversation-follow-up",
+  "status": "failed",
+  "durationMs": 43314,
+  "modelCallCount": 5,
+  "errorName": "AIResponseValidationError",
+  "providerDiagnostic": {
+    "stage": "generation",
+    "category": "generation_incomplete",
+    "reason": "output_truncated",
+    "httpStatus": null,
+    "retryable": false,
+    "retryAfterMs": null,
+    "finishReason": "length",
+    "outputTokens": 1200,
+    "reasoningTokens": 0
+  },
+  "controlledRequestDifference": null,
+  "requests": [
+    {
+      "callIndex": 1,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 2,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 3,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1000,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 4,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1200,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": "json_object",
+      "strictSchema": false,
+      "requireParameters": false
+    },
+    {
+      "callIndex": 5,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxTokens": 1200,
+      "reasoning": {
+        "effort": "none",
+        "exclude": true
+      },
+      "responseFormat": null,
+      "strictSchema": false,
+      "requireParameters": false
+    }
+  ],
+  "calls": [
+    {
+      "callIndex": 1,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 4628,
+      "status": "completed",
+      "outputTokens": 127,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 2,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 2674,
+      "status": "completed",
+      "outputTokens": 114,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 3,
+      "stage": "research_planner",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1000,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 15000,
+      "durationMs": 2576,
+      "status": "completed",
+      "outputTokens": 109,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 4,
+      "stage": "writer",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1200,
+      "responseFormat": "json",
+      "reasoningPolicy": "reasoning_disabled",
+      "durationMs": 7174,
+      "status": "completed",
+      "outputTokens": 761,
+      "reasoningTokens": 0,
+      "finishReason": "stop"
+    },
+    {
+      "callIndex": 5,
+      "stage": "question_recovery",
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "maxOutputTokens": 1200,
+      "responseFormat": "text",
+      "reasoningPolicy": "reasoning_disabled",
+      "timeoutMs": 30000,
+      "durationMs": 15081,
+      "status": "failed",
+      "outputTokens": 1200,
+      "reasoningTokens": 0,
+      "finishReason": "length",
+      "errorCategory": "generation_incomplete"
+    }
+  ],
+  "validatorErrors": [
+    "直接結論 棋盤事實：卒7進1 的時序或走子方引用不能對應所引主線；請依逐手順序核對「下一手／緊接」是否跳過對手應手。",
+    "直接結論 棋盤事實：兵三進一 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "直接結論 棋盤事實：車6平5 的吃子斷言與逐手棋盤不一致。",
+    "直接結論 棋盤事實：象三進五 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "直接結論 棋盤事實：士四進五 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "直接結論 棋盤事實：馬二進三 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "DIRECT 棋盤事實：卒7進1 的時序或走子方引用不能對應所引主線；請依逐手順序核對「下一手／緊接」是否跳過對手應手。",
+    "DIRECT 棋盤事實：兵三進一 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "DIRECT 棋盤事實：車6平5 的吃子斷言與逐手棋盤不一致。",
+    "DIRECT 棋盤事實：象三進五 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "DIRECT 棋盤事實：士四進五 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "DIRECT 棋盤事實：馬二進三 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "DIRECT 提到 卒7進1、兵三進一，但引用的變例中沒有這些著法。",
+    "FQ1 棋盤事實：卒7進1 的時序或走子方引用不能對應所引主線；請依逐手順序核對「下一手／緊接」是否跳過對手應手。",
+    "FQ1 棋盤事實：兵三進一 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "FQ1 棋盤事實：車6平5 的吃子斷言與逐手棋盤不一致。",
+    "FQ1 棋盤事實：象三進五 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "FQ1 棋盤事實：士四進五 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "FQ1 棋盤事實：馬二進三 的引用缺少可重播或無歧義的吃子／將軍事實。",
+    "FQ1 提到 卒7進1、兵三進一，但引用的變例中沒有這些著法。",
+    "追問的結構化回答未通過證據或格式檢查，改用引擎快照直接回答。"
+  ],
+  "acceptedFinalText": false,
+  "gamePlies": 102,
+  "gameSha256": "df608169a01b70ac031e383b8ec2f3459252e28c1b870febe5c2976880f53830"
+}
