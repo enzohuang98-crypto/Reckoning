@@ -73,6 +73,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     try {
       res = await fetchAiResponseBounded(chatEndpoint(request.baseUrl), {
         method: 'POST',
+        redirect: 'error',
         signal,
         headers,
         body: JSON.stringify({
