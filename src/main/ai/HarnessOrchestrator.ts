@@ -50,7 +50,11 @@ import type { CausalChain } from '@shared/types/Harness'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../storage/HarnessTraceStore'
-import { aiErrorStatus, describeAIExecutionError } from './http'
+import {
+  AIResponseValidationError,
+  aiErrorStatus,
+  describeAIExecutionError
+} from './http'
 import type { PreparedExplanationExecution } from './prepareExplanationExecution'
 
 interface HarnessTask {
@@ -162,6 +166,8 @@ const INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS = 100_000
 export const MODEL_CALL_TIMEOUT_MS = 60_000
 export const HARNESS_TOTAL_DEADLINE_MS = 110_000
 const RESEARCH_MIN_REMAINING_MS = 50_000
+/** 空白／截斷復原重試至少要有這麼多剩餘時間，否則直接回報失敗。 */
+const INCOMPLETE_RECOVERY_MIN_WINDOW_MS = 10_000
 const INITIAL_MOVE_MIN_RETRY_WINDOW_MS = 30_000
 /** Combined audit + five-section answer needs JSON overhead beyond the visible 500-900 characters. */
 const INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS = 4_000
@@ -2199,7 +2205,9 @@ export async function runExplanationHarness(
       Date.now() + Math.max(1, phaseTimeoutMs ?? timing.modelCallTimeoutMs),
       startedAt + timing.totalDeadlineMs
     )
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    let transientRetried = false
+    let incompleteRecovery = false
+    while (true) {
       if (deps.signal.aborted) {
         throw new DOMException('Request cancelled', 'AbortError')
       }
@@ -2218,7 +2226,12 @@ export async function runExplanationHarness(
           apiKey: deps.apiKey,
           baseUrl: payload.baseUrl,
           prompt,
-          maxOutputTokens: Math.min(remainingTokens, preferredMaxTokens),
+          // 空白／截斷後的復原重試：以最嚴格的方式關閉推理，並放寬 1.5 倍輸出。
+          maxOutputTokens: Math.min(
+            remainingTokens,
+            Math.round(preferredMaxTokens * (incompleteRecovery ? 1.5 : 1))
+          ),
+          ...(incompleteRecovery ? { reasoningMode: 'off_strict' as const } : {}),
           // Every Harness phase returns an object (planner, audit, writer or
           // repair). Providers that support structured output can therefore
           // enforce valid JSON instead of relying on markdown extraction.
@@ -2255,6 +2268,8 @@ export async function runExplanationHarness(
           clearTimeout(phaseTimer)
           deps.signal.removeEventListener('abort', forwardAbort)
         }
+        // provider 內部重送（例如不帶推理參數重送）也算模型呼叫。
+        modelCalls += Math.max(0, (response.providerAttempts ?? 1) - 1)
         if (response.usage) {
           outputTokens += response.usage.outputTokens
           usage = {
@@ -2265,7 +2280,22 @@ export async function runExplanationHarness(
         return response.text
       } catch (error) {
         rethrowAbortLikeError(error)
-        if (attempt > 0 || !isTransientModelError(error)) throw error
+        if (
+          !incompleteRecovery &&
+          error instanceof AIResponseValidationError &&
+          error.category === 'generation_incomplete' &&
+          modelCalls < modelCallLimit &&
+          phaseDeadlineAt - Date.now() >= INCOMPLETE_RECOVERY_MIN_WINDOW_MS
+        ) {
+          incompleteRecovery = true
+          progress(
+            'provider_retry',
+            'AI 模型沒有交出完整答案，正在關閉推理並放寬長度後重試一次。'
+          )
+          continue
+        }
+        if (transientRetried || !isTransientModelError(error)) throw error
+        transientRetried = true
         if (phaseDeadlineAt - Date.now() < INITIAL_MOVE_MIN_RETRY_WINDOW_MS) {
           throw error
         }
@@ -2283,7 +2313,6 @@ export async function runExplanationHarness(
         await delayWithAbort(600, deps.signal)
       }
     }
-    throw new Error('AI 服務重試後仍未回應。')
   }
 
   const waitForUserContinuation = async (message: string): Promise<void> => {
