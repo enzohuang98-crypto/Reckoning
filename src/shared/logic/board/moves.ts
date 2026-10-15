@@ -317,6 +317,48 @@ function isSquareAttacked(
   return false
 }
 
+/**
+ * 指定格是否被 byColor 方的任何棋子攻擊（只看走法形狀，不檢查走後送將）。
+ * includeKing 為 true 時，將/帥在九宮內一步可及的格子也算——
+ * 判斷「這個子吃下去之後能不能被吃回」時，將/帥本身也是保護者。
+ */
+export function isSquareAttackedBy(
+  grid: BoardGrid,
+  row: number,
+  col: number,
+  byColor: PieceColor,
+  includeKing = false
+): boolean {
+  if (isSquareAttacked(grid, row, col, byColor)) return true
+  if (!includeKing) return false
+  const king = findKing(grid, byColor)
+  if (!king) return false
+  const target = grid[row][col]
+  if (target && target.color === byColor) return false
+  return pieceMoveCheck(grid, grid[king.row][king.col]!, {
+    fromRow: king.row,
+    fromCol: king.col,
+    toRow: row,
+    toCol: col
+  }).ok
+}
+
+/** 指定顏色是否還有任何合法著法（用於判斷將死或困斃）。 */
+export function hasAnyLegalMove(grid: BoardGrid, color: PieceColor): boolean {
+  for (let fromRow = 0; fromRow < BOARD_ROWS; fromRow++) {
+    for (let fromCol = 0; fromCol < BOARD_COLS; fromCol++) {
+      if (grid[fromRow][fromCol]?.color !== color) continue
+      for (let toRow = 0; toRow < BOARD_ROWS; toRow++) {
+        for (let toCol = 0; toCol < BOARD_COLS; toCol++) {
+          const move = formatUciMove({ fromRow, fromCol, toRow, toCol })
+          if (move && legalMoveCheck(grid, color, move).ok) return true
+        }
+      }
+    }
+  }
+  return false
+}
+
 /** 指定顏色的將/帥是否被將軍 */
 export function isKingInCheck(grid: BoardGrid, color: PieceColor): boolean {
   const king = findKing(grid, color)
