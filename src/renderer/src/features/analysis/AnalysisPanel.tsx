@@ -62,6 +62,7 @@ import {
   canScheduleLiveAnalysis,
   isSameAnalysisTarget,
   liveAnalysisRetryDelayMs,
+  ACTUAL_MOVE_ENGINE_DEADLINE_MS,
   AI_REQUEST_DEADLINE_MS,
   remainingActualMoveEngineDeadlineMs,
   remainingOneClickDeadlineMs
@@ -761,7 +762,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         setProgress(null)
         setCancelling(false)
         setLivePaused(true)
-        setError('引擎比較在點擊後 3 秒內未完成，請重試或檢查本機引擎。')
+        setError(
+          `引擎比較在點擊後 ${ACTUAL_MOVE_ENGINE_DEADLINE_MS / 1000} 秒內未完成，請重試或檢查本機引擎。`
+        )
       }, remainingActualMoveEngineDeadlineMs(actualMove.selectedAt))
     }
   }, [

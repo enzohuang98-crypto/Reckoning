@@ -3,7 +3,8 @@ import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
 export const AUTO_INITIAL_ANALYSIS_MAX_MS = 1_100
 export const AUTO_USER_MOVE_ANALYSIS_MAX_MS = 400
 export const LIVE_REFINEMENT_ANALYSIS_MIN_MS = 15_000
-export const ACTUAL_MOVE_ENGINE_DEADLINE_MS = 3_000
+/** 實戰步引擎比較截止；慢機或首次載入 NNUE 時 3 秒不夠，放寬到 8 秒。 */
+export const ACTUAL_MOVE_ENGINE_DEADLINE_MS = 8_000
 /** 所有 AI 請求的 renderer 硬截止；main 端 Harness 總截止（110 秒）必須早於它。 */
 export const AI_REQUEST_DEADLINE_MS = 120_000
 /** 舊名稱，保留給既有測試與呼叫端相容。 */

@@ -265,9 +265,9 @@ async function main(): Promise<void> {
   })
 
   await check('實戰步引擎比較以點擊起算 3 秒硬截止', () => {
-    assert.equal(ACTUAL_MOVE_ENGINE_DEADLINE_MS, 3_000)
-    assert.equal(remainingActualMoveEngineDeadlineMs(10_000, 10_000), 3_000)
-    assert.equal(remainingActualMoveEngineDeadlineMs(10_000, 12_500), 500)
+    assert.equal(ACTUAL_MOVE_ENGINE_DEADLINE_MS, 8_000)
+    assert.equal(remainingActualMoveEngineDeadlineMs(10_000, 10_000), 8_000)
+    assert.equal(remainingActualMoveEngineDeadlineMs(10_000, 17_500), 500)
     assert.equal(remainingActualMoveEngineDeadlineMs(10_000, 20_000), 1)
   })
 
