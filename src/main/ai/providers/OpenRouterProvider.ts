@@ -176,6 +176,20 @@ function assertCompleteAnswer(
   }
 }
 
+/**
+ * 服務回報的模型名稱可能少了變體後綴（例如 `vendor/model` 對應 `vendor/model:free`）。
+ * 去掉 `:` 後綴後相同才接受；其他家族一律視為路由不一致。
+ */
+export function isSameOpenRouterModel(
+  reported: string | undefined,
+  requested: string
+): boolean {
+  if (!reported) return false
+  if (reported === requested) return true
+  const base = (model: string): string => model.split(':')[0]
+  return base(reported) === base(requested)
+}
+
 function isZero(value: string | undefined): boolean {
   return value === undefined || Number(value) === 0
 }
@@ -468,7 +482,7 @@ export class OpenRouterProvider implements AIProvider {
         'OpenRouter 回應格式無效。'
       )
     }
-    if (data.model !== request.model) {
+    if (!isSameOpenRouterModel(data.model, request.model)) {
       throw new AIResponseValidationError(
         'generation',
         'model_mismatch',
@@ -485,6 +499,7 @@ export class OpenRouterProvider implements AIProvider {
       text,
       provider: this.id,
       model: request.model,
+      actualModel: data.model,
       usage,
       finishReason,
       createdAt: Date.now(),
