@@ -951,3 +951,23 @@
   0%, 100% { opacity: 0.55; transform: scale(0.9); }
   50% { opacity: 1; transform: scale(1.1); }
 }
+
+.ai-error-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-error-card .ai-error-title {
+  font-weight: 600;
+}
+
+.ai-error-card .ai-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-question {
+  margin-top: 12px;
+}

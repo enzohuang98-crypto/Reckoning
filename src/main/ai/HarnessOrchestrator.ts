@@ -2,7 +2,10 @@ import { buildBoardQuestionFacts } from './BoardQuestionFacts'
 import { buildQuestionRecoveryPrompt, extractDirectQuestionText, isFocusedQuestionAnswer } from './QuestionAnswerQuality'
 import { randomUUID } from 'node:crypto'
 import type { AIProvider, TokenUsage } from '@shared/types/AIProviderTypes'
-import type { GenerateExplanationStartPayload } from '@shared/types/ipc'
+import type {
+  AIExplanationFailureReason,
+  GenerateExplanationStartPayload
+} from '@shared/types/ipc'
 import type {
   HarnessAnswer,
   HarnessClaim,
@@ -290,12 +293,7 @@ class HarnessModelPhaseTimeoutError extends Error {
 
 export class HarnessExplanationUnavailableError extends Error {
   constructor(
-    public readonly reason:
-      | 'model_timeout'
-      | 'invalid_model_response'
-      | 'model_budget'
-      | 'insufficient_engine_evidence'
-      | 'quality_validation_failed',
+    public readonly reason: AIExplanationFailureReason,
     message: string
   ) {
     super(message)

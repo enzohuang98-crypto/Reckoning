@@ -17,6 +17,7 @@ import {
   createAIHttpError,
   describeCredentialTestError,
   fetchAiResponseBounded,
+  parseRateLimitResetMs,
   readJsonResponseBounded,
   toAITransportError
 } from '../http'
@@ -119,6 +120,42 @@ function throwOpenRouterErrorEnvelope(
   )
 }
 
+const MAX_RATE_LIMIT_BODY_BYTES = 16 * 1024
+
+/**
+ * OpenRouter 的 429 分成「每日免費額度用完」與「每分鐘請求過多」，兩者的處理完全不同。
+ * 只用固定代碼判斷種類，回應本文不保留、不進入錯誤訊息。
+ */
+async function createOpenRouterHttpError(
+  response: Response,
+  stage: AICredentialTestStage,
+  message: string
+): Promise<AIHttpError> {
+  const base = createAIHttpError(response, stage, message)
+  if (response.status !== 429) {
+    await response.body?.cancel().catch(() => undefined)
+    return base
+  }
+  let quota: 'daily' | 'minute' = 'minute'
+  try {
+    const body = await readJsonResponseBounded<unknown>(
+      response,
+      MAX_RATE_LIMIT_BODY_BYTES
+    )
+    if (/free-models-per-day/i.test(JSON.stringify(body))) quota = 'daily'
+  } catch {
+    // 無法讀取或不是 JSON：保守當成短暫限流。
+  }
+  return new AIHttpError(
+    429,
+    stage,
+    message,
+    base.retryAfterMs ??
+      parseRateLimitResetMs(response.headers.get('x-ratelimit-reset')),
+    quota
+  )
+}
+
 async function fetchOpenRouterResponse(
   input: string | URL | Request,
   init: RequestInit,
@@ -173,7 +210,7 @@ export class OpenRouterProvider implements AIProvider {
       })
     }, 'generation')
     if (!response.ok) {
-      throw createAIHttpError(
+      throw await createOpenRouterHttpError(
         response,
         'generation',
         `OpenRouter 生成服務回報錯誤 (${response.status})。`
@@ -261,7 +298,7 @@ export class OpenRouterProvider implements AIProvider {
       headers: this.headers(apiKey)
     }, 'key')
     if (!keyResponse.ok) {
-      throw createAIHttpError(
+      throw await createOpenRouterHttpError(
         keyResponse,
         'key',
         `OpenRouter 金鑰驗證端點回報錯誤 (${keyResponse.status})。`
@@ -287,7 +324,7 @@ export class OpenRouterProvider implements AIProvider {
       'catalog'
     )
     if (!modelsResponse.ok) {
-      throw createAIHttpError(
+      throw await createOpenRouterHttpError(
         modelsResponse,
         'catalog',
         `OpenRouter 模型清單端點回報錯誤 (${modelsResponse.status})。`

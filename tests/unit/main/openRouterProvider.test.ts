@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { OpenRouterProvider } from '../../../src/main/ai/providers/OpenRouterProvider'
+import { AIHttpError, describeCredentialTestError } from '../../../src/main/ai/http'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
 
 interface RecordedRequest {
@@ -9,6 +10,14 @@ interface RecordedRequest {
   authorization?: string
   routerMetadata?: string
   body?: unknown
+}
+
+class StatusReply {
+  constructor(
+    readonly status: number,
+    readonly body: unknown,
+    readonly headers: Record<string, string> = {}
+  ) {}
 }
 
 async function withServer(
@@ -29,8 +38,17 @@ async function withServer(
         body: raw ? JSON.parse(raw) : undefined
       }
       requests.push(recorded)
+      const handled = handler(recorded)
+      if (handled instanceof StatusReply) {
+        response.writeHead(handled.status, {
+          'content-type': 'application/json',
+          ...handled.headers
+        })
+        response.end(JSON.stringify(handled.body))
+        return
+      }
       response.writeHead(200, { 'content-type': 'application/json' })
-      response.end(JSON.stringify(handler(recorded)))
+      response.end(JSON.stringify(handled))
     })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -186,6 +204,55 @@ await withServer(
   }
 )
 console.log('OpenRouter free-model binding, response-format, and reasoning-budget tests passed')
+
+// P1-7：429 依本文中的固定代碼判讀每日／每分鐘額度，且不保留服務原文。
+const rateLimitedRequest: AIExplanationRequest = {
+  provider: 'openrouter',
+  model: 'test/model:free',
+  apiKey: 'synthetic-test-key',
+  prompt: 'p',
+  metadata: {
+    requestId: 'rate-limit',
+    analysisId: 'rate-limit',
+    userLevel: 'intermediate',
+    explanationStyle: 'long_analytical'
+  }
+}
+await withServer(
+  () => new StatusReply(429, {
+    error: { code: 429, message: 'Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day' }
+  }, { 'x-ratelimit-reset': String(Date.now() + 3_600_000) }),
+  async (baseUrl) => {
+    const error = await new OpenRouterProvider({ baseUrl })
+      .generateExplanation(rateLimitedRequest)
+      .then(() => null, (caught: unknown) => caught)
+    assert.ok(error instanceof AIHttpError)
+    assert.equal(error.status, 429)
+    assert.equal(error.quota, 'daily')
+    assert.ok((error.retryAfterMs ?? 0) > 3_500_000, 'x-ratelimit-reset epoch ms becomes remaining ms')
+    assert.equal(error.message.includes('free-models-per-day'), false)
+    const diagnostic = describeCredentialTestError(error, 'OpenRouter').diagnostic
+    assert.equal(diagnostic?.quota, 'daily')
+    assert.equal(diagnostic?.retryable, false)
+  }
+)
+await withServer(
+  () => new StatusReply(429, {
+    error: { code: 429, message: 'Rate limit exceeded: free-models-per-min.' }
+  }, { 'retry-after': '12' }),
+  async (baseUrl) => {
+    const error = await new OpenRouterProvider({ baseUrl })
+      .generateExplanation(rateLimitedRequest)
+      .then(() => null, (caught: unknown) => caught)
+    assert.ok(error instanceof AIHttpError)
+    assert.equal(error.quota, 'minute')
+    assert.equal(error.retryAfterMs, 12_000)
+    const diagnostic = describeCredentialTestError(error, 'OpenRouter').diagnostic
+    assert.equal(diagnostic?.quota, 'minute')
+    assert.equal(diagnostic?.retryable, true)
+  }
+)
+console.log('OpenRouter 429 quota classification tests passed')
 }
 
 void main().catch((error) => {

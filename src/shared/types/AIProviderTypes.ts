@@ -100,6 +100,9 @@ export type AIGenerationIncompleteReason =
   | 'empty_content'
   | 'output_truncated'
 
+/** 429 額度種類：每日免費額度用完，或每分鐘請求過多。 */
+export type AIQuotaKind = 'daily' | 'minute'
+
 /** 不含金鑰的結構化憑證測試診斷。 */
 export interface AICredentialDiagnostic {
   stage: AICredentialTestStage
@@ -110,6 +113,7 @@ export interface AICredentialDiagnostic {
   retryAfterMs?: number
   finishReason?: string
   outputTokens?: number
+  quota?: AIQuotaKind
   message: string
 }
 

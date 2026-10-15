@@ -32,6 +32,11 @@ import type {
 } from '@shared/types/AppData'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
 import { validateMoveInput } from '@shared/logic/validation/ValidationUtils'
+import {
+  aiErrorDiagnosticsText,
+  type AiErrorAction,
+  type AiErrorInput
+} from '@shared/logic/ai/aiErrorPresentation'
 import { buildConversationHistoryForRequest } from './aiRequest'
 import { CoachView } from './CoachView'
 import { DetailsView } from './DetailsView'
@@ -202,6 +207,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [aiError, setAiError] = useState<string | null>(null)
   const [aiDiagnostic, setAiDiagnostic] =
     useState<GenerateExplanationErrorPayload['diagnostic']>(undefined)
+  const [aiErrorInfo, setAiErrorInfo] =
+    useState<(AiErrorInput & { model?: string }) | null>(null)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
   const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
@@ -596,6 +603,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         window.clearTimeout(aiDeadlineTimer.current)
         aiDeadlineTimer.current = null
       }
+      const failedModel = pendingAiRequest.current?.model
       activeAiRequestId.current = null
       pendingAiRequest.current = null
       setAiBusy(false)
@@ -606,6 +614,13 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       else {
         setAiError(payload.message)
         setAiDiagnostic(payload.diagnostic)
+        setAiErrorInfo({
+          code: payload.code,
+          message: payload.message,
+          diagnostic: payload.diagnostic,
+          failureReason: payload.failureReason,
+          model: failedModel
+        })
       }
     })
     return () => {
@@ -964,6 +979,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       ) {
         return
       }
+      const timedOutModel = pendingAiRequest.current?.model
       activeAiRequestId.current = null
       pendingAiRequest.current = null
       aiDeadlineTimer.current = null
@@ -972,9 +988,14 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setAiCancelling(false)
       setHarnessProgress(null)
       setStreamingText('')
-      setAiError(
-        `AI 解說在點擊後 ${AI_REQUEST_DEADLINE_MS / 1000} 秒內未完成，本次已停止。請重試。`
-      )
+      const deadlineMessage = `AI 解說在點擊後 ${AI_REQUEST_DEADLINE_MS / 1000} 秒內未完成，本次已停止。請重試。`
+      setAiError(deadlineMessage)
+      setAiErrorInfo({
+        code: 'provider_error',
+        message: deadlineMessage,
+        failureReason: 'model_timeout',
+        model: timedOutModel
+      })
     }, remainingOneClickDeadlineMs(aiRequestedAt))
   }
 
@@ -1087,6 +1108,26 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     if (!activeAiRequestId.current) return
     setAiCancelling(true)
     window.api.ai.cancelExplanation(activeAiRequestId.current)
+  }
+
+  const handleAiErrorAction = (action: AiErrorAction): void => {
+    if (action === 'open_settings' || action === 'change_model') {
+      onOpenAiSettings?.()
+      return
+    }
+    if (action === 'reanalyze') {
+      startAnalysis(false)
+      return
+    }
+    generateExplanation(null, retryableAiRequest.current !== null)
+  }
+
+  const copyAiDiagnostics = (): void => {
+    if (!aiErrorInfo) return
+    void navigator.clipboard
+      .writeText(aiErrorDiagnosticsText(aiErrorInfo))
+      .then(() => setAiNotice('已複製診斷資訊（不含金鑰與對局內容）。'))
+      .catch(() => setAiNotice('無法存取剪貼簿。'))
   }
 
   const continueExplain = (): void => {
@@ -1241,6 +1282,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
                   : aiBlockedReason
               }
               error={aiError ?? (actualMove ? error : null)}
+              aiErrorInfo={aiErrorInfo}
+              onErrorAction={handleAiErrorAction}
+              onCopyDiagnostics={copyAiDiagnostics}
               canChangeModel={
                 aiDiagnostic?.category === 'provider_unavailable' &&
                 aiDiagnostic.httpStatus === 502

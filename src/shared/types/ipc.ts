@@ -317,11 +317,20 @@ export type AIExplanationErrorCode =
   | 'cancelled'
   | 'unknown_error'
 
+/** main 端「模型有回應但無法交付」的具體原因；renderer 用它選擇錯誤卡與下一步行動。 */
+export type AIExplanationFailureReason =
+  | 'model_timeout'
+  | 'invalid_model_response'
+  | 'model_budget'
+  | 'insufficient_engine_evidence'
+  | 'quality_validation_failed'
+
 export interface GenerateExplanationErrorPayload {
   requestId: string
   code: AIExplanationErrorCode
   message: string
   diagnostic?: AICredentialDiagnostic
+  failureReason?: AIExplanationFailureReason
 }
 
 /**
