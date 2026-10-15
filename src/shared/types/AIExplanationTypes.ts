@@ -26,6 +26,13 @@ export interface AIExplanationRequest {
   baseUrl?: string
   /** PromptBuilder 產生的完整 prompt（含防幻覺規則與引擎數據） */
   prompt: string
+  /** 選填的 system 指令；provider 以各自的 system 欄位送出，未提供時行為不變。 */
+  systemPrompt?: string
+  /**
+   * 推理控制：auto 依模型能力盡量關閉推理；off_strict 用最嚴格的關閉方式
+   * （空白／截斷後的重試使用）。只有支援推理參數的 provider 會使用。
+   */
+  reasoningMode?: 'auto' | 'off_strict'
   /** 本次模型呼叫的輸出上限。 */
   maxOutputTokens?: number
   /** 內部 Harness 需要可解析物件時，要求支援的 Provider 回傳 JSON。 */
@@ -46,6 +53,12 @@ export interface AIExplanationResponse {
   model: string
   /** Token 用量（若 Provider 有回報） */
   usage?: TokenUsage
+  /** 服務回報的結束原因（stop／length…）。 */
+  finishReason?: string
+  /** 服務實際回報的模型（可能是所選模型的變體名稱）。 */
+  actualModel?: string
+  /** provider 內部為了這次回答實際送出的請求數（例如不帶推理參數重送）；未提供視為 1。 */
+  providerAttempts?: number
   /** 產生時間 (epoch ms) */
   createdAt: number
   /**
