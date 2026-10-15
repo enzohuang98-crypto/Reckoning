@@ -100,9 +100,12 @@ function ordinaryStrategy(
   attachedMove: string | undefined
 ): ExplanationAnswerStrategy {
   const focusedQuestion = question?.trim() ?? ''
-  const asksOverview = /完整|全面|整體|整体|full|complete|overview/i.test(focusedQuestion)
-  const asksSpecific = /[?？]|嗎|吗|能否|是否|為何|为何|為什麼|为什么|how|why|whether|explain why/i.test(focusedQuestion)
-  if (question && (history.length > 0 || (!attachedMove && asksSpecific && !asksOverview))) {
+  const asksOverview =
+    /完整|全面|整體|整体|full|complete|overview|^(?:請|请)?(?:解釋|解释|分析|講解|讲解)(?:一下)?(?:目前|當前|当前|這個|这个)?局面[。.!！]?$|^(?:please )?(?:explain|analy[sz]e) (?:the )?(?:current )?position[.!]?$/i.test(
+      focusedQuestion
+    )
+  // 棋手直接打字的問題就該直接回答那一題；只有明確要求「完整解說」時才走完整比較。
+  if (focusedQuestion && (history.length > 0 || !asksOverview)) {
     return 'conversation-follow-up'
   }
   return attachedMove ? 'move-comparison' : 'position-explanation'
