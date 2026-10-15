@@ -67,10 +67,11 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
       60_000,
       fallback.harnessEngineTimeMs
     ),
+    // 必須與 main 的 IPC 預算驗證（1–3）一致，否則舊設定 4–10 會讓每次解說請求都被拒絕。
     harnessMaxEngineRounds: clampInteger(
       candidate.harnessMaxEngineRounds,
       1,
-      10,
+      3,
       fallback.harnessMaxEngineRounds
     ),
     harnessResearchMaxModelCalls: clampInteger(
