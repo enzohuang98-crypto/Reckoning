@@ -438,11 +438,11 @@ async function main(): Promise<void> {
     const timedEngineRequestId = engineStarts[2].requestId
     assert.equal(timeouts.size, 1)
     const [engineDeadlineId, engineDeadline] = [...timeouts.entries()][0]
-    assert.ok(engineDeadline.delayMs > 0 && engineDeadline.delayMs <= 3_000)
+    assert.ok(engineDeadline.delayMs > 0 && engineDeadline.delayMs <= ACTUAL_MOVE_ENGINE_DEADLINE_MS)
     timeouts.delete(engineDeadlineId)
     act(() => engineDeadline.callback())
     assert.equal(engineCancels.at(-1), timedEngineRequestId)
-    assert.match(textContent(renderer.root), /引擎比較在點擊後 3 秒內未完成/)
+    assert.match(textContent(renderer.root), /引擎比較在點擊後 8 秒內未完成/)
 
     const aiSwitchMove: ActualMoveSelection = {
       ...secondMove,
