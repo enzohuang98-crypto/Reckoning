@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-10-15T00:00:00.000Z",
+  "runManifest": null,
+  "traces": [
+    {
+      "id": "t1", "status": "failed", "model": "vendor/a:free", "modelCalls": 2, "durationMs": 100500,
+      "positionFen": "SECRET-FEN-1", "question": "SECRET-QUESTION",
+      "validationErrors": ["C2 缺少「炮二平五」的因果鏈", "C4 缺少「馬八進七」的因果鏈", "一鍵完整解說正文只有 312 個漢字"],
+      "providerDiagnostic": { "category": "generation_incomplete", "reason": "output_truncated", "stage": "generation", "retryable": false, "message": "x" }
+    },
+    {
+      "id": "t2", "status": "failed", "model": "vendor/a:free", "modelCalls": 1, "durationMs": 20000,
+      "positionFen": "SECRET-FEN-2", "validationErrors": [],
+      "providerDiagnostic": { "category": "rate_limited", "httpStatus": 429, "stage": "generation", "retryable": true, "message": "x" }
+    },
+    {
+      "id": "t3", "status": "completed", "model": "vendor/b:free", "modelCalls": 1, "durationMs": 30000,
+      "positionFen": "SECRET-FEN-3", "finalText": "SECRET-FINAL-TEXT",
+      "validationErrors": ["一鍵完整解說正文只有 380 個漢字"], "pipelineVersion": 2, "answerKind": "ai"
+    }
+  ],
+  "regressionCases": []
+}
