@@ -14,3 +14,4 @@ secrets.enc.json
 tools/license/keys/
 # 本機代理設定，不屬於產品原始碼
 .claude/
+.local-review/
