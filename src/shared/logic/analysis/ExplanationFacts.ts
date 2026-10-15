@@ -425,6 +425,8 @@ export function factMoveEvents(
 
 interface FactLabels {
   side: Record<PieceColor, string>
+  /** 「黑卒」「Black pawn」：哪一方的哪個子。 */
+  named: (side: string, piece: string) => string
   piece: Record<PieceColor, Record<PieceType, string>>
   descriptor: Record<PlyDescriptor, (piece: string) => string>
   noCapture: string
@@ -476,6 +478,7 @@ const PIECES_EN: Record<PieceColor, Record<PieceType, string>> = {
 const LABELS: Record<ExplanationLanguage, FactLabels> = {
   'zh-TW': {
     side: { red: '紅', black: '黑' },
+    named: (side, piece) => `${side}${piece}`,
     piece: PIECES_TW,
     descriptor: {
       enters_center: (piece) => `${piece}進入中路`,
@@ -519,6 +522,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
   },
   'zh-CN': {
     side: { red: '红', black: '黑' },
+    named: (side, piece) => `${side}${piece}`,
     piece: PIECES_CN,
     descriptor: {
       enters_center: (piece) => `${piece}进入中路`,
@@ -562,6 +566,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
   },
   en: {
     side: { red: 'Red', black: 'Black' },
+    named: (side, piece) => `${side} ${piece}`,
     piece: PIECES_EN,
     descriptor: {
       enters_center: (piece) => `${piece} moves to the central file`,
@@ -615,7 +620,7 @@ function capturesText(
       labels.capturesOf(
         labels.side[side],
         captures[side]
-          .map((piece) => `${labels.side[opponent(side)]}${labels.piece[opponent(side)][piece]}`)
+          .map((piece) => labels.named(labels.side[opponent(side)], labels.piece[opponent(side)][piece]))
           .join('、')
       )
     )
@@ -628,7 +633,7 @@ function formatPly(ply: PlyFact, labels: FactLabels): string {
   const enemy = opponent(ply.side)
   parts.push(
     ply.captured
-      ? labels.capture(`${labels.side[enemy]}${labels.piece[enemy][ply.captured]}`)
+      ? labels.capture(labels.named(labels.side[enemy], labels.piece[enemy][ply.captured]))
       : labels.noCapture
   )
   parts.push(ply.givesCheck ? labels.check : labels.noCheck)
@@ -637,7 +642,7 @@ function formatPly(ply: PlyFact, labels: FactLabels): string {
       `${labels.threats}：${ply.threats
         .map(
           (threat) =>
-            `${labels.side[threat.side]}${labels.piece[threat.side][threat.piece]}（${
+            `${labels.named(labels.side[threat.side], labels.piece[threat.side][threat.piece])}（${
               threat.protected ? labels.protectedLabel : labels.unprotectedLabel
             }）`
         )
@@ -677,7 +682,7 @@ function formatDifference(difference: FactDifference, labels: FactLabels): strin
         difference.ply,
         labels.side[difference.side],
         labels.piece[difference.side][difference.piece],
-        `${labels.side[enemy]}${labels.piece[enemy][difference.captured]}`,
+        labels.named(labels.side[enemy], labels.piece[enemy][difference.captured]),
         labels.otherCapture(difference.otherLineCaptureFirstAt)
       )
     }
@@ -723,7 +728,19 @@ function render(facts: ExplanationFacts, labels: FactLabels, maxPlies: number, l
   if (others.length > 0) {
     out.push(`${labels.candidates}：${others.map((candidate) => `${candidate.move}${score(candidate)}`).join('、')}`)
   }
-  return out.join('\n')
+  const text = out.join('\n')
+  return language === 'en' ? toAsciiPunctuation(text) : text
+}
+
+/** 英文事實表改用半形標點，避免中英混排的全形冒號與括號。 */
+function toAsciiPunctuation(text: string): string {
+  return text
+    .replace(/：/g, ': ')
+    .replace(/；/g, '; ')
+    .replace(/（/g, ' (')
+    .replace(/）/g, ')')
+    .replace(/、/g, ', ')
+    .replace(/ +\n/g, '\n')
 }
 
 /** 給模型看的事實表文字；超過上限時逐步減少列出的手數。 */

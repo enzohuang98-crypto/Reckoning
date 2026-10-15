@@ -112,6 +112,9 @@ export class GeminiProvider implements AIProvider {
           'x-goog-api-key': request.apiKey
         },
         body: JSON.stringify({
+          ...(request.systemPrompt
+            ? { systemInstruction: { parts: [{ text: request.systemPrompt }] } }
+            : {}),
           contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
           generationConfig: {
             maxOutputTokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
