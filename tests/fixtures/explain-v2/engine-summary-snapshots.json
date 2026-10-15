@@ -1,0 +1,7 @@
+{
+  "move-zh-TW": "⚠ AI 解說這次沒有通過檢查（原因：回答與引擎事實不符）。以下是引擎重點摘要（非 AI 生成）：\n‧ 你的著法：馬八進七；引擎首選：炮二平五；差距：緩手／不精確（約 0.35 兵）\n‧ 首選之後的主線：炮二平五 馬8進7\n‧ 你的著法之後的主線：馬八進七 馬8進7 炮二平五 馬2進3\n‧ 關鍵差異：兩線前 2 手都沒有吃子。\n可以按「重試 AI」再試一次，或到設定更換模型。",
+  "move-zh-CN": "⚠ AI 解说这次没有通过检查（原因：回答與引擎事實不符）。以下是引擎重点摘要（非 AI 生成）：\n‧ 你的着法：馬八進七；引擎首选：炮二平五；差距：緩手／不精確（約 0.35 兵）\n‧ 首选之后的主线：炮二平五 馬8進7\n‧ 你的着法之后的主线：馬八進七 馬8進7 炮二平五 馬2進3\n‧ 关键差异：两线前 2 手都没有吃子。\n可以按“重试 AI”再试一次，或到设定更换模型。",
+  "move-en": "⚠ The AI explanation did not pass the checks this time (reason: 回答與引擎事實不符). Below is the engine summary (not AI-generated):\n• Your move: 馬八進七; engine best move: 炮二平五; gap: inaccuracy (about 0.35 pawns)\n• Line after the best move: 炮二平五 馬8進7\n• Line after your move: 馬八進七 馬8進7 炮二平五 馬2進3\n• Key difference: Neither line captures anything in the first 2 plies.\nYou can press \"Retry AI\" or choose another model in Settings.",
+  "trade": "⚠ AI 解說這次沒有通過檢查（原因：模型沒有回應）。以下是引擎重點摘要（非 AI 生成）：\n‧ 你的著法：炮二平五；引擎首選：炮二進七\n‧ 首選之後的主線：炮二進七 車9平8（第 1 手紅炮吃黑馬；第 2 手黑車吃紅炮）\n‧ 你的著法之後的主線：炮二平五 馬8進7\n‧ 關鍵差異：首選線第 1 手紅炮吃黑馬，另一條線沒有吃子。\n可以按「重試 AI」再試一次，或到設定更換模型。",
+  "position": "⚠ AI 解說這次沒有通過檢查（原因：模型沒有回應）。以下是引擎重點摘要（非 AI 生成）：\n‧ 引擎首選：炮二平五\n‧ 首選之後的主線：炮二平五 馬8進7\n可以按「重試 AI」再試一次，或到設定更換模型。"
+}
