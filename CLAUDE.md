@@ -1,5 +1,8 @@
 # CLAUDE.md — 象棋 AI 分析講解軟體 (xiangqi-analyzer)
 
+> **AI 對話可靠性改善（進行中）：** 見 `docs/plans/ai-chat-reliability-v2.md`。
+> v2 解說管線（`src/main/ai/explain/`）與本檔下方描述的 v1 Harness 並存，以旗標切換。
+
 > **目前架構來源：** 先讀 `docs/architecture/overview.md`。其中的 renderer feature 邊界、
 > Task-first App Shell 與發行門檻，取代本檔較早期的單檔元件描述；核心安全與棋力規則仍以本檔為準。
 
