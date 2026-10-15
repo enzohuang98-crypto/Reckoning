@@ -135,6 +135,36 @@ async function main(): Promise<void> {
   )
   assert.equal(ordinaryPosition.answerStrategy, 'position-explanation')
 
+  // P1-2：附著法但沒有歷史的具體問題直接回答，不再被當成完整一鍵解說。
+  const firstQuestion = prepareExplanationExecution(
+    { ...mutablePayload, followUpQuestion: '照我的想法走會怎樣' },
+    mutableSession,
+    'gpt-5.6-sol',
+    service
+  )
+  assert.equal(firstQuestion.answerStrategy, 'conversation-follow-up')
+  const explicitOverview = prepareExplanationExecution(
+    { ...mutablePayload, followUpQuestion: '請給我完整解說' },
+    mutableSession,
+    'gpt-5.6-sol',
+    service
+  )
+  assert.equal(explicitOverview.answerStrategy, 'move-comparison')
+  const blankQuestion = prepareExplanationExecution(
+    { ...mutablePayload, followUpQuestion: '   ' },
+    mutableSession,
+    'gpt-5.6-sol',
+    service
+  )
+  assert.equal(blankQuestion.answerStrategy, 'move-comparison')
+  const positionQuestion = prepareExplanationExecution(
+    { ...mutablePayload, attachedMove: undefined, followUpQuestion: '紅方現在該怎麼走' },
+    { ...mutableSession, userMove: undefined, engineAnalysis: { ...mutableSession.engineAnalysis, userMove: undefined } },
+    'gpt-5.6-sol',
+    service
+  )
+  assert.equal(positionQuestion.answerStrategy, 'conversation-follow-up')
+
   const ordinaryFollowUpPayload = payloadFor(ordinaryCase)
   const ordinaryFollowUp = prepareExplanationExecution(
     ordinaryFollowUpPayload,

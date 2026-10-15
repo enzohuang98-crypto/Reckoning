@@ -198,12 +198,23 @@ export function CoachView({
               ))}
             </details>
           )}
+        </section>
+      )}
 
+      {!conversation && explanation && !streamingText && (
+        <section className="ai-explanation">
+          <ExplanationView text={explanation.text} />
+        </section>
+      )}
+
+      {result && (
+        <section className="ai-question" aria-label="直接提問">
           <div className="follow-up-row">
             <input
               className="text-input"
               value={followUp}
-              placeholder="針對這個局面繼續追問…"
+              placeholder="直接問，例如：為什麼我這步不好？照我的想法走會怎樣？"
+              aria-label="AI 提問"
               disabled={aiBusy}
               onChange={(event) => onFollowUpChange(event.target.value)}
               onKeyDown={(event) => {
@@ -215,25 +226,21 @@ export function CoachView({
             <button
               className="btn small"
               onClick={onSubmitFollowUp}
-              disabled={aiBusy || !result || !followUp.trim()}
+              disabled={aiBusy || !followUp.trim()}
             >
-              追問
+              {conversation ? '追問' : '提問'}
             </button>
-            <button className="btn ghost small" onClick={onCopy}>複製</button>
+            {(conversation || explanation) && (
+              <button className="btn ghost small" onClick={onCopy}>複製</button>
+            )}
           </div>
 
           {submittedGuess?.move && (
             <div className="muted small">
-              追問會附加棋盤上選取的著法：
+              提問會附加棋盤上選取的著法：
               {engineAnalysis?.displayUserMove ?? '目前選取著法'}
             </div>
           )}
-        </section>
-      )}
-
-      {!conversation && explanation && !streamingText && (
-        <section className="ai-explanation">
-          <ExplanationView text={explanation.text} />
         </section>
       )}
 
