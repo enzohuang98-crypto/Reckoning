@@ -71,6 +71,20 @@ function boundedString(
   return normalized
 }
 
+/**
+ * 與 boundedString 相同的型別與控制字元檢查，但超長時截斷而不是拒絕。
+ * 只用於「舊內容」（例如對話歷史），讓一則過長的歷史訊息不會讓之後每次追問都失敗。
+ */
+function truncatedString(value: unknown, field: string, maxLength: number): string {
+  if (typeof value !== 'string') {
+    throw new SecurityValidationError(`${field} 必須是字串。`)
+  }
+  if (value.includes('\0')) {
+    throw new SecurityValidationError(`${field} 含有不允許的字元。`)
+  }
+  return value.trim().slice(0, maxLength)
+}
+
 export function normalizeRequestId(value: unknown): string {
   const requestId = boundedString(value, 'requestId', MAX_REQUEST_ID_LENGTH)
   if (!REQUEST_ID_PATTERN.test(requestId)) {
@@ -264,7 +278,7 @@ function normalizeConversationMessage(value: unknown): ConversationMessage {
   return {
     id: boundedString(value.id, '對話訊息 ID', 128),
     role: value.role,
-    text: boundedString(value.text, '對話文字', MAX_CONVERSATION_TEXT_LENGTH, true),
+    text: truncatedString(value.text, '對話文字', MAX_CONVERSATION_TEXT_LENGTH),
     createdAt: boundedString(value.createdAt, '對話時間', 64)
   }
 }

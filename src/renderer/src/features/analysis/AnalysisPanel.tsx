@@ -32,6 +32,7 @@ import type {
 } from '@shared/types/AppData'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
 import { validateMoveInput } from '@shared/logic/validation/ValidationUtils'
+import { buildConversationHistoryForRequest } from './aiRequest'
 import { CoachView } from './CoachView'
 import { DetailsView } from './DetailsView'
 import {
@@ -883,7 +884,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
           userLevel: settings.userLevel,
           explanationStyle: 'long_analytical' as const,
           language: settings.language,
-          conversationHistory: currentConversation?.messages.slice(),
+          conversationHistory: buildConversationHistoryForRequest(
+            currentConversation?.messages
+          ),
           followUpQuestion: cleanedQuestion ?? undefined,
           attachedMove: analysisMove || undefined,
           userMoveReason: submittedGuess?.reason,
