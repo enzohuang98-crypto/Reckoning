@@ -112,7 +112,7 @@ export const GENERIC_PURPOSE_PHRASES = [
 ]
 
 /** 空泛詞：出現且句中沒有任何具體著法或象棋機制詞時，視為帶過。 */
-const VAGUE_PHRASES = [
+export const VAGUE_PHRASES = [
   '大致上',
   '基本上',
   '總體而言',
