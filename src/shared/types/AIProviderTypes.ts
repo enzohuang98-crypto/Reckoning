@@ -92,6 +92,10 @@ export type AIExplanationStreamChunk =
   | {
       type: 'done'
       usage?: TokenUsage
+      /** 服務回報的結束原因；只有真串流的 provider 會提供。 */
+      finishReason?: string
+      /** 服務實際回報的模型名稱。 */
+      actualModel?: string
     }
 
 /** 憑證測試目前所處的階段；供 main 與 renderer 共同分類錯誤。 */
