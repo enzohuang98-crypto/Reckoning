@@ -131,6 +131,7 @@ export interface AICredentialDiagnostic {
   retryAfterMs?: number
   finishReason?: string
   outputTokens?: number
+  reasoningTokens?: number
   quota?: AIQuotaKind
   message: string
 }

@@ -4,6 +4,7 @@ import type {
   AIModelCapabilities,
   AIModelInfo,
   AIProvider,
+  TokenUsage,
   AITestCredentialResult,
   AICredentialTestStage
 } from '@shared/types/AIProviderTypes'
@@ -24,12 +25,15 @@ import {
   toAITransportError
 } from '../http'
 import {
+  buildOpenRouterRequestOptions,
+  type OpenRouterRequestOptions
+} from './openRouterRequestPolicy'
+import {
   credentialTestRequest,
   credentialTestSucceeded
 } from '../credentialTest'
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
-const NEMOTRON_ULTRA_FREE_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free'
 
 /** OpenRouter 首輪驗收的生成階段必須比舊的 8 秒上限寬鬆。 */
 export const OPENROUTER_CREDENTIAL_TEST_GENERATION_TIMEOUT_MS = 25_000
@@ -112,9 +116,63 @@ interface OpenRouterChatResponse {
     }
     finish_reason?: string | null
   }>
-  usage?: {
-    prompt_tokens?: number
-    completion_tokens?: number
+  usage?: OpenRouterUsage
+}
+
+interface OpenRouterUsage {
+  prompt_tokens?: number
+  completion_tokens?: number
+  completion_tokens_details?: { reasoning_tokens?: number }
+}
+
+function toTokenUsage(usage: OpenRouterUsage | undefined): TokenUsage | undefined {
+  if (!usage) return undefined
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens
+  return {
+    inputTokens: usage.prompt_tokens ?? 0,
+    outputTokens: usage.completion_tokens ?? 0,
+    ...(typeof reasoningTokens === 'number' ? { reasoningTokens } : {})
+  }
+}
+
+/** 有 systemPrompt 時以 system＋user 兩則訊息送出；沒有時維持單一 user 訊息。 */
+function chatMessages(
+  request: AIExplanationRequest
+): Array<{ role: 'system' | 'user'; content: string }> {
+  return request.systemPrompt
+    ? [
+        { role: 'system', content: request.systemPrompt },
+        { role: 'user', content: request.prompt }
+      ]
+    : [{ role: 'user', content: request.prompt }]
+}
+
+/** 空白或被截斷的回答不是正式答案。 */
+function assertCompleteAnswer(
+  text: string,
+  finishReason: string | undefined,
+  usage: TokenUsage | undefined
+): void {
+  const details = {
+    finishReason,
+    outputTokens: usage?.outputTokens,
+    ...(usage?.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens })
+  }
+  if (!text) {
+    throw new AIResponseValidationError(
+      'generation',
+      'generation_incomplete',
+      'OpenRouter 回應中沒有正式文字答案。',
+      { reason: 'empty_content', ...details }
+    )
+  }
+  if (finishReason === 'length') {
+    throw new AIResponseValidationError(
+      'generation',
+      'generation_incomplete',
+      'OpenRouter 解說因輸出長度限制而未完成。',
+      { reason: 'output_truncated', ...details }
+    )
   }
 }
 
@@ -267,6 +325,13 @@ export class OpenRouterProvider implements AIProvider {
    * 取得模型能力（目錄＋執行期觀察）。讀取失敗或模型不在目錄中時回傳 null，
    * 呼叫端必須把 null 當成「未知」，不得因此阻擋生成。
    */
+  /** 只看快取、不發請求；憑證測試等已讀過清單的流程使用。 */
+  private cachedModelCapabilities(apiKey: string, model: string): AIModelCapabilities | null {
+    const entry = this.catalogCache.get(this.catalogKey(apiKey))
+    if (!entry || entry.expiresAt <= Date.now()) return null
+    return entry.models?.get(model) ?? null
+  }
+
   async getModelCapabilities(
     apiKey: string,
     model: string,
@@ -321,22 +386,59 @@ export class OpenRouterProvider implements AIProvider {
     request: AIExplanationRequest,
     signal?: AbortSignal
   ): Promise<AIExplanationResponse> {
+    const capabilities = await this.getModelCapabilities(
+      request.apiKey,
+      request.model,
+      signal
+    )
+    return this.generateWithCapabilities(request, capabilities, signal)
+  }
+
+  private async generateWithCapabilities(
+    request: AIExplanationRequest,
+    capabilities: AIModelCapabilities | null,
+    signal?: AbortSignal
+  ): Promise<AIExplanationResponse> {
+    const options = buildOpenRouterRequestOptions({
+      capabilities,
+      responseFormat: request.responseFormat,
+      visibleTokens: request.maxOutputTokens ?? 4096,
+      reasoningMode: request.reasoningMode
+    })
+    try {
+      const response = await this.postChat(request, options, signal)
+      return response
+    } catch (error) {
+      // 帶 reasoning 參數被拒絕：記住並不帶 reasoning 重送一次（呼叫端以 providerAttempts 計數）。
+      if (
+        options.reasoning &&
+        error instanceof AIHttpError &&
+        (error.status === 400 || error.status === 422)
+      ) {
+        this.observeModelBehavior(request.model, { reasoningRejected: true })
+        const { reasoning: _dropped, ...withoutReasoning } = options
+        const retried = await this.postChat(request, withoutReasoning, signal)
+        return { ...retried, providerAttempts: 2 }
+      }
+      throw error
+    }
+  }
+
+  private async postChat(
+    request: AIExplanationRequest,
+    options: OpenRouterRequestOptions,
+    signal?: AbortSignal
+  ): Promise<AIExplanationResponse> {
     const response = await fetchOpenRouterResponse(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       signal,
       headers: this.headers(request.apiKey),
       body: JSON.stringify({
         model: request.model,
-        max_tokens: request.maxOutputTokens ?? 4096,
         temperature: 0.2,
         stream: false,
-        ...(request.responseFormat === 'json'
-          ? { response_format: { type: 'json_object' } }
-          : {}),
-        ...(request.model === NEMOTRON_ULTRA_FREE_MODEL && request.responseFormat === 'json'
-          ? { reasoning: { max_tokens: 1_000, exclude: true } }
-          : {}),
-        messages: [{ role: 'user', content: request.prompt }]
+        ...options,
+        messages: chatMessages(request)
       })
     }, 'generation')
     if (!response.ok) {
@@ -375,36 +477,38 @@ export class OpenRouterProvider implements AIProvider {
     }
     const message = data.choices?.[0]?.message
     const finishReason = data.choices?.[0]?.finish_reason ?? undefined
-    const outputTokens = data.usage?.completion_tokens
+    const usage = toTokenUsage(data.usage)
     const text = typeof message?.content === 'string' ? message.content.trim() : ''
-    if (!text) {
-      throw new AIResponseValidationError(
-        'generation',
-        'generation_incomplete',
-        'OpenRouter 回應中沒有正式文字答案。',
-        { reason: 'empty_content', finishReason, outputTokens }
-      )
-    }
-    if (finishReason === 'length') {
-      throw new AIResponseValidationError(
-        'generation',
-        'generation_incomplete',
-        'OpenRouter 解說因輸出長度限制而未完成。',
-        { reason: 'output_truncated', finishReason, outputTokens }
-      )
-    }
+    this.observeIncompleteReasoning(request.model, options, text, finishReason, usage)
+    assertCompleteAnswer(text, finishReason, usage)
     return {
       text,
       provider: this.id,
       model: request.model,
-      usage: data.usage
-        ? {
-            inputTokens: data.usage.prompt_tokens ?? 0,
-            outputTokens: data.usage.completion_tokens ?? 0
-          }
-        : undefined,
+      usage,
+      finishReason,
       createdAt: Date.now(),
       groundedOnEngineData: true
+    }
+  }
+
+  /**
+   * 已要求關閉推理，正文卻空白或被截斷且推理 tokens 不為零：這個模型的推理關不掉。
+   * 記住它，之後的請求改用最低強度並預留推理額度。
+   */
+  private observeIncompleteReasoning(
+    model: string,
+    options: OpenRouterRequestOptions,
+    text: string,
+    finishReason: string | undefined,
+    usage: TokenUsage | undefined
+  ): void {
+    const incomplete = !text || finishReason === 'length'
+    const disabled =
+      options.reasoning !== undefined &&
+      (options.reasoning.enabled === false || options.reasoning.effort === 'none')
+    if (incomplete && disabled && (usage?.reasoningTokens ?? 0) > 0) {
+      this.observeModelBehavior(model, { reasoningMandatory: true })
     }
   }
 
@@ -528,10 +632,12 @@ export class OpenRouterProvider implements AIProvider {
           }
         }
       }
-      await this.generateExplanation(
+      // 呼叫端已讀過模型清單：只用快取中的能力，不再重讀 /models。
+      await this.generateWithCapabilities(
         credentialTestRequest(this.id, model, apiKey, undefined, {
           maxOutputTokens: OPENROUTER_CREDENTIAL_TEST_MAX_OUTPUT_TOKENS
         }),
+        this.cachedModelCapabilities(apiKey, model),
         AbortSignal.timeout(timeoutMs)
       )
       return credentialTestSucceeded(this.displayName, model)

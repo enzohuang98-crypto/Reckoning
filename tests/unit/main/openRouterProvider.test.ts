@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { OpenRouterProvider } from '../../../src/main/ai/providers/OpenRouterProvider'
-import { AIHttpError, describeCredentialTestError } from '../../../src/main/ai/http'
+import { AIHttpError, AIResponseValidationError, describeCredentialTestError } from '../../../src/main/ai/http'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
 
 interface RecordedRequest {
@@ -10,6 +10,10 @@ interface RecordedRequest {
   authorization?: string
   routerMetadata?: string
   body?: unknown
+}
+
+function chatRequests(requests: RecordedRequest[]): RecordedRequest[] {
+  return requests.filter((request) => request.url === '/api/v1/chat/completions')
 }
 
 class StatusReply {
@@ -128,8 +132,10 @@ await withServer(
       }
     }
     const response = await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
-    const body = requests[0]?.body as Record<string, unknown>
-    assert.equal(requests[0]?.url, '/api/v1/chat/completions')
+    const chat = chatRequests(requests)
+    const body = chat[0]?.body as Record<string, unknown>
+    assert.equal(chat.length, 1)
+    assert.equal(chat[0]?.url, '/api/v1/chat/completions')
     assert.equal(body.model, model, 'UI 选中的完整模型 ID 必须原样送到 OpenRouter')
     assert.equal('models' in body, false, '不得附带后备模型清单让 OpenRouter 改选其他模型')
     assert.equal(response.model, model)
@@ -170,18 +176,28 @@ for (const format of ['json', 'text', undefined] as const) {
       metadata: {requestId:'response-format',analysisId:'response-format',userLevel:'intermediate',explanationStyle:'long_analytical'}
     }
     await new OpenRouterProvider({baseUrl}).generateExplanation(request)
-    const body=requests[0].body as Record<string,unknown>
+    const body=chatRequests(requests)[0].body as Record<string,unknown>
     assert.deepEqual(body.response_format, format === 'json' ? {type:'json_object'} : undefined)
     assert.equal(body.reasoning, undefined)
     assert.equal(body.model, request.model)
   })
 }
 
+// P2-2：推理參數改由模型目錄能力決定，不再寫死單一模型的特判。
 await withServer(
-  () => ({
-    model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
-    choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }]
-  }),
+  ({ url }) => url.startsWith('/api/v1/models')
+    ? {
+        data: [{
+          id: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+          supported_parameters: ['reasoning', 'response_format', 'max_tokens'],
+          top_provider: { max_completion_tokens: 3_000 }
+        }]
+      }
+    : {
+        model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, completion_tokens_details: { reasoning_tokens: 0 } }
+      },
   async (baseUrl, requests) => {
     const request: AIExplanationRequest = {
       provider: 'openrouter',
@@ -197,10 +213,82 @@ await withServer(
         explanationStyle: 'long_analytical'
       }
     }
-    await new OpenRouterProvider({ baseUrl }).generateExplanation(request)
-    const body = requests[0].body as Record<string, unknown>
-    assert.deepEqual(body.reasoning, { max_tokens: 1_000, exclude: true })
-    assert.equal(body.max_tokens, 4_000)
+    const provider = new OpenRouterProvider({ baseUrl })
+    const response = await provider.generateExplanation(request)
+    const body = chatRequests(requests)[0].body as Record<string, unknown>
+    assert.deepEqual(body.reasoning, { effort: 'none', exclude: true })
+    assert.equal(body.max_tokens, 3_000, 'max_tokens is capped at the model output limit')
+    assert.deepEqual(body.response_format, { type: 'json_object' })
+    assert.equal(response.usage?.reasoningTokens, 0)
+    assert.equal(response.finishReason, 'stop')
+
+    await provider.generateExplanation({ ...request, reasoningMode: 'off_strict', systemPrompt: 'SYSTEM RULES' })
+    const strict = chatRequests(requests)[1].body as Record<string, unknown>
+    assert.deepEqual(strict.reasoning, { enabled: false, exclude: true })
+    assert.deepEqual(strict.messages, [
+      { role: 'system', content: 'SYSTEM RULES' },
+      { role: 'user', content: 'Return structured coaching JSON' }
+    ])
+    assert.equal(requests.filter((item) => item.url.startsWith('/api/v1/models')).length, 1)
+  }
+)
+
+// 帶 reasoning 被 400 拒絕：不帶 reasoning 重送一次，並記住之後不再帶。
+{
+  let chatCalls = 0
+  await withServer(
+    ({ url, body }) => {
+      if (url.startsWith('/api/v1/models')) {
+        return { data: [{ id: 'vendor/strict:free', supported_parameters: ['reasoning'] }] }
+      }
+      chatCalls += 1
+      if ((body as Record<string, unknown>).reasoning) {
+        return new StatusReply(400, { error: { code: 400, message: 'reasoning not supported' } })
+      }
+      return { model: 'vendor/strict:free', choices: [{ message: { content: '好' }, finish_reason: 'stop' }] }
+    },
+    async (baseUrl, requests) => {
+      const provider = new OpenRouterProvider({ baseUrl })
+      const request: AIExplanationRequest = {
+        provider: 'openrouter', model: 'vendor/strict:free', apiKey: 'synthetic-test-key', prompt: 'p',
+        metadata: { requestId: 'r', analysisId: 'a', userLevel: 'basic', explanationStyle: 'long_analytical' }
+      }
+      const first = await provider.generateExplanation(request)
+      assert.equal(first.text, '好')
+      assert.equal(first.providerAttempts, 2)
+      assert.equal(chatCalls, 2)
+      const second = await provider.generateExplanation(request)
+      assert.equal(second.providerAttempts, undefined)
+      assert.equal(chatCalls, 3, 'reasoning is not sent again after being rejected')
+      assert.equal((chatRequests(requests)[2].body as Record<string, unknown>).reasoning, undefined)
+    }
+  )
+}
+
+// 要求關閉推理仍被推理吃光：記住推理無法關閉，下次加上推理額度。
+await withServer(
+  ({ url }) => url.startsWith('/api/v1/models')
+    ? { data: [{ id: 'vendor/thinker:free', supported_parameters: ['reasoning'] }] }
+    : {
+        model: 'vendor/thinker:free',
+        choices: [{ message: { content: '' }, finish_reason: 'length' }],
+        usage: { prompt_tokens: 10, completion_tokens: 800, completion_tokens_details: { reasoning_tokens: 800 } }
+      },
+  async (baseUrl, requests) => {
+    const provider = new OpenRouterProvider({ baseUrl })
+    const request: AIExplanationRequest = {
+      provider: 'openrouter', model: 'vendor/thinker:free', apiKey: 'synthetic-test-key', prompt: 'p',
+      maxOutputTokens: 800,
+      metadata: { requestId: 'r', analysisId: 'a', userLevel: 'basic', explanationStyle: 'long_analytical' }
+    }
+    const error = await provider.generateExplanation(request).then(() => null, (caught: unknown) => caught)
+    assert.ok(error instanceof AIResponseValidationError)
+    assert.equal(error.details.reason, 'empty_content')
+    assert.equal(error.details.reasoningTokens, 800)
+    await provider.generateExplanation(request).catch(() => undefined)
+    const second = chatRequests(requests)[1].body as Record<string, unknown>
+    assert.equal(second.max_tokens, 3_800)
+    assert.deepEqual(second.reasoning, { effort: 'low', exclude: true })
   }
 )
 console.log('OpenRouter free-model binding, response-format, and reasoning-budget tests passed')

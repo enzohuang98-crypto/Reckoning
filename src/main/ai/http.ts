@@ -52,6 +52,7 @@ export class AIResponseValidationError extends Error {
       reason?: AIGenerationIncompleteReason
       finishReason?: string
       outputTokens?: number
+      reasoningTokens?: number
     } = {}
   ) {
     super(message)
