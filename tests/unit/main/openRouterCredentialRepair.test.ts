@@ -179,6 +179,7 @@ function assertDiagnostic(
     httpStatus?: number
     retryable: boolean
     retryAfterMs?: number
+    quota?: 'daily' | 'minute'
   }
 ): void {
   assert.equal(typeof value, 'object')
@@ -189,6 +190,7 @@ function assertDiagnostic(
     ...(expected.httpStatus === undefined ? {} : { httpStatus: expected.httpStatus }),
     retryable: expected.retryable,
     ...(expected.retryAfterMs === undefined ? {} : { retryAfterMs: expected.retryAfterMs }),
+    ...(expected.quota === undefined ? {} : { quota: expected.quota }),
     message: diagnostic?.message
   })
   assert.equal(typeof diagnostic?.message, 'string')
@@ -605,7 +607,8 @@ async function main(): Promise<void> {
         category: 'rate_limited',
         httpStatus: 429,
         retryable: true,
-        retryAfterMs: 1000
+        retryAfterMs: 1000,
+        quota: 'minute'
       })
     }
   )
