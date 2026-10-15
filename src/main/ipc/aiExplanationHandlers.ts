@@ -245,7 +245,8 @@ export function mapStreamingErrorToPayload(
     return {
       requestId,
       code: 'provider_error',
-      message: error.message
+      message: error.message,
+      failureReason: error.reason
     }
   }
   if (error instanceof SecurityValidationError) {

@@ -10,8 +10,14 @@ import type {
   TeacherTestRunStatusV1
 } from '@shared/types/Harness'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
+import {
+  presentAiError,
+  type AiErrorAction,
+  type AiErrorInput
+} from '@shared/logic/ai/aiErrorPresentation'
 import type { ActualMoveSelection } from './types'
 import { ExplanationView } from '../explanations/ExplanationView'
+import { AiErrorCard } from './AiErrorCard'
 import { HarnessProgressCard } from './HarnessProgressCard'
 
 interface Props {
@@ -26,6 +32,10 @@ interface Props {
   traceId: string | null
   aiBlockedReason: string | null
   error: string | null
+  /** 與 error 同一則 AI 錯誤的結構化資訊；有值時改顯示可操作的錯誤卡。 */
+  aiErrorInfo?: AiErrorInput | null
+  onErrorAction?: (action: AiErrorAction) => void
+  onCopyDiagnostics?: () => void
   canChangeModel?: boolean
   onChangeModel?: () => void
   notice: string | null
@@ -53,6 +63,9 @@ export function CoachView({
   traceId,
   aiBlockedReason,
   error,
+  aiErrorInfo = null,
+  onErrorAction,
+  onCopyDiagnostics,
   canChangeModel = false,
   onChangeModel,
   notice,
@@ -70,10 +83,21 @@ export function CoachView({
   const engineAnalysis = result?.engineAnalysis
   const latestMessage = conversation?.messages.at(-1)
   const historyMessages = conversation?.messages.slice(0, -1) ?? []
+  const errorPresentation =
+    error && aiErrorInfo && aiErrorInfo.message === error
+      ? presentAiError(aiErrorInfo)
+      : null
 
   return (
     <div className="analysis-view-content coach-view">
-      {error && (
+      {errorPresentation && (
+        <AiErrorCard
+          presentation={errorPresentation}
+          onAction={(action) => onErrorAction?.(action)}
+          onCopyDiagnostics={() => onCopyDiagnostics?.()}
+        />
+      )}
+      {error && !errorPresentation && (
         <div className="error-text" role="alert">
           {error}
           {canChangeModel && onChangeModel && (

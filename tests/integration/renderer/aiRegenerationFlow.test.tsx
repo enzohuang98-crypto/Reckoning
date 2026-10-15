@@ -408,7 +408,10 @@ async function main(): Promise<void> {
       })
     })
     assert.match(textContent(renderer.root), /OLD_ANSWER_MUST_REMAIN_VISIBLE/)
-    assert.match(textContent(renderer.root), /目前模型暫時無法完成請求 \(502\)/)
+    // P1-7：純文字錯誤改為「一句人話＋明確行動」的錯誤卡。
+    assert.match(textContent(renderer.root), /這個模型暫時無法回應/)
+    assert.ok(findButton(renderer!, '重試'), '502 錯誤卡應提供重試')
+    assert.ok(findButton(renderer!, '複製診斷資訊'), '錯誤卡應提供複製診斷資訊')
     assert.equal(
       conversationChanges.includes(null),
       false,

@@ -6,6 +6,7 @@
  */
 
 import type {
+  AIQuotaKind,
   AICredentialDiagnostic,
   AICredentialErrorCategory,
   AIGenerationIncompleteReason,
@@ -28,7 +29,9 @@ export class AIHttpError extends Error {
     readonly status: number,
     readonly stage: AICredentialTestStage,
     message: string,
-    readonly retryAfterMs?: number
+    readonly retryAfterMs?: number,
+    /** 429 時可判讀的額度種類；只由固定代碼判斷，不保留服務原文。 */
+    readonly quota?: AIQuotaKind
   ) {
     super(message)
   }
@@ -110,6 +113,26 @@ export function parseRetryAfterMs(value: string | null): number | undefined {
   const timestamp = Date.parse(value)
   if (!Number.isFinite(timestamp)) return undefined
   return Math.min(Math.max(timestamp - Date.now(), 0), MAX_RETRY_AFTER_MS)
+}
+
+/**
+ * OpenRouter 等服務的 X-RateLimit-Reset 可能是 epoch 毫秒、epoch 秒或剩餘秒數；
+ * 一律轉成有限的剩餘毫秒數。
+ */
+export function parseRateLimitResetMs(
+  value: string | null,
+  now = Date.now()
+): number | undefined {
+  if (!value) return undefined
+  const numeric = Number(value.trim())
+  if (!Number.isFinite(numeric) || numeric < 0) return undefined
+  const remaining =
+    numeric > 1e12
+      ? numeric - now
+      : numeric > 1e9
+        ? numeric * 1000 - now
+        : numeric * 1000
+  return Math.min(Math.max(Math.round(remaining), 0), MAX_RETRY_AFTER_MS)
 }
 
 export function createAIHttpError(
@@ -209,7 +232,7 @@ export function describeCredentialTestError(
     category: AICredentialErrorCategory,
     message: string,
     options: Partial<
-      Pick<AICredentialDiagnostic, 'retryable' | 'httpStatus' | 'retryAfterMs'>
+      Pick<AICredentialDiagnostic, 'retryable' | 'httpStatus' | 'retryAfterMs' | 'quota'>
     > = {},
     stage: AICredentialTestStage = resolvedStage
   ): AITestCredentialResult => ({
@@ -225,6 +248,7 @@ export function describeCredentialTestError(
       ...(options.retryAfterMs === undefined
         ? {}
         : { retryAfterMs: options.retryAfterMs }),
+      ...(options.quota === undefined ? {} : { quota: options.quota }),
       message
     }
   })
@@ -270,10 +294,18 @@ export function describeCredentialTestError(
     )
   }
   if (status === 429) {
+    const quota = (error as { quota?: unknown } | null)?.quota
     return diagnostic(
       'rate_limited',
-      `${providerLabel} 回報限流 (429)；金鑰可能有效，請稍後再試一次。`,
-      { httpStatus: status, retryable: true, retryAfterMs: safeRetryAfterMs }
+      quota === 'daily'
+        ? `${providerLabel} 回報今天的免費額度已用完 (429)。`
+        : `${providerLabel} 回報限流 (429)；金鑰可能有效，請稍後再試一次。`,
+      {
+        httpStatus: status,
+        retryable: quota !== 'daily',
+        retryAfterMs: safeRetryAfterMs,
+        ...(quota === 'daily' || quota === 'minute' ? { quota } : {})
+      }
     )
   }
   if (status === 404) {
