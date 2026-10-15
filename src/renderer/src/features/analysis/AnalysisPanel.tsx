@@ -53,6 +53,7 @@ import type {
 import {
   automaticRootMovetimeMs,
   automaticUserMoveMovetimeMs,
+  canExplainWithCompletedResult,
   canScheduleLiveAnalysis,
   isSameAnalysisTarget,
   liveAnalysisRetryDelayMs,
@@ -852,7 +853,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
 
   const generateExplanation = (question: string | null, regenerate = false): void => {
     if (activeAiRequestId.current || queuedExplanation.current) return
-    if (activeRequestId.current && currentAiTargetRef.current) {
+    if (
+      activeRequestId.current &&
+      currentAiTargetRef.current &&
+      !canExplainWithCompletedResult(result?.engineAnalysis, board.fen, analysisMove)
+    ) {
       queuedExplanation.current = {question, regenerate, target: {...currentAiTargetRef.current}}
       setAiBusy(true)
       setAiError(null)
