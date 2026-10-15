@@ -85,7 +85,11 @@ const api: RendererApi = {
     listSavedOpenRouterModels: (input) =>
       ipcRenderer.invoke(IPC.AI_OPENROUTER_SAVED_MODELS, input),
     switchSavedOpenRouterModel: (input) =>
-      ipcRenderer.invoke(IPC.AI_OPENROUTER_SWITCH_MODEL, input)
+      ipcRenderer.invoke(IPC.AI_OPENROUTER_SWITCH_MODEL, input),
+    getOpenRouterBackupModels: () =>
+      ipcRenderer.invoke(IPC.AI_OPENROUTER_GET_BACKUP_MODELS),
+    setOpenRouterBackupModels: (input) =>
+      ipcRenderer.invoke(IPC.AI_OPENROUTER_SET_BACKUP_MODELS, input)
   },
   teacherTest: {
     status: () => ipcRenderer.invoke(IPC.TEACHER_TEST_STATUS),

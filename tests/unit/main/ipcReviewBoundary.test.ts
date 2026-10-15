@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import Module from 'node:module'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { IPC, type AutoConfigureCredentialResult } from '../../../src/shared/types/ipc'
 import { EMPTY_APP_DATA, type AppDataSnapshot } from '../../../src/shared/types/AppData'
 import { MAX_APP_DATA_BYTES } from '../../../src/main/security/InputValidation'
@@ -226,6 +229,45 @@ async function main(): Promise<void> {
     }),
     /操作識別碼格式無效/
   )
+
+  // P2-6：備援模型只能由 main 以已存金鑰讀到的免費清單驗證後保存。
+  const preferencesDir = await mkdtemp(join(tmpdir(), 'ipc-backup-models-'))
+  try {
+    installFetch('success')
+    registerAiExplanationHandlers(
+      credentialStore() as never,
+      {} as never,
+      {} as never,
+      { filePath: (name: string) => join(preferencesDir, name) } as never,
+      {} as never
+    )
+    const setBackup = handlers.get(IPC.AI_OPENROUTER_SET_BACKUP_MODELS)
+    const getBackup = handlers.get(IPC.AI_OPENROUTER_GET_BACKUP_MODELS)
+    assert.ok(setBackup && getBackup, 'backup model handlers are required')
+    const source = { provider: 'openrouter', model: 'old/model:free' }
+    await assert.rejects(
+      () => setBackup(rejectedEvent, { sourceCredential: source, models: ['vendor/model-a:free'] }),
+      /Rejected IPC call/
+    )
+    assert.deepEqual(await getBackup(trustedEvent), { ok: true, models: [] })
+    assert.deepEqual(
+      await setBackup(trustedEvent, { sourceCredential: source, models: ['vendor/model-a:free'] }),
+      { ok: true, models: ['vendor/model-a:free'] }
+    )
+    assert.deepEqual(await getBackup(trustedEvent), { ok: true, models: ['vendor/model-a:free'] })
+    const notListed = await setBackup(trustedEvent, { sourceCredential: source, models: ['vendor/other:free'] }) as { ok: boolean }
+    assert.equal(notListed.ok, false)
+    const paid = await setBackup(trustedEvent, { sourceCredential: source, models: ['vendor/paid'] }) as { ok: boolean }
+    assert.equal(paid.ok, false)
+    assert.deepEqual(await getBackup(trustedEvent), { ok: true, models: ['vendor/model-a:free'] }, 'rejected input keeps the saved list')
+    await assert.rejects(
+      () => setBackup(trustedEvent, { sourceCredential: { provider: 'gemini', model: 'gemini-3.5-flash' }, models: [] }),
+      /只允許使用/
+    )
+    assert.deepEqual(await setBackup(trustedEvent, { sourceCredential: source, models: [] }), { ok: true, models: [] })
+  } finally {
+    await rm(preferencesDir, { recursive: true, force: true })
+  }
 
   handlers.clear()
   let written: AppDataSnapshot | null = null

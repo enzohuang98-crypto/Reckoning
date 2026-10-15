@@ -73,6 +73,7 @@ export function SettingsPage({
   const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState('')
   const [savedModelsLoaded, setSavedModelsLoaded] = useState(false)
   const [savedModelsError, setSavedModelsError] = useState<string | null>(null)
+  const [backupModels, setBackupModels] = useState<string[]>([])
   const [connectionStage, setConnectionStage] = useState<AiConnectionStage>('idle')
   const [secretStatus, setSecretStatus] = useState<SecretStatus>(EMPTY_SECRET_STATUS)
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
@@ -136,6 +137,12 @@ export function SettingsPage({
       })
       .catch(() => setOperationError('無法查詢 API Key 狀態。'))
     void refreshEngine()
+    // 舊版 preload 或測試替身可能沒有這個通道；讀不到就維持空白，不影響其他設定。
+    window.api.ai?.getOpenRouterBackupModels?.()
+      ?.then((result) => {
+        if (result.ok && mountedRef.current) setBackupModels(result.models)
+      })
+      .catch(() => undefined)
     window.api.license.status().then(setLicense).catch(() => setLicense(null))
     withTimeout(
       window.api.update.status(),
@@ -322,6 +329,39 @@ export function SettingsPage({
       if (mountedRef.current && savedModelAttemptRef.current === attempt) {
         setSecretBusy(false)
       }
+    }
+  }
+
+  const saveBackupModels = async (): Promise<void> => {
+    const source = secretStatus.activeCredential
+    if (source?.provider !== 'openrouter') return
+    setSecretBusy(true)
+    setOperationError(null)
+    try {
+      const result = await withTimeout(
+        window.api.ai.setOpenRouterBackupModels({
+          sourceCredential: source,
+          models: backupModels
+        }),
+        AI_CONNECT_TIMEOUT_MS,
+        '備援模型儲存逾時，請稍後重試。'
+      )
+      if (!mountedRef.current) return
+      if (!result.ok) {
+        setOperationError(result.message)
+        return
+      }
+      setBackupModels(result.models)
+      setSavedMessage(
+        result.models.length > 0
+          ? `已儲存備援模型：${result.models.join('、')}。`
+          : '已停用備援模型。'
+      )
+    } catch (error) {
+      if (!mountedRef.current) return
+      setOperationError(error instanceof Error ? error.message : '備援模型儲存失敗。')
+    } finally {
+      if (mountedRef.current) setSecretBusy(false)
     }
   }
 
@@ -610,6 +650,9 @@ export function SettingsPage({
               onSwitchSavedOpenRouterModel={() => void switchSavedModel()}
               savedModelsLoaded={savedModelsLoaded}
               savedModelsError={savedModelsError}
+              backupModels={backupModels}
+              onBackupModelsChange={setBackupModels}
+              onSaveBackupModels={() => void saveBackupModels()}
               onDeleteKey={() => void deleteKey()}
               connectionStage={connectionStage}
             />
