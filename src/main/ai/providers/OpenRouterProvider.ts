@@ -24,6 +24,7 @@ import {
   readJsonResponseBounded,
   toAITransportError
 } from '../http'
+import { SseParser } from './sse'
 import {
   buildOpenRouterRequestOptions,
   type OpenRouterRequestOptions
@@ -41,6 +42,21 @@ export const OPENROUTER_CREDENTIAL_TEST_MAX_OUTPUT_TOKENS = 512
 
 interface OpenRouterOptions {
   baseUrl?: string
+  /** 串流閒置上限（測試可縮短）。 */
+  streamIdleTimeoutMs?: number
+}
+
+/** 串流超過這段時間沒有任何位元組就中止。 */
+export const OPENROUTER_STREAM_IDLE_TIMEOUT_MS = 30_000
+
+interface OpenRouterStreamChunk {
+  model?: string
+  error?: unknown
+  choices?: Array<{
+    delta?: { content?: string | null }
+    finish_reason?: string | null
+  }>
+  usage?: OpenRouterUsage
 }
 
 interface OpenRouterModel {
@@ -299,8 +315,12 @@ export class OpenRouterProvider implements AIProvider {
   private readonly catalogCache = new Map<string, CatalogCacheEntry>()
   private readonly observedBehavior = new Map<string, ObservedModelBehavior>()
 
+  private readonly streamIdleTimeoutMs: number
+
   constructor(options: OpenRouterOptions = {}) {
     this.baseUrl = (options.baseUrl ?? OPENROUTER_BASE_URL).replace(/\/+$/, '')
+    this.streamIdleTimeoutMs =
+      options.streamIdleTimeoutMs ?? OPENROUTER_STREAM_IDLE_TIMEOUT_MS
   }
 
   /** 快取鍵只用金鑰雜湊，金鑰本身不留在快取結構裡。 */
@@ -527,14 +547,174 @@ export class OpenRouterProvider implements AIProvider {
     }
   }
 
+  /**
+   * 真串流（SSE）。每收到任何位元組就重置閒置計時；閒置超過上限即中止並回報逾時。
+   * 正文空白或因長度截斷時，與單次模式一樣回報 generation_incomplete。
+   */
   async *generateExplanationStream(
     request: AIExplanationRequest,
     signal: AbortSignal
   ): AsyncIterable<AIExplanationStreamChunk> {
-    const response = await this.generateExplanation(request, signal)
-    if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
-    yield { type: 'text_delta', deltaText: response.text }
-    yield { type: 'done', usage: response.usage }
+    const capabilities = await this.getModelCapabilities(
+      request.apiKey,
+      request.model,
+      signal
+    )
+    let options = buildOpenRouterRequestOptions({
+      capabilities,
+      responseFormat: request.responseFormat,
+      visibleTokens: request.maxOutputTokens ?? 4096,
+      reasoningMode: request.reasoningMode
+    })
+    const controller = new AbortController()
+    const forwardAbort = (): void => controller.abort()
+    signal.addEventListener('abort', forwardAbort, { once: true })
+    if (signal.aborted) controller.abort()
+    let idleTimedOut = false
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const resetIdle = (): void => {
+      if (idleTimer) clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => {
+        idleTimedOut = true
+        controller.abort()
+      }, this.streamIdleTimeoutMs)
+    }
+    const failure = (error: unknown): unknown => {
+      if (idleTimedOut && !signal.aborted) {
+        const timeout = new DOMException('OpenRouter 串流閒置逾時。', 'TimeoutError')
+        return toAITransportError(timeout, 'generation') ?? timeout
+      }
+      return error
+    }
+    try {
+      resetIdle()
+      let response: Response
+      try {
+        response = await this.postStream(request, options, controller.signal)
+      } catch (error) {
+        if (
+          options.reasoning &&
+          error instanceof AIHttpError &&
+          (error.status === 400 || error.status === 422)
+        ) {
+          this.observeModelBehavior(request.model, { reasoningRejected: true })
+          const { reasoning: _dropped, ...withoutReasoning } = options
+          options = withoutReasoning
+          resetIdle()
+          response = await this.postStream(request, options, controller.signal)
+        } else {
+          throw error
+        }
+      }
+      if (!response.body) {
+        throw new AIResponseValidationError(
+          'generation',
+          'response_format',
+          'OpenRouter 串流回應沒有內容。'
+        )
+      }
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      const parser = new SseParser()
+      let text = ''
+      let finishReason: string | undefined
+      let usage: TokenUsage | undefined
+      let actualModel: string | undefined
+      let done = false
+      const handle = (data: string): AIExplanationStreamChunk | null => {
+        if (data === '[DONE]') {
+          done = true
+          return null
+        }
+        let chunk: OpenRouterStreamChunk
+        try {
+          chunk = JSON.parse(data) as OpenRouterStreamChunk
+        } catch {
+          return null
+        }
+        if (chunk && typeof chunk === 'object' && chunk.error !== undefined) {
+          const code = (chunk.error as { code?: unknown } | null)?.code
+          const status =
+            typeof code === 'number' && code >= 400 && code <= 599
+              ? code
+              : typeof code === 'string' && /^\d{3}$/.test(code)
+                ? Number(code)
+                : 502
+          throw new AIHttpError(status, 'generation', `OpenRouter 串流中回報錯誤 (${status})。`)
+        }
+        if (typeof chunk.model === 'string') {
+          if (!isSameOpenRouterModel(chunk.model, request.model)) {
+            throw new AIResponseValidationError(
+              'generation',
+              'model_mismatch',
+              `OpenRouter 模型路由不一致：要求 ${request.model}，實際回報 ${chunk.model}。`
+            )
+          }
+          actualModel = chunk.model
+        }
+        const choice = chunk.choices?.[0]
+        if (choice?.finish_reason) finishReason = choice.finish_reason
+        if (chunk.usage) usage = toTokenUsage(chunk.usage)
+        const delta = choice?.delta?.content
+        if (typeof delta === 'string' && delta.length > 0) {
+          text += delta
+          return { type: 'text_delta', deltaText: delta }
+        }
+        return null
+      }
+      while (!done) {
+        const { done: streamDone, value } = await reader.read()
+        if (streamDone) break
+        resetIdle()
+        for (const event of parser.push(decoder.decode(value, { stream: true }))) {
+          const chunk = handle(event.data)
+          if (chunk) yield chunk
+          if (done) break
+        }
+      }
+      if (!done) {
+        for (const event of parser.push(decoder.decode())) handle(event.data)
+        for (const event of parser.flush()) handle(event.data)
+      }
+      await reader.cancel().catch(() => undefined)
+      const trimmed = text.trim()
+      this.observeIncompleteReasoning(request.model, options, trimmed, finishReason, usage)
+      assertCompleteAnswer(trimmed, finishReason, usage)
+      yield { type: 'done', usage, finishReason, actualModel }
+    } catch (error) {
+      throw failure(error)
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer)
+      signal.removeEventListener('abort', forwardAbort)
+    }
+  }
+
+  private async postStream(
+    request: AIExplanationRequest,
+    options: OpenRouterRequestOptions,
+    signal: AbortSignal
+  ): Promise<Response> {
+    const response = await fetchOpenRouterResponse(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      signal,
+      headers: this.headers(request.apiKey),
+      body: JSON.stringify({
+        model: request.model,
+        temperature: 0.2,
+        stream: true,
+        usage: { include: true },
+        ...options,
+        messages: chatMessages(request)
+      })
+    }, 'generation')
+    if (!response.ok) {
+      throw await createOpenRouterHttpError(
+        response,
+        'generation',
+        `OpenRouter 生成服務回報錯誤 (${response.status})。`
+      )
+    }
+    return response
   }
 
   async listFreeModels(
