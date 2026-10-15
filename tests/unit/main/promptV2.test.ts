@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { buildPromptV2, recentHistory } from '../../../src/main/ai/explain/promptV2'
+import {
+  buildExplanationFacts,
+  formatFactsForPrompt
+} from '../../../src/shared/logic/analysis/ExplanationFacts'
+import type { ExplanationLanguage } from '../../../src/shared/types/AIExplanationTypes'
+import { openingAnalysis, openingComparison } from '../../support/explainFixtures'
+
+const SNAPSHOT = new URL('../../fixtures/explain-v2/prompt-snapshots.json', import.meta.url)
+
+const analysis = openingAnalysis()
+const facts = buildExplanationFacts(analysis, openingComparison(analysis))
+const outputs: Record<string, { systemPrompt: string; prompt: string }> = {}
+for (const language of ['zh-TW', 'zh-CN', 'en'] as ExplanationLanguage[]) {
+  const factsText = formatFactsForPrompt(facts, language)
+  outputs[`move-${language}`] = buildPromptV2({ mode: 'move', language, userLevel: 'basic', facts, factsText, userMoveReason: '我想先出馬保護中兵' })
+  outputs[`position-${language}`] = buildPromptV2({ mode: 'position', language, userLevel: 'intermediate', facts, factsText })
+  outputs[`question-${language}`] = buildPromptV2({
+    mode: 'question', language, userLevel: 'advanced', facts, factsText,
+    question: '為什麼不能先走馬八進七？',
+    history: [
+      { id: '1', role: 'user', text: '舊問題一', createdAt: 't' },
+      { id: '2', role: 'assistant', text: '舊答案一', createdAt: 't' },
+      { id: '3', role: 'user', text: '舊問題二', createdAt: 't' },
+      { id: '4', role: 'assistant', text: '長'.repeat(500), createdAt: 't' },
+      { id: '5', role: 'user', text: '最新問題', createdAt: 't' },
+      { id: '6', role: 'assistant', text: '最新答案', createdAt: 't' }
+    ]
+  })
+}
+
+if (process.env.UPDATE_SNAPSHOTS === '1' || !existsSync(SNAPSHOT)) {
+  writeFileSync(SNAPSHOT, `${JSON.stringify(outputs, null, 2)}\n`)
+  console.log('promptV2 snapshot written')
+}
+assert.deepEqual(outputs, JSON.parse(readFileSync(SNAPSHOT, 'utf8')), 'prompt v2 snapshot changed; review and run with UPDATE_SNAPSHOTS=1')
+
+const move = outputs['move-zh-TW']
+assert.match(move.systemPrompt, /第一句直接回答/)
+assert.match(move.systemPrompt, /不要說成「必然」「唯一」「被迫」/)
+assert.match(move.prompt, /【棋手自己的想法】我想先出馬保護中兵/)
+assert.match(move.prompt, /\*\*結論\*\*/)
+assert.match(move.prompt, /\*\*這步的問題\*\*/)
+assert.equal(/JSON|json/.test(move.prompt + move.systemPrompt), false, 'v2 asks for plain text')
+assert.equal(/score cp/.test(move.prompt), false, 'raw scores never reach the prompt')
+assert.ok(move.prompt.length < 3_500, `prompt stays short: ${move.prompt.length}`)
+assert.match(outputs['move-zh-CN'].systemPrompt, /用简体中文回答/)
+assert.match(outputs['move-en'].systemPrompt, /Answer in English/)
+
+const question = outputs['question-zh-TW']
+assert.match(question.prompt, /只回答這個問題/)
+assert.equal(question.prompt.includes('舊問題一'), false, 'only the last two Q&A pairs are kept')
+assert.match(question.prompt, /舊問題二/)
+assert.ok(question.prompt.includes(`${'長'.repeat(300)}…`), 'history messages are clipped to 300 chars')
+
+// 走對時不硬找缺點。
+const correct = buildExplanationFacts(openingAnalysis({ userMove: 'h2e2', displayUserMove: '炮二平五' }))
+const correctPrompt = buildPromptV2({ mode: 'move', language: 'zh-TW', userLevel: 'basic', facts: correct, factsText: formatFactsForPrompt(correct) })
+assert.match(correctPrompt.prompt, /不要硬找缺點/)
+assert.equal(outputs['move-zh-TW'].prompt.includes('不要硬找缺點'), false)
+assert.equal(recentHistory(undefined, 'zh-TW'), '')
+
+// 術語只附問題裡真的出現的；無關的兵卒術語不會因為提到「兵」就塞進來。
+const termQuestion = buildPromptV2({
+  mode: 'question', language: 'zh-TW', userLevel: 'basic', facts, factsText: formatFactsForPrompt(facts),
+  question: '炮二平五之後中卒是不是無根？會不會被困斃？'
+})
+assert.match(termQuestion.prompt, /- 無根子：/)
+assert.match(termQuestion.prompt, /- 困斃：.*判負/)
+assert.equal(outputs['move-zh-TW'].prompt.includes('術語參考'), false)
+console.log('promptV2 tests passed')

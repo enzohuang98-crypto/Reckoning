@@ -81,7 +81,12 @@ export class OpenAICompatibleProvider implements AIProvider {
           max_tokens: request.maxOutputTokens ?? 4096,
           temperature: 0.2,
           stream: false,
-          messages: [{ role: 'user', content: request.prompt }]
+          messages: [
+            ...(request.systemPrompt
+              ? [{ role: 'system', content: request.systemPrompt }]
+              : []),
+            { role: 'user', content: request.prompt }
+          ]
         })
       })
     } catch (error) {

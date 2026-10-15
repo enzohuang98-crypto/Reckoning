@@ -95,6 +95,7 @@ export class OpenAIProvider implements AIProvider {
             ? {
                 model: request.model,
                 input: request.prompt,
+                ...(request.systemPrompt ? { instructions: request.systemPrompt } : {}),
                 max_output_tokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
                 ...openAIResponsesOptions(request.model),
                 store: false
@@ -108,7 +109,12 @@ export class OpenAIProvider implements AIProvider {
                 supportsOpenAIChatJsonMode(request.model)
                   ? { response_format: { type: 'json_object' } }
                   : {}),
-                messages: [{ role: 'user', content: request.prompt }]
+                messages: [
+                  ...(request.systemPrompt
+                    ? [{ role: 'system', content: request.systemPrompt }]
+                    : []),
+                  { role: 'user', content: request.prompt }
+                ]
               }
         )
       }

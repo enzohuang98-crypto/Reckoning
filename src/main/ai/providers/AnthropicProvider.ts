@@ -58,6 +58,7 @@ export class AnthropicProvider implements AIProvider {
       {
         model: request.model,
         max_tokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
+        ...(request.systemPrompt ? { system: request.systemPrompt } : {}),
         messages: [{ role: 'user', content: request.prompt }]
       },
       { signal }
@@ -93,6 +94,7 @@ export class AnthropicProvider implements AIProvider {
         model: request.model,
         max_tokens: request.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
         stream: true,
+        ...(request.systemPrompt ? { system: request.systemPrompt } : {}),
         messages: [{ role: 'user', content: request.prompt }]
       },
       { signal }

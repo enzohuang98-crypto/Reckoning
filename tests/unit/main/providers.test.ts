@@ -486,6 +486,71 @@ async function main(): Promise<void> {
     )
   }
 
+  section('systemPrompt：各 Provider 以自己的 system 欄位送出（P3-2）')
+  {
+    const withSystem = <T extends AIExplanationRequest>(request: T): T => ({
+      ...request,
+      systemPrompt: 'SYSTEM-RULES'
+    })
+    const anthropic = await startMockServer(() => [200, {
+      id: 'msg', type: 'message', role: 'assistant', model: 'claude-sonnet-4-6',
+      content: [{ type: 'text', text: '好' }], stop_reason: 'end_turn', stop_sequence: null,
+      usage: { input_tokens: 1, output_tokens: 1 }
+    }])
+    await new AnthropicProvider({ baseUrl: `http://127.0.0.1:${anthropic.port}` })
+      .generateExplanation(withSystem(explanationRequest('anthropic', 'claude-sonnet-4-6', 'sk-ant-test-123')))
+    anthropic.server.close()
+    const anthropicBody = anthropic.requests[0].body as { system?: string; messages?: unknown[] }
+    check('Anthropic 用 system 欄位', anthropicBody.system === 'SYSTEM-RULES' && anthropicBody.messages?.length === 1)
+
+    const openai = await startMockServer(() => [200, { choices: [{ message: { content: '好' } }] }])
+    await new OpenAIProvider({ baseUrl: `http://127.0.0.1:${openai.port}/v1` })
+      .generateExplanation(withSystem(explanationRequest('openai', 'gpt-5.4', 'sk-test-123')))
+    openai.server.close()
+    const openaiBody = openai.requests[0].body as OpenAIRequestBody
+    check(
+      'OpenAI Chat 用 system＋user 兩則訊息',
+      openaiBody.messages?.length === 2 &&
+        openaiBody.messages[0].role === 'system' &&
+        openaiBody.messages[0].content === 'SYSTEM-RULES' &&
+        openaiBody.messages[1].content === PROMPT
+    )
+
+    const gemini = await startMockServer(() => [200, { candidates: [{ content: { parts: [{ text: '好' }] } }] }])
+    await new GeminiProvider({ baseUrl: `http://127.0.0.1:${gemini.port}` })
+      .generateExplanation(withSystem(explanationRequest('gemini', 'gemini-3.5-flash', 'AIza-test')))
+    gemini.server.close()
+    const geminiBody = gemini.requests[0].body as GeminiRequestBody & {
+      systemInstruction?: { parts?: Array<{ text?: string }> }
+    }
+    check(
+      'Gemini 用 systemInstruction',
+      geminiBody.systemInstruction?.parts?.[0]?.text === 'SYSTEM-RULES' &&
+        geminiBody.contents?.length === 1
+    )
+
+    const compatible = await startMockServer(() => [200, { choices: [{ message: { content: '好' } }] }])
+    await new OpenAICompatibleProvider().generateExplanation(
+      withSystem(explanationRequest('openai-compatible', 'qwen2.5:7b', '', `http://127.0.0.1:${compatible.port}/v1`))
+    )
+    compatible.server.close()
+    const compatibleBody = compatible.requests[0].body as OpenAIRequestBody
+    check(
+      '相容服務用 system＋user 兩則訊息',
+      compatibleBody.messages?.[0]?.role === 'system' && compatibleBody.messages.length === 2
+    )
+
+    const plain = await startMockServer(() => [200, { choices: [{ message: { content: '好' } }] }])
+    await new OpenAICompatibleProvider().generateExplanation(
+      explanationRequest('openai-compatible', 'qwen2.5:7b', '', `http://127.0.0.1:${plain.port}/v1`)
+    )
+    plain.server.close()
+    check(
+      '未提供 systemPrompt 時維持單一 user 訊息',
+      (plain.requests[0].body as OpenAIRequestBody).messages?.length === 1
+    )
+  }
+
   section('AI HTTP 回應大小邊界')
   {
     let error: unknown = null
