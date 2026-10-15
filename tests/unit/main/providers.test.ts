@@ -16,6 +16,8 @@ import { AnthropicProvider } from '../../../src/main/ai/providers/AnthropicProvi
 import { OpenAIProvider } from '../../../src/main/ai/providers/OpenAIProvider'
 import { OpenAICompatibleProvider } from '../../../src/main/ai/providers/OpenAICompatibleProvider'
 import {
+  AIHttpError,
+  AIResponseValidationError,
   describeCredentialTestError,
   extractApiErrorMessage,
   readJsonResponseBounded
@@ -379,17 +381,81 @@ async function main(): Promise<void> {
       { choices: [{ message: { reasoning_content: '本機模型結果' } }] }
     ])
     const provider = new OpenAICompatibleProvider()
-    const response = await provider.generateExplanation(
-      explanationRequest(
-        'openai-compatible',
-        'qwen2.5:7b',
-        '',
-        `http://127.0.0.1:${port}/v1/chat/completions`
+    let error: unknown = null
+    try {
+      await provider.generateExplanation(
+        explanationRequest(
+          'openai-compatible',
+          'qwen2.5:7b',
+          '',
+          `http://127.0.0.1:${port}/v1/chat/completions`
+        )
       )
-    )
+    } catch (caught) {
+      error = caught
+    }
     server.close()
     check('本機模型可不傳 Authorization', requests[0].headers.authorization === undefined)
-    check('相容服務可讀 reasoning_content', response.text === '本機模型結果')
+    // P1-5：reasoning_content 是思考過程，不可再當成答案（舊行為會把思考內容顯示給使用者）。
+    check(
+      '只有 reasoning_content 時回報沒有正式答案',
+      error instanceof AIResponseValidationError &&
+        error.category === 'generation_incomplete' &&
+        error.details.reason === 'empty_content',
+      error
+    )
+  }
+  {
+    const { server, port } = await startMockServer(() => [
+      200,
+      { choices: [{ message: { content: '半句', reasoning_content: '思考' }, finish_reason: 'length' }] }
+    ])
+    const provider = new OpenAICompatibleProvider()
+    let error: unknown = null
+    try {
+      await provider.generateExplanation(
+        explanationRequest('openai-compatible', 'qwen2.5:7b', '', `http://127.0.0.1:${port}/v1`)
+      )
+    } catch (caught) {
+      error = caught
+    }
+    server.close()
+    check(
+      '相容服務 finish_reason=length 回報輸出被截斷',
+      error instanceof AIResponseValidationError &&
+        error.details.reason === 'output_truncated',
+      error
+    )
+  }
+  {
+    const { server, port } = await startMockServer(() => [
+      200,
+      { choices: [{ message: { content: '正式答案', reasoning_content: '不應出現的思考' } }] }
+    ])
+    const provider = new OpenAICompatibleProvider()
+    const response = await provider.generateExplanation(
+      explanationRequest('openai-compatible', 'qwen2.5:7b', '', `http://127.0.0.1:${port}/v1`)
+    )
+    server.close()
+    check('相容服務只回傳正式答案', response.text === '正式答案', response.text)
+  }
+  {
+    const { server, port } = await startMockServer(() => [429, { error: { message: 'slow down' } }])
+    const provider = new OpenAICompatibleProvider()
+    let error: unknown = null
+    try {
+      await provider.generateExplanation(
+        explanationRequest('openai-compatible', 'qwen2.5:7b', 'k', `http://127.0.0.1:${port}/v1`)
+      )
+    } catch (caught) {
+      error = caught
+    }
+    server.close()
+    check(
+      '相容服務 HTTP 錯誤帶狀態碼供分類',
+      error instanceof AIHttpError && error.status === 429 && error.stage === 'generation',
+      error
+    )
   }
   {
     const secret = 'moonshot-custom-secret-value'

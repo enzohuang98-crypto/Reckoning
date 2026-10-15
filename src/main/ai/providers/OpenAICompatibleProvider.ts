@@ -8,10 +8,15 @@ import type {
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
 import {
+  AIHttpError,
+  AIResponseValidationError,
   CREDENTIAL_TEST_TIMEOUT_MS,
   describeCredentialTestError,
   extractApiErrorMessage,
-  readJsonResponseBounded
+  fetchAiResponseBounded,
+  parseRetryAfterMs,
+  readJsonResponseBounded,
+  toAITransportError
 } from '../http'
 import {
   credentialTestRequest,
@@ -22,8 +27,10 @@ interface CompatibleChatResponse {
   choices?: Array<{
     message?: {
       content?: string | null
+      /** 思考過程；絕不可當成正式答案顯示或解析。 */
       reasoning_content?: string | null
     }
+    finish_reason?: string | null
   }>
   usage?: {
     prompt_tokens?: number
@@ -62,32 +69,71 @@ export class OpenAICompatibleProvider implements AIProvider {
     }
     if (request.apiKey) headers.authorization = `Bearer ${request.apiKey}`
 
-    const res = await fetch(chatEndpoint(request.baseUrl), {
-      method: 'POST',
-      redirect: 'error',
-      signal,
-      headers,
-      body: JSON.stringify({
-        model: request.model,
-        max_tokens: request.maxOutputTokens ?? 4096,
-        temperature: 0.2,
-        stream: false,
-        messages: [{ role: 'user', content: request.prompt }]
+    let res: Response
+    try {
+      res = await fetchAiResponseBounded(chatEndpoint(request.baseUrl), {
+        method: 'POST',
+        signal,
+        headers,
+        body: JSON.stringify({
+          model: request.model,
+          max_tokens: request.maxOutputTokens ?? 4096,
+          temperature: 0.2,
+          stream: false,
+          messages: [{ role: 'user', content: request.prompt }]
+        })
       })
-    })
+    } catch (error) {
+      const transportError = toAITransportError(error, 'generation')
+      if (transportError) throw transportError
+      throw error
+    }
     if (!res.ok) {
       const detail = redactExactSecret(
         await extractApiErrorMessage(res),
         request.apiKey
       )
-      throw new Error(
-        `OpenAI-compatible API 錯誤 (${res.status})：${detail}`
+      throw new AIHttpError(
+        res.status,
+        'generation',
+        `OpenAI-compatible API 錯誤 (${res.status})：${detail}`,
+        parseRetryAfterMs(res.headers.get('retry-after'))
       )
     }
-    const data = await readJsonResponseBounded<CompatibleChatResponse>(res)
-    const message = data.choices?.[0]?.message
-    const text = (message?.content ?? message?.reasoning_content ?? '').trim()
-    if (!text) throw new Error('OpenAI-compatible 回應中沒有文字內容。')
+    let data: CompatibleChatResponse
+    try {
+      data = await readJsonResponseBounded<CompatibleChatResponse>(res)
+    } catch (error) {
+      const transportError = toAITransportError(error, 'generation')
+      if (transportError) throw transportError
+      throw new AIResponseValidationError(
+        'generation',
+        'response_format',
+        '相容服務回應不是有效的 JSON。'
+      )
+    }
+    const choice = data?.choices?.[0]
+    const finishReason = choice?.finish_reason ?? undefined
+    const outputTokens = data?.usage?.completion_tokens ?? data?.usage?.output_tokens
+    // 只接受正式答案；reasoning_content 是模型的思考過程，顯示或解析它都會出錯。
+    const text =
+      typeof choice?.message?.content === 'string' ? choice.message.content.trim() : ''
+    if (!text) {
+      throw new AIResponseValidationError(
+        'generation',
+        'generation_incomplete',
+        '相容服務回應中沒有正式文字答案。',
+        { reason: 'empty_content', finishReason, outputTokens }
+      )
+    }
+    if (finishReason === 'length') {
+      throw new AIResponseValidationError(
+        'generation',
+        'generation_incomplete',
+        '相容服務解說因輸出長度限制而未完成。',
+        { reason: 'output_truncated', finishReason, outputTokens }
+      )
+    }
     const usage = data.usage
       ? {
           inputTokens:
