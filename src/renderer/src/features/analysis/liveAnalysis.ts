@@ -6,6 +6,9 @@ export const LIVE_REFINEMENT_ANALYSIS_MIN_MS = 15_000
 export const ACTUAL_MOVE_ENGINE_DEADLINE_MS = 3_000
 export const ONE_CLICK_EXPLANATION_DEADLINE_MS = 120_000
 
+/** 已完成結果達此深度時，追問可直接使用它，不必等背景 live 精煉跑完。 */
+export const MIN_EXPLAIN_DEPTH = 14
+
 export interface LiveAnalysisScheduleState {
   livePaused: boolean
   visible: boolean
@@ -23,6 +26,27 @@ export function isSameAnalysisTarget(
     analysis &&
       analysis.positionFen === positionFen &&
       (analysis.userMove ?? '') === userMove
+  )
+}
+
+/**
+ * 引擎仍在背景精煉時，若目前已完成的結果就是同一局面、同一著法，且深度足夠、
+ * 非未完成結果，就可以立刻拿它回答，而不是讓每則追問多等一輪精煉。
+ */
+export function canExplainWithCompletedResult(
+  analysis:
+    | Pick<EngineAnalysis, 'positionFen' | 'userMove' | 'depth' | 'incomplete'>
+    | null
+    | undefined,
+  positionFen: string,
+  userMove: string
+): boolean {
+  return Boolean(
+    analysis &&
+      isSameAnalysisTarget(analysis, positionFen, userMove) &&
+      !analysis.incomplete &&
+      typeof analysis.depth === 'number' &&
+      analysis.depth >= MIN_EXPLAIN_DEPTH
   )
 }
 

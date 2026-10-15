@@ -140,11 +140,15 @@ function engineAnalysis(): EngineAnalysis {
   }
 }
 
-function analysisResult(requestId: string): EngineAnalysisResultPayload {
-  const analysis = engineAnalysis()
+function analysisResult(
+  requestId: string,
+  depth = 12,
+  analysisId = 'analysis-original'
+): EngineAnalysisResultPayload {
+  const analysis = { ...engineAnalysis(), depth }
   return {
     requestId,
-    analysisId: 'analysis-original',
+    analysisId,
     engineAnalysis: analysis,
     moveComparison: compareMove(analysis)
   }
@@ -381,6 +385,46 @@ async function main(): Promise<void> {
     assert.equal(aiStarts.length, 3, '引擎後續刷新不得再次呼叫 AI')
     assert.equal(engineErrorListener !== null, true)
     console.log('Submit once, wait for engine, retry and reason snapshot flow: passed')
+
+    // P1-3：背景精煉進行中時，淺結果（深度 <14）仍排隊等引擎；夠深的完成結果直接回答。
+    const fireLiveRefinementTimer = async (): Promise<void> => {
+      const entry = [...timers.entries()].reverse().find(([, timer]) => timer.delayMs === 320)
+      assert.ok(entry, '應排程背景精煉')
+      timers.delete(entry[0])
+      await act(async () => {
+        entry[1].callback()
+        await flushMicrotasks()
+      })
+    }
+    const askQuestion = (question: string): void => {
+      const input = renderer!.root.findByProps({ 'aria-label': 'AI 提問' })
+      act(() => input.props.onChange({ target: { value: question } }))
+      const button = renderer!.root
+        .findAllByType('button')
+        .find((candidate) => ['提問', '追問'].includes(textContent(candidate)))
+      assert.ok(button, '應找到提問按鈕')
+      act(() => button.props.onClick())
+    }
+
+    await fireLiveRefinementTimer()
+    assert.equal(engineStarts.length, 2, '完成解說後應在背景精煉同一局面')
+    askQuestion('為什麼炮二平五比較差？')
+    assert.equal(aiStarts.length, 3, '淺結果時追問要等這輪精煉完成')
+    assert.match(textContent(renderer.root), /等待皮卡魚/)
+    act(() => engineResultListener?.(analysisResult(engineStarts[1].requestId, 16, 'analysis-deep')))
+    assert.equal(aiStarts.length, 4, '精煉完成後排隊的問題立即送出')
+    assert.equal(aiStarts[3].analysisId, 'analysis-deep')
+    act(() => aiDoneListener?.({ requestId: aiStarts[3].requestId, finalText: '深結果回答' }))
+
+    await fireLiveRefinementTimer()
+    assert.equal(engineStarts.length, 3, '背景精煉再次啟動')
+    const cancelsBefore = engineCancels.length
+    askQuestion('照我的想法走會怎樣？')
+    assert.equal(aiStarts.length, 5, '已有深度 ≥14 的完成結果時不等精煉')
+    assert.equal(aiStarts[4].analysisId, 'analysis-deep')
+    assert.equal(aiStarts[4].followUpQuestion, '照我的想法走會怎樣？')
+    assert.equal(engineCancels.length, cancelsBefore, '直接回答不應取消背景精煉')
+    console.log('Deep completed result answers immediately during live refinement: passed')
 
   } finally {
     if (renderer) act(() => renderer?.unmount())
