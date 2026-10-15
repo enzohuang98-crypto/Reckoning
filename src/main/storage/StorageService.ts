@@ -50,6 +50,11 @@ export class StorageService {
     return resolve(this.baseDir, name)
   }
 
+  /** userData 下指定檔名的絕對路徑（給自行管理非同步讀寫的 store 使用）。 */
+  filePath(name: string): string {
+    return this.resolve(name)
+  }
+
   /** 讀取 JSON 檔，不存在時回傳 fallback */
   read<T>(name: string, fallback: T, maxBytes = MAX_SETTINGS_FILE_BYTES): T {
     const path = this.resolve(name)

@@ -30,6 +30,10 @@ interface Props {
   savedModelsError?: string | null
   onDeleteKey: () => void
   connectionStage?: AiConnectionStage
+  /** 已保存的 OpenRouter 備援模型（最多 2 個）。 */
+  backupModels?: string[]
+  onBackupModelsChange?: (models: string[]) => void
+  onSaveBackupModels?: () => void
 }
 
 export function AiSettingsSection({
@@ -50,7 +54,10 @@ export function AiSettingsSection({
   savedModelsLoaded = false,
   savedModelsError = null,
   onDeleteKey,
-  connectionStage = 'idle'
+  connectionStage = 'idle',
+  backupModels = [],
+  onBackupModelsChange,
+  onSaveBackupModels
 }: Props): JSX.Element {
   const [deleteConfirmation, setDeleteConfirmation] = useState(false)
   const active = secretStatus.activeCredential
@@ -180,6 +187,53 @@ export function AiSettingsSection({
                 使用此模型
               </button>
             )}
+            {savedOpenRouterActive &&
+              !apiKey.trim() &&
+              openRouterModels.length > 0 &&
+              onBackupModelsChange &&
+              onSaveBackupModels && (
+                <div className="field openrouter-backup-models">
+                  <span className="field-label">備援模型（最多 2 個）</span>
+                  <p className="muted small">
+                    主模型暫時故障或限流時，會改用這裡選的免費模型，並在回答旁標示「本次由哪個模型回答」。
+                    每日免費額度用完時不會改用備援。
+                  </p>
+                  {[0, 1].map((index) => (
+                    <select
+                      key={index}
+                      aria-label={`備援模型 ${index + 1}`}
+                      className="select"
+                      value={backupModels[index] ?? ''}
+                      disabled={secretBusy || (index === 1 && !backupModels[0])}
+                      onChange={(event) => {
+                        const next = [...backupModels]
+                        next[index] = event.target.value
+                        onBackupModelsChange(
+                          next.filter((model, position) =>
+                            Boolean(model) && next.indexOf(model) === position
+                          )
+                        )
+                      }}
+                    >
+                      <option value="">不使用</option>
+                      {openRouterModels
+                        .filter((model) => model.id !== active?.model)
+                        .map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.label} · {model.id}
+                          </option>
+                        ))}
+                    </select>
+                  ))}
+                  <button
+                    className="btn ghost small"
+                    disabled={secretBusy}
+                    onClick={onSaveBackupModels}
+                  >
+                    儲存備援模型
+                  </button>
+                </div>
+              )}
             {savedOpenRouterActive && !apiKey.trim() && onLoadSavedOpenRouterModels ? (
               <button
                 className="btn ghost small"

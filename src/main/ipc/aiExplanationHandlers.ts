@@ -25,6 +25,7 @@ import {
   type AutoConfigureCredentialResult,
   type GenerateExplanationErrorPayload,
   type GenerateExplanationStartPayload,
+  type OpenRouterBackupModelsResult,
   type SavedOpenRouterModelsResult,
   type SecretCredentialRef,
   type SecretMutationResult,
@@ -43,6 +44,10 @@ import {
 import { getAIProvider } from '../ai/AIProvider'
 import { autoConfigureCredential } from '../ai/autoConfigureCredential'
 import { OpenRouterSavedModelService } from '../ai/switchOpenRouterModel'
+import {
+  AiPreferencesStore,
+  validateOpenRouterBackupModels
+} from '../ai/AiPreferencesStore'
 import {
   HarnessExplanationUnavailableError,
   runExplanationHarness
@@ -341,6 +346,10 @@ export function registerAiExplanationHandlers(
   const credentialTestGate = new KeyedOperationGate(2)
   const formalCaseGate = new KeyedOperationGate(2)
   const savedOpenRouterModels = new OpenRouterSavedModelService(secretStore)
+  let aiPreferencesStore: AiPreferencesStore | null = null
+  // 第一次用到才建立，避免只註冊通道的流程（與測試）就觸碰檔案系統。
+  const aiPreferences = (): AiPreferencesStore =>
+    (aiPreferencesStore ??= new AiPreferencesStore(storage.filePath('ai-preferences.json')))
 
   const normalizeCredential = (rawInput: unknown): SecretCredentialRef => {
     if (typeof rawInput !== 'object' || rawInput === null) {
@@ -579,6 +588,38 @@ export function registerAiExplanationHandlers(
         targetModel,
         value.operationId
       )
+    }
+  )
+
+  ipcMain.handle(
+    IPC.AI_OPENROUTER_GET_BACKUP_MODELS,
+    async (event): Promise<OpenRouterBackupModelsResult> => {
+      assertTrustedIpcSender(event)
+      return { ok: true, models: (await aiPreferences().get()).openRouterBackupModels }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.AI_OPENROUTER_SET_BACKUP_MODELS,
+    async (event, rawInput: unknown): Promise<OpenRouterBackupModelsResult> => {
+      assertTrustedIpcSender(event)
+      const source = normalizeSavedOpenRouterSource(rawInput)
+      const requested = (rawInput as Record<string, unknown>).models
+      if (Array.isArray(requested) && requested.length === 0) {
+        await aiPreferences().setOpenRouterBackupModels([])
+        return { ok: true, models: [] }
+      }
+      // 只接受這把已存金鑰此刻讀得到的免費模型；renderer 無法塞入任意模型。
+      const listed = await savedOpenRouterModels.listModels(source)
+      if (!listed.ok) return { ok: false, message: listed.message }
+      const validation = validateOpenRouterBackupModels(
+        requested,
+        source.model,
+        listed.models.map((model) => model.id)
+      )
+      if (!validation.ok) return validation
+      await aiPreferences().setOpenRouterBackupModels(validation.models)
+      return { ok: true, models: validation.models }
     }
   )
 

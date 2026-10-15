@@ -82,6 +82,8 @@ export const IPC = {
   AI_AUTO_CONFIGURE_CREDENTIAL: 'ai:auto-configure-credential',
   AI_OPENROUTER_SAVED_MODELS: 'ai:openrouter:saved-models',
   AI_OPENROUTER_SWITCH_MODEL: 'ai:openrouter:switch-model',
+  AI_OPENROUTER_GET_BACKUP_MODELS: 'ai:openrouter:get-backup-models',
+  AI_OPENROUTER_SET_BACKUP_MODELS: 'ai:openrouter:set-backup-models',
   TEACHER_TEST_STATUS: 'teacher-test:status',
   TEACHER_TEST_START: 'teacher-test:start',
   TEACHER_TEST_END: 'teacher-test:end',
@@ -374,6 +376,14 @@ export interface SwitchSavedOpenRouterModelInput
   operationId: string
 }
 
+export interface SetOpenRouterBackupModelsInput extends SavedOpenRouterModelsInput {
+  models: string[]
+}
+
+export type OpenRouterBackupModelsResult =
+  | { ok: true; models: string[] }
+  | { ok: false; message: string }
+
 export type SavedOpenRouterModelsResult =
   | {
       ok: true
@@ -517,6 +527,12 @@ export interface RendererApi {
     switchSavedOpenRouterModel(
       input: SwitchSavedOpenRouterModelInput
     ): Promise<SwitchSavedOpenRouterModelResult>
+    /** 目前保存的 OpenRouter 備援免費模型（主模型故障時依序改用）。 */
+    getOpenRouterBackupModels(): Promise<OpenRouterBackupModelsResult>
+    /** 由 main 以已存金鑰讀取的即時免費清單驗證後保存；renderer 不能在生成時指定。 */
+    setOpenRouterBackupModels(
+      input: SetOpenRouterBackupModelsInput
+    ): Promise<OpenRouterBackupModelsResult>
   }
   teacherTest: {
     status(): Promise<TeacherTestRunStatusV1>
