@@ -16,6 +16,8 @@ import {
   validateConsequenceAudit
 } from '../../../src/main/ai/HarnessOrchestrator'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import { AIResponseValidationError } from '../../../src/main/ai/http'
+import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
 import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
 import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
@@ -3578,6 +3580,82 @@ async function main(): Promise<void> {
     (moveHang.error as { reason?: string } | null)?.reason === 'model_timeout' &&
       moveHang.elapsedMs < 2_000,
     `${String((moveHang.error as Error | null)?.message)} ${moveHang.elapsedMs}ms`
+  )
+
+  // P2-3：空白／截斷時自動以最嚴格方式關閉推理、放寬 1.5 倍輸出重試一次。
+  class IncompleteThenOkProvider implements AIProvider {
+    readonly id = 'openai' as const
+    readonly displayName = 'Incomplete then ok'
+    requests: Array<{ maxOutputTokens?: number; reasoningMode?: string }> = []
+    private readonly delegate = new FakeProvider()
+    async generateExplanation(request: AIExplanationRequest) {
+      this.requests.push({
+        maxOutputTokens: request.maxOutputTokens,
+        reasoningMode: request.reasoningMode
+      })
+      if (this.requests.length === 1) {
+        throw new AIResponseValidationError(
+          'generation',
+          'generation_incomplete',
+          'empty',
+          { reason: 'output_truncated', finishReason: 'length', outputTokens: 1200, reasoningTokens: 1200 }
+        )
+      }
+      return this.delegate.generateExplanation(request)
+    }
+    async *generateExplanationStream(): AsyncIterable<never> {
+      return
+    }
+    async listModels(): Promise<string[]> {
+      return []
+    }
+    async testCredential() {
+      return { ok: true, message: 'ok' }
+    }
+  }
+  const incompleteProvider = new IncompleteThenOkProvider()
+  const incompleteProgress: Array<Omit<HarnessProgressPayload, 'requestId'>> = []
+  const incompleteResult = await runExplanationHarness(
+    {
+      requestId: 'ai-request-incomplete-recovery',
+      analysisId: session.analysisId,
+      provider: 'openai',
+      model: 'fake-model',
+      userLevel: 'intermediate',
+      explanationStyle: 'long_analytical',
+      language: 'zh-TW',
+      answerMode: 'research',
+      budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 4, maxOutputTokens: 8000 }
+    },
+    {
+      provider: incompleteProvider,
+      apiKey: 'secret',
+      model: 'fake-model',
+      session,
+      registry: {
+        list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+        getAdapter: () => null
+      } as never,
+      traceStore: { save: () => undefined } as never,
+      signal: new AbortController().signal,
+      onProgress: (event) => incompleteProgress.push(event)
+    }
+  )
+  check(
+    '空白／截斷後以 off_strict 與 1.5 倍輸出重試一次並完成',
+    incompleteProvider.requests.length === 2 &&
+      incompleteProvider.requests[0].reasoningMode === undefined &&
+      incompleteProvider.requests[1].reasoningMode === 'off_strict' &&
+      incompleteProvider.requests[1].maxOutputTokens ===
+        Math.round((incompleteProvider.requests[0].maxOutputTokens ?? 0) * 1.5) &&
+      incompleteResult.finalText.length > 0,
+    JSON.stringify(incompleteProvider.requests)
+  )
+  check(
+    '復原重試在進度流顯示原因',
+    incompleteProgress.some(
+      (event) => event.phase === 'provider_retry' && event.message.includes('關閉推理')
+    )
   )
 
   console.log(`結果：${passed} 通過，${failed} 失敗`)
