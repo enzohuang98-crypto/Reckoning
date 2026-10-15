@@ -341,6 +341,35 @@ await withServer(
   }
 )
 console.log('OpenRouter 429 quota classification tests passed')
+
+// P2-4：回報的模型名稱少了 :free 後綴時接受並回報 actualModel；其他家族仍拒絕。
+for (const [reported, accepted] of [
+  ['vendor/model-a', true],
+  ['vendor/model-a:free', true],
+  ['vendor/model-a:beta', true],
+  ['vendor/model-b', false],
+  ['other/model-a:free', false]
+] as const) {
+  await withServer(
+    ({ url }) => url.startsWith('/api/v1/models')
+      ? { data: [] }
+      : { model: reported, choices: [{ message: { content: '答' }, finish_reason: 'stop' }] },
+    async (baseUrl) => {
+      const outcome = await new OpenRouterProvider({ baseUrl })
+        .generateExplanation({ ...rateLimitedRequest, model: 'vendor/model-a:free' })
+        .then((response) => response, (caught: unknown) => caught)
+      if (accepted) {
+        assert.ok(!(outcome instanceof Error), reported)
+        assert.equal((outcome as { actualModel?: string }).actualModel, reported)
+        assert.equal((outcome as { model?: string }).model, 'vendor/model-a:free')
+      } else {
+        assert.ok(outcome instanceof AIResponseValidationError, reported)
+        assert.equal(outcome.category, 'model_mismatch')
+      }
+    }
+  )
+}
+console.log('OpenRouter model identity tolerance tests passed')
 }
 
 void main().catch((error) => {
