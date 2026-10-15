@@ -139,6 +139,12 @@ export interface HarnessRuntimeDependencies {
     continuationTimeoutMs: number
     /** 一鍵實戰解說首輪模型階段的內部軟截止；必須早於 renderer 的 120 秒硬截止。 */
     initialMoveFirstCallTimeoutMs: number
+    /** 未指定階段逾時的模型呼叫，單次最長等待時間。 */
+    modelCallTimeoutMs: number
+    /** 整個 Harness 的總截止；必須早於 renderer 的 120 秒硬截止。 */
+    totalDeadlineMs: number
+    /** 開始一輪引擎研究前，總截止至少要剩下這麼多時間。 */
+    researchMinRemainingMs: number
   }>
 }
 
@@ -150,6 +156,9 @@ const MAX_RESEARCH_ROUND_MS = 60_000
 /** 使用者未於此時限內回應「是否繼續」，自動改用目前證據收尾（不可直接失敗）。 */
 const CONTINUATION_TIMEOUT_MS = 120_000
 const INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS = 100_000
+export const MODEL_CALL_TIMEOUT_MS = 60_000
+export const HARNESS_TOTAL_DEADLINE_MS = 110_000
+const RESEARCH_MIN_REMAINING_MS = 50_000
 const INITIAL_MOVE_MIN_RETRY_WINDOW_MS = 30_000
 /** Combined audit + five-section answer needs JSON overhead beyond the visible 500-900 characters. */
 const INITIAL_MOVE_COMBINED_MAX_OUTPUT_TOKENS = 4_000
@@ -2017,7 +2026,11 @@ export async function runExplanationHarness(
       deps.timing?.continuationTimeoutMs ?? CONTINUATION_TIMEOUT_MS,
     initialMoveFirstCallTimeoutMs:
       deps.timing?.initialMoveFirstCallTimeoutMs ??
-      INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS
+      INITIAL_MOVE_FIRST_CALL_TIMEOUT_MS,
+    modelCallTimeoutMs: deps.timing?.modelCallTimeoutMs ?? MODEL_CALL_TIMEOUT_MS,
+    totalDeadlineMs: deps.timing?.totalDeadlineMs ?? HARNESS_TOTAL_DEADLINE_MS,
+    researchMinRemainingMs:
+      deps.timing?.researchMinRemainingMs ?? RESEARCH_MIN_REMAINING_MS
   }
   const budget = {
     ...(payload.budget ?? {
@@ -2183,8 +2196,11 @@ export async function runExplanationHarness(
     phaseTimeoutMs?: number,
     responseFormat: 'json' | 'text' = 'json'
   ): Promise<string> => {
-    const phaseDeadlineAt =
-      phaseTimeoutMs === undefined ? null : Date.now() + Math.max(1, phaseTimeoutMs)
+    // 每次呼叫都有上限：階段逾時（未指定時用單次預設）與整體總截止取較早者。
+    const phaseDeadlineAt = Math.min(
+      Date.now() + Math.max(1, phaseTimeoutMs ?? timing.modelCallTimeoutMs),
+      startedAt + timing.totalDeadlineMs
+    )
     for (let attempt = 0; attempt < 2; attempt += 1) {
       if (deps.signal.aborted) {
         throw new DOMException('Request cancelled', 'AbortError')
@@ -2217,33 +2233,29 @@ export async function runExplanationHarness(
           }
         }
         let response
-        if (phaseDeadlineAt === null) {
-          response = await deps.provider.generateExplanation(request, deps.signal)
-        } else {
-          const remainingPhaseMs = phaseDeadlineAt - Date.now()
-          if (remainingPhaseMs <= 0) throw new HarnessModelPhaseTimeoutError()
-          const phaseController = new AbortController()
-          let phaseTimedOut = false
-          const forwardAbort = (): void => phaseController.abort()
-          deps.signal.addEventListener('abort', forwardAbort, { once: true })
-          const phaseTimer = setTimeout(() => {
-            phaseTimedOut = true
-            phaseController.abort()
-          }, remainingPhaseMs)
-          try {
-            response = await deps.provider.generateExplanation(
-              request,
-              phaseController.signal
-            )
-          } catch (error) {
-            if (phaseTimedOut && !deps.signal.aborted) {
-              throw new HarnessModelPhaseTimeoutError()
-            }
-            throw error
-          } finally {
-            clearTimeout(phaseTimer)
-            deps.signal.removeEventListener('abort', forwardAbort)
+        const remainingPhaseMs = phaseDeadlineAt - Date.now()
+        if (remainingPhaseMs <= 0) throw new HarnessModelPhaseTimeoutError()
+        const phaseController = new AbortController()
+        let phaseTimedOut = false
+        const forwardAbort = (): void => phaseController.abort()
+        deps.signal.addEventListener('abort', forwardAbort, { once: true })
+        const phaseTimer = setTimeout(() => {
+          phaseTimedOut = true
+          phaseController.abort()
+        }, remainingPhaseMs)
+        try {
+          response = await deps.provider.generateExplanation(
+            request,
+            phaseController.signal
+          )
+        } catch (error) {
+          if (phaseTimedOut && !deps.signal.aborted) {
+            throw new HarnessModelPhaseTimeoutError()
           }
+          throw error
+        } finally {
+          clearTimeout(phaseTimer)
+          deps.signal.removeEventListener('abort', forwardAbort)
         }
         if (response.usage) {
           outputTokens += response.usage.outputTokens
@@ -2256,10 +2268,7 @@ export async function runExplanationHarness(
       } catch (error) {
         rethrowAbortLikeError(error)
         if (attempt > 0 || !isTransientModelError(error)) throw error
-        if (
-          phaseDeadlineAt !== null &&
-          phaseDeadlineAt - Date.now() < INITIAL_MOVE_MIN_RETRY_WINDOW_MS
-        ) {
+        if (phaseDeadlineAt - Date.now() < INITIAL_MOVE_MIN_RETRY_WINDOW_MS) {
           throw error
         }
         const status = aiErrorStatus(error)
@@ -2526,6 +2535,13 @@ export async function runExplanationHarness(
         shouldResearch = false
         validationErrors.push('已達引擎加深輪數上限，停止加深並使用目前證據。')
       }
+      if (
+        shouldResearch &&
+        startedAt + timing.totalDeadlineMs - Date.now() < timing.researchMinRemainingMs
+      ) {
+        shouldResearch = false
+        validationErrors.push('剩餘時間不足以再做一輪引擎研究，改用目前證據。')
+      }
       if (shouldResearch && primaryAdapter) {
         const roundMs = isInitialMoveComparison
           ? Math.min(
@@ -2693,7 +2709,12 @@ export async function runExplanationHarness(
           validationErrors.push(
             `實戰步比較主線過短：AI 首選至少需要 ${INITIAL_MOVE_MIN_BEST_LINE_PLIES} 手，實戰步至少需要 ${INITIAL_MOVE_MIN_USER_LINE_PLIES} 手。`
           )
-          if (primaryAdapter && engineRounds < budget.maxEngineRounds) {
+          if (
+            primaryAdapter &&
+            engineRounds < budget.maxEngineRounds &&
+            startedAt + timing.totalDeadlineMs - Date.now() >=
+              timing.researchMinRemainingMs
+          ) {
             shouldResearch = true
             progress(
               'engine_research',
@@ -2993,7 +3014,13 @@ ${hasUserMove ? `使用者著法：${deps.session.engineAnalysis.displayUserMove
         'consequence_review',
         `目前只確認 ${verifiedConsequenceCount} 項具體後果，證據仍不足，繼續加深引擎。`
       )
-      if (!primaryAdapter || engineRounds >= budget.maxEngineRounds) break
+      if (
+        !primaryAdapter ||
+        engineRounds >= budget.maxEngineRounds ||
+        startedAt + timing.totalDeadlineMs - Date.now() < timing.researchMinRemainingMs
+      ) {
+        break
+      }
       shouldResearch = true
     }
 
@@ -3596,11 +3623,18 @@ ${failedSections.has('DIRECT') ? `原 directAnswer：${JSON.stringify(answer.dir
         usage
       }
     }
+    const surfaced =
+      error instanceof HarnessModelPhaseTimeoutError
+        ? new HarnessExplanationUnavailableError(
+            'model_timeout',
+            'AI 模型超過時間沒有完成回答，請重試或改用較快的模型。'
+          )
+        : error
     saveTrace(
-      isAbortLikeError(error) ? 'cancelled' : 'failed',
+      isAbortLikeError(surfaced) ? 'cancelled' : 'failed',
       undefined,
-      error
+      surfaced
     )
-    throw error
+    throw surfaced
   }
 }

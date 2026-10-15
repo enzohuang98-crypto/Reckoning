@@ -3482,6 +3482,104 @@ async function main(): Promise<void> {
     scoreOnlyErrors.join('；')
   )
 
+  // P1-4：模型永遠不回應（但遵守 abort）時，任何路徑都要在時限內以 model_timeout 結束。
+  class HangingProvider implements AIProvider {
+    readonly id = 'openai' as const
+    readonly displayName = 'Hanging'
+    calls = 0
+    async generateExplanation(_request: unknown, signal?: AbortSignal): Promise<never> {
+      this.calls++
+      return await new Promise<never>((_, reject) => {
+        signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('aborted', 'AbortError')),
+          { once: true }
+        )
+      })
+    }
+    async *generateExplanationStream(): AsyncGenerator<never> {
+      throw new Error('unused')
+    }
+    async listModels(): Promise<string[]> {
+      return []
+    }
+    async testCredential() {
+      return { ok: true, message: 'ok' }
+    }
+  }
+  const runHanging = async (
+    followUpQuestion: string | undefined,
+    attachedMove: string | undefined,
+    requestId: string
+  ): Promise<{ error: unknown; elapsedMs: number; calls: number; traces: HarnessTrace[] }> => {
+    const provider = new HangingProvider()
+    const traces: HarnessTrace[] = []
+    const started = Date.now()
+    let caught: unknown = null
+    try {
+      await runExplanationHarness(
+        {
+          requestId,
+          analysisId: session.analysisId,
+          provider: 'openai',
+          model: 'fake-model',
+          userLevel: 'intermediate',
+          explanationStyle: 'long_analytical',
+          language: 'zh-TW',
+          followUpQuestion,
+          attachedMove,
+          answerMode: 'focused',
+          budget: { engineTimeMs: 3000, maxEngineRounds: 1, maxModelCalls: 4, maxOutputTokens: 4000 }
+        },
+        {
+          provider,
+          apiKey: 'secret',
+          model: 'fake-model',
+          session: attachedMove
+            ? session
+            : {
+                ...session,
+                engineAnalysis: { ...session.engineAnalysis, userMove: undefined },
+                userMove: undefined
+              },
+          registry: {
+            list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+            getAdapter: () => null
+          } as never,
+          traceStore: { save: (trace: HarnessTrace) => traces.push(trace) } as never,
+          signal: new AbortController().signal,
+          onProgress: () => undefined,
+          timing: { modelCallTimeoutMs: 40, totalDeadlineMs: 300, initialMoveFirstCallTimeoutMs: 80 }
+        }
+      )
+    } catch (error) {
+      caught = error
+    }
+    return { error: caught, elapsedMs: Date.now() - started, calls: provider.calls, traces }
+  }
+  const followUpHang = await runHanging('照我的想法走會怎樣？', 'b0c2', 'ai-request-hang-follow-up')
+  check(
+    '追問模型無回應時在時限內回報 model_timeout',
+    (followUpHang.error as { reason?: string } | null)?.reason === 'model_timeout' &&
+      followUpHang.elapsedMs < 2_000 &&
+      followUpHang.traces.at(-1)?.status === 'failed',
+    `${String((followUpHang.error as Error | null)?.message)} ${followUpHang.elapsedMs}ms`
+  )
+  const positionHang = await runHanging(undefined, undefined, 'ai-request-hang-position')
+  check(
+    '局面解說模型無回應時在時限內回報 model_timeout',
+    (positionHang.error as { reason?: string } | null)?.reason === 'model_timeout' &&
+      positionHang.elapsedMs < 2_000,
+    `${String((positionHang.error as Error | null)?.message)} ${positionHang.elapsedMs}ms`
+  )
+  const moveHang = await runHanging(undefined, 'b0c2', 'ai-request-hang-move')
+  check(
+    '一鍵實戰解說模型無回應時仍回報 model_timeout',
+    (moveHang.error as { reason?: string } | null)?.reason === 'model_timeout' &&
+      moveHang.elapsedMs < 2_000,
+    `${String((moveHang.error as Error | null)?.message)} ${moveHang.elapsedMs}ms`
+  )
+
   console.log(`結果：${passed} 通過，${failed} 失敗`)
   if (failed > 0) process.exitCode = 1
 }

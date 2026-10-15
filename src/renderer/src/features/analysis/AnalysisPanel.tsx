@@ -57,7 +57,7 @@ import {
   canScheduleLiveAnalysis,
   isSameAnalysisTarget,
   liveAnalysisRetryDelayMs,
-  ONE_CLICK_EXPLANATION_DEADLINE_MS,
+  AI_REQUEST_DEADLINE_MS,
   remainingActualMoveEngineDeadlineMs,
   remainingOneClickDeadlineMs
 } from './liveAnalysis'
@@ -953,30 +953,29 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       requestId,
       ...start
     })
-    if (analysisMove) {
-      if (aiDeadlineTimer.current !== null) {
-        window.clearTimeout(aiDeadlineTimer.current)
-      }
-      aiDeadlineTimer.current = window.setTimeout(() => {
-        if (
-          activeAiRequestId.current !== requestId ||
-          !isSameAiRequestTarget(target, currentAiTargetRef.current)
-        ) {
-          return
-        }
-        activeAiRequestId.current = null
-        pendingAiRequest.current = null
-        aiDeadlineTimer.current = null
-        window.api.ai.cancelExplanation(requestId)
-        setAiBusy(false)
-        setAiCancelling(false)
-        setHarnessProgress(null)
-        setStreamingText('')
-        setAiError(
-          `AI 解說在點擊後 ${ONE_CLICK_EXPLANATION_DEADLINE_MS / 1000} 秒內未完成，本次已停止。請重試。`
-        )
-      }, remainingOneClickDeadlineMs(aiRequestedAt))
+    // 每個 AI 請求（一鍵解說、局面解說、追問）都有同一個硬截止，不會無限停在「生成中」。
+    if (aiDeadlineTimer.current !== null) {
+      window.clearTimeout(aiDeadlineTimer.current)
     }
+    aiDeadlineTimer.current = window.setTimeout(() => {
+      if (
+        activeAiRequestId.current !== requestId ||
+        !isSameAiRequestTarget(target, currentAiTargetRef.current)
+      ) {
+        return
+      }
+      activeAiRequestId.current = null
+      pendingAiRequest.current = null
+      aiDeadlineTimer.current = null
+      window.api.ai.cancelExplanation(requestId)
+      setAiBusy(false)
+      setAiCancelling(false)
+      setHarnessProgress(null)
+      setStreamingText('')
+      setAiError(
+        `AI 解說在點擊後 ${AI_REQUEST_DEADLINE_MS / 1000} 秒內未完成，本次已停止。請重試。`
+      )
+    }, remainingOneClickDeadlineMs(aiRequestedAt))
   }
 
   useEffect(() => {
