@@ -53,6 +53,24 @@ export function isOpenAIProModel(model: string): boolean {
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
+  /** 輸出 tokens 中被推理（思考）吃掉的部分；服務有回報時才有值。 */
+  reasoningTokens?: number
+}
+
+/**
+ * 模型能力（來自服務的模型目錄，加上執行期觀察）。
+ * 只用來決定請求要不要帶某些參數；未知時一律保守（不帶）。
+ */
+export interface AIModelCapabilities {
+  supportsReasoning: boolean
+  supportsResponseFormat: boolean
+  supportsStructuredOutputs: boolean
+  maxCompletionTokens?: number
+  contextLength?: number
+  /** 已知可用的推理強度；未知時省略。 */
+  reasoningEfforts?: string[]
+  /** 執行期觀察到「推理無法關閉」（要求關閉仍產生推理 tokens）。 */
+  reasoningMandatory?: boolean
 }
 
 /** 模型資訊（UI 下拉用；定價與完整資料於 SDS Stage 7 移交 ModelRegistry） */

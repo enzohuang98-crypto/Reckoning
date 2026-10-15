@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto'
 import type {
   AIExplanationStreamChunk,
+  AIModelCapabilities,
   AIModelInfo,
   AIProvider,
   AITestCredentialResult,
@@ -45,6 +47,54 @@ interface OpenRouterModel {
     prompt?: string
     completion?: string
     request?: string
+  }
+  supported_parameters?: string[]
+  context_length?: number
+  top_provider?: { max_completion_tokens?: number | null }
+}
+
+/** 模型目錄能力快取：同一把金鑰 6 小時內只讀一次目錄。 */
+const CAPABILITY_TTL_MS = 6 * 60 * 60 * 1000
+/** 讀取失敗時短暫記住，避免每次生成都再等一次失敗的目錄請求。 */
+const CAPABILITY_FAILURE_TTL_MS = 5 * 60 * 1000
+/** 能力查詢只是最佳化；超過這個時間就放棄，不拖慢生成。 */
+const CAPABILITY_LOOKUP_TIMEOUT_MS = 5_000
+
+interface CatalogCacheEntry {
+  expiresAt: number
+  models: Map<string, AIModelCapabilities> | null
+}
+
+interface ObservedModelBehavior {
+  expiresAt: number
+  /** 帶 reasoning 參數被服務以 400/422 拒絕。 */
+  reasoningRejected?: boolean
+  /** 要求關閉推理仍產生推理 tokens 並吃光輸出。 */
+  reasoningMandatory?: boolean
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined
+}
+
+/** 只從目錄中明確列出的參數推斷能力；沒有參數清單時視為未知（null）。 */
+export function capabilitiesFromOpenRouterModel(
+  model: OpenRouterModel
+): AIModelCapabilities | null {
+  if (!Array.isArray(model.supported_parameters)) return null
+  const parameters = new Set(
+    model.supported_parameters.filter((value): value is string => typeof value === 'string')
+  )
+  const maxCompletionTokens = positiveNumber(model.top_provider?.max_completion_tokens)
+  const contextLength = positiveNumber(model.context_length)
+  return {
+    supportsReasoning: parameters.has('reasoning') || parameters.has('include_reasoning'),
+    supportsResponseFormat: parameters.has('response_format'),
+    supportsStructuredOutputs: parameters.has('structured_outputs'),
+    ...(maxCompletionTokens ? { maxCompletionTokens } : {}),
+    ...(contextLength ? { contextLength } : {})
   }
 }
 
@@ -174,9 +224,89 @@ export class OpenRouterProvider implements AIProvider {
   readonly id = 'openrouter' as const
   readonly displayName = 'OpenRouter'
   private readonly baseUrl: string
+  private readonly catalogCache = new Map<string, CatalogCacheEntry>()
+  private readonly observedBehavior = new Map<string, ObservedModelBehavior>()
 
   constructor(options: OpenRouterOptions = {}) {
     this.baseUrl = (options.baseUrl ?? OPENROUTER_BASE_URL).replace(/\/+$/, '')
+  }
+
+  /** 快取鍵只用金鑰雜湊，金鑰本身不留在快取結構裡。 */
+  private catalogKey(apiKey: string): string {
+    return createHash('sha256').update(apiKey).digest('hex')
+  }
+
+  private rememberCatalog(apiKey: string, models: readonly OpenRouterModel[]): void {
+    const capabilities = new Map<string, AIModelCapabilities>()
+    for (const model of models) {
+      if (typeof model?.id !== 'string') continue
+      const parsed = capabilitiesFromOpenRouterModel(model)
+      if (parsed) capabilities.set(model.id, parsed)
+    }
+    this.catalogCache.set(this.catalogKey(apiKey), {
+      expiresAt: Date.now() + CAPABILITY_TTL_MS,
+      models: capabilities
+    })
+  }
+
+  /** 記錄執行期觀察到的模型行為，讓之後的請求不再重犯同一錯。 */
+  observeModelBehavior(
+    model: string,
+    behavior: Partial<Pick<ObservedModelBehavior, 'reasoningRejected' | 'reasoningMandatory'>>
+  ): void {
+    const current = this.observedBehavior.get(model)
+    const base = current && current.expiresAt > Date.now() ? current : undefined
+    this.observedBehavior.set(model, {
+      ...base,
+      ...behavior,
+      expiresAt: Date.now() + CAPABILITY_TTL_MS
+    })
+  }
+
+  /**
+   * 取得模型能力（目錄＋執行期觀察）。讀取失敗或模型不在目錄中時回傳 null，
+   * 呼叫端必須把 null 當成「未知」，不得因此阻擋生成。
+   */
+  async getModelCapabilities(
+    apiKey: string,
+    model: string,
+    signal?: AbortSignal
+  ): Promise<AIModelCapabilities | null> {
+    const key = this.catalogKey(apiKey)
+    let entry = this.catalogCache.get(key)
+    if (!entry || entry.expiresAt <= Date.now()) {
+      entry = { expiresAt: Date.now() + CAPABILITY_FAILURE_TTL_MS, models: null }
+      try {
+        const lookupSignal = signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(CAPABILITY_LOOKUP_TIMEOUT_MS)])
+          : AbortSignal.timeout(CAPABILITY_LOOKUP_TIMEOUT_MS)
+        const response = await fetchAiResponseBounded(
+          `${this.baseUrl}/models?output_modalities=text`,
+          { signal: lookupSignal, headers: this.headers(apiKey) }
+        )
+        if (response.ok) {
+          const body = await readJsonResponseBounded<OpenRouterModelsResponse>(response)
+          if (body && typeof body === 'object' && Array.isArray(body.data)) {
+            this.rememberCatalog(apiKey, body.data)
+            entry = this.catalogCache.get(key) ?? entry
+          }
+        } else {
+          await response.body?.cancel().catch(() => undefined)
+        }
+      } catch {
+        if (signal?.aborted) throw new DOMException('Request cancelled', 'AbortError')
+      }
+      if (!entry.models) this.catalogCache.set(key, entry)
+    }
+    const catalog = entry.models?.get(model) ?? null
+    if (!catalog) return null
+    const observed = this.observedBehavior.get(model)
+    if (!observed || observed.expiresAt <= Date.now()) return { ...catalog }
+    return {
+      ...catalog,
+      supportsReasoning: catalog.supportsReasoning && !observed.reasoningRejected,
+      ...(observed.reasoningMandatory ? { reasoningMandatory: true } : {})
+    }
   }
 
   private headers(apiKey: string): Record<string, string> {
@@ -350,6 +480,7 @@ export class OpenRouterProvider implements AIProvider {
         'OpenRouter 模型清單回應格式無效。'
       )
     }
+    this.rememberCatalog(apiKey, body.data)
     return body.data
       .filter(isConcreteFreeTextModel)
       .map((model) => ({ id: model.id, label: model.name?.trim() || model.id }))
