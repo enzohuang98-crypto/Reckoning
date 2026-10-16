@@ -7,7 +7,7 @@
  * 用法（PowerShell）：
  *   $env:OPENROUTER_API_KEY="…"
  *   npx tsx --tsconfig tsconfig.node.json tools/acceptance/explain-v2-live.ts --models vendor/a:free --out v2-review.md
- * 選項：--models（最多 3 個 :free）、--backup（最多 2 個 :free 備援）、--cases id1,id2、--base-url（測試用）、
+ * 選項：--models（最多 3 個 :free）、--backup（最多 2 個 :free 備援）、--cases id1,id2、--set tuning|holdout、--base-url（測試用）、
  *   --spacing-ms（題目間隔）、--allow-paid（允許非 :free 模型，會向 OpenRouter 帳戶計費；
  *   付費輪只用來看解說品質，不能代表免費模型的交付率）。
  *
@@ -103,8 +103,15 @@ export function validateModelArgs(models: string[], backupModels: string[], allo
 }
 const DEFAULT_SPACING_MS = 3_500
 
-export function loadLiveCases(): LiveCase[] {
-  const path = resolve(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/explain-v2/cases.json')
+/**
+ * 題組：tuning＝調整 v2 時用的 10 個固定局面；holdout＝從 PlayOK 對局的 Pikafish 分析挑出、
+ * 從未用來調整的 10 題（tools/acceptance/build-holdout-cases.ts 產生），用來確認改進不是只對固定題有效。
+ */
+export type LiveCaseSet = 'tuning' | 'holdout'
+
+export function loadLiveCases(set: LiveCaseSet = 'tuning'): LiveCase[] {
+  const file = set === 'holdout' ? 'holdout-cases.json' : 'cases.json'
+  const path = resolve(dirname(fileURLToPath(import.meta.url)), `../../tests/fixtures/explain-v2/${file}`)
   return JSON.parse(readFileSync(path, 'utf8')) as LiveCase[]
 }
 
@@ -294,9 +301,11 @@ async function main(): Promise<void> {
     console.log('注意：本輪包含付費模型，費用會記在 OpenRouter 帳戶。')
   }
   const wanted = new Set(list(argValue(argv, '--cases')))
-  const cases = loadLiveCases().filter((item) => wanted.size === 0 || wanted.has(item.id))
+  const set: LiveCaseSet = argValue(argv, '--set') === 'holdout' ? 'holdout' : 'tuning'
+  const cases = loadLiveCases(set).filter((item) => wanted.size === 0 || wanted.has(item.id))
   const provider = new OpenRouterProvider({ baseUrl: argValue(argv, '--base-url') })
   const spacingMs = Number(argValue(argv, '--spacing-ms') ?? DEFAULT_SPACING_MS)
+  console.log(`題組：${set === 'holdout' ? '保留驗證集（PlayOK 實戰局面）' : '固定調整題'}`)
   console.log(`將執行 ${cases.length} 題 × ${models.length} 個模型（每題一般 1 次、最多 3 次請求）。`)
   const rows: LiveRow[] = []
   for (const model of models) {
