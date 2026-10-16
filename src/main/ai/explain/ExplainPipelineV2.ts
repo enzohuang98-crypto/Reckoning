@@ -23,6 +23,7 @@ import {
   type ExplanationFacts
 } from '@shared/logic/analysis/ExplanationFacts'
 import { checkAnswer, type AnswerCheckResult } from '@shared/logic/ai/AnswerCheck'
+import { tidyAnswerText } from '@shared/logic/ai/AnswerTidy'
 import { buildEngineSummary } from '@shared/logic/ai/EngineSummary'
 import type { EngineRegistryService } from '../../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../../storage/HarnessTraceStore'
@@ -116,10 +117,16 @@ export function classifyModelFailure(error: unknown): FailureClass {
 
 const FAILURE_REASON: Record<
   ExplanationLanguage,
-  Record<'check' | 'unavailable' | 'timeout' | 'incomplete' | 'network' | 'certificate', string>
+  Record<
+    'check' | 'unknownMove' | 'format' | 'side' | 'unavailable' | 'timeout' | 'incomplete' | 'network' | 'certificate',
+    string
+  >
 > = {
   'zh-TW': {
     check: '回答與引擎事實不符',
+    unknownMove: '回答提到引擎資料以外的著法',
+    format: '回答格式不符（缺段落或含內部格式）',
+    side: '回答把輪到哪一方走說錯了',
     unavailable: '模型暫時無法回應',
     timeout: '模型超過時間沒有回答',
     incomplete: '模型沒有給出完整答案',
@@ -128,6 +135,9 @@ const FAILURE_REASON: Record<
   },
   'zh-CN': {
     check: '回答与引擎事实不符',
+    unknownMove: '回答提到引擎数据以外的着法',
+    format: '回答格式不符（缺段落或含内部格式）',
+    side: '回答把轮到哪一方走说错了',
     unavailable: '模型暂时无法回应',
     timeout: '模型超过时间没有回答',
     incomplete: '模型没有给出完整答案',
@@ -136,6 +146,9 @@ const FAILURE_REASON: Record<
   },
   en: {
     check: 'the answer contradicted the engine facts',
+    unknownMove: 'the answer mentioned moves that are not in the engine data',
+    format: 'the answer was missing sections or contained internal formatting',
+    side: 'the answer got the side to move wrong',
     unavailable: 'the model is temporarily unavailable',
     timeout: 'the model took too long',
     incomplete: 'the model did not finish an answer',
@@ -155,6 +168,18 @@ function failureReasonKey(
   if (category === 'timeout') return 'timeout'
   if (category === 'generation_incomplete' || category === 'response_format') return 'incomplete'
   return 'unavailable'
+}
+
+/** 修正後仍有硬錯時，摘要說明最主要的那一種（事實矛盾優先），不要一律說「與事實不符」。 */
+function checkFailureReason(
+  check: AnswerCheckResult
+): 'check' | 'unknownMove' | 'format' | 'side' | 'incomplete' {
+  const codes = new Set(check.hardErrors.map((error) => error.code))
+  if (codes.has('H5')) return 'check'
+  if (codes.has('H4')) return 'unknownMove'
+  if (codes.has('H7')) return 'side'
+  if (codes.has('H1') || codes.has('H2')) return 'incomplete'
+  return 'format'
 }
 
 function isAbortError(error: unknown): boolean {
@@ -244,6 +269,8 @@ export async function runExplainPipelineV2(
   let modelCalls = 0
   let engineRounds = 0
   let check: AnswerCheckResult | null = null
+  /** 修正前那一輪的硬錯；修正後的硬錯記在 hardErrors。 */
+  let firstHardErrors: string[] | undefined
 
   const progress = (phase: HarnessPhase, message: string): void => {
     phases.push({ phase, at: new Date().toISOString(), message })
@@ -296,6 +323,7 @@ export async function runExplainPipelineV2(
         ...(extra.answerKind ? { answerKind: extra.answerKind } : {}),
         attempts,
         hardErrors: check?.hardErrors.map((error) => `${error.code} ${error.message}`) ?? [],
+        ...(firstHardErrors ? { firstHardErrors } : {}),
         softWarnings: check?.softWarnings.map((warning) => `${warning.code} ${warning.message}`) ?? []
       })).catch(() => undefined)
     } catch {
@@ -519,6 +547,9 @@ export async function runExplainPipelineV2(
     }
 
     // ---- 客觀檢查；有硬錯就修正一次 ----
+    // 先做不改變意思的修整（提示標籤換成「引擎資料」、混用數字的著法改回事實表寫法），
+    // 避免內容正確的回答只因用字被擋；交付的也是修整後的文字。
+    answer = { ...answer, text: tidyAnswerText(answer.text, facts, language) }
     progress('validating', '正在檢查回答是否與引擎事實一致。')
     check = checkAnswer({
       text: answer.text,
@@ -543,6 +574,7 @@ export async function runExplainPipelineV2(
             previousAnswer: answer.text
           })
         )
+        repaired.text = tidyAnswerText(repaired.text, facts, language)
         const recheck = checkAnswer({
           text: repaired.text,
           finishReason: repaired.finishReason,
@@ -551,6 +583,7 @@ export async function runExplainPipelineV2(
           facts,
           userText
         })
+        firstHardErrors = check.hardErrors.map((error) => `${error.code} ${error.message}`)
         answer = repaired
         check = recheck
       } catch (error) {
@@ -559,7 +592,7 @@ export async function runExplainPipelineV2(
       }
     }
     if (check.hardErrors.length > 0) {
-      return deliverSummary('check')
+      return deliverSummary(checkFailureReason(check))
     }
 
     progress('completed', '已通過檢查。')
