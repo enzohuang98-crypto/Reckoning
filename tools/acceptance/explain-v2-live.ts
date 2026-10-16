@@ -9,7 +9,8 @@
  *   npx tsx --tsconfig tsconfig.node.json tools/acceptance/explain-v2-live.ts --models vendor/a:free --out v2-review.md
  * 選項：--models（最多 3 個 :free）、--backup（最多 2 個 :free 備援）、--cases id1,id2、--set tuning|holdout、--base-url（測試用）、
  *   --spacing-ms（題目間隔）、--allow-paid（允許非 :free 模型，會向 OpenRouter 帳戶計費；
- *   付費輪只用來看解說品質，不能代表免費模型的交付率）。
+ *   付費輪只用來看解說品質，不能代表免費模型的交付率）、--provider gemini（改用 Gemini，
+ *   金鑰從 GEMINI_API_KEY 讀；模型例如 gemini-3.5-flash，不需要 :free）。
  *
  * 額度提醒：每題一般 1 次呼叫、最多 3 次；10 題 × 1 個模型約 10–30 次請求。
  * 未儲值的 OpenRouter 帳號每日約 50 次免費請求（依官方現行政策）。
@@ -20,6 +21,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { OpenRouterProvider } from '../../src/main/ai/providers/OpenRouterProvider'
+import { GeminiProvider } from '../../src/main/ai/providers/GeminiProvider'
 import { runExplainPipelineV2 } from '../../src/main/ai/explain/ExplainPipelineV2'
 import { prepareExplanationExecution } from '../../src/main/ai/prepareExplanationExecution'
 import { compareMove } from '../../src/shared/logic/analysis/MoveComparisonService'
@@ -132,7 +134,7 @@ function sessionFor(fixture: LiveCase): AnalysisSession {
 export async function runLiveCase(
   fixture: LiveCase,
   model: string,
-  deps: { provider: AIProvider; apiKey: string; backupModels?: string[] }
+  deps: { provider: AIProvider; apiKey: string; backupModels?: string[]; providerId?: 'openrouter' | 'gemini' }
 ): Promise<LiveRow> {
   const traces: HarnessTrace[] = []
   const started = Date.now()
@@ -141,7 +143,7 @@ export async function runLiveCase(
     {
       requestId: `live-${fixture.id}-${started}`,
       analysisId: `live-${fixture.id}`,
-      provider: 'openrouter',
+      provider: deps.providerId ?? 'openrouter',
       model,
       userLevel: 'basic',
       explanationStyle: 'long_analytical',
@@ -224,7 +226,8 @@ export function formatLiveReport(rows: LiveRow[]): string {
   const modelRows = rows.filter((row) => row.answerKind !== 'board_rule')
   const leaks = rows.filter((row) => /(?<![A-Za-z0-9])[a-i][0-9][a-i][0-9](?![A-Za-z0-9])|```|<think>/.test(row.answer))
   const pct = (part: number, total: number): string => (total === 0 ? '—' : `${Math.round((part / total) * 100)}%`)
-  const paidModels = [...new Set(rows.map((row) => row.model).filter((model) => !model.endsWith(':free')))]
+  // Gemini 模型沒有 :free 後綴，免費與否看金鑰方案，不標成付費輪。
+  const paidModels = [...new Set(rows.map((row) => row.model).filter((model) => !model.endsWith(':free') && !model.startsWith('gemini-')))]
   const lines = [
     '# v2 解說 live 驗收',
     '',
@@ -282,28 +285,34 @@ async function main(): Promise<void> {
   // 與 App 相同：信任系統根憑證，防毒軟體攔截 HTTPS 時才不會整輪失敗。
   const certificates = trustSystemCertificates()
   if (!certificates.ok) console.log('注意：讀不到系統根憑證，只使用 Node 內建清單。')
-  const apiKey = process.env.OPENROUTER_API_KEY?.trim()
+  const providerId: 'openrouter' | 'gemini' = argValue(argv, '--provider') === 'gemini' ? 'gemini' : 'openrouter'
+  const keyName = providerId === 'gemini' ? 'GEMINI_API_KEY' : 'OPENROUTER_API_KEY'
+  const apiKey = process.env[keyName]?.trim()
   if (!apiKey) {
-    console.error('請先設定環境變數 OPENROUTER_API_KEY（不要把金鑰寫進檔案）。')
+    console.error(`請先設定環境變數 ${keyName}（不要把金鑰寫進檔案）。`)
     process.exitCode = 1
     return
   }
   const models = list(argValue(argv, '--models')).slice(0, MAX_MODELS)
   const backupModels = list(argValue(argv, '--backup')).slice(0, 2)
-  const allowPaid = argv.includes('--allow-paid')
-  const invalid = validateModelArgs(models, backupModels, allowPaid)
+  // Gemini 沒有 :free 後綴（免費與否由金鑰的方案決定），也沒有 OpenRouter 的備援模型。
+  const allowPaid = argv.includes('--allow-paid') || providerId === 'gemini'
+  const invalid = validateModelArgs(models, providerId === 'gemini' ? [] : backupModels, allowPaid)
   if (invalid) {
     console.error(invalid)
     process.exitCode = 1
     return
   }
-  if (allowPaid && [...models, ...backupModels].some((model) => !model.endsWith(':free'))) {
+  if (providerId === 'openrouter' && allowPaid && [...models, ...backupModels].some((model) => !model.endsWith(':free'))) {
     console.log('注意：本輪包含付費模型，費用會記在 OpenRouter 帳戶。')
   }
   const wanted = new Set(list(argValue(argv, '--cases')))
   const set: LiveCaseSet = argValue(argv, '--set') === 'holdout' ? 'holdout' : 'tuning'
   const cases = loadLiveCases(set).filter((item) => wanted.size === 0 || wanted.has(item.id))
-  const provider = new OpenRouterProvider({ baseUrl: argValue(argv, '--base-url') })
+  const provider =
+    providerId === 'gemini'
+      ? new GeminiProvider({ baseUrl: argValue(argv, '--base-url') })
+      : new OpenRouterProvider({ baseUrl: argValue(argv, '--base-url') })
   const spacingMs = Number(argValue(argv, '--spacing-ms') ?? DEFAULT_SPACING_MS)
   console.log(`題組：${set === 'holdout' ? '保留驗證集（PlayOK 實戰局面）' : '固定調整題'}`)
   console.log(`將執行 ${cases.length} 題 × ${models.length} 個模型（每題一般 1 次、最多 3 次請求）。`)
@@ -311,7 +320,12 @@ async function main(): Promise<void> {
   for (const model of models) {
     for (const fixture of cases) {
       if (rows.length > 0 && spacingMs > 0) await new Promise((done) => setTimeout(done, spacingMs))
-      const row = await runLiveCase(fixture, model, { provider, apiKey, backupModels })
+      const row = await runLiveCase(fixture, model, {
+        provider,
+        apiKey,
+        providerId,
+        backupModels: providerId === 'gemini' ? [] : backupModels
+      })
       rows.push(row)
       console.log(`${fixture.id} · ${model}: ${row.answerKind}${row.error ? ` (${row.error})` : ''} · ${row.calls} calls · ${(row.durationMs / 1000).toFixed(1)}s`)
     }
