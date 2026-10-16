@@ -71,7 +71,8 @@ src/
       AiPreferencesStore.ts     #   OpenRouter 備援模型（最多 2 個 :free；async 原子寫入）
       http.ts                   #   共用 fetch 包裝：大小上限、redirect: 'error'、錯誤遮蔽、429 額度判讀
       providers/                #   Anthropic / OpenAI / Gemini / OpenAI-compatible / OpenRouter（真 SSE、能力快取、推理控制）
-    security/                   #   IpcSecurity（來源 frame 驗證）、InputValidation、BrowserSecurity、KeyedOperationGate
+    security/                   #   IpcSecurity（來源 frame 驗證）、InputValidation、BrowserSecurity、KeyedOperationGate、
+                                #   SystemCertificates（啟動時讓 fetch 也信任 Windows 根憑證，防毒軟體攔截 HTTPS 時才連得上）
     storage/                    #   StorageService、SecureJsonFile、SecretStore（全 async）、AnalysisSessionStore（TTL 2h）、
                                 #   HarnessTraceStore（async＋依序佇列）
     update/                     #   AppUpdaterService、UpdatePolicy、UpdatePreferencesStore
@@ -105,8 +106,8 @@ src/
 3. **AnswerCheck**：只查客觀錯誤（不存在的著法、吃子／將軍與事實矛盾、座標或內部格式外洩、
    輪走方錯誤、截斷等）；有硬錯就把錯誤清單送回同一模型**修正一次**。
 4. **退路**：主模型 → 一次恢復（空白／截斷）→ 使用者核可的備援 `:free` 模型 → 修正 → 仍失敗交付
-   「引擎重點摘要（非 AI 生成）」＋原因。連線中斷先重試同一模型一次，仍失敗照備援／摘要流程；
-   金鑰、帳務、每日額度用完則顯示錯誤卡。診斷紀錄的每次呼叫附失敗分類，network 另附底層代碼（如 `ECONNRESET`）。
+   「引擎重點摘要（非 AI 生成）」＋原因。連線中斷先重試同一模型一次，仍失敗照備援／摘要流程；HTTPS 憑證驗證失敗
+   （防毒軟體攔截）不重試、不換備援，直接交摘要並說明原因；   金鑰、帳務、每日額度用完則顯示錯誤卡。診斷紀錄的每次呼叫附失敗分類，network 另附底層代碼（如 `ECONNRESET`）。
 5. **預算**（`explain/budget.ts`）：最多 3 次模型呼叫、每次 60 秒、總計 110 秒、串流閒置 30 秒；renderer 120 秒截止。
 6. 棋規問題（如「這步合法嗎」）走規則引擎捷徑，不呼叫模型。
 7. UI：真串流；修正時顯示「正在檢查並修正…」；「由 X 回答（Y 暫時無法使用：原因）」；摘要橫幅附「重試 AI」。
