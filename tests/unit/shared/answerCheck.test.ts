@@ -46,6 +46,10 @@ for (const leak of ['走 h2e2 比較好，這是炮二平五。', '{"answer":"�
   assert.ok(codes(leak, { mode: 'question' }).includes('H3'), leak)
 }
 assert.ok(!codes('炮二平五先佔中路，這是 2 號重點。', { mode: 'question' }).includes('H3'))
+for (const leak of ['根據事實表，炮二平五佔中。', '棋手未提供想法，所以只看引擎。', 'According to the fact table, 炮二平五 is best.']) {
+  assert.ok(codes(leak, { mode: 'question' }).includes('H3'), leak)
+}
+assert.ok(!codes('炮二平五先佔中路，引擎資料沒有顯示更好的走法。', { mode: 'question' }).includes('H3'))
 // H4 不存在的著法
 const invented = check('**結論**：應該走車一平二。**這步的問題**：馬八進七太慢。', {})
 assert.ok(invented.hardErrors.some((error) => error.code === 'H4' && error.message.includes('車一平二')))

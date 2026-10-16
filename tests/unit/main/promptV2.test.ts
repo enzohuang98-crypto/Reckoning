@@ -52,6 +52,13 @@ assert.match(move.prompt, /不要寫棋手自己的後續著法/)
 assert.equal(move.prompt.includes('沿主線說到具體結果為止'), false)
 assert.match(outputs['move-zh-CN'].prompt, /沿“棋手着法之后的主线”，写黑方怎么应对/)
 assert.match(outputs['move-en'].prompt, /follow the "Line after the player's move": what Black plays in reply/)
+// 沒寫想法時不出現「未提供」（模型會照抄成「棋手未提供想法」）；系統規則禁止提示標籤與自行判斷子力價值。
+const noReason = buildPromptV2({ mode: 'move', language: 'zh-TW', userLevel: 'basic', facts, factsText: formatFactsForPrompt(facts) })
+assert.equal(/棋手自己的想法|未提供】|】未提供/.test(noReason.prompt), false)
+assert.equal(buildPromptV2({ mode: 'move', language: 'en', userLevel: 'basic', facts, factsText: formatFactsForPrompt(facts, 'en') }).prompt.includes("[Player's own idea]"), false)
+assert.match(move.systemPrompt, /不要提到【事實表】「未提供」等提示裡的標籤/)
+assert.match(move.systemPrompt, /不要用子力換算/)
+assert.match(move.systemPrompt, /不要夾雜簡體字/)
 assert.match(outputs['move-zh-CN'].systemPrompt, /用简体中文回答/)
 assert.match(outputs['move-en'].systemPrompt, /Answer in English/)
 
