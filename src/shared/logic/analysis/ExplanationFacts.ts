@@ -145,7 +145,7 @@ function boardInventory(board: BoardState): Record<PieceColor, PieceType[]> | un
 }
 
 /**
- * 只用於排序「走後可吃」的目標，不寫進事實表。採常見參考值：
+ * 只用於排序「下一手可吃」的目標，不寫進事實表。採常見參考值：
  * 車 9、炮 4.5、馬 4、仕／相 2、兵 1（過河後約 2）——見 xiangqi.com〈The Value of the Pieces〉。
  */
 const PIECE_VALUE: Record<PieceType, number> = {
@@ -466,8 +466,8 @@ interface FactLabels {
   side: Record<PieceColor, string>
   /** 「黑卒」「Black pawn」：哪一方的哪個子。 */
   named: (side: string, piece: string) => string
-  /** 「黑5路卒（中卒）」：哪一方、哪一路的哪個子；第 5 路的兵卒加上「中兵／中卒」。 */
-  located: (side: string, file: string, piece: string, central: boolean) => string
+  /** 「黑5路卒（中卒；…）」：哪一方、哪一路的哪個子；第 5 路的兵卒加上「中兵／中卒」，note 放在同一個括號裡。 */
+  located: (side: string, file: string, piece: string, central: boolean, note?: string) => string
   piece: Record<PieceColor, Record<PieceType, string>>
   descriptor: Record<PlyDescriptor, (piece: string) => string>
   noCapture: string
@@ -529,7 +529,10 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
   'zh-TW': {
     side: { red: '紅', black: '黑' },
     named: (side, piece) => `${side}${piece}`,
-    located: (side, file, piece, central) => `${side}${file}路${piece}${central ? `（中${piece}）` : ''}`,
+    located: (side, file, piece, central, note) => {
+      const inner = [central ? `中${piece}` : '', note ?? ''].filter(Boolean).join('；')
+      return `${side}${file}路${piece}${inner ? `（${inner}）` : ''}`
+    },
     piece: PIECES_TW,
     descriptor: {
       enters_center: (piece) => `${piece}進入中路`,
@@ -542,9 +545,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     noCheck: '未將軍',
     check: '將軍',
     capture: (piece) => `吃${piece}`,
-    threats: '走後可吃',
-    protectedLabel: '有保護',
-    unprotectedLabel: '無保護',
+    threats: '走完這步，下一手可吃',
+    protectedLabel: '吃下後對方能吃回',
+    unprotectedLabel: '吃下後對方吃不回',
     toMove: '輪到',
     bestMove: '引擎首選',
     userMove: '棋手著法',
@@ -581,7 +584,10 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
   'zh-CN': {
     side: { red: '红', black: '黑' },
     named: (side, piece) => `${side}${piece}`,
-    located: (side, file, piece, central) => `${side}${file}路${piece}${central ? `（中${piece}）` : ''}`,
+    located: (side, file, piece, central, note) => {
+      const inner = [central ? `中${piece}` : '', note ?? ''].filter(Boolean).join('；')
+      return `${side}${file}路${piece}${inner ? `（${inner}）` : ''}`
+    },
     piece: PIECES_CN,
     descriptor: {
       enters_center: (piece) => `${piece}进入中路`,
@@ -594,9 +600,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     noCheck: '未将军',
     check: '将军',
     capture: (piece) => `吃${piece}`,
-    threats: '走后可吃',
-    protectedLabel: '有保护',
-    unprotectedLabel: '无保护',
+    threats: '走完这步，下一手可吃',
+    protectedLabel: '吃下后对方能吃回',
+    unprotectedLabel: '吃下后对方吃不回',
     toMove: '轮到',
     bestMove: '引擎首选',
     userMove: '棋手着法',
@@ -633,7 +639,10 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
   en: {
     side: { red: 'Red', black: 'Black' },
     named: (side, piece) => `${side} ${piece}`,
-    located: (side, file, piece, central) => `${side} ${piece} on file ${file}${central ? ' (central pawn)' : ''}`,
+    located: (side, file, piece, central, note) => {
+      const inner = [central ? 'central pawn' : '', note ?? ''].filter(Boolean).join('; ')
+      return `${side} ${piece} on file ${file}${inner ? ` (${inner})` : ''}`
+    },
     piece: PIECES_EN,
     descriptor: {
       enters_center: (piece) => `${piece} moves to the central file`,
@@ -646,9 +655,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     noCheck: 'no check',
     check: 'check',
     capture: (piece) => `captures ${piece}`,
-    threats: 'can then capture',
-    protectedLabel: 'protected',
-    unprotectedLabel: 'unprotected',
+    threats: 'after this move it can capture next',
+    protectedLabel: 'can be recaptured',
+    unprotectedLabel: 'cannot be recaptured',
     toMove: 'To move',
     bestMove: 'Engine best move',
     userMove: "Player's move",
@@ -702,9 +711,16 @@ function capturesText(
 }
 
 /** 帶「路」的子名：紅方用中文數字、黑方用阿拉伯數字（英文一律用數字）。 */
-function locatedName(side: PieceColor, piece: PieceType, file: number, labels: FactLabels, language: ExplanationLanguage): string {
+function locatedName(
+  side: PieceColor,
+  piece: PieceType,
+  file: number,
+  labels: FactLabels,
+  language: ExplanationLanguage,
+  note?: string
+): string {
   const numeral = language === 'en' ? String(file) : fileNumeral(side, side === 'red' ? 9 - file : file - 1)
-  return labels.located(labels.side[side], numeral, labels.piece[side][piece], piece === 'pawn' && file === 5)
+  return labels.located(labels.side[side], numeral, labels.piece[side][piece], piece === 'pawn' && file === 5, note)
 }
 
 function formatPly(ply: PlyFact, labels: FactLabels, language: ExplanationLanguage): string {
@@ -726,9 +742,14 @@ function formatPly(ply: PlyFact, labels: FactLabels, language: ExplanationLangua
       `${labels.threats}：${ply.threats
         .map(
           (threat) =>
-            `${locatedName(threat.side, threat.piece, threat.file, labels, language)}（${
+            locatedName(
+              threat.side,
+              threat.piece,
+              threat.file,
+              labels,
+              language,
               threat.protected ? labels.protectedLabel : labels.unprotectedLabel
-            }）`
+            )
         )
         .join('、')}`
     )
