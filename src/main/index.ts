@@ -13,10 +13,8 @@ import { SecretStore } from './storage/SecretStore'
 import { StorageService } from './storage/StorageService'
 import { registerEngineAnalysisHandlers } from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
-import { registerLicenseHandlers } from './ipc/licenseHandlers'
 import { registerDataHandlers } from './ipc/dataHandlers'
 import { registerTeacherTestHandlers } from './ipc/teacherTestHandlers'
-import { LicenseService } from './license/LicenseService'
 import {
   InMemoryAnalysisSessionStore,
   startAnalysisSessionCleanup
@@ -157,7 +155,6 @@ function registerIpc(): AppUpdaterService {
   )
   registerDataHandlers(storage)
   // 買斷授權（SDS Q5）：離線 Ed25519 簽章驗證
-  registerLicenseHandlers(new LicenseService(storage))
   const appUpdater = new AppUpdaterService()
   appUpdater.registerIpc()
   return appUpdater

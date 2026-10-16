@@ -758,7 +758,6 @@ async function main(): Promise<void> {
     )
     assert.doesNotMatch(aiSettings, /window\.confirm/)
     assert.match(engineSettings, /const removeEngine[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onRemove\(id\)/)
-    assert.match(systemSettings, /const deactivateLicense[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onDeactivateLicense\(\)/)
     assert.match(systemSettings, /const installUpdate[\s\S]*?if \(!window\.confirm\([\s\S]*?\)\) return[\s\S]*?onInstallUpdate\(\)/)
   })
 

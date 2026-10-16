@@ -28,7 +28,7 @@ const SECRET_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
     pattern: /("(?:apiKey|api_key|token|secret)"\s*:\s*")[^"]*(")/gi,
     replacement: '$1***$2'
   },
-  // 本產品 License Key：XQA1.<payload>.<sig>
+  // 舊版買斷授權 License Key（已移除功能，舊資料仍可能出現在紀錄中）：XQA1.<payload>.<sig>
   { pattern: /\bXQA1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, replacement: 'XQA1.***' }
 ]
 
