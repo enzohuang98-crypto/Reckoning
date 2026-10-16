@@ -30,20 +30,22 @@ npm install
 npm run dev          # electron-vite dev
 npm run typecheck    # node + web 兩個 tsc project
 npm run build        # 型別檢查 + 打包
-npm test             # 完整測試鏈（Windows 為主要驗證環境）
+npm test             # 依 tests/test-manifest.json 跑全部測試，跑完彙總（Windows 為主要驗證環境）
 npm run security:check   # 資安基線（可單獨跑）
 npm run security:audit   # 相依弱點分層把關（政策見 docs/architecture/security-l2.md）
 ```
 
-- `npm test` **不是**測試執行器，而是 `package.json` 裡用 `&&` 串起約 60 個測試檔的固定指令鏈，
-  任一檔失敗即中止；沒有 `-- <pattern>`。跑單一檔就照抄那一段：shared/main 用
-  `npx tsx --tsconfig tsconfig.node.json <file>`，renderer（JSX）用 `tsconfig.web.json`。
+- `npm test` 執行 `tools/test/run-tests.mjs`：依 `tests/test-manifest.json` 的順序逐一跑完再列出所有失敗。
+  `npm test -- --only <路徑片段>` 只跑符合的測試（可重複）；`--portable` 略過 Windows／Electron 專用測試
+  （Linux／macOS 開發用）；`--list` 列出清單；`--bail` 第一個失敗就停。
+  單獨執行一檔也可直接用：shared/main `npx tsx --tsconfig tsconfig.node.json <file>`，renderer（JSX）用 `tsconfig.web.json`。
 - 只能在 Windows 跑：`tests/security/security.test.ts`（含 Windows 路徑斷言）、
   `tests/unit/main/engineRegistry.test.ts`、`tests/e2e/engine.e2e.ts`（需先用 `csc` 編譯
   `tests/support/FakeEngine.cs` 成 `fake-engine.exe`）與 `npx electron tests/support/run-secret-store-test.cjs`。
 - `npm run typecheck` 也檢查測試檔（`tsconfig.test.node.json`／`tsconfig.test.web.json`；v1 的 `harness.test.ts`
   暫時排除）。renderer 測試由 tsx 以 classic JSX 轉譯，所以必須 `import React`。
-- 新測試：`node:assert/strict`、本機 HTTP mock、失敗設 `process.exitCode = 1`，並加入 `test` 指令鏈。
+- 新測試：`node:assert/strict`、本機 HTTP mock、失敗設 `process.exitCode = 1`，並加入 `tests/test-manifest.json`
+  （`tests/architecture/testManifest.test.ts` 會擋下沒被執行的測試檔）。
 - 需要真實金鑰的工具（不在 `npm test` 內，金鑰只從環境變數讀、輸出不得含金鑰）：
   - `tools/acceptance/explain-v2-live.ts`：v2 解說 10 題 live 驗收＋人工評分表（`OPENROUTER_API_KEY`，輸出到 `.local-review/`）。
   - `tools/acceptance/openrouter-smoke.ts`：OpenRouter 免費模型探測。

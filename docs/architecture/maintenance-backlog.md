@@ -10,6 +10,7 @@
 - 測試檔納入 `npm run typecheck`（修掉約 150 個累積的型別錯誤；`harness.test.ts` 隨 v1 刪除前暫時排除）。
 - 介面簡體字改為繁體，並以 `tests/architecture/traditionalChineseUi.test.ts` 防止再混入。
 - `HarnessTraceStore`、診斷紀錄匯出與 `EngineRegistryService` 的寫入改為非同步依序佇列；主行程互動路徑不再有同步磁碟寫入（原則 §9）。
+- `npm test` 改由 `tools/test/run-tests.mjs` 依清單執行、跑完彙總；新增清單完整性測試，並找出一個從未在 CI 執行過的測試檔（`updateInstallSafety.test.tsx`）。
 
 ## 1. 刪除 v1 Harness（P4-1／P4-2）— 最大一筆，**等 P3-9 live 評分通過**
 
@@ -44,12 +45,7 @@
 保護的是重要規則，但會把檔案位置與寫法鎖死，重構時必須逐條改。新規則優先寫成行為測試或像
 `ipcSenderGuard` 這種掃描整個目錄、不綁定單一檔案的檢查；既有斷言在相關檔案重構時順手轉換。
 
-## 4. `npm test` 是約 60 段 `&&` 串起來的指令
-
-第一個失敗就停止，看不到其他失敗；新增測試要手改一行很長的字串。可改成讀取測試清單的小型 runner
-（全部跑完再彙總，並標記 Windows 專用測試）。CI 只呼叫 `npm test`，改動範圍小。
-
-## 5. 較低優先
+## 4. 較低優先
 
 - `SettingsPage.tsx`（723 行、25 個 useState）：可依設定分類拆出各自的狀態 hook。
 - `PikafishAdapter.ts`（998 行）：核心且測試完整，除非要改協定處理，否則不動。
