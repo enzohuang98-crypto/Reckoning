@@ -2,7 +2,8 @@
 
 本檔是給後續以 Claude Code 接續開發的**現況與規則**。renderer feature 邊界、App Shell 與發行門檻見
 `docs/architecture/overview.md`；AI 對話可靠性計畫與執行紀錄見 `docs/plans/ai-chat-reliability-v2.md`；
-Stage 1–10 的開發歷史已移到 `docs/history/claude-md-stages-1-10.md`（只供查歷史，不代表現況）。
+Stage 1–10 的開發歷史已移到 `docs/history/claude-md-stages-1-10.md`（只供查歷史，不代表現況）；
+已知的架構整理待辦與前置條件見 `docs/architecture/maintenance-backlog.md`。
 
 ## 一句話定位
 
