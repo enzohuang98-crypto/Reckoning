@@ -162,7 +162,7 @@ function median(values: number[]): number | null {
   return sorted[Math.floor((sorted.length - 1) / 2)]
 }
 
-/** 驗收門檻（計畫第 10 節）的自動部分＋人工評分欄位。 */
+/** 驗收門檻（計畫第 7 節「驗收標準」）的自動部分＋人工評分欄位。 */
 export function formatLiveReport(rows: LiveRow[]): string {
   const delivered = rows.filter((row) => row.answerKind !== 'error' && row.durationMs <= 110_000)
   const aiRows = rows.filter((row) => row.answerKind === 'ai')
@@ -174,7 +174,7 @@ export function formatLiveReport(rows: LiveRow[]): string {
     '',
     `產生時間：${new Date().toISOString()}`,
     '',
-    '## 自動指標（門檻見計畫第 10 節）',
+    '## 自動指標（門檻見計畫第 7 節「驗收標準」）',
     `- 交付率（AI 或摘要，110 秒內）：${pct(delivered.length, rows.length)}（門檻 ≥95%）`,
     `- AI 答案比例（不含棋規捷徑）：${pct(aiRows.length, modelRows.length)}（門檻 ≥80%）`,
     `- 每題呼叫中位數：${median(modelRows.map((row) => row.calls)) ?? '—'}；最大：${Math.max(0, ...modelRows.map((row) => row.calls))}（門檻：中位數 1、上限 3）`,

@@ -209,3 +209,25 @@ AnswerCheck（只查客觀硬錯）
 ## 執行紀錄
 
 （各任務完成後於此更新；詳細內容見 PR 描述與 commit。）
+
+| 階段 | 狀態（2026-10-16） | 備註 |
+|---|---|---|
+| Phase 0 | 完成 | P0-1 基線、P0-2 smoke、P0-3 trace 摘要、P0-4 本文件 |
+| Phase 1 | 完成 | P1-1…P1-8，一任務一 commit |
+| Phase 2 | 完成 | P2-1…P2-6 |
+| Phase 3 | 程式完成；**P3-9 待本機 live 評分** | 雲端環境封鎖 openrouter.ai，P3-9 只能離線自測 |
+| Phase 4 | **未開始（閘門）** | 需 P3-9 評分達標＋使用者確認；P4-4、P4-5 需逐項明確同意 |
+| Phase 5 | **未開始** | 需 Windows 實機與發行流程 |
+
+**與任務卡的差異（已在 commit 說明）：**
+- 主模型經恢復與備援後仍是服務端失敗（逾時、5xx、分鐘級 429）時，v2 交付「引擎重點摘要＋原因」而不是錯誤卡，以提高交付率；網路、金鑰、帳務、**每日**免費額度用完仍拋錯誤卡（摘要無法解決這些問題）。
+- 另一個 commit `chore(deps): apply npm audit fix` 不在計畫內：CI 的 `security:audit` 因新公布的弱點轉紅，執行期相依零容忍政策要求修補。
+- 改寫的既有測試（皆依任務卡）：`providers.test.ts` 的 `reasoning_content` 案例改為「應拒絕」（P1-5）；`aiRegenerationFlow` 改以 `aria-label` 找提問框（P1-2）；`openRouterCredentialRepair` 診斷斷言加入 `quota`（P1-7）；`rendererArchitecture` 的 model 來源正則加入 `actualModel`（P3-7）。沒有刪除或放寬任何測試。
+
+**P3-9 本機評分步驟（PowerShell）：**
+```powershell
+$env:OPENROUTER_API_KEY="（在 OpenRouter 後台新建的 key）"
+npx tsx --tsconfig tsconfig.node.json tools/acceptance/explain-v2-live.ts --models <模型A>:free,<模型B>:free --out v2-review.md
+Remove-Item Env:OPENROUTER_API_KEY
+```
+評分表寫入 `.local-review/v2-review.md`（已 gitignore）。10 題 × 1 個模型約 10–30 次請求；未儲值帳號每日約 50 次。上線門檻見第 7 節「驗收標準」；人工 4 欄「≥4 分佔 ≥70%」。
