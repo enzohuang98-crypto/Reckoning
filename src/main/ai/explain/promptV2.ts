@@ -138,7 +138,9 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
       '4. Scores only describe how big a difference is; never use a score as the reason.',
       '5. The main line is one strong continuation the engine found; never call it forced, inevitable or the only move.',
       `6. Explain so that ${level}; when you use a term, add one plain sentence explaining it.`,
-      '7. Answer in English.'
+      '7. Protection, piece values and the cause of a score gap may only be stated when the facts say so. Do not explain a gap by counting material (e.g. "a horse is worth more than a cannon").',
+      '8. Never mention prompt labels such as "[Facts]" or "not given"; talk about the position directly.',
+      '9. Answer in English.'
     ].join('\n')
   }
   const simplified = language === 'zh-CN'
@@ -152,7 +154,9 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
         '4. 分数只能说明差距大小，不能当成理由。',
         '5. 主线是引擎认为最好的一种走法，不要说成“必然”“唯一”“被迫”。',
         `6. 用${level}的方式解释；用到术语时用一句白话补充。`,
-        '7. 用简体中文回答。'
+        '7. 保护关系、子力价值、差距的原因，只有事实表写到才能说；不要用子力换算（例如“马比炮值钱”）解释分数差距。',
+        '8. 不要提到【事实表】“未提供”等提示里的标签，直接讲棋。',
+        '9. 用简体中文回答，不要夹杂繁体或其他语言。'
       ]
     : [
         '你是中國象棋教練，負責把本機引擎（皮卡魚）的分析結果，翻譯成棋手看得懂的說明。',
@@ -163,7 +167,9 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
         '4. 分數只能說明差距大小，不能當成理由。',
         '5. 主線是引擎認為最好的一種走法，不要說成「必然」「唯一」「被迫」。',
         `6. 用${level}的方式解釋；用到術語時用一句白話補充。`,
-        '7. 用繁體中文回答。'
+        '7. 保護關係、子力價值、差距的原因，只有事實表寫到才能說；不要用子力換算（例如「馬比炮值錢」）解釋分數差距。',
+        '8. 不要提到【事實表】「未提供」等提示裡的標籤，直接講棋。',
+        '9. 用繁體中文回答，不要夾雜簡體字。'
       ]
   return lines.join('\n')
 }
@@ -212,7 +218,7 @@ function moveUserPrompt(input: PromptV2Input): string {
     return [
       "[Task] Explain the difference between the player's move and the engine's best move.",
       `[Player's move] ${userMove}　[Engine best move] ${facts.bestMove.move}　[Gap] ${gapText(facts, language)}`,
-      `[Player's own idea] ${reason || 'not given'}`,
+      ...(reason ? [`[Player's own idea] ${reason}`] : []),
       '[Facts]',
       input.factsText,
       '[Format] Use these headings, 1–4 sentences each, as short as possible:',
@@ -230,7 +236,7 @@ function moveUserPrompt(input: PromptV2Input): string {
   return [
     cn ? '【任务】说明棋手刚才的着法和引擎首选的差别。' : '【任務】說明棋手剛才的著法和引擎首選的差別。',
     `${cn ? '【棋手的着法】' : '【棋手的著法】'}${userMove}　${cn ? '【引擎首选】' : '【引擎首選】'}${facts.bestMove.move}　【差距】${gapText(facts, language)}`,
-    `【棋手自己的想法】${reason || '未提供'}`,
+    ...(reason ? [`【棋手自己的想法】${reason}`] : []),
     cn ? '【事实表】' : '【事實表】',
     input.factsText,
     cn

@@ -80,7 +80,10 @@ const LEAK_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /```/, label: '程式碼區塊' },
   { pattern: /<\/?think>/i, label: '思考標記' },
   { pattern: /(?<![A-Za-z0-9])[EK][0-9]{1,2}(?![A-Za-z0-9])/, label: '內部證據編號（E1、K2）' },
-  { pattern: /\b(?:FEN|UCI)\b/, label: 'FEN／UCI 字樣' }
+  { pattern: /\b(?:FEN|UCI)\b/, label: 'FEN／UCI 字樣' },
+  // 提示裡的標籤不是給棋手看的（P3-9 live 回答曾出現「事實表」「棋手未提供想法」）。
+  { pattern: /事實表|事实表|\[Facts\]|fact table/i, label: '提示標籤（事實表）' },
+  { pattern: /棋手未提供|未提供想法|棋手自己的想法|player's own idea|not given/i, label: '提示標籤（棋手想法欄）' }
 ]
 
 /** 著法後面接這些字，代表是可能性或否定，不是「這步吃了／將了」。 */
