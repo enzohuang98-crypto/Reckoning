@@ -367,7 +367,13 @@ export function buildExplanationFacts(
           startsWith(analysis.userMovePrincipalVariation, analysis.userMove)
         )
       : undefined
+  // 殺棋分數換算成「兵」沒有意義（例如殺 1 對殺 2 會被算成約 1 兵的差距），
+  // 這時只呈現兩邊的評估文字（殺 N），不列錯誤等級與兵數。
+  const involvesMate =
+    analysis.scoreAfterBestMove?.type === 'mate' ||
+    analysis.scoreAfterUserMove?.type === 'mate'
   const comparable =
+    !involvesMate &&
     comparison &&
     comparison.positionFen === startFen &&
     comparison.userMove === analysis.userMove

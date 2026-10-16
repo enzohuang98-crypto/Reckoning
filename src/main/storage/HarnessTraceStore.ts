@@ -1,4 +1,5 @@
 import type {
+  ExplainAttemptTrace,
   HarnessEvidence,
   HarnessRegressionCase,
   HarnessTrace
@@ -370,7 +371,43 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
     status: trace.status,
     ...(typeof trace.finalText === 'string'
       ? { finalText: trace.finalText.slice(0, MAX_FINAL_TEXT_CHARS) }
+      : {}),
+    ...(trace.pipelineVersion === 2 ? { pipelineVersion: 2 as const } : {}),
+    ...(trace.answerKind === 'ai' ||
+    trace.answerKind === 'engine_summary' ||
+    trace.answerKind === 'board_rule'
+      ? { answerKind: trace.answerKind }
+      : {}),
+    ...(Array.isArray(trace.attempts)
+      ? { attempts: trace.attempts.map(sanitizeAttempt).filter((item): item is ExplainAttemptTrace => item !== null).slice(0, 5) }
+      : {}),
+    ...(Array.isArray(trace.hardErrors)
+      ? { hardErrors: trace.hardErrors.filter((item): item is string => typeof item === 'string').map((item) => item.slice(0, 300)).slice(0, 10) }
+      : {}),
+    ...(Array.isArray(trace.softWarnings)
+      ? { softWarnings: trace.softWarnings.filter((item): item is string => typeof item === 'string').map((item) => item.slice(0, 300)).slice(0, 10) }
       : {})
+  }
+}
+
+function sanitizeAttempt(value: unknown): ExplainAttemptTrace | null {
+  if (!isRecord(value)) return null
+  const kinds = ['primary', 'recovery', 'backup', 'repair']
+  if (
+    typeof value.model !== 'string' ||
+    !kinds.includes(value.kind as string) ||
+    typeof value.durationMs !== 'number'
+  ) {
+    return null
+  }
+  return {
+    model: value.model.slice(0, 128),
+    kind: value.kind as ExplainAttemptTrace['kind'],
+    durationMs: value.durationMs,
+    ...(typeof value.finishReason === 'string' ? { finishReason: value.finishReason.slice(0, 32) } : {}),
+    ...(typeof value.outputTokens === 'number' ? { outputTokens: value.outputTokens } : {}),
+    ...(typeof value.reasoningTokens === 'number' ? { reasoningTokens: value.reasoningTokens } : {}),
+    ...(typeof value.error === 'string' ? { error: value.error.slice(0, 64) } : {})
   }
 }
 
