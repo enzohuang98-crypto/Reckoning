@@ -1,3 +1,7 @@
+/**
+ * 雙引擎複核已於 P4-5 從產品移除；本檔只剩 v1 Harness（XQA_EXPLAIN_PIPELINE=v1 回滾路徑）
+ * 引用，沒有任何程式再產生複核資料。P4-1 刪除 v1 時一併刪除本檔與 types/DualEngine.ts。
+ */
 import type { BoardState, Piece, PieceColor, PieceType } from '../../types/BoardState'
 import type {
   DualEngineComparison,

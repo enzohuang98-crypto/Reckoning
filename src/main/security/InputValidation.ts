@@ -252,10 +252,6 @@ export function validateAnalyzePositionPayload(value: unknown): AnalyzePositionS
   return {
     requestId,
     engineId: optionalEngineId(value.engineId, '主引擎識別碼'),
-    verificationEngineId: optionalEngineId(
-      value.verificationEngineId,
-      '複核引擎識別碼'
-    ),
     positionFen: parsed.board.fen,
     userMove,
     analysisConfig: {
@@ -355,10 +351,6 @@ export function validateGenerateExplanationPayload(
     followUpQuestion,
     attachedMove,
     userMoveReason,
-    engineId: optionalEngineId(value.engineId, '主引擎識別碼'),
-    verificationEngineId: optionalEngineId(
-      value.verificationEngineId,
-      '複核引擎識別碼'
-    )
+    engineId: optionalEngineId(value.engineId, '主引擎識別碼')
   }
 }

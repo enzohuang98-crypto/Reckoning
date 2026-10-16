@@ -913,8 +913,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => null
       } as never,
@@ -1047,8 +1046,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => null
       } as never,
@@ -1113,8 +1111,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => null
       } as never,
@@ -1187,8 +1184,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => ({
           analyzePosition: async () => {
@@ -1246,8 +1242,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => ({
           analyzePosition: async () => {
@@ -1315,8 +1310,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -1373,8 +1367,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -1432,8 +1425,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -1496,8 +1488,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => null
       } as never,
@@ -1548,8 +1539,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -1596,8 +1586,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -1645,8 +1634,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => ({
           analyzePosition: async (
@@ -1733,8 +1721,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         })
       } as never,
       traceStore: { save: () => undefined } as never,
@@ -1758,7 +1745,7 @@ async function main(): Promise<void> {
         budget: { engineTimeMs: 100, maxEngineRounds: 1, maxModelCalls: 2, maxOutputTokens: 4000 } },
       { provider: boardQuestionProvider, apiKey: 'synthetic-test-key', model: 'fake-model',
         session: noMoveSession,
-        registry: { list: () => ({ installations: [], activeEngineId: null, verificationEngineId: null }), getAdapter: () => null } as never,
+        registry: { list: () => ({ installations: [], activeEngineId: null }), getAdapter: () => null } as never,
         traceStore: { save: () => undefined } as never,
         signal: new AbortController().signal, onProgress: () => undefined }
     )
@@ -1801,8 +1788,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => null
       } as never,
@@ -1897,8 +1883,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => ({
           analyzePosition: async () => {
@@ -1978,8 +1963,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => null
       } as never,
@@ -2026,7 +2010,7 @@ async function main(): Promise<void> {
       budget: {engineTimeMs:100,maxEngineRounds:1,maxModelCalls:2,maxOutputTokens:3000}
     }, {
       provider: instrumented, apiKey: 'synthetic-test-key', model: 'fake-model', session: noMoveSession,
-      registry: {list:()=>({installations:[],activeEngineId:null,verificationEngineId:null}),getAdapter:()=>null} as never,
+      registry: {list:()=>({installations:[],activeEngineId:null}),getAdapter:()=>null} as never,
       traceStore: {save:()=>undefined} as never, signal:new AbortController().signal,onProgress:()=>undefined
     })
     check('首次具體問題可恢復短文回答 ' + scenario.name, result.finalText.includes('中') && provider.calls === scenario.calls)
@@ -2049,7 +2033,7 @@ async function main(): Promise<void> {
       followUpQuestion:'開局中路需要注意什麼？',
       budget:{engineTimeMs:100,maxEngineRounds:1,maxModelCalls:2,maxOutputTokens:3000}
     },{provider,apiKey:'synthetic-test-key',model:'fake-model',session:waitingSession,
-      registry:{list:()=>({installations:[],activeEngineId:'engine-1',verificationEngineId:null}),getAdapter:()=>({analyzePosition:()=>pendingEngine})} as never,
+      registry:{list:()=>({installations:[],activeEngineId:'engine-1'}),getAdapter:()=>({analyzePosition:()=>pendingEngine})} as never,
       traceStore:{save:()=>undefined} as never,signal:new AbortController().signal,onProgress:()=>undefined})
     await Promise.resolve()
     check('皮卡魚尚未完成主線時不呼叫模型',provider.calls === 0)
@@ -2095,8 +2079,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => null
       } as never,
@@ -2173,8 +2156,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => null
       } as never,
@@ -2229,8 +2211,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => ({
           analyzePosition: async () => {
@@ -2294,8 +2275,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -2768,8 +2748,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => ({
             analyzePosition: async (
@@ -2869,8 +2848,7 @@ async function main(): Promise<void> {
       registry: {
         list: () => ({
           installations: [],
-          activeEngineId: 'engine-1',
-          verificationEngineId: null
+          activeEngineId: 'engine-1'
         }),
         getAdapter: () => ({
           analyzePosition: async (): Promise<EngineAnalysis> => ({
@@ -2935,8 +2913,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -2993,8 +2970,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -3051,8 +3027,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -3109,8 +3084,7 @@ async function main(): Promise<void> {
         registry: {
           list: () => ({
             installations: [],
-            activeEngineId: 'engine-1',
-            verificationEngineId: null
+            activeEngineId: 'engine-1'
           }),
           getAdapter: () => null
         } as never,
@@ -3292,7 +3266,7 @@ async function main(): Promise<void> {
                 userMove: undefined
               },
           registry: {
-            list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+            list: () => ({ installations: [], activeEngineId: 'engine-1' }),
             getAdapter: () => null
           } as never,
           traceStore: { save: (trace: HarnessTrace) => traces.push(trace) } as never,
@@ -3380,7 +3354,7 @@ async function main(): Promise<void> {
       model: 'fake-model',
       session,
       registry: {
-        list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+        list: () => ({ installations: [], activeEngineId: 'engine-1' }),
         getAdapter: () => null
       } as never,
       traceStore: { save: () => undefined } as never,

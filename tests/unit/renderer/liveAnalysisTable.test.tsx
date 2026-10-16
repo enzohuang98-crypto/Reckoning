@@ -29,7 +29,6 @@ const thought: EngineThoughtEntry = {
   scoreDisplay: '+0.42',
   displayMove: '炮二平五',
   displayPrincipalVariation: ['炮二平五', '馬8進7', '馬二進三'],
-  engineRole: 'primary',
   engineName: 'Pikafish'
 }
 

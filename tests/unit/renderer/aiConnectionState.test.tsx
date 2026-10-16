@@ -29,8 +29,7 @@ const emptySecretStatus: SecretStatus = {
 
 const emptyEngineRegistry: EngineRegistrySnapshot = {
   installations: [],
-  activeEngineId: null,
-  verificationEngineId: null
+  activeEngineId: null
 }
 
 function textContent(node: TestRenderer.ReactTestInstance): string {

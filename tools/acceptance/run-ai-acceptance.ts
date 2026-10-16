@@ -794,9 +794,6 @@ function resolveAcceptanceCrossCheck(input: {
   if (!input.expectedHashes.includes(primarySha256)) {
     throw new Error('Configured primary engine does not match the acceptance corpus build set.')
   }
-  const registryHint = input.registry.getInstallation(
-    input.registry.list().verificationEngineId
-  )?.executablePath
   const siblingCandidates = readdirSync(dirname(primaryPath), {
     withFileTypes: true
   })
@@ -809,7 +806,6 @@ function resolveAcceptanceCrossCheck(input: {
   const candidates = [
     input.explicitPath,
     process.env.PIKAFISH_CROSSCHECK_PATH,
-    registryHint,
     ...siblingCandidates
   ].filter((path): path is string => Boolean(path))
   for (const candidate of [...new Set(candidates.map((path) => resolve(path)))]) {
@@ -1708,7 +1704,6 @@ async function runHarnessAttempt(input: {
       maxOutputTokens: 10_000
     },
     engineId: input.session.primaryEngineId,
-    verificationEngineId: input.session.verificationEngineId,
     reuseEvidence: true
   }
   const prompt = buildExplanationPrompt({

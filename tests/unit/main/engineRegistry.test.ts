@@ -92,8 +92,12 @@ check(
   ENGINE_PROFILES.every((profile) => reloadedProfiles.includes(profile.id))
 )
 
-registry.select(cyclone.id, pikafish.id)
-check('可分別選擇主引擎與複核引擎', registry.list().verificationEngineId === pikafish.id)
+registry.select(cyclone.id)
+check('可選擇主引擎', registry.list().activeEngineId === cyclone.id)
+check(
+  '雙引擎複核已移除：登錄快照不再含複核引擎欄位',
+  !Object.prototype.hasOwnProperty.call(registry.list(), 'verificationEngineId')
+)
 
 registry.updateDetected(cyclone.id, {
   verified: true,
@@ -107,7 +111,6 @@ check(
 
 registry.remove(cyclone.id)
 check('移除主引擎後自動切換剩餘引擎', registry.list().activeEngineId === pikafish.id)
-check('移除主引擎時清除衝突的複核選擇', registry.list().verificationEngineId === null)
 
 const legacyStorage = new FakeStorage()
 legacyStorage.values.set('engine-config.json', {

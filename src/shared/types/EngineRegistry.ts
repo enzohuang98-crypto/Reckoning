@@ -120,13 +120,11 @@ export interface EngineInstallation {
 export interface EngineRegistrySnapshot {
   installations: EngineInstallation[]
   activeEngineId: string | null
-  verificationEngineId: string | null
 }
 
 export const EMPTY_ENGINE_REGISTRY: EngineRegistrySnapshot = {
   installations: [],
-  activeEngineId: null,
-  verificationEngineId: null
+  activeEngineId: null
 }
 
 export function getEngineProfile(id: EngineProfileId): EngineProfile {

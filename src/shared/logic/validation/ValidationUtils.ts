@@ -24,8 +24,12 @@ function clampInteger(value: unknown, min: number, max: number, fallback: number
     : fallback
 }
 
-/** v4 以前可由使用者調整的 Harness 參數；v5 起改由 main 固定，讀到舊設定時一律丟棄。 */
-export const REMOVED_HARNESS_SETTING_KEYS = [
+/**
+ * v5 移除的設定：v4 以前可由使用者調整的 Harness 參數（改由 main 固定），
+ * 以及已移除的雙引擎複核開關。讀到舊設定時一律丟棄。
+ */
+export const REMOVED_SETTING_KEYS = [
+  'crossEngineEnabled',
   'harnessAnswerMode',
   'harnessAutoRun',
   'harnessReuseEvidence',
@@ -43,7 +47,7 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
     ...fallback,
     ...(value as Partial<AppSettings>)
   }
-  for (const key of REMOVED_HARNESS_SETTING_KEYS) delete candidate[key]
+  for (const key of REMOVED_SETTING_KEYS) delete candidate[key]
   const aiProvider = ALL_PROVIDER_IDS.includes(candidate.aiProvider)
     ? candidate.aiProvider
     : fallback.aiProvider
@@ -71,10 +75,6 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
       fallback.userMoveEvalMovetimeMs
     ),
     multiPv: clampInteger(candidate.multiPv, 1, 5, fallback.multiPv),
-    crossEngineEnabled:
-      typeof candidate.crossEngineEnabled === 'boolean'
-        ? candidate.crossEngineEnabled
-        : fallback.crossEngineEnabled,
     version: fallback.version
   }
 }

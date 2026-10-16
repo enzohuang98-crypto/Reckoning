@@ -126,12 +126,7 @@ function sanitizeRegistry(value: unknown): EngineRegistrySnapshot {
       typeof candidate.activeEngineId === 'string' &&
       ids.has(candidate.activeEngineId)
         ? candidate.activeEngineId
-        : installations[0]?.id ?? null,
-    verificationEngineId:
-      typeof candidate.verificationEngineId === 'string' &&
-      ids.has(candidate.verificationEngineId)
-        ? candidate.verificationEngineId
-        : null
+        : installations[0]?.id ?? null
   }
 }
 
@@ -193,8 +188,7 @@ export class EngineRegistryService {
     }
     const migrated: EngineRegistrySnapshot = {
       installations: [installation],
-      activeEngineId: installation.id,
-      verificationEngineId: null
+      activeEngineId: installation.id
     }
     this.snapshot = migrated
     this.persist()
@@ -275,38 +269,16 @@ export class EngineRegistryService {
       this.snapshot.activeEngineId === id
         ? installations[0]?.id ?? null
         : this.snapshot.activeEngineId
-    const verificationEngineId =
-      this.snapshot.verificationEngineId === id ||
-      this.snapshot.verificationEngineId === activeEngineId
-        ? null
-        : this.snapshot.verificationEngineId
-    this.snapshot = {
-      installations,
-      activeEngineId,
-      verificationEngineId
-    }
+    this.snapshot = { installations, activeEngineId }
     this.persist()
     return this.list()
   }
 
-  select(activeEngineId: string, verificationEngineId?: string | null): EngineRegistrySnapshot {
+  select(activeEngineId: string): EngineRegistrySnapshot {
     if (!this.snapshot.installations.some((item) => item.id === activeEngineId)) {
       throw new Error('找不到指定的主引擎。')
     }
-    if (
-      verificationEngineId &&
-      (!this.snapshot.installations.some(
-        (item) => item.id === verificationEngineId
-      ) ||
-        verificationEngineId === activeEngineId)
-    ) {
-      throw new Error('複核引擎必須是另一個已安裝的引擎。')
-    }
-    this.snapshot = {
-      ...this.snapshot,
-      activeEngineId,
-      verificationEngineId: verificationEngineId ?? null
-    }
+    this.snapshot = { ...this.snapshot, activeEngineId }
     this.persist()
     return this.list()
   }

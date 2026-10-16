@@ -36,6 +36,7 @@ async function main(): Promise<void> {
   assert.equal(migrated.version, 5)
   assert.equal('harnessAnswerMode' in migrated, false)
   assert.equal('harnessMaxEngineRounds' in migrated, false)
+  assert.equal('crossEngineEnabled' in migrated, false)
 
   const saved = JSON.parse(store.get('xiangqi.settings') ?? '{}') as Record<string, unknown>
   assert.equal(saved.version, 5)

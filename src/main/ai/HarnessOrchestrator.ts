@@ -2067,8 +2067,8 @@ export async function runExplanationHarness(
     deps.session.primaryEngineId ??
     deps.registry.list().activeEngineId ??
     'unknown-engine'
-  const verificationEngineId =
-    payload.verificationEngineId ?? deps.session.verificationEngineId
+  // 雙引擎複核已移除（P4-5）：session 不再帶複核引擎，以下複核分支只剩舊資料相容。
+  const verificationEngineId = deps.session.verificationEngineId
   const dualComparison =
     deps.session.dualEngineComparison ??
     buildDualEngineComparison(
