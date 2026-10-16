@@ -7,6 +7,7 @@
 
 import { app } from 'electron'
 import { existsSync } from 'node:fs'
+import { access } from 'node:fs/promises'
 import { basename, isAbsolute, resolve } from 'node:path'
 import {
   APP_DATA_SCHEMA_VERSION,
@@ -26,6 +27,15 @@ import {
   writeJsonFileAtomic,
   writeJsonFileAtomicAsync
 } from './SecureJsonFile'
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
 
 export const APP_DATA_FILE = 'app-data.json'
 export const RETIRED_STUDY_DATA_FILE = 'retired-study-data-v1.json'
@@ -64,6 +74,22 @@ export class StorageService {
     } catch {
       return fallback
     }
+  }
+
+  /** 非同步讀取 JSON 檔；不存在或無法解析時回傳 fallback（互動路徑用，設計原則 §9）。 */
+  async readAsync<T>(name: string, fallback: T, maxBytes = MAX_SETTINGS_FILE_BYTES): Promise<T> {
+    const path = this.resolve(name)
+    if (!(await pathExists(path))) return fallback
+    try {
+      return await readJsonFileAsync<T>(path, maxBytes)
+    } catch {
+      return fallback
+    }
+  }
+
+  /** 非同步原子寫入 JSON 檔（互動路徑用，設計原則 §9）。 */
+  async writeAsync<T>(name: string, data: T, maxBytes = MAX_SETTINGS_FILE_BYTES): Promise<void> {
+    await writeJsonFileAtomicAsync(this.resolve(name), data, maxBytes)
   }
 
   /** 寫入 JSON 檔 */

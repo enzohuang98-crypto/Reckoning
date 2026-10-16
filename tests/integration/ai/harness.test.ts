@@ -1010,11 +1010,11 @@ async function main(): Promise<void> {
     status: 'completed'
   }
   const legacyTraceStore = new HarnessTraceStore({
-    read: () => [legacyTrace]
+    readAsync: async () => [legacyTrace]
   } as never)
   check(
     '舊 trace 缺少新增 optional metadata 時仍可由 store 正常讀取',
-    legacyTraceStore.list()[0]?.id === legacyTrace.id
+    (await legacyTraceStore.list())[0]?.id === legacyTrace.id
   )
   check('首次實戰步正文只保留五個產品區塊', !result.finalText.includes('一般棋理補充'))
   check('模型提供的額外一般註記不會混入棋手正文', !result.finalText.includes('一般而言，先出正馬再補中炮'))

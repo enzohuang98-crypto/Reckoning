@@ -239,8 +239,9 @@ export async function runExplainPipelineV2(
     status: HarnessTrace['status'],
     extra: { finalText?: string; answerKind?: ExplanationAnswerKind; error?: unknown; model?: string }
   ): void => {
+    // 診斷紀錄非同步寫入（設計原則 §9）；store 內部依序執行，寫入失敗不影響回答。
     try {
-      deps.traceStore.save({
+      void Promise.resolve(deps.traceStore.save({
         id: traceId,
         createdAt: new Date().toISOString(),
         requestId: payload.requestId,
@@ -274,7 +275,7 @@ export async function runExplainPipelineV2(
         attempts,
         hardErrors: check?.hardErrors.map((error) => `${error.code} ${error.message}`) ?? [],
         softWarnings: check?.softWarnings.map((warning) => `${warning.code} ${warning.message}`) ?? []
-      })
+      })).catch(() => undefined)
     } catch {
       // 診斷紀錄寫入失敗不影響回答。
     }

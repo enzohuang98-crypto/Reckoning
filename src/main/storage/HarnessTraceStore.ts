@@ -380,12 +380,25 @@ function sanitizeAttempt(value: unknown): ExplainAttemptTrace | null {
   }
 }
 
+/**
+ * 本機解說診斷紀錄。所有讀寫都走非同步原子檔案操作（設計原則 §9），並以單一佇列依序執行：
+ * 每次解說後的 save、使用者按回饋的 setFeedback、清除與匯出彼此不會互相覆蓋。
+ */
 export class HarnessTraceStore {
+  private queue: Promise<unknown> = Promise.resolve()
+
   constructor(private readonly storage: StorageService) {}
 
-  list(): HarnessTrace[] {
+  /** 依序執行；前一個操作失敗不會卡住後面的操作。 */
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(operation, operation)
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
+  private async readAll(): Promise<HarnessTrace[]> {
     const cutoff = Date.now() - MAX_AGE_MS
-    const stored = this.storage.read<unknown>(
+    const stored = await this.storage.readAsync<unknown>(
       HARNESS_TRACE_FILE,
       [],
       MAX_APP_DATA_BYTES
@@ -400,41 +413,46 @@ export class HarnessTraceStore {
       .slice(0, MAX_TRACES)
   }
 
-  save(trace: HarnessTrace): void {
+  private writeAll(traces: HarnessTrace[]): Promise<void> {
+    return this.storage.writeAsync(HARNESS_TRACE_FILE, traces, MAX_APP_DATA_BYTES)
+  }
+
+  list(): Promise<HarnessTrace[]> {
+    return this.enqueue(() => this.readAll())
+  }
+
+  save(trace: HarnessTrace): Promise<void> {
     const sanitized = sanitizeTrace(trace)
-    if (!sanitized) throw new Error('Harness trace 格式無效。')
-    this.storage.write(
-      HARNESS_TRACE_FILE,
-      [sanitized, ...this.list().filter((item) => item.id !== trace.id)].slice(
-        0,
-        MAX_TRACES
-      ),
-      MAX_APP_DATA_BYTES
-    )
+    if (!sanitized) return Promise.reject(new Error('Harness trace 格式無效。'))
+    return this.enqueue(async () => {
+      const existing = await this.readAll()
+      await this.writeAll(
+        [sanitized, ...existing.filter((item) => item.id !== trace.id)].slice(0, MAX_TRACES)
+      )
+    })
   }
 
   /** Export uses the same positive allowlist as storage, never arbitrary JSON fields. */
-  listForExport(): HarnessTrace[] {
-    return this.list()
+  async listForExport(): Promise<HarnessTrace[]> {
+    return (await this.list())
       .map(sanitizeTrace)
       .filter((trace): trace is HarnessTrace => trace !== null)
   }
 
-  clear(): void {
-    this.storage.write(HARNESS_TRACE_FILE, [], MAX_APP_DATA_BYTES)
+  clear(): Promise<void> {
+    return this.enqueue(() => this.writeAll([]))
   }
 
   setFeedback(
     traceId: string,
     feedback: NonNullable<HarnessTrace['feedback']>
-  ): void {
-    this.storage.write(
-      HARNESS_TRACE_FILE,
-      this.list().map((trace) =>
-        trace.id === traceId ? { ...trace, feedback } : trace
-      ),
-      MAX_APP_DATA_BYTES
-    )
+  ): Promise<void> {
+    return this.enqueue(async () => {
+      const existing = await this.readAll()
+      await this.writeAll(
+        existing.map((trace) => (trace.id === traceId ? { ...trace, feedback } : trace))
+      )
+    })
   }
 
   /**
@@ -442,8 +460,8 @@ export class HarnessTraceStore {
    * 匯出後可直接加入 tests/fixtures 的回歸評測集，
    * 用 screenExplanationText 驗證未來版本不再產出同類問題。
    */
-  listRegressionCases(): HarnessRegressionCase[] {
-    return this.list()
+  async listRegressionCases(): Promise<HarnessRegressionCase[]> {
+    return (await this.list())
       .filter((trace) => trace.feedback !== undefined && trace.feedback !== 'helpful')
       .map((trace) => ({
         traceId: trace.id,
