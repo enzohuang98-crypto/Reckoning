@@ -1,0 +1,67 @@
+name: Tag release
+
+# 在 main 的最新 commit 建立 annotated 版本標籤（Release workflow 需要先有標籤）。
+# 只能手動觸發；標籤必須與 package.json 版本一致、版本說明必須存在，而且標籤不能已存在。
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to create on the current main commit, for example v0.4.15
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tag-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Create annotated tag on main
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate version, notes, and tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Tag must be a stable semantic version such as v0.4.15." >&2
+            exit 1
+          fi
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$TAG" ]; then
+            echo "Tag $TAG does not match package version v$version." >&2
+            exit 1
+          fi
+          if [ ! -f "docs/releases/$version.md" ]; then
+            echo "Release notes are missing: docs/releases/$version.md" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists." >&2
+            exit 1
+          fi
+
+      - name: Create annotated tag through the GitHub API
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$TAG" -f message="$TAG" -f object="$GITHUB_SHA" -f type=commit --jq .sha)"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$tag_sha" >/dev/null
+          echo "Created annotated tag $TAG at $GITHUB_SHA"
