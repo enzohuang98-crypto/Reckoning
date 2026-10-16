@@ -61,6 +61,8 @@ export interface PlyFact {
   /** 被吃的子所在的路（被吃方自己右手邊起算 1–9）。 */
   capturedFile: number | null
   givesCheck: boolean
+  /** 走這一手時，行棋方沒有其他合法著法（例如被將軍時只有一種應將方式）。 */
+  onlyLegalMove: boolean
   threats: ThreatFact[]
   /** 這一手新製造的可吃目標（走前已存在的不重複列出），依子力價值排序，最多 3 個。 */
   descriptors: PlyDescriptor[]
@@ -258,6 +260,23 @@ function describePly(
   return descriptors
 }
 
+/** 行棋方的合法著法數，數到 limit 就停（只需要知道是不是唯一）。 */
+function countLegalMoves(grid: BoardState['grid'], color: PieceColor, limit = 2): number {
+  let count = 0
+  for (let fromRow = 0; fromRow < grid.length; fromRow++) {
+    for (let fromCol = 0; fromCol < grid[fromRow].length; fromCol++) {
+      if (grid[fromRow][fromCol]?.color !== color) continue
+      for (let toRow = 0; toRow < grid.length; toRow++) {
+        for (let toCol = 0; toCol < grid[toRow].length; toCol++) {
+          const move = formatUciMove({ fromRow, fromCol, toRow, toCol })
+          if (move && legalMoveCheck(grid, color, move).ok && ++count >= limit) return count
+        }
+      }
+    }
+  }
+  return count
+}
+
 /** 逐手重播一條主線，最多 MAX_FACT_LINE_PLIES 手；遇到無法重播的著法就停並附說明。 */
 export function buildLineFacts(
   startFen: string,
@@ -293,6 +312,7 @@ export function buildLineFacts(
       captured: applied.captured?.type ?? null,
       capturedFile: applied.captured ? fileNumber(applied.captured.color, coords.toCol) : null,
       givesCheck: isKingInCheck(next.grid, opponent(side)),
+      onlyLegalMove: countLegalMoves(board.grid, side) === 1,
       threats: newThreats(board, next, side),
       descriptors: describePly(uci, moving.type, side)
     })
@@ -445,6 +465,15 @@ export function factMoveSet(facts: ExplanationFacts): Set<string> {
   return moves
 }
 
+/** 事實表中標為「唯一合法著法」的著法（顯示記譜）。 */
+export function factOnlyLegalMoves(facts: ExplanationFacts): Set<string> {
+  const moves = new Set<string>()
+  for (const line of [facts.bestLine, facts.userLine]) {
+    for (const ply of line?.plies ?? []) if (ply.onlyLegalMove) moves.add(ply.move)
+  }
+  return moves
+}
+
 /** 著法是否在某條線中吃子／將軍（任何一條線都算）。 */
 export function factMoveEvents(
   facts: ExplanationFacts
@@ -473,6 +502,7 @@ interface FactLabels {
   noCapture: string
   noCheck: string
   check: string
+  onlyLegalMove: string
   capture: (piece: string) => string
   threats: string
   protectedLabel: string
@@ -544,6 +574,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     noCapture: '未吃子',
     noCheck: '未將軍',
     check: '將軍',
+    onlyLegalMove: '唯一合法著法',
     capture: (piece) => `吃${piece}`,
     threats: '走完這步，下一手可吃',
     protectedLabel: '吃下後對方能吃回',
@@ -599,6 +630,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     noCapture: '未吃子',
     noCheck: '未将军',
     check: '将军',
+    onlyLegalMove: '唯一合法着法',
     capture: (piece) => `吃${piece}`,
     threats: '走完这步，下一手可吃',
     protectedLabel: '吃下后对方能吃回',
@@ -654,6 +686,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     noCapture: 'no capture',
     noCheck: 'no check',
     check: 'check',
+    onlyLegalMove: 'the only legal move',
     capture: (piece) => `captures ${piece}`,
     threats: 'after this move it can capture next',
     protectedLabel: 'can be recaptured',
@@ -725,7 +758,8 @@ function locatedName(
 
 function formatPly(ply: PlyFact, labels: FactLabels, language: ExplanationLanguage): string {
   const pieceName = labels.piece[ply.side][ply.piece]
-  const parts: string[] = ply.descriptors.map((descriptor) => labels.descriptor[descriptor](pieceName))
+  const parts: string[] = ply.onlyLegalMove ? [labels.onlyLegalMove] : []
+  parts.push(...ply.descriptors.map((descriptor) => labels.descriptor[descriptor](pieceName)))
   const enemy = opponent(ply.side)
   parts.push(
     ply.captured

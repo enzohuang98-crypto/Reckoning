@@ -10,6 +10,7 @@ import type { ExplanationLanguage } from '../../types/AIExplanationTypes'
 import {
   factMoveEvents,
   factMoveSet,
+  factOnlyLegalMoves,
   type ExplanationFacts
 } from '../analysis/ExplanationFacts'
 import { scoreUsedAsReason, VAGUE_PHRASES } from './ExplanationQualityScorer'
@@ -108,6 +109,28 @@ function visibleLength(text: string): number {
   return text.replace(/\s+/g, '').length
 }
 
+const FORCED_PATTERN = /必然|唯一|被迫|forced|only move/gi
+
+/**
+ * 「必然／唯一／被迫」只有在事實表標為「唯一合法著法」的那一步才成立：
+ * 同一個子句裡提到那一步就不算誤用（P3-9 live：將5進1 是唯一應將，卻被標警告）。
+ */
+function claimsForcedWithoutFact(text: string, facts: ExplanationFacts): boolean {
+  const onlyMoves = new Set([...factOnlyLegalMoves(facts)].map(normalizeMoveText))
+  const normalized = normalizeMoveText(text)
+  for (const match of normalized.matchAll(FORCED_PATTERN)) {
+    const at = match.index ?? 0
+    let start = at
+    while (start > 0 && !CLAUSE_BREAK.test(normalized[start - 1])) start--
+    let end = at
+    while (end < normalized.length && !CLAUSE_BREAK.test(normalized[end])) end++
+    const clause = normalized.slice(start, end)
+    const covered = extractMentionedMoves(clause).some((move) => onlyMoves.has(move.move))
+    if (!covered) return true
+  }
+  return false
+}
+
 export function checkAnswer(input: AnswerCheckInput): AnswerCheckResult {
   const text = input.text.trim()
   const hardErrors: AnswerIssue<HardErrorCode>[] = []
@@ -185,7 +208,7 @@ export function checkAnswer(input: AnswerCheckInput): AnswerCheckResult {
   if (visibleLength(text) > SOFT_MAX_CHARS[input.mode]) {
     softWarnings.push(issue('S2', `回答偏長（超過 ${SOFT_MAX_CHARS[input.mode]} 字）。`))
   }
-  if (/必然|唯一|被迫|forced|only move/i.test(text)) {
+  if (claimsForcedWithoutFact(text, input.facts)) {
     softWarnings.push(issue('S3', '把主線說成必然／唯一／被迫。'))
   }
   if (VAGUE_PHRASES.some((phrase) => text.includes(phrase))) {
