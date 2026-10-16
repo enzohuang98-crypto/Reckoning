@@ -9,73 +9,47 @@
  *   ai:generate-explanation:cancel (renderer→main)
  *
  * 規則（§2.17.10）：
- *  - resolveExplanationCredential() 是唯一注入 API key 的入口；v1 由 buildAIExplanationRequest()
- *    組 PromptBuilder prompt，v2 由 explain/promptV2 組 prompt（XQA_EXPLAIN_PIPELINE=v1 可回滾）。
- *  - abort 檢查放在 chunk 處理之後；done 分支先設 completedNormally=true 再 reply 並 break。
+ *  - resolveExplanationCredential()（ai/explanationCredential）是唯一注入 API key 的入口；v1 由
+ *    buildAIExplanationRequest() 組 PromptBuilder prompt，v2 由 explain/promptV2 組 prompt
+ *    （XQA_EXPLAIN_PIPELINE=v1 可回滾）。
+ *  - abort 檢查放在 chunk 處理之後；done 分支先設 completedNormally=true 再 reply。
  *  - catch 僅在 !completedNormally 時送 error；finally 清除 activeExplanationRequests。
  *  - cancel 必須實際呼叫 controller.abort()。
  *
- * 金鑰流向：renderer 只負責 set/has/delete；解密與使用只在 main 內進行，
- * API key 不得被 log（§2.11）。
+ * 這裡也是 AI 相關 IPC 的單一註冊入口：憑證與模型設定通道在 aiCredentialHandlers，
+ * 診斷紀錄通道在 harnessTraceHandlers。
  */
 
-import { createHash } from 'node:crypto'
-import { dialog, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import {
   IPC,
-  type AutoConfigureCredentialResult,
   type GenerateExplanationErrorPayload,
-  type GenerateExplanationStartPayload,
-  type OpenRouterBackupModelsResult,
-  type SavedOpenRouterModelsResult,
-  type SecretCredentialRef,
-  type SecretMutationResult,
-  type SwitchSavedOpenRouterModelResult,
-  type TestCredentialResult
+  type GenerateExplanationStartPayload
 } from '@shared/types/ipc'
-import {
-  type AIProviderId
-} from '@shared/types/AIProviderTypes'
-import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
-import { SecretStore } from '../storage/SecretStore'
+import type { SecretStore } from '../storage/SecretStore'
 import {
   AnalysisSessionNotFoundError,
   type AnalysisSessionStore
 } from '../storage/AnalysisSessionStore'
 import { getAIProvider } from '../ai/AIProvider'
-import { autoConfigureCredential } from '../ai/autoConfigureCredential'
-import { OpenRouterSavedModelService } from '../ai/switchOpenRouterModel'
-import {
-  AiPreferencesStore,
-  validateOpenRouterBackupModels
-} from '../ai/AiPreferencesStore'
-import {
-  HarnessExplanationUnavailableError,
-  runExplanationHarness
-} from '../ai/HarnessOrchestrator'
-import {
-  AIResponseValidationError,
-  aiErrorStatus,
-  describeAIExecutionError,
-  describeCredentialTestError
-} from '../ai/http'
+import { AiPreferencesStore } from '../ai/AiPreferencesStore'
+import { runExplanationHarness } from '../ai/HarnessOrchestrator'
 import {
   FIXED_HARNESS_OPTIONS,
-  prepareExplanationExecution,
-  type PreparedExplanationExecution
+  prepareExplanationExecution
 } from '../ai/prepareExplanationExecution'
-import { buildExplanationPrompt } from '../ai/promptBuilder'
+import {
+  buildAIExplanationRequest,
+  resolveExplanationCredential
+} from '../ai/explanationCredential'
 import { runExplainPipelineV2 } from '../ai/explain/ExplainPipelineV2'
 import { selectExplainPipeline } from '../ai/explain/pipelineFlag'
-import { modelRegistry, UnsupportedModelError } from '../ai/ModelRegistry'
+import { modelRegistry } from '../ai/ModelRegistry'
 import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
 import {
   MAX_AI_RESPONSE_CHARS,
   isLoopbackAiBaseUrl,
-  normalizeAiBaseUrl,
-  normalizeApiKey,
-  normalizeProviderId,
   safeRequestId,
   SecurityValidationError,
   validateGenerateExplanationPayload
@@ -83,276 +57,9 @@ import {
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { StorageService } from '../storage/StorageService'
 import { HarnessTraceStore } from '../storage/HarnessTraceStore'
-import type { HarnessTraceExportV1 } from '@shared/types/Harness'
-import {
-  KeyedOperationGate,
-  OperationBusyError
-} from '../security/KeyedOperationGate'
-
-/** API key 缺失（§2.17.9：不得用空字串或 placeholder 繼續呼叫） */
-export class MissingApiKeyError extends Error {
-  constructor(
-    public readonly provider: AIProviderId,
-    public readonly model: string,
-    /** 檔案裡有金鑰但解密失敗（needsReentry），與「從未設定」區分開來 */
-    public readonly needsReentry = false
-  ) {
-    super(`Missing API key for credential: ${provider}/${model}`)
-    this.name = 'MissingApiKeyError'
-  }
-}
-
-export class ProviderEndpointMismatchError extends Error {
-  constructor() {
-    super('OpenAI-compatible endpoint does not match the endpoint bound to the stored API key.')
-    this.name = 'ProviderEndpointMismatchError'
-  }
-}
-
-export function assertProviderEndpointBinding(
-  provider: AIProviderId,
-  requestedBaseUrl: string | undefined,
-  apiKey: string,
-  boundBaseUrl: string | null
-): void {
-  if (
-    provider === 'openai-compatible' &&
-    apiKey &&
-    (!requestedBaseUrl || requestedBaseUrl !== boundBaseUrl)
-  ) {
-    throw new ProviderEndpointMismatchError()
-  }
-}
-
-/**
- * buildAIExplanationRequest（§2.17.9）：
- * SecretStore、PromptBuilder、ModelRegistry、AnalysisSessionStore 的集中銜接點。
- * IPC handler 不得自己組 prompt 或讀 API key。
- */
-export interface ResolvedExplanationCredential {
-  provider: AIProviderId
-  model: string
-  apiKey: string
-  baseUrl?: string
-}
-
-/**
- * 憑證解析（v1、v2 共用）：取出與這次請求相符的已存金鑰，並守住相容服務網址綁定。
- * 金鑰只在 main 內使用，不得 log。
- */
-export async function resolveExplanationCredential(
-  execution: PreparedExplanationExecution,
-  deps: {
-    secretStore: SecretStore
-    credentialSnapshot?: Awaited<ReturnType<SecretStore['captureActiveCredential']>>
-  }
-): Promise<ResolvedExplanationCredential> {
-  const payload = execution.effective
-  const snapshot = deps.credentialSnapshot
-  const snapshotMatches = Boolean(
-    snapshot &&
-      snapshot.credential.provider === payload.provider &&
-      snapshot.credential.model === payload.model &&
-      (snapshot.credential.baseUrl ?? '') === (payload.baseUrl ?? '')
-  )
-  const captured = snapshotMatches
-    ? { apiKey: snapshot!.apiKey, exists: true }
-    : await deps.secretStore.captureCredential(
-        payload.provider,
-        payload.model,
-        payload.baseUrl
-      )
-  const apiKey = captured.apiKey ?? ''
-  const hasExactCredential = captured.exists
-  if (!apiKey && (
-    hasExactCredential ||
-    payload.provider !== 'openai-compatible' ||
-    !isLoopbackAiBaseUrl(payload.baseUrl)
-  )) {
-    throw new MissingApiKeyError(
-      payload.provider,
-      payload.model,
-      hasExactCredential
-    )
-  }
-  assertProviderEndpointBinding(
-    payload.provider,
-    payload.baseUrl,
-    apiKey,
-    hasExactCredential ? payload.baseUrl ?? null : null
-  )
-  return {
-    provider: payload.provider,
-    model: payload.model,
-    apiKey,
-    ...(payload.baseUrl ? { baseUrl: payload.baseUrl } : {})
-  }
-}
-
-/**
- * buildAIExplanationRequest（§2.17.9，v1 Harness 用）：憑證解析＋PromptBuilder 長文 prompt。
- * v2 管線只用 resolveExplanationCredential，prompt 由 explain/promptV2 組裝。
- */
-export async function buildAIExplanationRequest(
-  execution: PreparedExplanationExecution,
-  deps: {
-    secretStore: SecretStore
-    credentialSnapshot?: Awaited<ReturnType<SecretStore['captureActiveCredential']>>
-  }
-): Promise<AIExplanationRequest> {
-  const payload = execution.effective
-  const { apiKey } = await resolveExplanationCredential(execution, deps)
-  const session = payload.session
-  const prompt = buildExplanationPrompt({
-    engineAnalysis: session.engineAnalysis,
-    moveComparison: session.moveComparison,
-    userLevel: payload.userLevel,
-    explanationStyle: payload.explanationStyle,
-    language: payload.language,
-    conversationHistory: payload.conversationHistory,
-    followUpQuestion: payload.followUpQuestion
-  })
-  return {
-    provider: payload.provider,
-    model: payload.model,
-    apiKey,
-    baseUrl: payload.baseUrl,
-    prompt,
-    metadata: {
-      requestId: payload.requestId,
-      analysisId: payload.analysisId,
-      userLevel: payload.userLevel,
-      explanationStyle: payload.explanationStyle
-    }
-  }
-}
-
-/** 錯誤分類（§2.17.6）。訊息不得含 API key。 */
-export function mapStreamingErrorToPayload(
-  requestId: string,
-  error: unknown
-): GenerateExplanationErrorPayload {
-  if (error instanceof DOMException && error.name === 'AbortError') {
-    return { requestId, code: 'cancelled', message: '已取消生成。' }
-  }
-  if (error instanceof MissingApiKeyError) {
-    return {
-      requestId,
-      code: 'missing_api_key',
-      message: error.needsReentry
-        ? `已保存的 ${error.provider}/${error.model} API 金鑰無法解密（系統加密金鑰已變動），請至設定頁重新輸入。`
-        : `尚未設定 ${error.provider}/${error.model} 的 API 金鑰，請至設定頁輸入。`
-    }
-  }
-  if (error instanceof UnsupportedModelError) {
-    return {
-      requestId,
-      code: 'unsupported_model',
-      message: `不支援的模型：${error.provider}/${error.model}。請至設定頁選擇有效模型。`
-    }
-  }
-  if (error instanceof ProviderEndpointMismatchError) {
-    return {
-      requestId,
-      code: 'invalid_request',
-      message: '相容服務網址已變更。為避免把 API Key 送到錯誤端點，請到設定頁重新確認並儲存金鑰。'
-    }
-  }
-  if (error instanceof AnalysisSessionNotFoundError) {
-    return {
-      requestId,
-      code: 'analysis_session_not_found',
-      message: '這次分析結果已過期，請重新分析局面後再生成 AI 解釋。'
-    }
-  }
-  if (error instanceof HarnessExplanationUnavailableError) {
-    return {
-      requestId,
-      code: 'provider_error',
-      message: error.message,
-      failureReason: error.reason
-    }
-  }
-  if (error instanceof SecurityValidationError) {
-    return {
-      requestId,
-      code: 'invalid_request',
-      message: error.message
-    }
-  }
-  if (error instanceof AIResponseValidationError) {
-    const diagnostic = describeAIExecutionError(error, 'AI 服務')
-    const message =
-      error.category === 'response_format'
-        ? 'AI 回應格式無法驗證，請重試；若持續發生，請改用支援 JSON 的模型。'
-        : error.category === 'model_mismatch'
-          ? 'AI 實際回報的模型與所選模型不一致，請重新讀取模型清單後再試。'
-          : error.details.reason === 'output_truncated'
-            ? 'AI 解說因輸出長度限制而未完成，請重試或改用輸出上限較高的模型。'
-            : 'AI 模型沒有交付正式文字答案，請重試或改用其他模型。'
-    return { requestId, code: 'provider_error', message, diagnostic }
-  }
-  if (error instanceof Error) {
-    // Anthropic SDK 取消時丟 APIUserAbortError（非 DOMException）
-    if (error.name === 'APIUserAbortError' || error.name === 'AbortError') {
-      return { requestId, code: 'cancelled', message: '已取消生成。' }
-    }
-    const status = aiErrorStatus(error)
-    if (status === 429) {
-      return {
-        requestId,
-        code: 'rate_limited',
-        message: '模型呼叫被限流 (rate limit)，請稍後重試。',
-        diagnostic: describeAIExecutionError(error, 'AI 服務')
-      }
-    }
-    if (status === 503) {
-      return {
-        requestId,
-        code: 'provider_error',
-        message: 'AI 服務目前過載或暫時不可用 (503)，本次未顯示替代模板。請稍後重試。',
-        diagnostic: describeAIExecutionError(error, 'AI 服務')
-      }
-    }
-    if (typeof status === 'number' && status >= 500) {
-      return {
-        requestId,
-        code: 'provider_error',
-        message: status === 502
-          ? '目前模型暫時無法完成請求 (502)。可稍後重試，或使用同一把 key 更換模型。'
-          : `AI 服務暫時無法完成請求 (${status})，本次未顯示替代模板。請重試。`,
-        diagnostic: describeAIExecutionError(error, 'AI 服務')
-      }
-    }
-    // fetch 網路層失敗（DNS/連線中斷）為 TypeError；SDK 為 APIConnectionError
-    if (error.name === 'APIConnectionError' || error instanceof TypeError) {
-      return {
-        requestId,
-        code: 'network_error',
-        message: '網路連線失敗，請檢查網路後重試。',
-        diagnostic: describeAIExecutionError(error, 'AI 服務')
-      }
-    }
-    if (typeof status === 'number' || /API 錯誤/.test(error.message)) {
-      return {
-        requestId,
-        code: 'provider_error',
-        message: 'AI 服務回報錯誤，請檢查模型與金鑰設定後重試。',
-        diagnostic: describeAIExecutionError(error, 'AI 服務')
-      }
-    }
-    return {
-      requestId,
-      code: 'unknown_error',
-      message: 'AI 解釋生成發生錯誤。'
-    }
-  }
-  return {
-    requestId,
-    code: 'unknown_error',
-    message: 'AI 解釋生成發生未知錯誤。'
-  }
-}
+import { registerAiCredentialHandlers } from './aiCredentialHandlers'
+import { registerHarnessTraceHandlers } from './harnessTraceHandlers'
+import { mapStreamingErrorToPayload } from './explanationErrorPayload'
 
 export function registerAiExplanationHandlers(
   secretStore: SecretStore,
@@ -361,335 +68,13 @@ export function registerAiExplanationHandlers(
   storage: StorageService
 ): void {
   const traceStore = new HarnessTraceStore(storage)
-  const credentialTestGate = new KeyedOperationGate(2)
-  const savedOpenRouterModels = new OpenRouterSavedModelService(secretStore)
   let aiPreferencesStore: AiPreferencesStore | null = null
   // 第一次用到才建立，避免只註冊通道的流程（與測試）就觸碰檔案系統。
   const aiPreferences = (): AiPreferencesStore =>
     (aiPreferencesStore ??= new AiPreferencesStore(storage.filePath('ai-preferences.json')))
 
-  const normalizeCredential = (rawInput: unknown): SecretCredentialRef => {
-    if (typeof rawInput !== 'object' || rawInput === null) {
-      throw new SecurityValidationError('API 憑證格式無效。')
-    }
-    const value = rawInput as Record<string, unknown>
-    const provider = normalizeProviderId(value.provider)
-    if (typeof value.model !== 'string') {
-      throw new SecurityValidationError('模型 ID 格式無效。')
-    }
-    const model = modelRegistry.getModel(provider, value.model.trim()).model
-    const baseUrl =
-      provider === 'openai-compatible'
-        ? normalizeAiBaseUrl(value.baseUrl)
-        : undefined
-    return { provider, model, ...(baseUrl ? { baseUrl } : {}) }
-  }
-
-  const normalizeSavedOpenRouterSource = (rawInput: unknown): SecretCredentialRef => {
-    if (typeof rawInput !== 'object' || rawInput === null) {
-      throw new SecurityValidationError('OpenRouter 模型操作格式無效。')
-    }
-    const value = rawInput as Record<string, unknown>
-    const rawSource = value.sourceCredential
-    if (typeof rawSource !== 'object' || rawSource === null) {
-      throw new SecurityValidationError('OpenRouter 來源憑證格式無效。')
-    }
-    const source = rawSource as Record<string, unknown>
-    if (
-      source.provider !== 'openrouter' ||
-      typeof source.model !== 'string' ||
-      source.baseUrl !== undefined
-    ) {
-      throw new SecurityValidationError('只允許使用沒有自訂網址的 OpenRouter 已存憑證。')
-    }
-    const model = modelRegistry.getModel('openrouter', source.model.trim()).model
-    return { provider: 'openrouter', model }
-  }
-
-  // ---- SecretStore 通道 ----
-  ipcMain.handle(IPC.SECRET_IS_AVAILABLE, (event): boolean => {
-    assertTrustedIpcSender(event)
-    return secretStore.isEncryptionAvailable()
-  })
-
-  ipcMain.handle(
-    IPC.SECRET_SET,
-    async (
-      event,
-      rawInput: unknown
-    ): Promise<SecretMutationResult> => {
-      assertTrustedIpcSender(event)
-      const credential = normalizeCredential(rawInput)
-      const value = rawInput as Record<string, unknown>
-      const { apiKey } = normalizeApiKey(value.apiKey, credential.provider)
-      await secretStore.setCredential(
-        credential.provider,
-        credential.model,
-        apiKey,
-        credential.baseUrl
-      )
-      return { ok: true, status: await secretStore.getStatus() }
-    }
-  )
-
-  ipcMain.handle(
-    IPC.SECRET_ACTIVATE,
-    async (event, rawInput: unknown): Promise<SecretMutationResult> => {
-      assertTrustedIpcSender(event)
-      const credential = normalizeCredential(rawInput)
-      if (!(await secretStore.setActiveCredential(
-        credential.provider,
-        credential.model,
-        credential.baseUrl
-      ))) {
-        throw new SecurityValidationError('所選 API 憑證不存在或無法解密。')
-      }
-      return { ok: true, status: await secretStore.getStatus() }
-    }
-  )
-
-  ipcMain.handle(IPC.AI_HARNESS_TRACE_LIST, (event) => {
-    assertTrustedIpcSender(event)
-    return traceStore.list()
-  })
-
-  ipcMain.handle(IPC.AI_HARNESS_TRACE_CLEAR, (event) => {
-    assertTrustedIpcSender(event)
-    traceStore.clear()
-    return { ok: true as const }
-  })
-
-  ipcMain.handle(IPC.AI_HARNESS_TRACE_EXPORT, async (event) => {
-    assertTrustedIpcSender(event)
-    const result = await dialog.showSaveDialog({
-      title: '匯出 Harness 診斷紀錄',
-      defaultPath: `xiangqi-harness-traces-${new Date()
-        .toISOString()
-        .slice(0, 10)}.json`,
-      filters: [{ name: 'JSON', extensions: ['json'] }]
-    })
-    if (result.canceled || !result.filePath) {
-      return { ok: false as const, cancelled: true }
-    }
-    storage.writeAbsolute(result.filePath, {
-      schemaVersion: 1,
-      exportedAt: new Date().toISOString(),
-      traces: traceStore.listForExport(),
-      // 使用者標記「不清楚／不正確／證據不足」的解說，轉為可重放的回歸案例
-      regressionCases: traceStore.listRegressionCases()
-    } satisfies HarnessTraceExportV1)
-    return { ok: true as const, filePath: result.filePath }
-  })
-
-  ipcMain.handle(IPC.AI_HARNESS_TRACE_FEEDBACK, (event, raw: unknown) => {
-    assertTrustedIpcSender(event)
-    if (typeof raw !== 'object' || raw === null) {
-      throw new SecurityValidationError('回饋格式無效。')
-    }
-    const value = raw as Record<string, unknown>
-    const allowed = new Set([
-      'helpful',
-      'unclear',
-      'incorrect',
-      'missing_evidence'
-    ])
-    if (
-      typeof value.traceId !== 'string' ||
-      value.traceId.length > 128 ||
-      typeof value.feedback !== 'string' ||
-      !allowed.has(value.feedback)
-    ) {
-      throw new SecurityValidationError('回饋格式無效。')
-    }
-    traceStore.setFeedback(
-      value.traceId,
-      value.feedback as 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
-    )
-    return { ok: true as const }
-  })
-
-  ipcMain.handle(IPC.SECRET_STATUS, async (event) => {
-    assertTrustedIpcSender(event)
-    return await secretStore.getStatus()
-  })
-
-  ipcMain.handle(
-    IPC.SECRET_DELETE,
-    async (event, rawInput: unknown): Promise<SecretMutationResult> => {
-      assertTrustedIpcSender(event)
-      const credential = normalizeCredential(rawInput)
-      await secretStore.deleteCredential(
-        credential.provider,
-        credential.model,
-        credential.baseUrl
-      )
-      return { ok: true, status: await secretStore.getStatus() }
-    }
-  )
-
-  // ---- 單一金鑰自動辨識、列出實際可用模型、驗證並儲存 ----
-  ipcMain.handle(
-    IPC.AI_AUTO_CONFIGURE_CREDENTIAL,
-    async (event, rawInput: unknown): Promise<AutoConfigureCredentialResult> => {
-      assertTrustedIpcSender(event)
-      const value =
-        typeof rawInput === 'object' && rawInput !== null
-          ? (rawInput as Record<string, unknown>)
-          : {}
-      const apiKeyForGate =
-        typeof value.apiKey === 'string' ? value.apiKey.trim() : ''
-      const requestedModel =
-        typeof value.model === 'string' ? value.model.trim() : ''
-      const digest = createHash('sha256').update(apiKeyForGate).digest('hex')
-      try {
-        return await credentialTestGate.run(
-          `auto\u001f${digest}\u001f${requestedModel}`,
-          () =>
-            autoConfigureCredential(rawInput, {
-              getProvider: getAIProvider,
-              secretStore
-            })
-        )
-      } catch (error) {
-        if (error instanceof OperationBusyError) {
-          return { ok: false, message: '已有金钥匙连线测试进行中，请稍后再试。' }
-        }
-        logger.warn('AI credential auto configuration failed', {
-          error: error instanceof Error ? error.name : 'unknown'
-        })
-        const classified = describeCredentialTestError(error, 'AI', 'key')
-        return {
-          ok: false,
-          message: classified.message,
-          ...(classified.diagnostic
-            ? { diagnostic: classified.diagnostic }
-            : {})
-        }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    IPC.AI_OPENROUTER_SAVED_MODELS,
-    async (event, rawInput: unknown): Promise<SavedOpenRouterModelsResult> => {
-      assertTrustedIpcSender(event)
-      const source = normalizeSavedOpenRouterSource(rawInput)
-      return await savedOpenRouterModels.listModels(source)
-    }
-  )
-
-  ipcMain.handle(
-    IPC.AI_OPENROUTER_SWITCH_MODEL,
-    async (event, rawInput: unknown): Promise<SwitchSavedOpenRouterModelResult> => {
-      assertTrustedIpcSender(event)
-      const source = normalizeSavedOpenRouterSource(rawInput)
-      const value = rawInput as Record<string, unknown>
-      if (typeof value.targetModel !== 'string') {
-        throw new SecurityValidationError('目標模型格式無效。')
-      }
-      const targetModel = modelRegistry.getModel(
-        'openrouter',
-        value.targetModel.trim()
-      ).model
-      if (
-        typeof value.operationId !== 'string' ||
-        !/^[A-Za-z0-9._:-]{1,128}$/.test(value.operationId)
-      ) {
-        throw new SecurityValidationError('操作識別碼格式無效。')
-      }
-      return await savedOpenRouterModels.switchModel(
-        source,
-        targetModel,
-        value.operationId
-      )
-    }
-  )
-
-  ipcMain.handle(
-    IPC.AI_OPENROUTER_GET_BACKUP_MODELS,
-    async (event): Promise<OpenRouterBackupModelsResult> => {
-      assertTrustedIpcSender(event)
-      return { ok: true, models: (await aiPreferences().get()).openRouterBackupModels }
-    }
-  )
-
-  ipcMain.handle(
-    IPC.AI_OPENROUTER_SET_BACKUP_MODELS,
-    async (event, rawInput: unknown): Promise<OpenRouterBackupModelsResult> => {
-      assertTrustedIpcSender(event)
-      const source = normalizeSavedOpenRouterSource(rawInput)
-      const requested = (rawInput as Record<string, unknown>).models
-      if (Array.isArray(requested) && requested.length === 0) {
-        await aiPreferences().setOpenRouterBackupModels([])
-        return { ok: true, models: [] }
-      }
-      // 只接受這把已存金鑰此刻讀得到的免費模型；renderer 無法塞入任意模型。
-      const listed = await savedOpenRouterModels.listModels(source)
-      if (!listed.ok) return { ok: false, message: listed.message }
-      const validation = validateOpenRouterBackupModels(
-        requested,
-        source.model,
-        listed.models.map((model) => model.id)
-      )
-      if (!validation.ok) return validation
-      await aiPreferences().setOpenRouterBackupModels(validation.models)
-      return { ok: true, models: validation.models }
-    }
-  )
-
-  // ---- 低用量實際推論測試（不落地草稿金鑰） ----
-  ipcMain.handle(
-    IPC.AI_TEST_CREDENTIAL,
-    async (event, rawInput: unknown): Promise<TestCredentialResult> => {
-      assertTrustedIpcSender(event)
-      const credential = normalizeCredential(rawInput)
-      const value = rawInput as Record<string, unknown>
-      let apiKey: string
-      if (typeof value.apiKey === 'string' && value.apiKey.trim()) {
-        apiKey = normalizeApiKey(value.apiKey, credential.provider).apiKey
-      } else {
-        const stored = await secretStore.getCredential(
-          credential.provider,
-          credential.model,
-          credential.baseUrl
-        )
-        if (stored) {
-          apiKey = stored
-        } else if (
-          credential.provider === 'openai-compatible' &&
-          isLoopbackAiBaseUrl(credential.baseUrl)
-        ) {
-          apiKey = ''
-        } else {
-          return { ok: false, message: '尚未設定金鑰，請先貼上金鑰再測試。' }
-        }
-      }
-      const apiKeyDigest = createHash('sha256').update(apiKey).digest('hex')
-      const admissionKey = [
-        credential.provider,
-        credential.model,
-        credential.baseUrl ?? '',
-        apiKeyDigest
-      ].join('\u001f')
-      try {
-        return await credentialTestGate.run(admissionKey, () =>
-          getAIProvider(credential.provider).testCredential(
-            apiKey,
-            credential.model,
-            credential.baseUrl
-          )
-        )
-      } catch (error) {
-        if (error instanceof OperationBusyError) {
-          return {
-            ok: false,
-            message: '同時測試工作過多，請等目前測試完成後再試。'
-          }
-        }
-        throw error
-      }
-    }
-  )
+  registerAiCredentialHandlers(secretStore, aiPreferences)
+  registerHarnessTraceHandlers(traceStore, storage)
 
   // ---- AI 解釋 streaming（§2.17.5 最終版 loop） ----
   const activeExplanationRequests = new Map<string, AbortController>()

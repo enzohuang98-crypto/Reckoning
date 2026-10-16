@@ -61,6 +61,7 @@ src/
       explain/                  #   ★ v2 解說管線（預設）：ExplainPipelineV2、promptV2、repairPrompt、budget、pipelineFlag
       HarnessOrchestrator.ts    #   v1 Harness：只剩 XQA_EXPLAIN_PIPELINE=v1 回滾路徑使用
       prepareExplanationExecution.ts # 由驗證過的 payload + 權威 session 建立不可變執行（含 FIXED_HARNESS_OPTIONS）
+      explanationCredential.ts  #   唯一把 API key 帶進解說的入口（resolveExplanationCredential）＋ v1 請求組裝
       promptBuilder.ts          #   v1 prompt（護欄；禁用 EngineScore.raw）
       AiPreferencesStore.ts     #   OpenRouter 備援模型（最多 2 個 :free；async 原子寫入）
       http.ts                   #   共用 fetch 包裝：大小上限、redirect: 'error'、錯誤遮蔽、429 額度判讀
@@ -68,7 +69,9 @@ src/
     security/                   #   IpcSecurity（來源 frame 驗證）、InputValidation、BrowserSecurity、KeyedOperationGate
     storage/                    #   StorageService、SecureJsonFile、SecretStore（全 async）、AnalysisSessionStore（TTL 2h）、HarnessTraceStore
     update/                     #   AppUpdaterService、UpdatePolicy、UpdatePreferencesStore
-    ipc/                        #   engineAnalysisHandlers、aiExplanationHandlers（ai:* / secret:* / 診斷紀錄）、dataHandlers
+    ipc/                        #   aiExplanationHandlers（AI 通道單一註冊入口＋解說串流）、aiCredentialHandlers（secret:*、金鑰測試、
+                                #   OpenRouter 模型與備援）、harnessTraceHandlers（診斷紀錄）、explanationErrorPayload、
+                                #   engineAnalysisHandlers、dataHandlers
   preload/index.ts              # contextBridge 暴露型別安全的 window.api
   renderer/src/                 # React UI（無 Node 權限）
     App.tsx、app/               #   App Shell（分析／設定）、StartupScreen、ErrorBoundary
@@ -123,7 +126,8 @@ Harness 模式與預算不是使用者設定：`FIXED_HARNESS_OPTIONS`（main �
    - null / NaN / Infinity → unknown；不得修改閾值、不得用 UI 四捨五入值分類。
    confidence 依 §2.13.6：0 reason→high、1→medium、≥2 或強制條件→low。
 5. **main / renderer 嚴格分離**：`contextIsolation: true`、`nodeIntegration: false`；renderer 只透過
-   `window.api` 與 main 溝通；每個 `ipcMain.handle` 先 `assertTrustedIpcSender`。
+   `window.api` 與 main 溝通；每個 `ipcMain.handle`／`ipcMain.on` 先 `assertTrustedIpcSender`
+   （`tests/architecture/ipcSenderGuard.test.ts` 會掃描 `src/main` 全部 handler）。
 6. **視角反轉只在 PikafishAdapter**：candidate_move 不取負；separate_engine_call 必取負
    （`invertEngineScore`，mate 0 反轉為 +MATE_SCORE）；parser 階段禁止取負。
 7. （已移除：買斷授權已於 P4-5 刪除。保留編號，避免其他文件引用的條號錯位。）

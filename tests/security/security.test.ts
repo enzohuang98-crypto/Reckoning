@@ -31,7 +31,7 @@ import { PikafishAdapter } from '../../src/main/engine/PikafishAdapter'
 import {
   assertProviderEndpointBinding,
   ProviderEndpointMismatchError
-} from '../../src/main/ipc/aiExplanationHandlers'
+} from '../../src/main/ai/explanationCredential'
 import {
   EnginePathGrantError,
   EnginePathGrantStore
@@ -377,8 +377,9 @@ const updaterPublishConfig = readFileSync(
   resolve('electron-builder.publish.cjs'),
   'utf8'
 )
+// 金鑰測試的併發閘門與 sha256 摘要位於憑證通道模組（自 aiExplanationHandlers 拆出）。
 const aiHandlerSource = readFileSync(
-  resolve('src/main/ipc/aiExplanationHandlers.ts'),
+  resolve('src/main/ipc/aiCredentialHandlers.ts'),
   'utf8'
 )
 const engineHandlerSource = readFileSync(

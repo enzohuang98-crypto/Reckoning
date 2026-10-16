@@ -29,7 +29,7 @@ import {
   EngineAnalysisError,
   PikafishAdapter
 } from '../../src/main/engine/PikafishAdapter'
-import { mapStreamingErrorToPayload } from '../../src/main/ipc/aiExplanationHandlers'
+import { mapStreamingErrorToPayload } from '../../src/main/ipc/explanationErrorPayload'
 import { maskSecrets } from '../../src/main/logger'
 import type { AnalysisSession } from '../../src/main/storage/AnalysisSessionStore'
 import { HarnessTraceStore } from '../../src/main/storage/HarnessTraceStore'

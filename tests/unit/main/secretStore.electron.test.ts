@@ -6,7 +6,7 @@ import { app } from 'electron'
 import {
   buildAIExplanationRequest,
   MissingApiKeyError
-} from '../../../src/main/ipc/aiExplanationHandlers'
+} from '../../../src/main/ai/explanationCredential'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
 import type { AnalysisSession } from '../../../src/main/storage/AnalysisSessionStore'
 import { SecretStore } from '../../../src/main/storage/SecretStore'
