@@ -56,7 +56,7 @@ assert.deepEqual(pawnCross.plies[4].descriptors, ['king_moves'])
 
 // 保護判斷要把將／帥算進去：黑士在將旁邊，被車吃下後將可以吃回。
 const kingGuard = buildLineFacts('4k4/4a4/9/9/9/9/9/9/9/R4K3 w - - 0 1', ['a0e0'])
-assert.deepEqual(kingGuard.plies[0].threats, [{ piece: 'advisor', side: 'black', file: 5, protected: true }])
+assert.deepEqual(kingGuard.plies[0].threats, [{ piece: 'advisor', side: 'black', file: 5, protected: true, recapturer: { piece: 'king', file: 5 } }])
 
 function analysis(): EngineAnalysis {
   const best = convertCpScore(42, 'score cp 42')
@@ -106,7 +106,7 @@ const zh = formatFactsForPrompt(facts, 'zh-TW')
 assert.match(zh, /輪到：紅方/)
 assert.ok(zh.includes('引擎首選：炮二平五（評估 +0.42 兵）'), zh)
 assert.ok(zh.includes('評估都以紅方來看，單位是兵；正數對紅方有利，負數對紅方不利。'), zh)
-assert.match(zh, / 3\. 紅 炮二平五：炮進入中路；未吃子；未將軍；走完這步，下一手可吃：黑5路卒（中卒；吃下後對方能吃回）/, 'after 馬8進7 the central pawn is protected')
+assert.match(zh, / 3\. 紅 炮二平五：炮進入中路；未吃子；未將軍；走完這步，下一手可吃：黑5路卒（中卒；吃下後對方能用7路馬吃回）/, 'after 馬8進7 the central pawn is protected by that horse')
 assert.match(zh, /差距：緩手／不精確（0\.35 兵）/)
 assert.match(zh, / 1\. 紅 炮二平五：炮進入中路；未吃子；未將軍；走完這步，下一手可吃：黑5路卒（中卒；吃下後對方吃不回）/)
 assert.match(zh, /兩線前 2 手都沒有吃子/)

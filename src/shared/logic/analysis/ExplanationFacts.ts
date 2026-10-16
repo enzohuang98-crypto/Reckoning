@@ -49,6 +49,8 @@ export interface ThreatFact {
   file: number
   /** 假設被吃下後，對方能否在同一格吃回（將/帥一步可及也算；即象棋所說的「有根」）。 */
   protected: boolean
+  /** 能合法吃回的子（同一格；依子力由小到大挑一個）及其所在的路。 */
+  recapturer?: { piece: PieceType; file: number }
 }
 
 export interface PlyFact {
@@ -191,7 +193,37 @@ function newThreats(before: BoardState, after: BoardState, attacker: PieceColor)
     .filter((threat) => !existing.has(`${threat.square}:${threat.piece}`))
     .sort((left, right) => right.value - left.value)
     .slice(0, MAX_FACT_THREATS)
-    .map(({ piece, side, file, protected: isProtected }) => ({ piece, side, file, protected: isProtected }))
+    .map(({ piece, side, file, protected: isProtected, recapturer }) => ({
+      piece,
+      side,
+      file,
+      protected: isProtected,
+      ...(recapturer ? { recapturer } : {})
+    }))
+}
+
+/**
+ * 吃下 (row, col) 之後，守方哪個子能合法吃回：P3-9 live 中模型把「能吃回」歸功給錯的著法，
+ * 寫出是誰吃回（例如「7路馬」），就能對回是哪一步讓它有保護。子力小的優先（較自然的吃回方式）。
+ */
+function recapturerOf(
+  grid: BoardState['grid'],
+  row: number,
+  col: number,
+  defender: PieceColor
+): { piece: PieceType; file: number } | undefined {
+  let best: { piece: PieceType; file: number; value: number } | undefined
+  for (let fromRow = 0; fromRow < grid.length; fromRow++) {
+    for (let fromCol = 0; fromCol < grid[fromRow].length; fromCol++) {
+      const piece = grid[fromRow][fromCol]
+      if (piece?.color !== defender) continue
+      const move = formatUciMove({ fromRow, fromCol, toRow: row, toCol: col })
+      if (!move || !legalMoveCheck(grid, defender, move).ok) continue
+      const value = PIECE_VALUE[piece.type]
+      if (!best || value < best.value) best = { piece: piece.type, file: fileNumber(defender, fromCol), value }
+    }
+  }
+  return best ? { piece: best.piece, file: best.file } : undefined
 }
 
 /** 行棋方此刻可以合法吃到的敵子（不含將/帥）。 */
@@ -223,6 +255,7 @@ function capturableTargets(grid: BoardState['grid'], attacker: PieceColor): Loca
         side: defender,
         file: fileNumber(defender, col),
         protected: isSquareAttackedBy(afterCapture, row, col, defender, true),
+        ...(recapturerOf(afterCapture, row, col, defender) ? { recapturer: recapturerOf(afterCapture, row, col, defender)! } : {}),
         square: `${row},${col}`,
         value: PIECE_VALUE[target.type]
       })
@@ -506,6 +539,8 @@ interface FactLabels {
   capture: (piece: string) => string
   threats: string
   protectedLabel: string
+  /** 「吃下後對方能用7路馬吃回」 */
+  protectedBy: (piece: string) => string
   unprotectedLabel: string
   toMove: string
   bestMove: string
@@ -578,6 +613,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capture: (piece) => `吃${piece}`,
     threats: '走完這步，下一手可吃',
     protectedLabel: '吃下後對方能吃回',
+    protectedBy: (piece) => `吃下後對方能用${piece}吃回`,
     unprotectedLabel: '吃下後對方吃不回',
     toMove: '輪到',
     bestMove: '引擎首選',
@@ -634,6 +670,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capture: (piece) => `吃${piece}`,
     threats: '走完这步，下一手可吃',
     protectedLabel: '吃下后对方能吃回',
+    protectedBy: (piece) => `吃下后对方能用${piece}吃回`,
     unprotectedLabel: '吃下后对方吃不回',
     toMove: '轮到',
     bestMove: '引擎首选',
@@ -690,6 +727,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capture: (piece) => `captures ${piece}`,
     threats: 'after this move it can capture next',
     protectedLabel: 'can be recaptured',
+    protectedBy: (piece) => `can be recaptured by the ${piece}`,
     unprotectedLabel: 'cannot be recaptured',
     toMove: 'To move',
     bestMove: 'Engine best move',
@@ -743,6 +781,18 @@ function capturesText(
   return parts.length > 0 ? parts.join('；') : labels.capturesNone
 }
 
+function protectionText(threat: ThreatFact, labels: FactLabels, language: ExplanationLanguage): string {
+  if (!threat.protected) return labels.unprotectedLabel
+  if (!threat.recapturer) return labels.protectedLabel
+  const defender = threat.side
+  const { piece, file } = threat.recapturer
+  const name =
+    language === 'en'
+      ? `${labels.piece[defender][piece]} on file ${file}`
+      : `${fileNumeral(defender, defender === 'red' ? 9 - file : file - 1)}路${labels.piece[defender][piece]}`
+  return labels.protectedBy(name)
+}
+
 /** 帶「路」的子名：紅方用中文數字、黑方用阿拉伯數字（英文一律用數字）。 */
 function locatedName(
   side: PieceColor,
@@ -782,7 +832,7 @@ function formatPly(ply: PlyFact, labels: FactLabels, language: ExplanationLangua
               threat.file,
               labels,
               language,
-              threat.protected ? labels.protectedLabel : labels.unprotectedLabel
+              protectionText(threat, labels, language)
             )
         )
         .join('、')}`
