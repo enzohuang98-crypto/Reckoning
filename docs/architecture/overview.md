@@ -133,7 +133,7 @@ deterministic plan
 ```
 
 - 一般成功路徑只需要「後果審查 + 寫作」兩次模型呼叫；規劃、證據關聯、術語檢查與品質評分都在本機完成。
-- `buildAIExplanationRequest()` 是 production 的唯一 PromptBuilder／API Key／session 組裝入口；多輪 `conversationHistory`、追問與目標語言必須經此入口送進 Harness 寫作，不可只停留在 renderer 顯示或 IPC 型別。
+- `resolveExplanationCredential()` 是 production 唯一注入 API Key 的入口。一般解說預設走 v2 管線（`src/main/ai/explain/`：事實表 → 純文字 prompt → 客觀檢查 → 修正一次 → 引擎重點摘要），由 `promptV2` 組裝 prompt；老師測試案例與 `XQA_EXPLAIN_PIPELINE=v1` 回滾時走 v1，由 `buildAIExplanationRequest()` 組 PromptBuilder prompt。多輪 `conversationHistory`、追問與目標語言都必須經這兩個入口之一送進模型，不可只停留在 renderer 顯示或 IPC 型別。計畫見 `docs/plans/ai-chat-reliability-v2.md`。
 - AI 請求與 Live refinement 可平行執行。Conversation 必須綁定發問當下捕捉的 analysis ID 與 FEN，AI 完成事件不得改用當時最新的 Live result。
 - 每個核心主張必須引用 `evidenceIds`，並連到已驗證的 `findingIds`；空泛標籤、唯分數理由、虛構主線與不完整因果鏈都不得通過。
 - 暫時性 429 / 5xx / timeout 只自動重試一次；模型呼叫與引擎加深都有固定預算，不能形成無限 loop。

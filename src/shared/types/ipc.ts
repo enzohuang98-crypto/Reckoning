@@ -281,6 +281,8 @@ export interface GenerateExplanationStartPayload {
 export interface GenerateExplanationChunkPayload {
   requestId: string
   deltaText: string
+  /** v2：第幾次模型呼叫（修正或備援時遞增）；不同 attempt 的文字要先清空再顯示。 */
+  attempt?: number
 }
 
 export interface GenerateExplanationDonePayload {
@@ -294,6 +296,15 @@ export interface GenerateExplanationDonePayload {
   warnings?: string[]
   traceId?: string
   clarificationRequired?: boolean
+  /** v2：AI 回答、引擎重點摘要（非 AI），或棋規捷徑。 */
+  answerKind?: import('./Harness').ExplanationAnswerKind
+  /** v2：實際回答的模型（備援時為備援模型）。 */
+  actualModel?: string
+  /** v2：改用備援前的主模型與原因。 */
+  fallbackFromModel?: string
+  fallbackReason?: string
+  /** v2：是否用了一次自動修正。 */
+  repairUsed?: boolean
   teacherExecution?: {
     interactionKind: 'teacher-prelude' | 'teacher-formal-case'
     executionSemanticsVersion: 2

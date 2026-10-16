@@ -9,7 +9,8 @@
  *   ai:generate-explanation:cancel (renderer→main)
  *
  * 規則（§2.17.10）：
- *  - buildAIExplanationRequest() 是唯一組裝 prompt 與注入 API key 的入口。
+ *  - resolveExplanationCredential() 是唯一注入 API key 的入口；v1 由 buildAIExplanationRequest()
+ *    組 PromptBuilder prompt，v2 由 explain/promptV2 組 prompt（XQA_EXPLAIN_PIPELINE=v1 可回滾）。
  *  - abort 檢查放在 chunk 處理之後；done 分支先設 completedNormally=true 再 reply 並 break。
  *  - catch 僅在 !completedNormally 時送 error；finally 清除 activeExplanationRequests。
  *  - cancel 必須實際呼叫 controller.abort()。
@@ -65,6 +66,8 @@ import {
   type PreparedExplanationExecution
 } from '../ai/prepareExplanationExecution'
 import { buildExplanationPrompt } from '../ai/promptBuilder'
+import { runExplainPipelineV2 } from '../ai/explain/ExplainPipelineV2'
+import { selectExplainPipeline } from '../ai/explain/pipelineFlag'
 import { modelRegistry, UnsupportedModelError } from '../ai/ModelRegistry'
 import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
@@ -128,13 +131,24 @@ export function assertProviderEndpointBinding(
  * SecretStore、PromptBuilder、ModelRegistry、AnalysisSessionStore 的集中銜接點。
  * IPC handler 不得自己組 prompt 或讀 API key。
  */
-export async function buildAIExplanationRequest(
+export interface ResolvedExplanationCredential {
+  provider: AIProviderId
+  model: string
+  apiKey: string
+  baseUrl?: string
+}
+
+/**
+ * 憑證解析（v1、v2 共用）：取出與這次請求相符的已存金鑰，並守住相容服務網址綁定。
+ * 金鑰只在 main 內使用，不得 log。
+ */
+export async function resolveExplanationCredential(
   execution: PreparedExplanationExecution,
   deps: {
     secretStore: SecretStore
     credentialSnapshot?: Awaited<ReturnType<SecretStore['captureActiveCredential']>>
   }
-): Promise<AIExplanationRequest> {
+): Promise<ResolvedExplanationCredential> {
   const payload = execution.effective
   const snapshot = deps.credentialSnapshot
   const snapshotMatches = Boolean(
@@ -169,6 +183,27 @@ export async function buildAIExplanationRequest(
     apiKey,
     hasExactCredential ? payload.baseUrl ?? null : null
   )
+  return {
+    provider: payload.provider,
+    model: payload.model,
+    apiKey,
+    ...(payload.baseUrl ? { baseUrl: payload.baseUrl } : {})
+  }
+}
+
+/**
+ * buildAIExplanationRequest（§2.17.9，v1 Harness 用）：憑證解析＋PromptBuilder 長文 prompt。
+ * v2 管線只用 resolveExplanationCredential，prompt 由 explain/promptV2 組裝。
+ */
+export async function buildAIExplanationRequest(
+  execution: PreparedExplanationExecution,
+  deps: {
+    secretStore: SecretStore
+    credentialSnapshot?: Awaited<ReturnType<SecretStore['captureActiveCredential']>>
+  }
+): Promise<AIExplanationRequest> {
+  const payload = execution.effective
+  const { apiKey } = await resolveExplanationCredential(execution, deps)
   const session = payload.session
   const prompt = buildExplanationPrompt({
     engineAnalysis: session.engineAnalysis,
@@ -746,6 +781,68 @@ export function registerAiExplanationHandlers(
           resolvedModel,
           teacherTestRun
         )
+        if (selectExplainPipeline(execution) === 'v2') {
+          const credential = await resolveExplanationCredential(execution, {
+            secretStore,
+            credentialSnapshot: capturedActive
+          })
+          // 備援模型只來自 main 保存且已驗證的偏好；renderer 不能在請求中指定。
+          const backupModels =
+            credential.provider === 'openrouter' && !credential.baseUrl
+              ? (await aiPreferences().get()).openRouterBackupModels
+              : []
+          const v2 = await runExplainPipelineV2(execution, {
+            provider: getAIProvider(credential.provider),
+            apiKey: credential.apiKey,
+            registry: engineRegistry,
+            traceStore,
+            signal: controller.signal,
+            backupModels,
+            onProgress: (progress) => {
+              event.reply(IPC.AI_HARNESS_PROGRESS, { requestId, ...progress })
+            },
+            onDelta: (deltaText, attempt) => {
+              if (
+                controller.signal.aborted ||
+                activeExplanationRequests.get(requestId) !== controller
+              ) {
+                return
+              }
+              event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
+                requestId,
+                deltaText,
+                attempt
+              })
+            }
+          })
+          if (
+            controller.signal.aborted ||
+            activeExplanationRequests.get(requestId) !== controller
+          ) {
+            throw new DOMException('Request cancelled', 'AbortError')
+          }
+          if (v2.finalText.length > MAX_AI_RESPONSE_CHARS) {
+            throw new SecurityValidationError('AI 回應超過允許大小。')
+          }
+          completedNormally = true
+          event.reply(IPC.AI_GENERATE_EXPLANATION_DONE, {
+            requestId,
+            finalText: v2.finalText,
+            provider: credential.provider,
+            model: credential.model,
+            usage: v2.usage,
+            warnings: v2.warnings,
+            traceId: v2.traceId,
+            clarificationRequired: false,
+            answerKind: v2.answerKind,
+            ...(v2.actualModel ? { actualModel: v2.actualModel } : {}),
+            ...(v2.fallbackFromModel
+              ? { fallbackFromModel: v2.fallbackFromModel, fallbackReason: v2.fallbackReason }
+              : {}),
+            repairUsed: v2.repairUsed
+          })
+          return
+        }
         const request = await buildAIExplanationRequest(execution, {
           secretStore,
           credentialSnapshot: capturedActive
