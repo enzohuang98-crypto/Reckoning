@@ -162,8 +162,7 @@ function cloneExplanationStart(
 ): Omit<GenerateExplanationStartPayload, 'requestId'> {
   return {
     ...start,
-    conversationHistory: start.conversationHistory?.map((message) => ({ ...message })),
-    budget: start.budget ? { ...start.budget } : undefined
+    conversationHistory: start.conversationHistory?.map((message) => ({ ...message }))
   }
 }
 
@@ -939,25 +938,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
           followUpQuestion: cleanedQuestion ?? undefined,
           attachedMove: analysisMove || undefined,
           userMoveReason: submittedGuess?.reason,
-          answerMode: settings.harnessAnswerMode,
-          budget: {
-            engineTimeMs: settings.harnessEngineTimeMs,
-            maxEngineRounds: settings.harnessMaxEngineRounds,
-            maxModelCalls:
-              settings.harnessAnswerMode === 'research'
-                ? settings.harnessResearchMaxModelCalls
-                : settings.harnessFocusedMaxModelCalls,
-            maxOutputTokens:
-              settings.harnessAnswerMode === 'research'
-                ? settings.harnessResearchMaxOutputTokens
-                : settings.harnessFocusedMaxOutputTokens
-          },
           engineId: primaryEngineId ?? undefined,
           verificationEngineId:
             settings.crossEngineEnabled && verificationEngineId
               ? verificationEngineId
-              : undefined,
-          reuseEvidence: settings.harnessReuseEvidence
+              : undefined
         }
     const pending = retained
       ? {

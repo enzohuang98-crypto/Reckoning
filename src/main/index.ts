@@ -154,7 +154,6 @@ function registerIpc(): AppUpdaterService {
     teacherTestRun
   )
   registerDataHandlers(storage)
-  // 買斷授權（SDS Q5）：離線 Ed25519 簽章驗證
   const appUpdater = new AppUpdaterService()
   appUpdater.registerIpc()
   return appUpdater

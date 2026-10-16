@@ -340,42 +340,7 @@ export function validateGenerateExplanationPayload(
           true
         )
   const userMoveReason = normalizedUserMoveReason || undefined
-  const answerMode =
-    value.answerMode === 'focused' || value.answerMode === 'research'
-      ? value.answerMode
-      : undefined
-  let budget: GenerateExplanationStartPayload['budget']
-  if (value.budget !== undefined) {
-    if (!isRecord(value.budget)) {
-      throw new SecurityValidationError('Harness 預算格式無效。')
-    }
-    const engineTimeMs = value.budget.engineTimeMs
-    const maxEngineRounds = value.budget.maxEngineRounds
-    const maxModelCalls = value.budget.maxModelCalls
-    const maxOutputTokens = value.budget.maxOutputTokens
-    if (
-      !Number.isSafeInteger(engineTimeMs) ||
-      (engineTimeMs as number) < 3000 ||
-      (engineTimeMs as number) > 60_000 ||
-      !Number.isSafeInteger(maxEngineRounds) ||
-      (maxEngineRounds as number) < 1 ||
-      (maxEngineRounds as number) > 3 ||
-      !Number.isSafeInteger(maxModelCalls) ||
-      (maxModelCalls as number) < 3 ||
-      (maxModelCalls as number) > 10 ||
-      !Number.isSafeInteger(maxOutputTokens) ||
-      (maxOutputTokens as number) < 500 ||
-      (maxOutputTokens as number) > 20_000
-    ) {
-      throw new SecurityValidationError('Harness 預算超出允許範圍。')
-    }
-    budget = {
-      engineTimeMs: engineTimeMs as number,
-      maxEngineRounds: maxEngineRounds as number,
-      maxModelCalls: maxModelCalls as number,
-      maxOutputTokens: maxOutputTokens as number
-    }
-  }
+  // Harness 模式、預算與證據重用由 main 固定（FIXED_HARNESS_OPTIONS）；renderer 傳來的值一律忽略。
 
   return {
     requestId,
@@ -390,13 +355,10 @@ export function validateGenerateExplanationPayload(
     followUpQuestion,
     attachedMove,
     userMoveReason,
-    answerMode,
-    budget,
     engineId: optionalEngineId(value.engineId, '主引擎識別碼'),
     verificationEngineId: optionalEngineId(
       value.verificationEngineId,
       '複核引擎識別碼'
-    ),
-    reuseEvidence: value.reuseEvidence === true
+    )
   }
 }

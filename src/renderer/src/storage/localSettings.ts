@@ -10,6 +10,8 @@ import { ALL_PROVIDER_IDS, type AIProviderId } from '@shared/types/AIProviderTyp
 import { normalizeSettings } from '@shared/logic/validation/ValidationUtils'
 
 const SETTINGS_KEY = 'xiangqi.settings'
+/** 最後一個仍含使用者可調 Harness 參數的設定版本（P4-4 移除）。 */
+const SETTINGS_VERSION_WITH_HARNESS_FIELDS = 4
 /** 初始設定嚮導完成旗標（'1' = 不再顯示嚮導） */
 const SETUP_COMPLETED_KEY = 'setup_completed'
 
@@ -74,6 +76,12 @@ export function loadSettings(): AppSettings {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (!raw) return DEFAULT_SETTINGS
     const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (parsed.version === SETTINGS_VERSION_WITH_HARNESS_FIELDS) {
+      // v4 → v5：只移除 Harness 參數，其他設定原樣保留。
+      const migrated = normalizeSettings(parsed, DEFAULT_SETTINGS)
+      void saveSettings(migrated)
+      return migrated
+    }
     if (parsed.version !== DEFAULT_SETTINGS.version) return migrateSettings(parsed)
     return normalizeSettings(parsed, DEFAULT_SETTINGS)
   } catch {

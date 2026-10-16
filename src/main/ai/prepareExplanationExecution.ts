@@ -21,6 +21,30 @@ import {
 
 const PREPARED_EXECUTION = Symbol('PreparedExplanationExecution')
 
+/** main 內部的 Harness 參數；不屬於 IPC 契約，只有 main（與測試、驗收工具）可以指定。 */
+export interface HarnessRequestOptions {
+  answerMode?: HarnessAnswerMode
+  budget?: HarnessBudget
+  reuseEvidence?: boolean
+}
+
+export type ExplanationExecutionRequest = GenerateExplanationStartPayload & HarnessRequestOptions
+
+/**
+ * 一般解說使用的固定 Harness 參數（P4-4：取代原本使用者可調的設定頁）。
+ * 數值等於移除前設定頁的預設值，讓 v1 回滾路徑的行為不變。
+ */
+export const FIXED_HARNESS_OPTIONS: Readonly<Required<HarnessRequestOptions>> = Object.freeze({
+  answerMode: 'research',
+  budget: Object.freeze({
+    engineTimeMs: 20_000,
+    maxEngineRounds: 3,
+    maxModelCalls: 6,
+    maxOutputTokens: 10_000
+  }),
+  reuseEvidence: true
+})
+
 interface TeacherRunEvaluationCapability {
   getActiveManifest(): TeacherTestRunManifestV1 | null
   createEvaluationLink(
@@ -141,7 +165,7 @@ function assertFormalSessionMatches(
 }
 
 export function prepareExplanationExecution(
-  validatedPayload: GenerateExplanationStartPayload,
+  validatedPayload: ExplanationExecutionRequest,
   authoritativeSession: AnalysisSession,
   resolvedModel: string,
   teacherRun: TeacherRunEvaluationCapability

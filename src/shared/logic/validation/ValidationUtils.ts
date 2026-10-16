@@ -24,9 +24,26 @@ function clampInteger(value: unknown, min: number, max: number, fallback: number
     : fallback
 }
 
+/** v4 以前可由使用者調整的 Harness 參數；v5 起改由 main 固定，讀到舊設定時一律丟棄。 */
+export const REMOVED_HARNESS_SETTING_KEYS = [
+  'harnessAnswerMode',
+  'harnessAutoRun',
+  'harnessReuseEvidence',
+  'harnessEngineTimeMs',
+  'harnessMaxEngineRounds',
+  'harnessResearchMaxModelCalls',
+  'harnessResearchMaxOutputTokens',
+  'harnessFocusedMaxModelCalls',
+  'harnessFocusedMaxOutputTokens'
+] as const
+
 export function normalizeSettings(value: unknown, fallback: AppSettings): AppSettings {
   if (typeof value !== 'object' || value === null) return fallback
-  const candidate = { ...fallback, ...(value as Partial<AppSettings>) }
+  const candidate: Record<string, unknown> & AppSettings = {
+    ...fallback,
+    ...(value as Partial<AppSettings>)
+  }
+  for (const key of REMOVED_HARNESS_SETTING_KEYS) delete candidate[key]
   const aiProvider = ALL_PROVIDER_IDS.includes(candidate.aiProvider)
     ? candidate.aiProvider
     : fallback.aiProvider
@@ -58,46 +75,6 @@ export function normalizeSettings(value: unknown, fallback: AppSettings): AppSet
       typeof candidate.crossEngineEnabled === 'boolean'
         ? candidate.crossEngineEnabled
         : fallback.crossEngineEnabled,
-    harnessAnswerMode: 'research',
-    harnessAutoRun: false,
-    harnessReuseEvidence: true,
-    harnessEngineTimeMs: clampInteger(
-      candidate.harnessEngineTimeMs,
-      20_000,
-      60_000,
-      fallback.harnessEngineTimeMs
-    ),
-    // 必須與 main 的 IPC 預算驗證（1–3）一致，否則舊設定 4–10 會讓每次解說請求都被拒絕。
-    harnessMaxEngineRounds: clampInteger(
-      candidate.harnessMaxEngineRounds,
-      1,
-      3,
-      fallback.harnessMaxEngineRounds
-    ),
-    harnessResearchMaxModelCalls: clampInteger(
-      candidate.harnessResearchMaxModelCalls,
-      3,
-      10,
-      fallback.harnessResearchMaxModelCalls
-    ),
-    harnessResearchMaxOutputTokens: clampInteger(
-      candidate.harnessResearchMaxOutputTokens,
-      500,
-      20_000,
-      fallback.harnessResearchMaxOutputTokens
-    ),
-    harnessFocusedMaxModelCalls: clampInteger(
-      candidate.harnessFocusedMaxModelCalls,
-      3,
-      10,
-      fallback.harnessFocusedMaxModelCalls
-    ),
-    harnessFocusedMaxOutputTokens: clampInteger(
-      candidate.harnessFocusedMaxOutputTokens,
-      500,
-      20_000,
-      fallback.harnessFocusedMaxOutputTokens
-    ),
     version: fallback.version
   }
 }

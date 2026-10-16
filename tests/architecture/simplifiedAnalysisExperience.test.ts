@@ -46,17 +46,18 @@ assert.doesNotMatch(settingsNavigation, /解說品質/)
 assert.doesNotMatch(settingsNavigation, /id:\s*'harness'/)
 assert.doesNotMatch(settingsPage, /HarnessSettingsSection/)
 
+// P4-4：Harness 參數不再是使用者設定；舊設定裡的值讀進來就丟棄，不能再影響解說。
 const normalized = normalizeSettings(
   {
     ...DEFAULT_SETTINGS,
     harnessAnswerMode: 'focused',
-    harnessAutoRun: false,
+    harnessAutoRun: true,
     harnessReuseEvidence: false
   },
   DEFAULT_SETTINGS
-)
-assert.equal(normalized.harnessAnswerMode, 'research')
-assert.equal(normalized.harnessAutoRun, false)
-assert.equal(normalized.harnessReuseEvidence, true)
+) as unknown as Record<string, unknown>
+assert.equal('harnessAnswerMode' in normalized, false)
+assert.equal('harnessAutoRun' in normalized, false)
+assert.equal('harnessReuseEvidence' in normalized, false)
 
 console.log('Simplified analysis experience checks passed')
