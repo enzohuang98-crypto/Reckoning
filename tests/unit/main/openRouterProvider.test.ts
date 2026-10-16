@@ -89,6 +89,12 @@ await withServer(
           pricing: { prompt: '0.000001', completion: '0', request: '0' }
         },
         {
+          id: 'anthropic/claude-sonnet-5.5',
+          name: 'Claude Sonnet 5.5',
+          architecture: { output_modalities: ['text'] },
+          pricing: { prompt: '0.000003', completion: '0.000015', request: '0' }
+        },
+        {
           id: 'vendor/image-free:free',
           name: 'Image Only',
           architecture: { output_modalities: ['image'] },
@@ -99,7 +105,9 @@ await withServer(
   },
   async (baseUrl, requests) => {
     const models = await new OpenRouterProvider({ baseUrl }).listFreeModels('sk-or-v1-test')
+    // 付費模型只開放經過 P3-9 驗收的那幾個，並標示「付費」；其他付費模型與自動路由照舊不列。
     assert.deepEqual(models, [
+      { id: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5（付費，費用記在 OpenRouter 帳戶）' },
       { id: 'meta-llama/llama-free:free', label: 'Llama Free' }
     ])
     assert.deepEqual(requests.map((request) => request.url), [

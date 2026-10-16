@@ -210,6 +210,25 @@ function isZero(value: string | undefined): boolean {
   return value === undefined || Number(value) === 0
 }
 
+/**
+ * 例外開放的付費模型：P3-9 實戰局面驗收中，免費與便宜模型的解說品質達不到門檻，
+ * Claude Sonnet 5.5 達標（2026-10-16）。只開放這份清單，其他付費模型照舊不列；
+ * 標籤註明「付費」，備援模型仍只能選 :free（AiPreferencesStore）。
+ */
+export const RECOMMENDED_PAID_OPENROUTER_MODELS: readonly string[] = [
+  'anthropic/claude-sonnet-5.5',
+  'anthropic/claude-haiku-5.5'
+]
+
+function isRecommendedPaidTextModel(model: OpenRouterModel): model is OpenRouterModel & { id: string } {
+  return Boolean(
+    model.id &&
+      RECOMMENDED_PAID_OPENROUTER_MODELS.includes(model.id) &&
+      isValidAIModelId(model.id) &&
+      model.architecture?.output_modalities?.includes('text')
+  )
+}
+
 function isConcreteFreeTextModel(model: OpenRouterModel): model is OpenRouterModel & {
   id: string
 } {
@@ -781,8 +800,16 @@ export class OpenRouterProvider implements AIProvider {
     }
     this.rememberCatalog(apiKey, body.data)
     return body.data
-      .filter(isConcreteFreeTextModel)
-      .map((model) => ({ id: model.id, label: model.name?.trim() || model.id }))
+      .filter((model): model is OpenRouterModel & { id: string } =>
+        isConcreteFreeTextModel(model) || isRecommendedPaidTextModel(model)
+      )
+      .map((model) => {
+        const label = model.name?.trim() || model.id
+        return {
+          id: model.id,
+          label: isConcreteFreeTextModel(model) ? label : `${label}（付費，費用記在 OpenRouter 帳戶）`
+        }
+      })
       .sort((left, right) => left.label.localeCompare(right.label))
   }
 
