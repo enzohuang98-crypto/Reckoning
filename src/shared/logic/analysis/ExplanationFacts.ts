@@ -5,12 +5,12 @@
  * 線末是否將死／困斃、兩條線的關鍵差異」。AI 只負責把這些事實講成人話，
  * 不再自己從 FEN 推棋盤（免費模型在這一步最常出錯）。
  *
- * 只產生客觀描述，不做戰略判斷；分數只取 displayText，絕不使用 EngineScore.raw。
+ * 只產生客觀描述，不做戰略判斷；分數只取 comparableValue（兵）或殺棋的 displayText，絕不使用 EngineScore.raw。
  */
 
 import type { ExplanationLanguage } from '../../types/AIExplanationTypes'
 import type { BoardState, PieceColor, PieceType } from '../../types/BoardState'
-import type { EngineAnalysis } from '../../types/EngineAnalysis'
+import type { EngineAnalysis, EngineScore } from '../../types/EngineAnalysis'
 import {
   MISTAKE_LEVEL_LABELS,
   type MistakeLevel,
@@ -70,10 +70,24 @@ export interface LineFacts {
   warning?: string
 }
 
+/**
+ * 給模型看的評估：一般分數換成「兵」（comparableValue，原局面行棋方視角），殺棋保留「殺 N」文字。
+ * P3-9 live 中模型把原始 centipawn「42」「2000」讀成很大的差距，所以不再直接給 displayText。
+ */
+export type FactScore = { kind: 'pawns'; value: number } | { kind: 'mate'; text: string }
+
 export interface MoveFact {
   uci: string
   move: string
-  scoreText?: string
+  score?: FactScore
+}
+
+function factScore(score: EngineScore | null | undefined): FactScore | undefined {
+  if (!score) return undefined
+  if (score.type === 'mate') return { kind: 'mate', text: score.displayText }
+  return Number.isFinite(score.comparableValue)
+    ? { kind: 'pawns', value: Math.round(score.comparableValue * 100) / 100 }
+    : undefined
 }
 
 export type FactDifference =
@@ -341,9 +355,7 @@ export function buildExplanationFacts(
   const bestMove: MoveFact = {
     uci: analysis.bestMove,
     move: displayOf(analysis.bestMove, analysis.displayBestMove),
-    ...(analysis.scoreAfterBestMove
-      ? { scoreText: analysis.scoreAfterBestMove.displayText }
-      : {})
+    ...(factScore(analysis.scoreAfterBestMove) ? { score: factScore(analysis.scoreAfterBestMove) } : {})
   }
   const bestLine = buildLineFacts(
     startFen,
@@ -355,9 +367,7 @@ export function buildExplanationFacts(
     ? {
         uci: analysis.userMove,
         move: displayOf(analysis.userMove, analysis.displayUserMove),
-        ...(analysis.scoreAfterUserMove
-          ? { scoreText: analysis.scoreAfterUserMove.displayText }
-          : {})
+        ...(factScore(analysis.scoreAfterUserMove) ? { score: factScore(analysis.scoreAfterUserMove) } : {})
       }
     : undefined
   const userLine =
@@ -395,7 +405,7 @@ export function buildExplanationFacts(
     candidates: analysis.candidateMoves.slice(0, 3).map((candidate) => ({
       uci: candidate.move,
       move: displayOf(candidate.move, candidate.displayMove),
-      ...(candidate.score ? { scoreText: candidate.score.displayText } : {})
+      ...(factScore(candidate.score) ? { score: factScore(candidate.score) } : {})
     })),
     differences: buildDifferences(bestLine, userLine)
   }
@@ -453,6 +463,8 @@ interface FactLabels {
   differences: string
   candidates: string
   evaluation: string
+  /** 評估的視角與單位說明（一行）。 */
+  perspective: (side: string) => string
   checkmate: (side: string) => string
   stalemate: (side: string) => string
   noCaptures: (plies: number) => string
@@ -511,6 +523,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     differences: '兩線差異',
     candidates: '其他候選',
     evaluation: '評估',
+    perspective: (side) => `評估都以${side}方來看，單位是兵；正數對${side}方有利，負數對${side}方不利。`,
     checkmate: (side) => `主線結束時${side}方無合法著法且被將軍：將死。`,
     stalemate: (side) => `主線結束時${side}方無子可動：困斃（象棋規則判${side}方負）。`,
     noCaptures: (plies) => `兩線前 ${plies} 手都沒有吃子。`,
@@ -555,6 +568,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     differences: '两线差异',
     candidates: '其他候选',
     evaluation: '评估',
+    perspective: (side) => `评估都以${side}方来看，单位是兵；正数对${side}方有利，负数对${side}方不利。`,
     checkmate: (side) => `主线结束时${side}方无合法着法且被将军：将死。`,
     stalemate: (side) => `主线结束时${side}方无子可动：困毙（象棋规则判${side}方负）。`,
     noCaptures: (plies) => `两线前 ${plies} 手都没有吃子。`,
@@ -599,6 +613,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     differences: 'Differences',
     candidates: 'Other candidates',
     evaluation: 'eval',
+    perspective: (side) => `All evals are from ${side}'s point of view, in pawns; positive favours ${side}, negative favours the opponent.`,
     checkmate: (side) => `At the end of the line ${side} has no legal move and is in check: checkmate.`,
     stalemate: (side) => `At the end of the line ${side} has no legal move: stalemate (a loss for ${side}).`,
     noCaptures: (plies) => `Neither line captures anything in the first ${plies} plies.`,
@@ -707,8 +722,16 @@ function formatDifference(difference: FactDifference, labels: FactLabels): strin
 function render(facts: ExplanationFacts, labels: FactLabels, maxPlies: number, language: ExplanationLanguage): string {
   const out: string[] = []
   out.push(`${labels.toMove}：${labels.side[facts.sideToMove]}${language === 'en' ? '' : '方'}`)
-  const score = (move: MoveFact): string =>
-    move.scoreText ? `（${labels.evaluation} ${move.scoreText}）` : ''
+  const scores = [facts.bestMove, facts.userMove, ...facts.candidates].map((move) => move?.score)
+  if (scores.some((item) => item?.kind === 'pawns')) out.push(labels.perspective(labels.side[facts.sideToMove]))
+  const score = (move: MoveFact): string => {
+    if (!move.score) return ''
+    const text =
+      move.score.kind === 'mate'
+        ? move.score.text
+        : `${move.score.value > 0 ? '+' : ''}${move.score.value.toFixed(2)} ${labels.pawns}`
+    return `（${labels.evaluation} ${text}）`
+  }
   const headline = [`${labels.bestMove}：${facts.bestMove.move}${score(facts.bestMove)}`]
   if (facts.userMove) headline.push(`${labels.userMove}：${facts.userMove.move}${score(facts.userMove)}`)
   if (facts.mistakeLevel || facts.scoreGapPawns !== undefined) {
