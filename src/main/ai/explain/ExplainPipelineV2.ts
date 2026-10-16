@@ -36,6 +36,7 @@ import {
   ENSURE_LINES_ENGINE_MS,
   MAX_CALLS,
   MIN_RETRY_WINDOW_MS,
+  RATE_LIMIT_RETRY_MAX_WAIT_MS,
   TOTAL_DEADLINE_MS,
   VISIBLE_TOKENS
 } from './budget'
@@ -58,6 +59,7 @@ export interface ExplainPipelineDeps {
     callTimeoutMs: number
     totalDeadlineMs: number
     minRetryWindowMs: number
+    rateLimitMaxWaitMs: number
   }>
 }
 
@@ -182,6 +184,32 @@ function checkFailureReason(
   return 'format'
 }
 
+/** 分鐘級限流（不是每日額度）時要等多久再重試；服務要求等太久就回 null（不重試）。 */
+function minuteRateLimitWait(error: unknown, maxWaitMs: number): number | null {
+  const diagnostic = describeAIExecutionError(error, 'AI 服務')
+  if (diagnostic.category !== 'rate_limited' || diagnostic.quota === 'daily') return null
+  const wait = diagnostic.retryAfterMs ?? Math.min(2_000, maxWaitMs)
+  return wait <= maxWaitMs ? wait : null
+}
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('Request cancelled', 'AbortError'))
+      return
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(new DOMException('Request cancelled', 'AbortError'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 function isAbortError(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -259,7 +287,8 @@ export async function runExplainPipelineV2(
   const timing = {
     callTimeoutMs: deps.timing?.callTimeoutMs ?? CALL_TIMEOUT_MS,
     totalDeadlineMs: deps.timing?.totalDeadlineMs ?? TOTAL_DEADLINE_MS,
-    minRetryWindowMs: deps.timing?.minRetryWindowMs ?? MIN_RETRY_WINDOW_MS
+    minRetryWindowMs: deps.timing?.minRetryWindowMs ?? MIN_RETRY_WINDOW_MS,
+    rateLimitMaxWaitMs: deps.timing?.rateLimitMaxWaitMs ?? RATE_LIMIT_RETRY_MAX_WAIT_MS
   }
   const deadlineAt = startedAt + timing.totalDeadlineMs
   const remaining = (): number => deadlineAt - Date.now()
@@ -492,6 +521,20 @@ export async function runExplainPipelineV2(
       progress('provider_retry', '和 AI 服務的連線中斷，正在重試一次。')
       try {
         answer = await callModel(payload.model, 'network_retry', prompt.prompt)
+        lastError = null
+      } catch (error) {
+        if (isAbortError(error) && deps.signal.aborted) throw error
+        lastError = error
+      }
+    }
+    // 分鐘級限流而且沒有可用的備援（例如 demo 用的付費模型）：等服務建議的時間（最多 5 秒）後同一模型重試一次。
+    const hasBackup = (deps.backupModels ?? []).some((model) => model !== payload.model)
+    const rateWait = !answer && lastError && !hasBackup ? minuteRateLimitWait(lastError, timing.rateLimitMaxWaitMs) : null
+    if (rateWait !== null && canCallAgain()) {
+      progress('provider_retry', 'AI 服務暫時限流，稍等一下再試一次。')
+      try {
+        await abortableDelay(rateWait, deps.signal)
+        answer = await callModel(payload.model, 'rate_limit_retry', prompt.prompt)
         lastError = null
       } catch (error) {
         if (isAbortError(error) && deps.signal.aborted) throw error

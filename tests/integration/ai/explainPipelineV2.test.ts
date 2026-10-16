@@ -231,6 +231,25 @@ async function main(): Promise<void> {
   assert.equal(backup.provider.requests[1].model, 'vendor/backup:free')
   assert.deepEqual(backup.traces.at(-1)?.attempts?.map((attempt) => attempt.kind), ['primary', 'backup'])
 
+  // 分鐘級限流、沒有備援（例如付費模型）：等一下後同一模型重試一次（P3-9 live：付費模型串流中被限流）。
+  const minuteNoBackup = new AIHttpError(429, 'generation', 'rate limited', 10, 'minute')
+  const rateRetried = await run(opening, [{ error: minuteNoBackup }, { text: opening.goodAnswer! }])
+  assert.equal(rateRetried.result?.answerKind, 'ai')
+  assert.equal(rateRetried.provider.requests[1].model, 'vendor/primary:free')
+  assert.deepEqual(rateRetried.traces.at(-1)?.attempts?.map((attempt) => attempt.kind), ['primary', 'rate_limit_retry'])
+  // 服務要求等太久（超過 5 秒）就不重試，直接交摘要。
+  const longWait = await run(opening, [{ error: new AIHttpError(429, 'generation', 'rate limited', 60_000, 'minute') }])
+  assert.equal(longWait.result?.answerKind, 'engine_summary')
+  assert.equal(longWait.provider.requests.length, 1)
+  // 串流中回報的 429 沒有額度種類也算分鐘級：重試一次，再失敗就交摘要。
+  const midStream = await run(
+    opening,
+    [{ error: new AIHttpError(429, 'generation', 'mid-stream') }, { error: new AIHttpError(429, 'generation', 'mid-stream') }],
+    { timing: { rateLimitMaxWaitMs: 50 } }
+  )
+  assert.equal(midStream.result?.answerKind, 'engine_summary')
+  assert.equal(midStream.provider.requests.length, 2)
+
   // 每日額度用完 → 直接回錯，不浪費備援。
   const daily = new AIHttpError(429, 'generation', 'rate limited', undefined, 'daily')
   const quota = await run(opening, [{ error: daily }], { backupModels: ['vendor/backup:free'] })
