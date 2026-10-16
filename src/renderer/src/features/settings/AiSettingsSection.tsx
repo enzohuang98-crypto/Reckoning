@@ -72,16 +72,16 @@ export function AiSettingsSection({
         <div className="section-heading">
           <div>
             <span className="eyebrow">SECURE AI CONNECTION</span>
-            <h3>AI API 金钥匙</h3>
+            <h3>AI API 金鑰</h3>
           </div>
           <span className={`badge ${secretStatus.configured ? 'on' : 'off'}`}>
-            {secretStatus.configured ? '已连线' : '未设定'}
+            {secretStatus.configured ? '已連線' : '未設定'}
           </span>
         </div>
 
         <p className="muted">
-          直接贴上 OpenAI、Anthropic Claude、Google Gemini 或 OpenRouter 的官方 API Key。
-          程式会自动辨识服务、读取这把钥匙实际可用的模型，并以真实生成验证；成功后才加密储存。
+          直接貼上 OpenAI、Anthropic Claude、Google Gemini 或 OpenRouter 的官方 API Key。
+          程式會自動辨識服務、讀取這把金鑰實際可用的模型，並以真實生成驗證；成功後才加密儲存。
         </p>
 
         <AiConnectionStatus
@@ -91,7 +91,7 @@ export function AiSettingsSection({
 
         {encryptionAvailable === false && (
           <div className="error-text">
-            此系统不支援安全加密储存，程式会拒绝以明文保存金钥匙。
+            此系統不支援安全加密儲存，程式會拒絕以明文保存金鑰。
           </div>
         )}
 
@@ -102,7 +102,7 @@ export function AiSettingsSection({
             type="password"
             autoComplete="off"
             spellCheck={false}
-            placeholder="贴上 API Key"
+            placeholder="貼上 API Key"
             value={apiKey}
             disabled={secretBusy || encryptionAvailable === false}
             onChange={(event) => onApiKeyChange(event.target.value)}
@@ -128,22 +128,22 @@ export function AiSettingsSection({
             }
           >
             {secretBusy
-              ? '辨识、验证与连线中…'
+              ? '辨識、驗證與連線中…'
               : openRouterModels.length > 0
-                ? '验证并使用此模型'
-                : '自动连线'}
+                ? '驗證並使用此模型'
+                : '自動連線'}
           </button>
         </div>
 
         {(savedOpenRouterActive || openRouterModels.length > 0) && (
           <div className="field">
             <label className="field-label" htmlFor="openrouter-free-model">
-              OpenRouter 免费模型
+              OpenRouter 免費模型
             </label>
             {openRouterModels.length > 0 ? (
               <select
                 id="openrouter-free-model"
-                aria-label="OpenRouter 免费模型"
+                aria-label="OpenRouter 免費模型"
                 className="select"
                 value={selectedOpenRouterModel}
                 disabled={secretBusy}
@@ -170,7 +170,7 @@ export function AiSettingsSection({
               </p>
             )}
             <p className="muted small">
-              清单来自 OpenRouter 官方即时目录；只列具名的 :free 模型，不使用会随机换模型的自动路由。
+              清單來自 OpenRouter 官方即時目錄；只列具名的 :free 模型，不使用會隨機換模型的自動路由。
             </p>
             {selectedModelUnavailable && (
               <p className="error-text">
@@ -271,7 +271,7 @@ export function AiSettingsSection({
                   onDeleteKey()
                 }}
               >
-                {deleteConfirmation ? '再次按下确认删除' : '删除金钥匙'}
+                {deleteConfirmation ? '再次按下確認刪除' : '刪除金鑰'}
               </button>
               {deleteConfirmation && (
                 <button className="btn ghost small" onClick={() => setDeleteConfirmation(false)}>
@@ -287,12 +287,12 @@ export function AiSettingsSection({
         <div className="section-heading">
           <div>
             <span className="eyebrow">EXPLANATION PREFERENCES</span>
-            <h3>解说偏好</h3>
+            <h3>解說偏好</h3>
           </div>
         </div>
 
         <div className="field">
-          <label className="field-label">你的棋力（影响解说深浅）</label>
+          <label className="field-label">你的棋力（影響解說深淺）</label>
           <select
             className="select"
             value={settings.userLevel}
@@ -300,14 +300,14 @@ export function AiSettingsSection({
               update({ userLevel: event.target.value as AppSettings['userLevel'] })
             }
           >
-            <option value="basic">初学</option>
-            <option value="intermediate">中级</option>
-            <option value="advanced">进阶</option>
+            <option value="basic">初學</option>
+            <option value="intermediate">中級</option>
+            <option value="advanced">進階</option>
           </select>
         </div>
 
         <div className="field">
-          <label className="field-label">解说语言</label>
+          <label className="field-label">解說語言</label>
           <select
             className="select"
             value={settings.language}
@@ -316,7 +316,7 @@ export function AiSettingsSection({
             }
           >
             <option value="zh-TW">繁體中文</option>
-            <option value="zh-CN">简体中文</option>
+            <option value="zh-CN">簡體中文</option>
             <option value="en">English</option>
           </select>
         </div>

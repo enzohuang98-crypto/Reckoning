@@ -70,7 +70,7 @@ const connectable = render({
   }
 })
 const connect = connectable.root.findAllByType('button').find(
-  (button) => button.children.join('') === '自动连线'
+  (button) => button.children.join('') === '自動連線'
 )
 assert(connect)
 TestRenderer.act(() => connect.props.onClick())
@@ -89,7 +89,7 @@ const openRouter = render({
   }
 })
 const openRouterSelect = openRouter.root.find(
-  (node) => node.type === 'select' && node.props['aria-label'] === 'OpenRouter 免费模型'
+  (node) => node.type === 'select' && node.props['aria-label'] === 'OpenRouter 免費模型'
 )
 assert.deepEqual(
   openRouterSelect.findAllByType('option').map((option) => option.props.value),
@@ -151,13 +151,13 @@ assert.match(
   /Google Gemini · gemini-3\.5-flash/
 )
 const firstDelete = configured.root.findAllByType('button').find(
-  (button) => button.children.join('') === '删除金钥匙'
+  (button) => button.children.join('') === '刪除金鑰'
 )
 assert(firstDelete)
 TestRenderer.act(() => firstDelete.props.onClick())
 assert.equal(deleteCalls, 0)
 const confirmedDelete = configured.root.findAllByType('button').find(
-  (button) => button.children.join('') === '再次按下确认删除'
+  (button) => button.children.join('') === '再次按下確認刪除'
 )
 assert(confirmedDelete)
 TestRenderer.act(() => confirmedDelete.props.onClick())

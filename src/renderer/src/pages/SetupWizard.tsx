@@ -235,7 +235,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
             <input
               className="text-input"
               type="password"
-              placeholder="贴上 OpenAI、Anthropic、Gemini 或 OpenRouter 官方 API Key"
+              placeholder="貼上 OpenAI、Anthropic、Gemini 或 OpenRouter 官方 API Key"
               value={apiKey}
               disabled={finishing}
               onChange={(event) => {
@@ -248,18 +248,18 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
               }}
             />
             <p className="muted small">
-              程式会自动辨识官方服务、读取实际可用模型并完成一次真实生成验证；
-              成功后才以作业系统加密 (safeStorage) 储存于本机。
+              程式會自動辨識官方服務、讀取實際可用模型並完成一次真實生成驗證；
+              成功後才以作業系統加密 (safeStorage) 儲存於本機。
             </p>
           </div>
           {openRouterModels.length > 0 && (
             <div className="field">
               <label className="field-label" htmlFor="setup-openrouter-free-model">
-                OpenRouter 免费模型
+                OpenRouter 免費模型
               </label>
               <select
                 id="setup-openrouter-free-model"
-                aria-label="OpenRouter 免费模型"
+                aria-label="OpenRouter 免費模型"
                 className="select"
                 value={selectedOpenRouterModel}
                 onChange={(event) => setSelectedOpenRouterModel(event.target.value)}
@@ -277,7 +277,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
                 ))}
               </select>
               <p className="muted small">
-                请选择具名 :free 模型；程式不会使用随机免费路由替换你的选择。
+                請選擇具名 :free 模型；程式不會使用隨機免費路由替換你的選擇。
               </p>
               {selectedOpenRouterModel &&
                 !openRouterModels.some((model) => model.id === selectedOpenRouterModel) && (
@@ -306,7 +306,7 @@ export function SetupWizard({ settings, onSettingsChange, onComplete }: Props): 
                 !openRouterModels.some((model) => model.id === selectedOpenRouterModel))
             }
           >
-            {openRouterModels.length > 0 ? '验证模型并完成設定 →' : '完成設定 →'}
+            {openRouterModels.length > 0 ? '驗證模型並完成設定 →' : '完成設定 →'}
           </button>
         </div>
       </div>

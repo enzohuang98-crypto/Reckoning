@@ -51,7 +51,7 @@ export function SystemSettingsSection({
             </div>
           </div>
           <p className="muted">
-            备份包含保存局面、猜着纪录与 AI 对话；不包含 API Key。
+            備份包含保存局面、猜著紀錄與 AI 對話；不包含 API Key。
           </p>
           <div className="row gap">
             <button

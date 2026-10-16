@@ -305,7 +305,7 @@ export function BoardEditor({
           >
             查看引擎想法
           </button>
-          {replayCandidates.length === 0 && <span>请先完成一次局面分析</span>}
+          {replayCandidates.length === 0 && <span>請先完成一次局面分析</span>}
         </div>
       )}
       {replayOpen && replayCandidates.length > 0 && (

@@ -383,7 +383,7 @@ export function SettingsPage({
       const result = await withTimeout(
         window.api.ai.autoConfigureCredential(key, requestedModel),
         AI_CONNECT_TIMEOUT_MS,
-        'AI 连线逾时，请检查网路后重试。'
+        'AI 連線逾時，請檢查網路後重試。'
       )
       if (!mountedRef.current || connectAttemptRef.current !== attempt) return
       if (!result.ok) {
@@ -426,7 +426,7 @@ export function SettingsPage({
       setOperationError(
         error instanceof Error
           ? error.message
-          : '无法完成 AI 连线。'
+          : '無法完成 AI 連線。'
       )
     } finally {
       if (mountedRef.current && connectAttemptRef.current === attempt) {
@@ -449,7 +449,7 @@ export function SettingsPage({
       if (result.status.activeCredential) {
         useCredential(result.status.activeCredential)
       }
-      setSavedMessage('AI API 金钥匙已从本机删除。')
+      setSavedMessage('AI API 金鑰已從本機刪除。')
       setOperationError(null)
     } catch (error) {
       setOperationError(
