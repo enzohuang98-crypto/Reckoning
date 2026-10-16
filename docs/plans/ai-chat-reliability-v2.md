@@ -216,10 +216,12 @@ AnswerCheck（只查客觀硬錯）
 | Phase 1 | 完成 | P1-1…P1-8，一任務一 commit |
 | Phase 2 | 完成 | P2-1…P2-6 |
 | Phase 3 | 程式完成；**P3-9 待本機 live 評分** | 雲端環境封鎖 openrouter.ai，P3-9 只能離線自測 |
-| Phase 4 | **未開始（閘門）** | 需 P3-9 評分達標＋使用者確認；P4-4、P4-5 需逐項明確同意 |
+| Phase 4 | **部分完成** | 使用者 2026-10-16 同意 P4-4 與 P4-5 三項：P4-4、P4-5a 老師測試、P4-5b 授權、P4-5c 雙引擎、P4-6 文件已完成。P4-1／P4-2（刪除 v1）依使用者指示**等 P3-9 live 評分後**再做；P4-5 依使用者選擇放在同一個 PR，一項一個 commit |
 | Phase 5 | **未開始** | 需 Windows 實機與發行流程 |
 
 **與任務卡的差異（已在 commit 說明）：**
+- P4-5c 只移除雙引擎的產品面（設定、UI、IPC、引擎平行分析、登錄欄位）；v1 Harness 內的唯讀複核分支（約 78 處）留到 P4-1 隨 v1 一起刪，避免在評分前改動回滾路徑。
+- P4-4 另把唯一的「匯出／清除診斷紀錄」UI 移到「資料與系統」（原本只在已不顯示的 Harness 設定頁內；P0-3 與 Phase 5 第 10 步需要它）。
 - 主模型經恢復與備援後仍是服務端失敗（逾時、5xx、分鐘級 429）時，v2 交付「引擎重點摘要＋原因」而不是錯誤卡，以提高交付率；網路、金鑰、帳務、**每日**免費額度用完仍拋錯誤卡（摘要無法解決這些問題）。
 - 另一個 commit `chore(deps): apply npm audit fix` 不在計畫內：CI 的 `security:audit` 因新公布的弱點轉紅，執行期相依零容忍政策要求修補。
 - 改寫的既有測試（皆依任務卡）：`providers.test.ts` 的 `reasoning_content` 案例改為「應拒絕」（P1-5）；`aiRegenerationFlow` 改以 `aria-label` 找提問框（P1-2）；`openRouterCredentialRepair` 診斷斷言加入 `quota`（P1-7）；`rendererArchitecture` 的 model 來源正則加入 `actualModel`（P3-7）。沒有刪除或放寬任何測試。
