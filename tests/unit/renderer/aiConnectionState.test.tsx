@@ -123,7 +123,7 @@ async function setupWizardFlow(): Promise<void> {
     configurable: true,
     value: { api, setTimeout, clearTimeout, localStorage }
   })
-  let renderer: TestRenderer.ReactTestRenderer | null = null
+  let renderer = null as TestRenderer.ReactTestRenderer | null
   try {
     TestRenderer.act(() => {
       renderer = TestRenderer.create(
@@ -308,7 +308,7 @@ async function settingsBackupFlow(): Promise<void> {
         dataRecoveryRequired={dataRecoveryRequired}
       />
     )
-  let renderer: TestRenderer.ReactTestRenderer | null = null
+  let renderer = null as TestRenderer.ReactTestRenderer | null
   try {
     TestRenderer.act(() => {
       renderer = renderPage(false)
@@ -345,7 +345,7 @@ async function settingsBackupFlow(): Promise<void> {
     TestRenderer.act(() => protectedExport.props.onClick())
     await flush()
     assert.equal(exported.length, 3, '資料復原保護狀態不得呼叫匯出 API')
-    assert.match(textContent(renderer.root), /不能把空白保護資料當作完整備份/)
+    assert.match(textContent(renderer!.root), /不能把空白保護資料當作完整備份/)
     console.log('SettingsPage 備份快照、取消／失敗與復原保護測試：通過')
   } finally {
     if (renderer) TestRenderer.act(() => renderer?.unmount())
@@ -370,7 +370,7 @@ async function savedOpenRouterSwitchFlow(): Promise<void> {
   const storage = new Map<string, string>()
   let failSettingsWrite = false
   let simulateSwitchTimeout = false
-  let reconciliationTarget: string | null = null
+  let reconciliationTarget = null as string | null
   const api = {
     ai: {
       async listSavedOpenRouterModels(input: unknown) {
@@ -451,7 +451,7 @@ async function savedOpenRouterSwitchFlow(): Promise<void> {
       dataRecoveryRequired={false}
     />
   )
-  let renderer: TestRenderer.ReactTestRenderer | null = null
+  let renderer = null as TestRenderer.ReactTestRenderer | null
   try {
     TestRenderer.act(() => { renderer = renderPage() })
     await flush()
@@ -562,7 +562,7 @@ async function main(): Promise<void> {
     clearTimeout
   } as unknown as Window & typeof globalThis
 
-  let renderer: TestRenderer.ReactTestRenderer | null = null
+  let renderer = null as TestRenderer.ReactTestRenderer | null
   try {
     TestRenderer.act(() => {
       renderer = TestRenderer.create(

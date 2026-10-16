@@ -73,7 +73,6 @@ const registry: EngineRegistrySnapshot = {
 
 function startingBoard(): BoardState {
   const parsed = parseFen(START_FEN)
-  assert.equal(parsed.valid, true)
   if (!parsed.valid) throw new Error(parsed.message)
   return parsed.board
 }
@@ -316,7 +315,7 @@ async function main(): Promise<void> {
     ...stableCallbacks
   })
 
-  let renderer: ReactTestRenderer | null = null
+  let renderer = null as ReactTestRenderer | null
   try {
     await act(async () => {
       renderer = create(<AnalysisPanel ref={panelRef} {...props(firstMove)} />)

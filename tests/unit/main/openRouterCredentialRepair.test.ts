@@ -8,9 +8,9 @@ import { mapStreamingErrorToPayload } from '../../../src/main/ipc/explanationErr
 import {
   AIHttpError,
   AIResponseValidationError,
-  describeCredentialTestError,
-  type AICredentialErrorCategory
+  describeCredentialTestError
 } from '../../../src/main/ai/http'
+import type { AICredentialErrorCategory } from '../../../src/shared/types/AIProviderTypes'
 import {
   OPENROUTER_CREDENTIAL_TEST_GENERATION_TIMEOUT_MS,
   OPENROUTER_CREDENTIAL_TEST_MAX_OUTPUT_TOKENS,

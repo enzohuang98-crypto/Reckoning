@@ -9,8 +9,7 @@ import { START_FEN, type BoardState } from '../../../src/shared/types/BoardState
 
 function board(fen: string): BoardState {
   const parsed = parseFen(fen)
-  assert.equal(parsed.valid, true, `測試 FEN 無效：${fen}`)
-  if (!parsed.valid) throw new Error(parsed.message)
+  if (!parsed.valid) throw new Error(`測試 FEN 無效：${fen}：${parsed.message}`)
   return parsed.board
 }
 

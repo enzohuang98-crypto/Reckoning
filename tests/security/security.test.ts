@@ -50,7 +50,10 @@ function check(name: string, condition: boolean, detail?: unknown): void {
   }
 }
 
-function rejects(fn: () => unknown, errorType: typeof Error = Error): boolean {
+function rejects(
+  fn: () => unknown,
+  errorType: abstract new (...args: never[]) => Error = Error
+): boolean {
   try {
     fn()
     return false
@@ -327,6 +330,8 @@ try {
 }
 
 const originalCwd = process.cwd()
+// electron-vite 把 ELECTRON_RENDERER_URL 宣告成唯讀；測試需要暫時改寫它。
+const mutableEnv = process.env as Record<string, string | undefined>
 const originalRendererUrl = process.env.ELECTRON_RENDERER_URL
 const originalNodeEnv = process.env.NODE_ENV
 const originalPikafishPath = process.env.PIKAFISH_PATH
@@ -335,7 +340,7 @@ try {
   const fakeEngineDir = join(cwdEngineDir, 'resources', 'engine')
   writeJsonFileAtomic(join(fakeEngineDir, 'placeholder.json'), { ok: true }, 1024)
   writeFileSync(join(fakeEngineDir, 'pikafish.exe'), '', 'utf8')
-  delete process.env.ELECTRON_RENDERER_URL
+  delete mutableEnv.ELECTRON_RENDERER_URL
   delete process.env.NODE_ENV
   delete process.env.PIKAFISH_PATH
   process.chdir(cwdEngineDir)
@@ -343,15 +348,15 @@ try {
     '正式執行環境不從目前工作目錄載入預設引擎',
     new PikafishAdapter().resolveEnginePath() === null
   )
-  process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
+  mutableEnv.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
   check(
     '開發環境才允許從目前工作目錄載入測試引擎',
     new PikafishAdapter().resolveEnginePath() === join(fakeEngineDir, 'pikafish.exe')
   )
 } finally {
   process.chdir(originalCwd)
-  if (originalRendererUrl === undefined) delete process.env.ELECTRON_RENDERER_URL
-  else process.env.ELECTRON_RENDERER_URL = originalRendererUrl
+  if (originalRendererUrl === undefined) delete mutableEnv.ELECTRON_RENDERER_URL
+  else mutableEnv.ELECTRON_RENDERER_URL = originalRendererUrl
   if (originalNodeEnv === undefined) delete process.env.NODE_ENV
   else process.env.NODE_ENV = originalNodeEnv
   if (originalPikafishPath === undefined) delete process.env.PIKAFISH_PATH

@@ -52,6 +52,7 @@ class ScriptedProvider implements AIProvider {
       await new Promise<never>((_, reject) =>
         signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
       )
+      return
     }
     if ('error' in step) throw step.error
     const half = Math.ceil(step.text.length / 2)
@@ -114,7 +115,7 @@ async function run(fixture: FixtureCase, steps: Step[], options: RunOptions = {}
     'vendor/primary:free'
   )
   let error: unknown = null
-  let result: Awaited<ReturnType<typeof runExplainPipelineV2>> | null = null
+  let result = null as Awaited<ReturnType<typeof runExplainPipelineV2>> | null
   try {
     result = await runExplainPipelineV2(execution, {
       provider,

@@ -20,7 +20,6 @@ async function flushMicrotasks(): Promise<void> {
 
 async function verifyWorkspaceDraftBlocksInstall(): Promise<void> {
   const parsed = parseFen(START_FEN)
-  assert.equal(parsed.valid, true)
   if (!parsed.valid) throw new Error(parsed.message)
 
   const unsubscribe = (): void => undefined
@@ -78,7 +77,7 @@ async function verifyWorkspaceDraftBlocksInstall(): Promise<void> {
   let hasUnsavedDraft = false
   let saves = 0
   let installs = 0
-  let renderer: TestRenderer.ReactTestRenderer | null = null
+  let renderer = null as TestRenderer.ReactTestRenderer | null
   try {
     await TestRenderer.act(async () => {
       renderer = TestRenderer.create(
@@ -265,7 +264,7 @@ async function run(): Promise<void> {
     window?: { confirm: (message?: string) => boolean }
   }
   const originalWindow = testWindow.window
-  testWindow.window = { confirm: () => true }
+  testWindow.window = { confirm: () => true } as typeof testWindow.window
   try {
     TestRenderer.act(() => {
       renderer.root.findByProps({ 'data-update-action': 'install' }).props.onClick()

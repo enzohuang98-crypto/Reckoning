@@ -56,7 +56,6 @@ async function flushMicrotasks(): Promise<void> {
 
 function startingBoard(): BoardState {
   const parsed = parseFen(START_FEN)
-  assert.equal(parsed.valid, true)
   if (!parsed.valid) throw new Error(parsed.message)
   return parsed.board
 }
@@ -170,7 +169,7 @@ async function main(): Promise<void> {
   const timers = new Map<number, PendingTimer>()
   const copied: string[] = []
   const conversationChanges: Array<AIConversation | null> = []
-  let conversation: AIConversation | null = null
+  let conversation = null as AIConversation | null
   let engineResultListener: ((payload: EngineAnalysisResultPayload) => void) | null = null
   let engineProgressListener: ((payload: EngineAnalysisProgressPayload) => void) | null = null
   let engineErrorListener: ((payload: EngineAnalysisErrorPayload) => void) | null = null
@@ -323,7 +322,7 @@ async function main(): Promise<void> {
     />
   )
 
-  let renderer: ReactTestRenderer | null = null
+  let renderer = null as ReactTestRenderer | null
   try {
     await act(async () => {
       renderer = create(panel(originalSettings))
@@ -429,7 +428,8 @@ async function main(): Promise<void> {
     assert.equal(successfulRegeneration.analysisId, firstAiRequest.analysisId)
     assert.equal(successfulRegeneration.model, firstAiRequest.model)
     assert.equal(successfulRegeneration.attachedMove, firstAiRequest.attachedMove)
-    assert.deepEqual(successfulRegeneration.budget, firstAiRequest.budget)
+    assert.equal(successfulRegeneration.userLevel, firstAiRequest.userLevel)
+    assert.equal(successfulRegeneration.language, firstAiRequest.language)
     act(() => {
       aiDoneListener?.({
         requestId: successfulRegeneration.requestId,
@@ -472,7 +472,8 @@ async function main(): Promise<void> {
     const cancelledRegeneration = aiStarts[5]
     assert.equal(cancelledRegeneration.model, timedOutRegeneration.model)
     assert.equal(cancelledRegeneration.analysisId, timedOutRegeneration.analysisId)
-    assert.deepEqual(cancelledRegeneration.budget, timedOutRegeneration.budget)
+    assert.equal(cancelledRegeneration.userLevel, timedOutRegeneration.userLevel)
+    assert.equal(cancelledRegeneration.language, timedOutRegeneration.language)
     act(() => {
       aiErrorListener?.({
         requestId: cancelledRegeneration.requestId,

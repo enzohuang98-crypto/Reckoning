@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.web.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    // tsx 以 classic JSX 轉譯測試檔（測試不在 tsconfig.web.json 的 include 內），
+    // 所以測試必須 import React；在 react-jsx 下它看起來未使用，這裡不把它當錯誤。
+    "noUnusedLocals": false
+  },
+  "include": [
+    "src/renderer/src/**/*",
+    "src/shared/**/*",
+    "src/preload/**/*.d.ts",
+    "tests/**/*.tsx",
+    "tests/architecture/boardAccessibility.test.ts"
+  ]
+}

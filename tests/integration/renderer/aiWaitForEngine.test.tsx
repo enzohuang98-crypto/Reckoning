@@ -37,7 +37,6 @@ import type {
 } from '../../../src/shared/types/ipc'
 import type { AIConversation } from '../../../src/shared/types/AppData'
 import type { HarnessProgressPayload } from '../../../src/shared/types/Harness'
-import { ONE_CLICK_EXPLANATION_DEADLINE_MS } from '../../../src/renderer/src/features/analysis/liveAnalysis'
 
 interface PendingTimer {
   callback: () => void
@@ -56,7 +55,6 @@ async function flushMicrotasks(): Promise<void> {
 
 function startingBoard(): BoardState {
   const parsed = parseFen(START_FEN)
-  assert.equal(parsed.valid, true)
   if (!parsed.valid) throw new Error(parsed.message)
   return parsed.board
 }
@@ -154,13 +152,6 @@ function analysisResult(
   }
 }
 
-function findButton(renderer: ReactTestRenderer, label: string): ReactTestInstance {
-  const button = renderer.root
-    .findAllByType('button')
-    .find((candidate) => textContent(candidate) === label)
-  assert.ok(button, `應找到「${label}」按鈕`)
-  return button
-}
 
 async function main(): Promise<void> {
   const registry: EngineRegistrySnapshot = {
@@ -174,7 +165,7 @@ async function main(): Promise<void> {
   const timers = new Map<number, PendingTimer>()
   const copied: string[] = []
   const conversationChanges: Array<AIConversation | null> = []
-  let conversation: AIConversation | null = null
+  let conversation = null as AIConversation | null
   let engineResultListener: ((payload: EngineAnalysisResultPayload) => void) | null = null
   let engineProgressListener: ((payload: EngineAnalysisProgressPayload) => void) | null = null
   let engineErrorListener: ((payload: EngineAnalysisErrorPayload) => void) | null = null
@@ -318,7 +309,7 @@ async function main(): Promise<void> {
     />
   )
 
-  let renderer: ReactTestRenderer | null = null
+  let renderer = null as ReactTestRenderer | null
   try {
     await act(async () => {
       renderer = create(panel(null))

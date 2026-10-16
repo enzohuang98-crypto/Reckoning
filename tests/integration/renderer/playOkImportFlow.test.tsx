@@ -67,12 +67,11 @@ function StatefulImportHarness({
 
 function main(): void {
   const start = parseFen(START_FEN)
-  assert.equal(start.valid, true)
   if (!start.valid) throw new Error(start.message)
 
   const boardChanges: string[] = []
   const selections: ImportedMoveSelection[] = []
-  let renderer: ReactTestRenderer | null = null
+  let renderer = null as ReactTestRenderer | null
   try {
     act(() => {
       renderer = create(
@@ -86,12 +85,12 @@ function main(): void {
     assert.ok(renderer)
     const textarea = renderer.root.findByType('textarea')
     act(() => textarea.props.onChange({ target: { value: WXF } }))
-    act(() => buttonByText(renderer.root, '從開局匯入').props.onClick())
+    act(() => buttonByText(renderer!.root, '從開局匯入').props.onClick())
 
     assert.equal(boardChanges.length, 1)
     assert.match(textContent(renderer.root), /1\.C8\.5/)
     const clickedAt = performance.now()
-    act(() => buttonByText(renderer.root, '1.C8.5').props.onClick())
+    act(() => buttonByText(renderer!.root, '1.C8.5').props.onClick())
     const statusVisibleAt = performance.now()
 
     assert.ok(statusVisibleAt - clickedAt < 200, '選步狀態必須在 200ms 內同步可見')
@@ -106,20 +105,20 @@ function main(): void {
     )
     assert.equal(status.length, 1)
 
-    act(() => buttonByText(renderer.root, '1.C8.5').props.onClick())
+    act(() => buttonByText(renderer!.root, '1.C8.5').props.onClick())
     assert.equal(selections.length, 2, '重按同一手也必須產生新的明確選取事件')
 
-    act(() => buttonByText(renderer.root, '切換匯入面板').props.onClick())
+    act(() => buttonByText(renderer!.root, '切換匯入面板').props.onClick())
     assert.equal(
       renderer.root.findAll((node) => node.type === 'div' && node.props.hidden === true).length,
       1,
       '關閉匯入面板只應切換可見性，不應卸載匯入狀態'
     )
-    act(() => buttonByText(renderer.root, '切換匯入面板').props.onClick())
+    act(() => buttonByText(renderer!.root, '切換匯入面板').props.onClick())
     assert.equal(renderer.root.findByType('textarea').props.value, WXF)
     assert.match(textContent(renderer.root), /已選第 1 手 C8\.5/)
 
-    act(() => buttonByText(renderer.root, '清除').props.onClick())
+    act(() => buttonByText(renderer!.root, '清除').props.onClick())
     assert.equal(renderer.root.findByType('textarea').props.value, '')
     assert.equal(
       renderer.root.findAll((node) => node.props.className === 'move-chip').length,
