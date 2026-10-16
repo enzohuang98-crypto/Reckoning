@@ -181,6 +181,8 @@ export interface HarnessTrace {
   answerKind?: ExplanationAnswerKind
   attempts?: ExplainAttemptTrace[]
   hardErrors?: string[]
+  /** 有修正時，修正前那一輪的硬錯（hardErrors 是最後一輪的）。 */
+  firstHardErrors?: string[]
   softWarnings?: string[]
 }
 

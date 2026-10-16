@@ -359,6 +359,9 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
     ...(Array.isArray(trace.hardErrors)
       ? { hardErrors: trace.hardErrors.filter((item): item is string => typeof item === 'string').map((item) => item.slice(0, 300)).slice(0, 10) }
       : {}),
+    ...(Array.isArray(trace.firstHardErrors)
+      ? { firstHardErrors: trace.firstHardErrors.filter((item): item is string => typeof item === 'string').map((item) => item.slice(0, 300)).slice(0, 10) }
+      : {}),
     ...(Array.isArray(trace.softWarnings)
       ? { softWarnings: trace.softWarnings.filter((item): item is string => typeof item === 'string').map((item) => item.slice(0, 300)).slice(0, 10) }
       : {})

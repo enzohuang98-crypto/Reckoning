@@ -203,6 +203,24 @@ async function main(): Promise<void> {
   assert.equal(summary.traces.at(-1)?.answerKind, 'engine_summary')
   assert.ok((summary.traces.at(-1)?.hardErrors?.length ?? 0) > 0)
 
+  // 修正前後的硬錯分開記錄（修正前在 firstHardErrors）。
+  assert.ok((summary.traces.at(-1)?.firstHardErrors?.length ?? 0) > 0)
+
+  // 提示標籤與混用數字的著法在檢查前就修整掉：內容正確的回答一次就交付，不浪費修正。
+  const labelled = `根據事實表，${opening.goodAnswer!.replace('馬8進7', '馬8進七')}`
+  const tidiedRun = await run(opening, [{ text: labelled }])
+  assert.equal(tidiedRun.result?.answerKind, 'ai')
+  assert.equal(tidiedRun.provider.requests.length, 1)
+  assert.equal(tidiedRun.result?.finalText.includes('事實表'), false)
+  assert.ok(tidiedRun.result?.finalText.startsWith('根據引擎資料，'))
+  assert.equal(tidiedRun.result?.finalText.includes('馬8進七'), false)
+
+  // 修正後只剩「不存在的著法」：摘要說明真正的原因，不再一律寫「與引擎事實不符」。
+  const unknownMove = '**結論**：應該走車一平二。\n**這步的問題**：馬八進七太慢，沒有搶到中路。'
+  const unknownSummary = await run(opening, [{ text: unknownMove }, { text: unknownMove }])
+  assert.equal(unknownSummary.result?.answerKind, 'engine_summary')
+  assert.match(unknownSummary.result?.finalText ?? '', /回答提到引擎資料以外的著法/)
+
   // 每分鐘限流 → 備援模型一次並標示。
   const minute = new AIHttpError(429, 'generation', 'rate limited', 5_000, 'minute')
   const backup = await run(opening, [{ error: minute }, { text: opening.goodAnswer! }], { backupModels: ['vendor/backup:free'] })

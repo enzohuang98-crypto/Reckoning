@@ -63,6 +63,7 @@
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/explanationFacts.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/promptV2.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/answerCheck.test.ts"},
+  {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/answerTidy.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/engineSummary.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/integration/ai/explainPipelineV2.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/explainPipelineRouting.test.ts"},
