@@ -62,7 +62,7 @@ OpenRouter 免費模型不使用寫死的清單。貼上 `sk-or-v1-...` 金鑰�
 
 推理（thinking）依每個模型在 `/models` 公布的能力設定：能關閉就關閉、必須推理的模型則排除推理文字並加大輸出預算；回答以串流即時顯示。
 
-可在「設定 → AI 與金鑰」另外核可最多 2 個 `:free` 備援模型（必須出現在這把金鑰當下的免費清單中）。只有主模型逾時、過載、分鐘級限流、暫時無法使用或回應格式錯誤時才會改用備援，畫面會標示「由 X 回答（Y 暫時無法使用：原因）」；每日免費額度用完、金鑰或網路錯誤則直接顯示錯誤卡，不會改用備援。
+可在「設定 → AI 與金鑰」另外核可最多 2 個 `:free` 備援模型（必須出現在這把金鑰當下的免費清單中）。只有主模型逾時、過載、分鐘級限流、暫時無法使用或回應格式錯誤時才會改用備援，畫面會標示「由 X 回答（Y 暫時無法使用：原因）」；連線中斷時會先重試一次，仍連不上就照同樣流程改用備援或改給引擎重點摘要；每日免費額度用完或金鑰錯誤則直接顯示錯誤卡，不會改用備援。
 
 免費模型與供應狀態會變動；若已選模型不再出現在即時免費清單，Reckoning 會要求重新選擇，不會在使用者未核可的情況下換成其他模型。實作依據與驗證紀錄見 [OpenRouter 免費模型整合研究](docs/research/openrouter-free-models-integration.md)。
 
@@ -170,6 +170,8 @@ npm.cmd run build
   npx.cmd tsx --tsconfig tsconfig.node.json tools/acceptance/explain-v2-live.ts --models <模型>:free --out v2-review.md
   Remove-Item Env:OPENROUTER_API_KEY
   ```
+
+  預設只允許 `:free` 模型；加 `--allow-paid` 才能測付費模型（費用記在 OpenRouter 帳戶）。付費輪只看解說品質，不能代表免費模型的交付率。報表的「呼叫紀錄」會列出每次呼叫的秒數與失敗分類，連線失敗附底層代碼。
 
 - 匯出的診斷紀錄可用 `tools/acceptance/summarize-traces.ts` 統計失敗類別（不輸出回答原文或局面）。
 - 進行中的改善計畫與上線門檻見 [AI 對話可靠性計畫](docs/plans/ai-chat-reliability-v2.md)。

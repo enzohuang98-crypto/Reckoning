@@ -222,7 +222,8 @@ AnswerCheck（只查客觀硬錯）
 **與任務卡的差異（已在 commit 說明）：**
 - P4-5c 只移除雙引擎的產品面（設定、UI、IPC、引擎平行分析、登錄欄位）；v1 Harness 內的唯讀複核分支（約 78 處）留到 P4-1 隨 v1 一起刪，避免在評分前改動回滾路徑。
 - P4-4 另把唯一的「匯出／清除診斷紀錄」UI 移到「資料與系統」（原本只在已不顯示的 Harness 設定頁內；P0-3 與 Phase 5 第 10 步需要它）。
-- 主模型經恢復與備援後仍是服務端失敗（逾時、5xx、分鐘級 429）時，v2 交付「引擎重點摘要＋原因」而不是錯誤卡，以提高交付率；網路、金鑰、帳務、**每日**免費額度用完仍拋錯誤卡（摘要無法解決這些問題）。
+- 主模型經恢復與備援後仍是服務端失敗（逾時、5xx、分鐘級 429）時，v2 交付「引擎重點摘要＋原因」而不是錯誤卡，以提高交付率；金鑰、帳務、**每日**免費額度用完仍拋錯誤卡（摘要無法解決這些問題）。
+- 網路錯誤原本也拋錯誤卡；P3-9 第一輪後（見下方紀錄）改為先重試同一模型一次，仍失敗照備援／摘要流程（使用者 2026-10-16 同意）。
 - 另一個 commit `chore(deps): apply npm audit fix` 不在計畫內：CI 的 `security:audit` 因新公布的弱點轉紅，執行期相依零容忍政策要求修補。
 - 改寫的既有測試（皆依任務卡）：`providers.test.ts` 的 `reasoning_content` 案例改為「應拒絕」（P1-5）；`aiRegenerationFlow` 改以 `aria-label` 找提問框（P1-2）；`openRouterCredentialRepair` 診斷斷言加入 `quota`（P1-7）；`rendererArchitecture` 的 model 來源正則加入 `actualModel`（P3-7）。沒有刪除或放寬任何測試。
 
@@ -232,4 +233,10 @@ $env:OPENROUTER_API_KEY="（在 OpenRouter 後台新建的 key）"
 npx tsx --tsconfig tsconfig.node.json tools/acceptance/explain-v2-live.ts --models <模型A>:free,<模型B>:free --out v2-review.md
 Remove-Item Env:OPENROUTER_API_KEY
 ```
-評分表寫入 `.local-review/v2-review.md`（已 gitignore）。10 題 × 1 個模型約 10–30 次請求；未儲值帳號每日約 50 次。上線門檻見第 7 節「驗收標準」；人工 4 欄「≥4 分佔 ≥70%」。
+評分表寫入 `.local-review/v2-review.md`（已 gitignore）。
+
+**P3-9 第一輪紀錄（2026-10-16，使用者本機，依本機 session 回報）：未通過。**
+- Nemotron（`:free`）：6 題超過 60 秒沒回答、3 題 network 錯誤。
+- Gemma（`:free`）：AI 答案 2/9（22%，門檻 80%）、交付率 50%（門檻 95%）；5 題 network 錯誤（約 0.1 秒就失敗、沒有 HTTP 狀態碼）、2 題退回摘要、1 題棋規捷徑。兩則 AI 解說沒有編造著法，吃子／將軍／輪走方正確，本機初評 3 分與 4 分。
+- 判讀：network 分類代表請求沒拿到 HTTP 回應（429 會記成 rate_limited），不是免費額度限流；以假模型離線重跑 10 題沒有程式錯誤。當時紀錄沒有底層代碼，無法再細分。
+- 後續修正（各一個 commit）：「對手怎麼利用」改為沿棋手著法之後的線寫對手應著；網路錯誤記錄底層代碼並重試一次、仍失敗交付摘要；live 腳本加呼叫紀錄與 `--allow-paid`。下一輪：免費模型＋免費備援一輪看交付率，付費模型一輪只看解說品質。10 題 × 1 個模型約 10–30 次請求；未儲值帳號每日約 50 次。上線門檻見第 7 節「驗收標準」；人工 4 欄「≥4 分佔 ≥70%」。
