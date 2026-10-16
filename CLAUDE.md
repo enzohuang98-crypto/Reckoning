@@ -163,7 +163,8 @@ Harness 模式與預算不是使用者設定：`FIXED_HARNESS_OPTIONS`（main �
 
 ## 尚未完成 / 後續
 
-- **P3-9 live 評分**（使用者本機）決定 v2 能否上線；通過後才做 P4-1（刪除 v1 Harness、v1 契約測試、
+- **P3-9 live 評分**（使用者本機；demo 門檻見計畫第 7 節：demo 模型 ≥4 分佔 ≥60% 且無 ≤2 分，固定題與
+  `--set holdout` 保留驗證集都要達標）決定 v2 能否上線；通過後才做 P4-1（刪除 v1 Harness、v1 契約測試、
   `run-ai-acceptance` 改接 v2 或由 P3-9 取代）。見 `docs/plans/ai-chat-reliability-v2.md`。
 - Phase 5：Windows CI 全套＋安裝版 10 步手動驗收。
 - PGN／中文記譜（炮二平五）匯入（目前支援 FEN、UCI 著法序列與 PlayOK WXF）。
