@@ -228,6 +228,27 @@ export interface HarnessTrace {
   status: 'completed' | 'clarification_required' | 'cancelled' | 'failed'
   /** 最終顯示給使用者的文字（供未來建立回歸評測集用）；儲存時會截斷長度。 */
   finalText?: string
+  /** v2 解說管線才有；舊 trace 視為 v1。 */
+  pipelineVersion?: 2
+  answerKind?: ExplanationAnswerKind
+  attempts?: ExplainAttemptTrace[]
+  hardErrors?: string[]
+  softWarnings?: string[]
+}
+
+/** v2 交付種類：AI 回答、引擎重點摘要（非 AI）、或棋規捷徑。 */
+export type ExplanationAnswerKind = 'ai' | 'engine_summary' | 'board_rule'
+
+/** v2 每一次模型呼叫的紀錄（不含 prompt 或回答原文）。 */
+export interface ExplainAttemptTrace {
+  model: string
+  kind: 'primary' | 'recovery' | 'backup' | 'repair'
+  durationMs: number
+  finishReason?: string
+  outputTokens?: number
+  reasoningTokens?: number
+  /** 失敗時的分類（例如 rate_limited、timeout）；不含服務原文。 */
+  error?: string
 }
 
 export interface TeacherTestExportV1 {
