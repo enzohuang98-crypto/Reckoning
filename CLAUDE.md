@@ -48,6 +48,7 @@ npm run security:audit   # 相依弱點分層把關（政策見 docs/architectur
   （`tests/architecture/testManifest.test.ts` 會擋下沒被執行的測試檔）。
 - 需要真實金鑰的工具（不在 `npm test` 內，金鑰只從環境變數讀、輸出不得含金鑰）：
   - `tools/acceptance/explain-v2-live.ts`：v2 解說 10 題 live 驗收＋人工評分表（`OPENROUTER_API_KEY`，輸出到 `.local-review/`）。
+    預設只收 `:free`；`--allow-paid` 才放行付費模型（會計費），報表會標示付費輪不代表免費模型的交付率。
   - `tools/acceptance/openrouter-smoke.ts`：OpenRouter 免費模型探測。
   - `tools/acceptance/summarize-traces.ts`：統計「匯出診斷紀錄」的失敗類別（不輸出回答原文／FEN）。
   - `npm run acceptance:ai`（`run-ai-acceptance`，綁定 v1 Harness；`npm run test:acceptance:ai` 為離線自測）。
@@ -104,7 +105,8 @@ src/
 3. **AnswerCheck**：只查客觀錯誤（不存在的著法、吃子／將軍與事實矛盾、座標或內部格式外洩、
    輪走方錯誤、截斷等）；有硬錯就把錯誤清單送回同一模型**修正一次**。
 4. **退路**：主模型 → 一次恢復（空白／截斷）→ 使用者核可的備援 `:free` 模型 → 修正 → 仍失敗交付
-   「引擎重點摘要（非 AI 生成）」＋原因。網路、金鑰、帳務、每日額度用完則顯示錯誤卡。
+   「引擎重點摘要（非 AI 生成）」＋原因。連線中斷先重試同一模型一次，仍失敗照備援／摘要流程；
+   金鑰、帳務、每日額度用完則顯示錯誤卡。診斷紀錄的每次呼叫附失敗分類，network 另附底層代碼（如 `ECONNRESET`）。
 5. **預算**（`explain/budget.ts`）：最多 3 次模型呼叫、每次 60 秒、總計 110 秒、串流閒置 30 秒；renderer 120 秒截止。
 6. 棋規問題（如「這步合法嗎」）走規則引擎捷徑，不呼叫模型。
 7. UI：真串流；修正時顯示「正在檢查並修正…」；「由 X 回答（Y 暫時無法使用：原因）」；摘要橫幅附「重試 AI」。
