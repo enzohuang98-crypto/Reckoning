@@ -191,11 +191,20 @@ function sideText(facts: ExplanationFacts, language: ExplanationLanguage): strin
   return facts.sideToMove === 'red' ? '紅方' : '黑方'
 }
 
+function otherSideText(facts: ExplanationFacts, language: ExplanationLanguage): string {
+  const opponentIsRed = facts.sideToMove !== 'red'
+  if (language === 'en') return opponentIsRed ? 'Red' : 'Black'
+  if (language === 'zh-CN') return opponentIsRed ? '红方' : '黑方'
+  return opponentIsRed ? '紅方' : '黑方'
+}
+
 function moveUserPrompt(input: PromptV2Input): string {
   const { facts, language } = input
   const headings = MOVE_HEADINGS[language]
   const userMove = facts.userMove?.move ?? ''
   const reason = input.userMoveReason?.trim()
+  // 「對手怎麼利用」要沿棋手著法之後的線寫對手的應著；只說「主線」時模型常改寫成首選線上自己的後續。
+  const opponentSide = otherSideText(facts, language)
   const smallGap =
     facts.userIsBest ||
     facts.mistakeLevel === 'acceptable_or_tiny_inaccuracy'
@@ -210,7 +219,7 @@ function moveUserPrompt(input: PromptV2Input): string {
       `**${headings.conclusion}**:`,
       `**${headings.problem}**: (if the player stated an idea, say directly whether it works in the line)`,
       `**${headings.bestPlan}**:`,
-      `**${headings.opponent}**: (follow the line until a concrete result)`,
+      `**${headings.opponent}**: (follow the "Line after the player's move": what ${opponentSide} plays in reply and the concrete result. Do not describe the player's own follow-up moves. If ${opponentSide} has no good reply, say so.)`,
       `**${headings.nextTime}**: (one thinking step the player can repeat)`,
       ...(smallGap
         ? [`The player's move is the best move or the gap is small: replace "${headings.problem}" with "${headings.good}", do not invent faults, and you may omit "${headings.opponent}".`]
@@ -233,8 +242,8 @@ function moveUserPrompt(input: PromptV2Input): string {
       : `**${headings.problem}**：（若棋手有寫想法，直接說明這個想法在主線中成不成立）`,
     `**${headings.bestPlan}**：`,
     cn
-      ? `**${headings.opponent}**：（沿主线说到具体结果为止）`
-      : `**${headings.opponent}**：（沿主線說到具體結果為止）`,
+      ? `**${headings.opponent}**：（沿“棋手着法之后的主线”，写${opponentSide}怎么应对、具体结果是什么；不要写棋手自己的后续着法。${opponentSide}没有好的反击就直接说明）`
+      : `**${headings.opponent}**：（沿「棋手著法之後的主線」，寫${opponentSide}怎麼應對、具體結果是什麼；不要寫棋手自己的後續著法。${opponentSide}沒有好的反擊就直接說明）`,
     cn
       ? `**${headings.nextTime}**：（一句可以照做的思考步骤）`
       : `**${headings.nextTime}**：（一句可以照做的思考步驟）`,

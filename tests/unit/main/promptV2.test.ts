@@ -46,6 +46,12 @@ assert.match(move.prompt, /\*\*這步的問題\*\*/)
 assert.equal(/JSON|json/.test(move.prompt + move.systemPrompt), false, 'v2 asks for plain text')
 assert.equal(/score cp/.test(move.prompt), false, 'raw scores never reach the prompt')
 assert.ok(move.prompt.length < 3_500, `prompt stays short: ${move.prompt.length}`)
+// 「對手怎麼利用」指向棋手著法之後的線與對手（紅方走 → 黑方應對），不再只說「主線」。
+assert.match(move.prompt, /\*\*對手怎麼利用\*\*：（沿「棋手著法之後的主線」，寫黑方怎麼應對/)
+assert.match(move.prompt, /不要寫棋手自己的後續著法/)
+assert.equal(move.prompt.includes('沿主線說到具體結果為止'), false)
+assert.match(outputs['move-zh-CN'].prompt, /沿“棋手着法之后的主线”，写黑方怎么应对/)
+assert.match(outputs['move-en'].prompt, /follow the "Line after the player's move": what Black plays in reply/)
 assert.match(outputs['move-zh-CN'].systemPrompt, /用简体中文回答/)
 assert.match(outputs['move-en'].systemPrompt, /Answer in English/)
 
