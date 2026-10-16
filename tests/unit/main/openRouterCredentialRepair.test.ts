@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net'
 import {
   autoConfigureCredential
 } from '../../../src/main/ai/autoConfigureCredential'
-import { mapStreamingErrorToPayload } from '../../../src/main/ipc/aiExplanationHandlers'
+import { mapStreamingErrorToPayload } from '../../../src/main/ipc/explanationErrorPayload'
 import {
   AIHttpError,
   AIResponseValidationError,
