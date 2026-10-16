@@ -80,19 +80,23 @@ class PipelineCallTimeoutError extends Error {
   }
 }
 
-type FailureClass = 'fatal' | 'backup_eligible' | 'incomplete'
+type FailureClass = 'fatal' | 'backup_eligible' | 'incomplete' | 'network'
 
 /**
  * 依診斷分類決定：
- * - fatal：金鑰、帳務、每日額度、網路等，換模型也沒用，直接回錯讓錯誤卡提示處理方式；
+ * - fatal：金鑰、帳務、每日額度等，換模型也沒用，直接回錯讓錯誤卡提示處理方式；
  * - backup_eligible：限流（每分鐘）、5xx、403、404、逾時、格式錯，可改用備援模型；
- * - incomplete：空白或截斷，先以關閉推理重試同一模型。
+ * - incomplete：空白或截斷，先以關閉推理重試同一模型；
+ * - network：連線中斷（常見是重用了已被服務端關閉的連線），先重試同一模型一次，
+ *   仍失敗就照一般流程改備援或交付引擎摘要，不讓一次瞬間斷線變成整題失敗。
  */
 export function classifyModelFailure(error: unknown): FailureClass {
   const diagnostic = describeAIExecutionError(error, 'AI 服務')
   switch (diagnostic.category) {
     case 'generation_incomplete':
       return 'incomplete'
+    case 'network':
+      return 'network'
     case 'rate_limited':
       return diagnostic.quota === 'daily' ? 'fatal' : 'backup_eligible'
     case 'provider_unavailable':
@@ -107,29 +111,36 @@ export function classifyModelFailure(error: unknown): FailureClass {
   }
 }
 
-const FAILURE_REASON: Record<ExplanationLanguage, Record<'check' | 'unavailable' | 'timeout' | 'incomplete', string>> = {
+const FAILURE_REASON: Record<
+  ExplanationLanguage,
+  Record<'check' | 'unavailable' | 'timeout' | 'incomplete' | 'network', string>
+> = {
   'zh-TW': {
     check: '回答與引擎事實不符',
     unavailable: '模型暫時無法回應',
     timeout: '模型超過時間沒有回答',
-    incomplete: '模型沒有給出完整答案'
+    incomplete: '模型沒有給出完整答案',
+    network: '連不上 AI 服務，請檢查網路'
   },
   'zh-CN': {
     check: '回答与引擎事实不符',
     unavailable: '模型暂时无法回应',
     timeout: '模型超过时间没有回答',
-    incomplete: '模型没有给出完整答案'
+    incomplete: '模型没有给出完整答案',
+    network: '连不上 AI 服务，请检查网络'
   },
   en: {
     check: 'the answer contradicted the engine facts',
     unavailable: 'the model is temporarily unavailable',
     timeout: 'the model took too long',
-    incomplete: 'the model did not finish an answer'
+    incomplete: 'the model did not finish an answer',
+    network: 'could not reach the AI service; check the network'
   }
 }
 
-function failureReasonKey(error: unknown): 'unavailable' | 'timeout' | 'incomplete' {
+function failureReasonKey(error: unknown): 'unavailable' | 'timeout' | 'incomplete' | 'network' {
   const category = describeAIExecutionError(error, 'AI 服務').category
+  if (category === 'network') return 'network'
   if (category === 'timeout') return 'timeout'
   if (category === 'generation_incomplete' || category === 'response_format') return 'incomplete'
   return 'unavailable'
@@ -405,13 +416,15 @@ export async function runExplainPipelineV2(
       } catch (error) {
         const surfaced =
           timedOut && !deps.signal.aborted ? new PipelineCallTimeoutError() : error
+        const diagnostic = isAbortError(surfaced)
+          ? null
+          : describeAIExecutionError(surfaced, 'AI 服務')
         attempts.push({
           model,
           kind,
           durationMs: Date.now() - callStartedAt,
-          error: isAbortError(surfaced)
-            ? 'cancelled'
-            : describeAIExecutionError(surfaced, 'AI 服務').category
+          error: diagnostic ? diagnostic.category : 'cancelled',
+          ...(diagnostic?.networkCode ? { networkCode: diagnostic.networkCode } : {})
         })
         throw surfaced
       } finally {
@@ -435,6 +448,16 @@ export async function runExplainPipelineV2(
     } catch (error) {
       if (isAbortError(error) && deps.signal.aborted) throw error
       lastError = error
+    }
+    if (!answer && lastError && classifyModelFailure(lastError) === 'network' && canCallAgain()) {
+      progress('provider_retry', '和 AI 服務的連線中斷，正在重試一次。')
+      try {
+        answer = await callModel(payload.model, 'network_retry', prompt.prompt)
+        lastError = null
+      } catch (error) {
+        if (isAbortError(error) && deps.signal.aborted) throw error
+        lastError = error
+      }
     }
     if (!answer && lastError && classifyModelFailure(lastError) === 'incomplete' && canCallAgain()) {
       progress('provider_retry', 'AI 模型沒有交出完整答案，正在關閉推理後重試一次。')

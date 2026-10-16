@@ -223,6 +223,11 @@ function sanitizeEvidence(value: unknown): HarnessEvidence | null {
   }
 }
 
+/** 連線錯誤代碼只接受大寫代碼格式（例如 ECONNRESET），避免把任何原文帶進紀錄。 */
+function isNetworkCode(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Z][A-Z0-9_]{1,39}$/.test(value)
+}
+
 function sanitizeProviderDiagnostic(value: unknown): AICredentialDiagnostic | undefined {
   if (!isRecord(value)) return undefined
   const stages: AICredentialTestStage[] = ['key', 'catalog', 'generation', 'storage']
@@ -251,6 +256,7 @@ function sanitizeProviderDiagnostic(value: unknown): AICredentialDiagnostic | un
       ? { finishReason: value.finishReason.slice(0, 64) }
       : {}),
     ...(typeof value.outputTokens === 'number' ? { outputTokens: value.outputTokens } : {}),
+    ...(isNetworkCode(value.networkCode) ? { networkCode: value.networkCode } : {}),
     message: value.message.slice(0, 500)
   }
 }
@@ -361,7 +367,7 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
 
 function sanitizeAttempt(value: unknown): ExplainAttemptTrace | null {
   if (!isRecord(value)) return null
-  const kinds = ['primary', 'recovery', 'backup', 'repair']
+  const kinds = ['primary', 'network_retry', 'recovery', 'backup', 'repair']
   if (
     typeof value.model !== 'string' ||
     !kinds.includes(value.kind as string) ||
@@ -376,7 +382,8 @@ function sanitizeAttempt(value: unknown): ExplainAttemptTrace | null {
     ...(typeof value.finishReason === 'string' ? { finishReason: value.finishReason.slice(0, 32) } : {}),
     ...(typeof value.outputTokens === 'number' ? { outputTokens: value.outputTokens } : {}),
     ...(typeof value.reasoningTokens === 'number' ? { reasoningTokens: value.reasoningTokens } : {}),
-    ...(typeof value.error === 'string' ? { error: value.error.slice(0, 64) } : {})
+    ...(typeof value.error === 'string' ? { error: value.error.slice(0, 64) } : {}),
+    ...(isNetworkCode(value.networkCode) ? { networkCode: value.networkCode } : {})
   }
 }
 

@@ -134,6 +134,11 @@ export interface AICredentialDiagnostic {
   outputTokens?: number
   reasoningTokens?: number
   quota?: AIQuotaKind
+  /**
+   * network 分類時的底層連線錯誤代碼（例如 ECONNRESET、UND_ERR_SOCKET）。
+   * 只保留大寫代碼，不含任何訊息原文；沒有代碼代表錯誤不是來自連線層。
+   */
+  networkCode?: string
   message: string
 }
 

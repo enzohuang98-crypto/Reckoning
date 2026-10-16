@@ -5,7 +5,9 @@ import { OpenRouterProvider } from '../../../src/main/ai/providers/OpenRouterPro
 import {
   AIHttpError,
   AIResponseValidationError,
-  describeCredentialTestError
+  describeAIExecutionError,
+  describeCredentialTestError,
+  networkErrorCode
 } from '../../../src/main/ai/http'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
 import type { AIExplanationStreamChunk } from '../../../src/shared/types/AIProviderTypes'
@@ -172,6 +174,28 @@ async function main(): Promise<void> {
     const { error } = await collect(provider, controller.signal)
     assert.ok(error instanceof Error && error.name === 'AbortError', String(error))
   })
+
+  // 串流途中連線被切斷：Node 的 fetch 丟 TypeError，底層代碼在 cause；診斷只帶代碼，不帶原文。
+  await withStreamServer((res) => {
+    sse(res, { model: MODEL, choices: [{ delta: { content: '開始' } }] })
+    setTimeout(() => res.socket?.destroy(), 20)
+  }, async (provider) => {
+    const { error } = await collect(provider)
+    assert.ok(error instanceof TypeError, String(error))
+    const diagnostic = describeAIExecutionError(error)
+    assert.equal(diagnostic.category, 'network')
+    assert.match(diagnostic.networkCode ?? '', /^[A-Z][A-Z0-9_]+$/)
+    assert.equal(JSON.stringify(diagnostic).includes('terminated'), false)
+  })
+
+  // 代碼擷取只接受大寫代碼格式，也會往 AggregateError 裡找。
+  assert.equal(networkErrorCode(new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } })), 'ECONNRESET')
+  assert.equal(
+    networkErrorCode(new TypeError('fetch failed', { cause: new AggregateError([Object.assign(new Error('a'), { code: 'ECONNREFUSED' })]) })),
+    'ECONNREFUSED'
+  )
+  assert.equal(networkErrorCode(new TypeError('fetch failed', { cause: { code: 'leak sk-or-secret' } })), undefined)
+  assert.equal(networkErrorCode(new TypeError('x is undefined')), undefined)
 
   console.log('OpenRouter streaming tests passed')
 }

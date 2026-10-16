@@ -21,6 +21,32 @@ export const CREDENTIAL_TEST_TIMEOUT_MS = 8_000
 
 const MAX_RETRY_AFTER_MS = 60 * 60 * 1000
 
+const NETWORK_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,39}$/
+
+/**
+ * 從 fetch 失敗的錯誤鏈（error.cause、AggregateError.errors）找出底層連線錯誤代碼。
+ * 只回傳符合大寫代碼格式的字串，不回傳任何訊息原文。
+ */
+export function networkErrorCode(error: unknown): string | undefined {
+  let current: unknown = error
+  for (let depth = 0; depth < 4 && typeof current === 'object' && current !== null; depth += 1) {
+    const code = (current as { code?: unknown }).code
+    if (typeof code === 'string' && NETWORK_CODE_PATTERN.test(code)) return code
+    const nested = (current as { errors?: unknown }).errors
+    if (Array.isArray(nested) && nested.length > 0) {
+      const nestedCode = (nested[0] as { code?: unknown } | null)?.code
+      if (typeof nestedCode === 'string' && NETWORK_CODE_PATTERN.test(nestedCode)) return nestedCode
+    }
+    current = (current as { cause?: unknown }).cause
+  }
+  return undefined
+}
+
+/** 診斷紀錄讀回時使用：只接受符合格式的連線錯誤代碼。 */
+export function isNetworkErrorCode(value: unknown): value is string {
+  return typeof value === 'string' && NETWORK_CODE_PATTERN.test(value)
+}
+
 /** 可安全傳給憑證測試分類器的 HTTP 錯誤；message 不包含回應本文。 */
 export class AIHttpError extends Error {
   readonly name = 'AIHttpError'
@@ -233,7 +259,7 @@ export function describeCredentialTestError(
     category: AICredentialErrorCategory,
     message: string,
     options: Partial<
-      Pick<AICredentialDiagnostic, 'retryable' | 'httpStatus' | 'retryAfterMs' | 'quota'>
+      Pick<AICredentialDiagnostic, 'retryable' | 'httpStatus' | 'retryAfterMs' | 'quota' | 'networkCode'>
     > = {},
     stage: AICredentialTestStage = resolvedStage
   ): AITestCredentialResult => ({
@@ -250,6 +276,7 @@ export function describeCredentialTestError(
         ? {}
         : { retryAfterMs: options.retryAfterMs }),
       ...(options.quota === undefined ? {} : { quota: options.quota }),
+      ...(options.networkCode === undefined ? {} : { networkCode: options.networkCode }),
       message
     }
   })
@@ -362,8 +389,10 @@ export function describeCredentialTestError(
     )
   }
   if (error instanceof TypeError || error instanceof RangeError) {
+    const networkCode = networkErrorCode(error)
     return diagnostic('network', '網路連線失敗，請檢查網路後重試。', {
-      retryable: true
+      retryable: true,
+      ...(networkCode ? { networkCode } : {})
     })
   }
   return diagnostic('unknown', `${providerLabel} 金鑰測試發生未知錯誤。`)

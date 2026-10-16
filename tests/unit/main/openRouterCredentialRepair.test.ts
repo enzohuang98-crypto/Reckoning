@@ -180,10 +180,15 @@ function assertDiagnostic(
     retryable: boolean
     retryAfterMs?: number
     quota?: 'daily' | 'minute'
+    /** 連線被切斷時必須附上底層連線代碼（實際代碼依平台而異，只檢查格式）。 */
+    networkCode?: true
   }
 ): void {
   assert.equal(typeof value, 'object')
   const diagnostic = (value as { diagnostic?: Record<string, unknown> }).diagnostic
+  if (expected.networkCode) {
+    assert.match(String(diagnostic?.networkCode), /^[A-Z][A-Z0-9_]+$/)
+  }
   assert.deepEqual(diagnostic, {
     stage: expected.stage,
     category: expected.category,
@@ -191,6 +196,7 @@ function assertDiagnostic(
     retryable: expected.retryable,
     ...(expected.retryAfterMs === undefined ? {} : { retryAfterMs: expected.retryAfterMs }),
     ...(expected.quota === undefined ? {} : { quota: expected.quota }),
+    ...(expected.networkCode ? { networkCode: diagnostic?.networkCode } : {}),
     message: diagnostic?.message
   })
   assert.equal(typeof diagnostic?.message, 'string')
@@ -727,7 +733,8 @@ async function main(): Promise<void> {
       assertDiagnostic(result, {
         stage: 'key',
         category: 'network',
-        retryable: true
+        retryable: true,
+        networkCode: true
       })
     }
   )
@@ -747,7 +754,8 @@ async function main(): Promise<void> {
       assertDiagnostic(result, {
         stage: 'catalog',
         category: 'network',
-        retryable: true
+        retryable: true,
+        networkCode: true
       })
     }
   )
@@ -770,7 +778,8 @@ async function main(): Promise<void> {
       assertDiagnostic(result, {
         stage: 'key',
         category: 'network',
-        retryable: true
+        retryable: true,
+        networkCode: true
       })
       assert.equal(fake.writes.length, 0)
     }
