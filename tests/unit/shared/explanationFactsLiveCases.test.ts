@@ -66,10 +66,10 @@ assert.equal(factsText('opening-inaccuracy').includes('盤面上全部的棋子'
 assert.ok(factsText('endgame-rook', 'en').includes('All pieces on the board: Red king, rook; Black king.'))
 
 // 5. 「有保護」改說清楚：是「這步走完、下一手吃下去」之後對方能不能吃回（P3-9 live 把它讀成目前狀態）。
-assert.ok(capture.includes('下一手可吃：黑6路士（吃下後對方能吃回）'), capture)
+assert.ok(capture.includes('下一手可吃：黑6路士（吃下後對方能用5路將吃回）'), capture)
 assert.ok(black.includes('下一手可吃：紅五路兵（中兵；吃下後對方吃不回）'), black)
 assert.equal(/有保護|無保護|走後可吃/.test(capture + black), false)
-assert.ok(factsText('capture-line', 'en').includes('after this move it can capture next: Black advisor on file 6 (can be recaptured)'))
+assert.ok(factsText('capture-line', 'en').includes('after this move it can capture next: Black advisor on file 6 (can be recaptured by the king on file 5)'))
 
 // 6. 唯一合法著法由規則引擎數出來：車九進九將軍後，黑方只有將5進1；
 //    車九退一再將軍時，黑將可以進（將5進1）也可以退（將5退1），所以將5退1 不是唯一。
@@ -84,5 +84,11 @@ const s3 = (text: string): boolean =>
 assert.equal(s3('車九進九將軍，黑方唯一的應法是將5進1。'), false)
 assert.equal(s3('車九退一再將軍，黑方被迫將5退1。'), true)
 assert.equal(s3('這條主線是必然的。'), true)
+
+// 7. 寫出是誰吃回：中卒的保護來自第 2 手馬8進7 走到 7 路的馬（P3-9 live 兩個模型都誤歸給馬2進3）。
+const opening = factsText('opening-inaccuracy')
+assert.ok(opening.includes('3. 紅 炮二平五：') && opening.includes('黑5路卒（中卒；吃下後對方能用7路馬吃回）'), opening)
+assert.ok(black.includes('紅九路兵（吃下後對方能用九路車吃回）'), black)
+assert.ok(factsText('opening-inaccuracy', 'en').includes('can be recaptured by the horse on file 7'))
 
 console.log('explanationFacts live-case tests passed')
