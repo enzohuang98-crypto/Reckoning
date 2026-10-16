@@ -7,7 +7,9 @@
  * 用法（PowerShell）：
  *   $env:OPENROUTER_API_KEY="…"
  *   npx tsx --tsconfig tsconfig.node.json tools/acceptance/explain-v2-live.ts --models vendor/a:free --out v2-review.md
- * 選項：--models（最多 3 個 :free）、--backup（最多 2 個 :free 備援）、--cases id1,id2、--base-url（測試用）。
+ * 選項：--models（最多 3 個 :free）、--backup（最多 2 個 :free 備援）、--cases id1,id2、--base-url（測試用）、
+ *   --spacing-ms（題目間隔）、--allow-paid（允許非 :free 模型，會向 OpenRouter 帳戶計費；
+ *   付費輪只用來看解說品質，不能代表免費模型的交付率）。
  *
  * 額度提醒：每題一般 1 次呼叫、最多 3 次；10 題 × 1 個模型約 10–30 次請求。
  * 未儲值的 OpenRouter 帳號每日約 50 次免費請求（依官方現行政策）。
@@ -51,9 +53,35 @@ export interface LiveRow {
   softWarnings: string[]
   answer: string
   error: string | null
+  /** 每次模型呼叫的種類、秒數與失敗分類（network 會附底層代碼）；不含任何原文。 */
+  attemptLog: string[]
 }
 
 const MAX_MODELS = 3
+
+/** 只有 network 會附上底層代碼；沒有代碼代表錯誤不是來自連線層（可能是程式錯誤）。 */
+function describeFailure(category: string, httpStatus: number | undefined, networkCode: string | undefined): string {
+  if (category === 'network') return `network（${networkCode ?? '無底層代碼'}）`
+  return `${category}${httpStatus ? ` HTTP ${httpStatus}` : ''}`
+}
+
+function attemptLogFor(trace: HarnessTrace | undefined): string[] {
+  return (trace?.attempts ?? []).map(
+    (attempt) =>
+      `${attempt.kind} ${(attempt.durationMs / 1000).toFixed(1)}s ${
+        attempt.error ? describeFailure(attempt.error, undefined, attempt.networkCode) : 'ok'
+      }`
+  )
+}
+
+/** 預設只允許 :free；--allow-paid 才放行付費模型（會計費）。回傳錯誤訊息或 null。 */
+export function validateModelArgs(models: string[], backupModels: string[], allowPaid: boolean): string | null {
+  if (models.length === 0) return '請用 --models 指定 1–3 個模型。'
+  if (!allowPaid && [...models, ...backupModels].some((model) => !model.endsWith(':free'))) {
+    return '預設只允許 :free 模型（備援也是）；要測付費模型請加 --allow-paid，費用會記在 OpenRouter 帳戶。'
+  }
+  return null
+}
 const DEFAULT_SPACING_MS = 3_500
 
 export function loadLiveCases(): LiveCase[] {
@@ -126,7 +154,8 @@ export async function runLiveCase(
       hardErrors: trace?.hardErrors ?? [],
       softWarnings: trace?.softWarnings ?? [],
       answer: result.finalText,
-      error: null
+      error: null,
+      attemptLog: attemptLogFor(trace)
     }
   } catch (error) {
     const trace = traces.at(-1)
@@ -144,8 +173,13 @@ export async function runLiveCase(
       softWarnings: [],
       answer: '',
       error: trace?.providerDiagnostic
-        ? `${trace.providerDiagnostic.category}${trace.providerDiagnostic.httpStatus ? ` HTTP ${trace.providerDiagnostic.httpStatus}` : ''}`
-        : error instanceof Error ? error.name : 'unknown'
+        ? describeFailure(
+            trace.providerDiagnostic.category,
+            trace.providerDiagnostic.httpStatus,
+            trace.providerDiagnostic.networkCode
+          )
+        : error instanceof Error ? error.name : 'unknown',
+      attemptLog: attemptLogFor(trace)
     }
   }
 }
@@ -163,11 +197,18 @@ export function formatLiveReport(rows: LiveRow[]): string {
   const modelRows = rows.filter((row) => row.answerKind !== 'board_rule')
   const leaks = rows.filter((row) => /(?<![A-Za-z0-9])[a-i][0-9][a-i][0-9](?![A-Za-z0-9])|```|<think>/.test(row.answer))
   const pct = (part: number, total: number): string => (total === 0 ? '—' : `${Math.round((part / total) * 100)}%`)
+  const paidModels = [...new Set(rows.map((row) => row.model).filter((model) => !model.endsWith(':free')))]
   const lines = [
     '# v2 解說 live 驗收',
     '',
     `產生時間：${new Date().toISOString()}`,
     '',
+    ...(paidModels.length > 0
+      ? [
+          `> ⚠ 本輪含付費模型（${paidModels.join('、')}）：結果只代表解說品質，不能代表免費模型的交付率與 AI 答案比例。`,
+          ''
+        ]
+      : []),
     '## 自動指標（門檻見計畫第 7 節「驗收標準」）',
     `- 交付率（AI 或摘要，110 秒內）：${pct(delivered.length, rows.length)}（門檻 ≥95%）`,
     `- AI 答案比例（不含棋規捷徑）：${pct(aiRows.length, modelRows.length)}（門檻 ≥80%）`,
@@ -189,6 +230,7 @@ export function formatLiveReport(rows: LiveRow[]): string {
   ]
   for (const row of rows) {
     lines.push(`### ${row.caseId} · ${row.model}`)
+    if (row.attemptLog.length) lines.push(`呼叫紀錄：${row.attemptLog.join(' → ')}`)
     if (row.fallback) lines.push(`備援：${row.fallback}`)
     if (row.hardErrors.length) lines.push(`首輪硬錯：${row.hardErrors.join('；')}`)
     if (row.softWarnings.length) lines.push(`軟警告：${row.softWarnings.join('；')}`)
@@ -216,10 +258,15 @@ async function main(): Promise<void> {
   }
   const models = list(argValue(argv, '--models')).slice(0, MAX_MODELS)
   const backupModels = list(argValue(argv, '--backup')).slice(0, 2)
-  if (models.length === 0 || [...models, ...backupModels].some((model) => !model.endsWith(':free'))) {
-    console.error('請用 --models 指定 1–3 個 :free 模型（備援也必須是 :free）。')
+  const allowPaid = argv.includes('--allow-paid')
+  const invalid = validateModelArgs(models, backupModels, allowPaid)
+  if (invalid) {
+    console.error(invalid)
     process.exitCode = 1
     return
+  }
+  if (allowPaid && [...models, ...backupModels].some((model) => !model.endsWith(':free'))) {
+    console.log('注意：本輪包含付費模型，費用會記在 OpenRouter 帳戶。')
   }
   const wanted = new Set(list(argValue(argv, '--cases')))
   const cases = loadLiveCases().filter((item) => wanted.size === 0 || wanted.has(item.id))

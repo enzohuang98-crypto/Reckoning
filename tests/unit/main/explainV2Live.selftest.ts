@@ -6,6 +6,7 @@ import {
   formatLiveReport,
   loadLiveCases,
   runLiveCase,
+  validateModelArgs,
   type LiveRow
 } from '../../../tools/acceptance/explain-v2-live'
 
@@ -32,7 +33,8 @@ async function main(): Promise<void> {
         response.end(JSON.stringify({
           data: [
             { id: 'vendor/good:free', supported_parameters: ['max_tokens'] },
-            { id: 'vendor/limited:free', supported_parameters: ['max_tokens'] }
+            { id: 'vendor/limited:free', supported_parameters: ['max_tokens'] },
+            { id: 'vendor/drop:free', supported_parameters: ['max_tokens'] }
           ]
         }))
         return
@@ -42,6 +44,10 @@ async function main(): Promise<void> {
       if (body.model === 'vendor/limited:free') {
         response.writeHead(429, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ error: { message: 'Rate limit exceeded: free-models-per-day. secret detail' } }))
+        return
+      }
+      if (body.model === 'vendor/drop:free') {
+        request.socket.destroy()
         return
       }
       assert.equal(body.stream, true, 'v2 管線走串流')
@@ -74,6 +80,23 @@ async function main(): Promise<void> {
     const limited = await runLiveCase(opening!, 'vendor/limited:free', deps)
     assert.equal(limited.answerKind, 'error', '每日額度用完不偽裝成摘要')
     assert.ok(limited.error && !limited.error.includes('secret detail'))
+
+    // 連線一直被切斷：重試一次後交付引擎摘要，呼叫紀錄附上底層代碼。
+    const dropped = await runLiveCase(opening!, 'vendor/drop:free', deps)
+    assert.equal(dropped.answerKind, 'engine_summary')
+    assert.equal(dropped.attemptLog.length, 2)
+    assert.match(dropped.attemptLog[0], /^primary .*network（[A-Z][A-Z0-9_]+）$/)
+    assert.match(dropped.attemptLog[1], /^network_retry /)
+    assert.match(formatLiveReport([dropped]), /呼叫紀錄：primary .* → network_retry /)
+
+    // 預設只收 :free；--allow-paid 才放行，報表會標示付費輪不代表免費模型的交付率。
+    assert.equal(validateModelArgs(['vendor/good:free'], [], false), null)
+    assert.match(validateModelArgs(['vendor/paid'], [], false) ?? '', /--allow-paid/)
+    assert.match(validateModelArgs(['vendor/good:free'], ['vendor/paid'], false) ?? '', /--allow-paid/)
+    assert.equal(validateModelArgs(['vendor/paid'], [], true), null)
+    assert.match(validateModelArgs([], [], true) ?? '', /--models/)
+    assert.ok(formatLiveReport([{ ...ok, model: 'vendor/paid' }]).includes('本輪含付費模型（vendor/paid）'))
+    assert.ok(!formatLiveReport([ok]).includes('付費模型'))
 
     const rows: LiveRow[] = [ok, ruleRow, limited]
     const report = formatLiveReport(rows)
