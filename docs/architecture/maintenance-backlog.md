@@ -8,6 +8,8 @@
 - `aiExplanationHandlers.ts`（933 行）依責任拆成解說串流、憑證通道、診斷紀錄通道、錯誤對應、憑證解析五個模組。
 - 新增 `tests/architecture/ipcSenderGuard.test.ts`：掃描 `src/main` 全部 IPC handler 都先驗證來源（原則 §5 從人工檢查改成自動檢查）。
 - 測試檔納入 `npm run typecheck`（修掉約 150 個累積的型別錯誤；`harness.test.ts` 隨 v1 刪除前暫時排除）。
+- 介面簡體字改為繁體，並以 `tests/architecture/traditionalChineseUi.test.ts` 防止再混入。
+- `HarnessTraceStore` 與診斷紀錄匯出改為非同步，並以內部佇列避免 save／回饋／清除互相覆蓋。
 
 ## 1. 刪除 v1 Harness（P4-1／P4-2）— 最大一筆，**等 P3-9 live 評分通過**
 
@@ -36,10 +38,11 @@
 - 風險：`tests/architecture/rendererArchitecture.test.ts` 有 48 處直接讀原始碼做正則比對，拆檔一定要同步改寫這些斷言
   （見第 4 項）。行為由 `actualMoveFlow`、`aiRegenerationFlow`、`aiWaitForEngine`、`aiStreamingV2` 整合測試把關。
 
-## 3. 主行程同步 I/O（原則 §9 的例外）
+## 3. 主行程同步 I/O（原則 §9 的剩餘例外）
 
-`HarnessTraceStore` 每次解說後都同步寫檔，診斷紀錄匯出也用同步寫入。改用 `SecureJsonFile` 的 async 版。
-（已建立獨立任務建議。）
+診斷紀錄已改為非同步。剩下 `EngineRegistryService`：新增、移除、切換主引擎時同步寫 `engine-registry.json`，
+啟動時同步讀取。檔案很小、操作不頻繁，影響有限；要改需把 registry 的公開方法改成 async 並更新
+`engineAnalysisHandlers` 與 Windows 專用的 `engineRegistry.test.ts`。
 
 ## 4. 原始碼正則測試偏多
 
@@ -52,11 +55,7 @@
 第一個失敗就停止，看不到其他失敗；新增測試要手改一行很長的字串。可改成讀取測試清單的小型 runner
 （全部跑完再彙總，並標記 Windows 專用測試）。CI 只呼叫 `npm test`，改動範圍小。
 
-## 6. 介面文字有簡體中文
-
-例如「自动连线」「金钥匙」「备份包含…」，違反原則 §11。相關測試以文字找按鈕，需一併更新。（已建立獨立任務建議。）
-
-## 7. 較低優先
+## 6. 較低優先
 
 - `SettingsPage.tsx`（723 行、25 個 useState）：可依設定分類拆出各自的狀態 hook。
 - `PikafishAdapter.ts`（998 行）：核心且測試完整，除非要改協定處理，否則不動。

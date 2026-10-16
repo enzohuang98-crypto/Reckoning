@@ -2155,7 +2155,8 @@ export async function runExplanationHarness(
     finalText?: string,
     error?: unknown
   ): void => {
-    deps.traceStore.save({
+    // 診斷紀錄非同步寫入（設計原則 §9）；store 內部依序執行，寫入失敗不影響回答。
+    void Promise.resolve(deps.traceStore.save({
       id: traceId,
       createdAt: new Date().toISOString(),
       requestId: payload.requestId,
@@ -2184,7 +2185,7 @@ export async function runExplanationHarness(
       executionSemanticsVersion: execution.executionSemanticsVersion,
       status,
       finalText
-    })
+    })).catch(() => undefined)
   }
 
   const callModel = async (

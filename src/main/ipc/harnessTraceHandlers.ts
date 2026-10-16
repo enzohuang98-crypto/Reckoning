@@ -12,14 +12,14 @@ export function registerHarnessTraceHandlers(
   traceStore: HarnessTraceStore,
   storage: StorageService
 ): void {
-  ipcMain.handle(IPC.AI_HARNESS_TRACE_LIST, (event) => {
+  ipcMain.handle(IPC.AI_HARNESS_TRACE_LIST, async (event) => {
     assertTrustedIpcSender(event)
-    return traceStore.list()
+    return await traceStore.list()
   })
 
-  ipcMain.handle(IPC.AI_HARNESS_TRACE_CLEAR, (event) => {
+  ipcMain.handle(IPC.AI_HARNESS_TRACE_CLEAR, async (event) => {
     assertTrustedIpcSender(event)
-    traceStore.clear()
+    await traceStore.clear()
     return { ok: true as const }
   })
 
@@ -35,17 +35,17 @@ export function registerHarnessTraceHandlers(
     if (result.canceled || !result.filePath) {
       return { ok: false as const, cancelled: true }
     }
-    storage.writeAbsolute(result.filePath, {
+    await storage.writeAbsoluteAsync(result.filePath, {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),
-      traces: traceStore.listForExport(),
+      traces: await traceStore.listForExport(),
       // 使用者標記「不清楚／不正確／證據不足」的解說，轉為可重放的回歸案例
-      regressionCases: traceStore.listRegressionCases()
+      regressionCases: await traceStore.listRegressionCases()
     } satisfies HarnessTraceExportV1)
     return { ok: true as const, filePath: result.filePath }
   })
 
-  ipcMain.handle(IPC.AI_HARNESS_TRACE_FEEDBACK, (event, raw: unknown) => {
+  ipcMain.handle(IPC.AI_HARNESS_TRACE_FEEDBACK, async (event, raw: unknown) => {
     assertTrustedIpcSender(event)
     if (typeof raw !== 'object' || raw === null) {
       throw new SecurityValidationError('回饋格式無效。')
@@ -65,7 +65,7 @@ export function registerHarnessTraceHandlers(
     ) {
       throw new SecurityValidationError('回饋格式無效。')
     }
-    traceStore.setFeedback(
+    await traceStore.setFeedback(
       value.traceId,
       value.feedback as 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
     )

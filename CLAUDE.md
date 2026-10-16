@@ -68,7 +68,8 @@ src/
       http.ts                   #   共用 fetch 包裝：大小上限、redirect: 'error'、錯誤遮蔽、429 額度判讀
       providers/                #   Anthropic / OpenAI / Gemini / OpenAI-compatible / OpenRouter（真 SSE、能力快取、推理控制）
     security/                   #   IpcSecurity（來源 frame 驗證）、InputValidation、BrowserSecurity、KeyedOperationGate
-    storage/                    #   StorageService、SecureJsonFile、SecretStore（全 async）、AnalysisSessionStore（TTL 2h）、HarnessTraceStore
+    storage/                    #   StorageService、SecureJsonFile、SecretStore（全 async）、AnalysisSessionStore（TTL 2h）、
+                                #   HarnessTraceStore（async＋依序佇列）
     update/                     #   AppUpdaterService、UpdatePolicy、UpdatePreferencesStore
     ipc/                        #   aiExplanationHandlers（AI 通道單一註冊入口＋解說串流）、aiCredentialHandlers（secret:*、金鑰測試、
                                 #   OpenRouter 模型與備援）、harnessTraceHandlers（診斷紀錄）、explanationErrorPayload、
@@ -138,7 +139,8 @@ Harness 模式與預算不是使用者設定：`FIXED_HARNESS_OPTIONS`（main �
 9. **main process 絕不可做同步阻塞 I/O**：main 與視窗共用同一條訊息迴圈，同步磁碟 I/O（尤其強制 fsync）
    會讓**整個視窗**失去回應。使用者互動路徑上的儲存一律走 `readJsonFileAsync` / `writeJsonFileAtomicAsync`；
    對應的 `ipcMain.handle` 必須 async 並 `await`；renderer 以 `withTimeout` 包住，逾時顯示錯誤。
-   （`StorageService` 與 `HarnessTraceStore` 仍是同步版；要挪到新的互動路徑前必須先改 async。）
+   （`StorageService` 的同步 `read`／`write` 只剩啟動期與 `EngineRegistryService` 使用；新增引擎、切換主引擎
+   仍是同步寫入，屬已知例外，見 `docs/architecture/maintenance-backlog.md`。新程式一律用 `readAsync`／`writeAsync`。）
 10. **內建引擎仍是本機二進位**：`EngineRegistryService` 只在登錄為空時自動加入一次內建 Pikafish，
     使用者可以刪除、換路徑或新增其他引擎，行為與手動指定完全相同。分析只用一個主引擎（雙引擎複核已移除）。
 11. **UI 文字用繁體中文**；`src/shared/logic/**` 保持純函式；renderer 不得引用 main 或 `node:*`。
