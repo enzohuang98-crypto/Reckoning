@@ -15,6 +15,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { trustSystemCertificates } from '../../src/main/security/SystemCertificates'
 
 const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 const MAX_MODELS = 3
@@ -408,6 +409,9 @@ export function resolveLocalReviewPath(out: string, cwd = process.cwd()): string
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
+  // 與 App 相同：信任系統根憑證，防毒軟體攔截 HTTPS 時才不會整輪失敗。
+  const certificates = trustSystemCertificates()
+  if (!certificates.ok) console.log('注意：讀不到系統根憑證，只使用 Node 內建清單。')
   const apiKey = process.env.OPENROUTER_API_KEY?.trim()
   if (!apiKey) {
     console.error('請先設定環境變數 OPENROUTER_API_KEY（不要把金鑰寫進檔案）。')

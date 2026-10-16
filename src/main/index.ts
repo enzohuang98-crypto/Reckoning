@@ -25,6 +25,7 @@ import {
   registerRendererProtocol
 } from './security/BrowserSecurity'
 import { configureTrustedRendererUrl } from './security/IpcSecurity'
+import { trustSystemCertificates } from './security/SystemCertificates'
 import { AppUpdaterService } from './update/AppUpdaterService'
 import { startupFailurePageUrl } from './startup/StartupFailurePage'
 
@@ -40,6 +41,9 @@ if (!app.requestSingleInstanceLock()) {
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.xiangqi.analyzer')
 }
+
+// 在任何 AI 請求之前讓 fetch 信任 Windows 根憑證（防毒軟體／公司網路攔截 HTTPS 時才連得上）。
+trustSystemCertificates()
 
 if (app.isPackaged) {
   app.commandLine.removeSwitch('remote-debugging-port')
