@@ -1,0 +1,1056 @@
+[
+  {
+    "id": "opening-inaccuracy",
+    "mode": "move",
+    "language": "zh-TW",
+    "analysis": {
+      "positionFen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+      "sideToMove": "red",
+      "userMove": "b0c2",
+      "displayUserMove": "馬八進七",
+      "userMovePrincipalVariation": [
+        "b0c2",
+        "h9g7",
+        "h2e2",
+        "b9c7"
+      ],
+      "displayUserMovePrincipalVariation": [
+        "馬八進七",
+        "馬8進7",
+        "炮二平五",
+        "馬2進3"
+      ],
+      "scoreAfterUserMove": {
+        "type": "cp",
+        "cp": 7,
+        "value": 0.07,
+        "comparableValue": 0.07,
+        "raw": "score cp 7",
+        "displayText": "7",
+        "wasInverted": false,
+        "source": "candidate_move"
+      },
+      "evaluationAfterUserMove": 0.07,
+      "userMoveEvaluationSource": "candidate_move",
+      "bestMove": "h2e2",
+      "displayBestMove": "炮二平五",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 42,
+        "value": 0.42,
+        "comparableValue": 0.42,
+        "raw": "score cp 42",
+        "displayText": "42",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 0.42,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "h2e2",
+          "displayMove": "炮二平五",
+          "score": {
+            "type": "cp",
+            "cp": 42,
+            "value": 0.42,
+            "comparableValue": 0.42,
+            "raw": "score cp 42",
+            "displayText": "42",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 0.42,
+          "depth": 18,
+          "principalVariation": [
+            "h2e2",
+            "h9g7",
+            "h0g2",
+            "i9h9"
+          ],
+          "displayPrincipalVariation": [
+            "炮二平五",
+            "馬8進7",
+            "馬二進三",
+            "車9平8"
+          ]
+        },
+        {
+          "move": "b0c2",
+          "displayMove": "馬八進七",
+          "score": {
+            "type": "cp",
+            "cp": 7,
+            "value": 0.07,
+            "comparableValue": 0.07,
+            "raw": "score cp 7",
+            "displayText": "7",
+            "wasInverted": false,
+            "source": "candidate_move"
+          },
+          "evaluation": 0.07,
+          "depth": 18,
+          "principalVariation": [
+            "b0c2",
+            "h9g7",
+            "h2e2",
+            "b9c7"
+          ],
+          "displayPrincipalVariation": [
+            "馬八進七",
+            "馬8進7",
+            "炮二平五",
+            "馬2進3"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "h2e2",
+        "h9g7",
+        "h0g2",
+        "i9h9"
+      ],
+      "displayPrincipalVariation": [
+        "炮二平五",
+        "馬8進7",
+        "馬二進三",
+        "車9平8"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "userMoveReason": "我想先出馬保護中兵",
+    "goodAnswer": "**結論**：馬八進七沒有錯，但比炮二平五慢一步施壓。\n**這步的問題**：你想先出馬保護中兵，但主線裡中兵此時並沒有受到威脅；炮二平五走後就可以吃黑卒，而馬八進七沒有製造這個威脅。\n**首選想做什麼**：炮二平五讓炮進入中路，先對中卒施壓。\n**對手怎麼利用**：馬八進七後黑方馬8進7，等紅方再走炮二平五時，中卒已經有保護。\n**下次怎麼想**：出子前先看有沒有能立刻製造威脅的著法。"
+  },
+  {
+    "id": "user-is-best",
+    "mode": "move",
+    "language": "zh-TW",
+    "analysis": {
+      "positionFen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+      "sideToMove": "red",
+      "userMove": "h2e2",
+      "displayUserMove": "炮二平五",
+      "userMovePrincipalVariation": [
+        "h2e2",
+        "h9g7",
+        "h0g2"
+      ],
+      "displayUserMovePrincipalVariation": [
+        "炮二平五",
+        "馬8進7",
+        "馬二進三"
+      ],
+      "scoreAfterUserMove": {
+        "type": "cp",
+        "cp": 42,
+        "value": 0.42,
+        "comparableValue": 0.42,
+        "raw": "score cp 42",
+        "displayText": "42",
+        "wasInverted": false,
+        "source": "candidate_move"
+      },
+      "evaluationAfterUserMove": 0.42,
+      "userMoveEvaluationSource": "candidate_move",
+      "bestMove": "h2e2",
+      "displayBestMove": "炮二平五",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 42,
+        "value": 0.42,
+        "comparableValue": 0.42,
+        "raw": "score cp 42",
+        "displayText": "42",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 0.42,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "h2e2",
+          "displayMove": "炮二平五",
+          "score": {
+            "type": "cp",
+            "cp": 42,
+            "value": 0.42,
+            "comparableValue": 0.42,
+            "raw": "score cp 42",
+            "displayText": "42",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 0.42,
+          "depth": 18,
+          "principalVariation": [
+            "h2e2",
+            "h9g7",
+            "h0g2"
+          ],
+          "displayPrincipalVariation": [
+            "炮二平五",
+            "馬8進7",
+            "馬二進三"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "h2e2",
+        "h9g7",
+        "h0g2"
+      ],
+      "displayPrincipalVariation": [
+        "炮二平五",
+        "馬8進7",
+        "馬二進三"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "goodAnswer": "**結論**：你走的炮二平五就是引擎首選。\n**這步好在哪**：炮進入中路，走後可以吃黑卒，逼黑方先處理中路。\n**首選想做什麼**：用中炮對中卒施壓，黑方常以馬8進7保護。\n**下次怎麼想**：開局先找能同時出子又製造威脅的著法。"
+  },
+  {
+    "id": "capture-line",
+    "mode": "move",
+    "language": "zh-TW",
+    "analysis": {
+      "positionFen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+      "sideToMove": "red",
+      "userMove": "b0c2",
+      "displayUserMove": "馬八進七",
+      "userMovePrincipalVariation": [
+        "b0c2",
+        "h9g7",
+        "h2e2"
+      ],
+      "displayUserMovePrincipalVariation": [
+        "馬八進七",
+        "馬8進7",
+        "炮二平五"
+      ],
+      "scoreAfterUserMove": {
+        "type": "cp",
+        "cp": 7,
+        "value": 0.07,
+        "comparableValue": 0.07,
+        "raw": "score cp 7",
+        "displayText": "7",
+        "wasInverted": false,
+        "source": "candidate_move"
+      },
+      "evaluationAfterUserMove": 0.07,
+      "userMoveEvaluationSource": "candidate_move",
+      "bestMove": "h2h9",
+      "displayBestMove": "炮二進七",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 60,
+        "value": 0.6,
+        "comparableValue": 0.6,
+        "raw": "score cp 60",
+        "displayText": "60",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 0.6,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "h2h9",
+          "displayMove": "炮二進七",
+          "score": {
+            "type": "cp",
+            "cp": 60,
+            "value": 0.6,
+            "comparableValue": 0.6,
+            "raw": "score cp 60",
+            "displayText": "60",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 0.6,
+          "depth": 18,
+          "principalVariation": [
+            "h2h9",
+            "i9h9",
+            "b0c2"
+          ],
+          "displayPrincipalVariation": [
+            "炮二進七",
+            "車9平8",
+            "馬八進七"
+          ]
+        },
+        {
+          "move": "b0c2",
+          "displayMove": "馬八進七",
+          "score": {
+            "type": "cp",
+            "cp": 7,
+            "value": 0.07,
+            "comparableValue": 0.07,
+            "raw": "score cp 7",
+            "displayText": "7",
+            "wasInverted": false,
+            "source": "candidate_move"
+          },
+          "evaluation": 0.07,
+          "depth": 18,
+          "principalVariation": [
+            "b0c2",
+            "h9g7",
+            "h2e2"
+          ],
+          "displayPrincipalVariation": [
+            "馬八進七",
+            "馬8進7",
+            "炮二平五"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "h2h9",
+        "i9h9",
+        "b0c2"
+      ],
+      "displayPrincipalVariation": [
+        "炮二進七",
+        "車9平8",
+        "馬八進七"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "goodAnswer": "**結論**：引擎首選炮二進七吃馬，比馬八進七更直接。\n**這步的問題**：馬八進七只是出子，錯過了炮二進七吃黑馬的機會。\n**首選想做什麼**：炮二進七吃黑馬，黑方車9平8吃回炮，雙方兌換炮馬。\n**對手怎麼利用**：走馬八進七後黑方馬8進7，黑馬就不再能被白白換掉。\n**下次怎麼想**：每步先檢查有沒有可以吃的子。"
+  },
+  {
+    "id": "check-mate-line",
+    "mode": "move",
+    "language": "zh-TW",
+    "analysis": {
+      "positionFen": "3k5/R8/9/9/9/9/9/9/8R/4K4 w - - 0 1",
+      "sideToMove": "red",
+      "userMove": "a8a7",
+      "displayUserMove": "車九退一",
+      "userMovePrincipalVariation": [
+        "a8a7",
+        "d9d8",
+        "i1i9"
+      ],
+      "displayUserMovePrincipalVariation": [
+        "車九退一",
+        "將4進1",
+        "車一進八"
+      ],
+      "scoreAfterUserMove": {
+        "type": "mate",
+        "mateIn": 2,
+        "comparableValue": 29998,
+        "raw": "score mate 2",
+        "displayText": "殺 2",
+        "isTerminalMate": false,
+        "wasInverted": false,
+        "source": "candidate_move"
+      },
+      "evaluationAfterUserMove": 29998,
+      "userMoveEvaluationSource": "candidate_move",
+      "bestMove": "i1i9",
+      "displayBestMove": "車一進八",
+      "scoreAfterBestMove": {
+        "type": "mate",
+        "mateIn": 1,
+        "comparableValue": 29999,
+        "raw": "score mate 1",
+        "displayText": "殺 1",
+        "isTerminalMate": false,
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 29999,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "i1i9",
+          "displayMove": "車一進八",
+          "score": {
+            "type": "mate",
+            "mateIn": 1,
+            "comparableValue": 29999,
+            "raw": "score mate 1",
+            "displayText": "殺 1",
+            "isTerminalMate": false,
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 29999,
+          "depth": 18,
+          "principalVariation": [
+            "i1i9"
+          ],
+          "displayPrincipalVariation": [
+            "車一進八"
+          ]
+        },
+        {
+          "move": "a8a7",
+          "displayMove": "車九退一",
+          "score": {
+            "type": "mate",
+            "mateIn": 2,
+            "comparableValue": 29998,
+            "raw": "score mate 2",
+            "displayText": "殺 2",
+            "isTerminalMate": false,
+            "wasInverted": false,
+            "source": "candidate_move"
+          },
+          "evaluation": 29998,
+          "depth": 18,
+          "principalVariation": [
+            "a8a7",
+            "d9d8",
+            "i1i9"
+          ],
+          "displayPrincipalVariation": [
+            "車九退一",
+            "將4進1",
+            "車一進八"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "i1i9"
+      ],
+      "displayPrincipalVariation": [
+        "車一進八"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "goodAnswer": "**結論**：車一進八直接將死，比車九退一更快。\n**這步的問題**：車九退一沒有將軍，讓黑將4進1多走一步，雖然之後車一進八仍能讓黑方無子可動，但慢了一步。\n**首選想做什麼**：車一進八將軍，黑方無合法著法，直接將死。\n**對手怎麼利用**：黑方利用多出的一步將4進1離開底線。\n**下次怎麼想**：先檢查有沒有一步就能將死的著法。"
+  },
+  {
+    "id": "black-to-move",
+    "mode": "move",
+    "language": "zh-TW",
+    "analysis": {
+      "positionFen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C4/9/RNBAKABNR b - - 1 1",
+      "sideToMove": "black",
+      "userMove": "b7e7",
+      "displayUserMove": "炮2平5",
+      "userMovePrincipalVariation": [
+        "b7e7",
+        "e2e6",
+        "e7e3"
+      ],
+      "displayUserMovePrincipalVariation": [
+        "炮2平5",
+        "炮五進四",
+        "炮5進4"
+      ],
+      "scoreAfterUserMove": {
+        "type": "cp",
+        "cp": -150,
+        "value": -1.5,
+        "comparableValue": -1.5,
+        "raw": "score cp -150",
+        "displayText": "-150",
+        "wasInverted": false,
+        "source": "candidate_move"
+      },
+      "evaluationAfterUserMove": -1.5,
+      "userMoveEvaluationSource": "candidate_move",
+      "bestMove": "h9g7",
+      "displayBestMove": "馬8進7",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 10,
+        "value": 0.1,
+        "comparableValue": 0.1,
+        "raw": "score cp 10",
+        "displayText": "10",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 0.1,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "h9g7",
+          "displayMove": "馬8進7",
+          "score": {
+            "type": "cp",
+            "cp": 10,
+            "value": 0.1,
+            "comparableValue": 0.1,
+            "raw": "score cp 10",
+            "displayText": "10",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 0.1,
+          "depth": 18,
+          "principalVariation": [
+            "h9g7",
+            "h0g2",
+            "i9h9"
+          ],
+          "displayPrincipalVariation": [
+            "馬8進7",
+            "馬二進三",
+            "車9平8"
+          ]
+        },
+        {
+          "move": "b7e7",
+          "displayMove": "炮2平5",
+          "score": {
+            "type": "cp",
+            "cp": -150,
+            "value": -1.5,
+            "comparableValue": -1.5,
+            "raw": "score cp -150",
+            "displayText": "-150",
+            "wasInverted": false,
+            "source": "candidate_move"
+          },
+          "evaluation": -1.5,
+          "depth": 18,
+          "principalVariation": [
+            "b7e7",
+            "e2e6",
+            "e7e3"
+          ],
+          "displayPrincipalVariation": [
+            "炮2平5",
+            "炮五進四",
+            "炮5進4"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "h9g7",
+        "h0g2",
+        "i9h9"
+      ],
+      "displayPrincipalVariation": [
+        "馬8進7",
+        "馬二進三",
+        "車9平8"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "goodAnswer": "**結論**：炮2平5會送掉中卒，馬8進7比較穩。\n**這步的問題**：炮2平5之後紅方炮五進四吃黑卒並將軍，黑方雖然炮5進4吃回紅兵，但中路被打開。\n**首選想做什麼**：馬8進7跳馬出動，先保護中卒。\n**對手怎麼利用**：紅方炮五進四吃卒將軍，取得先手。\n**下次怎麼想**：平炮前先看自己的中卒有沒有保護。"
+  },
+  {
+    "id": "major-blunder",
+    "mode": "move",
+    "language": "zh-TW",
+    "analysis": {
+      "positionFen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+      "sideToMove": "red",
+      "userMove": "a0a1",
+      "displayUserMove": "車九進一",
+      "userMovePrincipalVariation": [
+        "a0a1",
+        "h7h0",
+        "i0h0"
+      ],
+      "displayUserMovePrincipalVariation": [
+        "車九進一",
+        "炮8進7",
+        "車一平二"
+      ],
+      "scoreAfterUserMove": {
+        "type": "cp",
+        "cp": -300,
+        "value": -3,
+        "comparableValue": -3,
+        "raw": "score cp -300",
+        "displayText": "-300",
+        "wasInverted": false,
+        "source": "candidate_move"
+      },
+      "evaluationAfterUserMove": -3,
+      "userMoveEvaluationSource": "candidate_move",
+      "bestMove": "h2e2",
+      "displayBestMove": "炮二平五",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 50,
+        "value": 0.5,
+        "comparableValue": 0.5,
+        "raw": "score cp 50",
+        "displayText": "50",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 0.5,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "h2e2",
+          "displayMove": "炮二平五",
+          "score": {
+            "type": "cp",
+            "cp": 50,
+            "value": 0.5,
+            "comparableValue": 0.5,
+            "raw": "score cp 50",
+            "displayText": "50",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 0.5,
+          "depth": 18,
+          "principalVariation": [
+            "h2e2",
+            "h9g7"
+          ],
+          "displayPrincipalVariation": [
+            "炮二平五",
+            "馬8進7"
+          ]
+        },
+        {
+          "move": "a0a1",
+          "displayMove": "車九進一",
+          "score": {
+            "type": "cp",
+            "cp": -300,
+            "value": -3,
+            "comparableValue": -3,
+            "raw": "score cp -300",
+            "displayText": "-300",
+            "wasInverted": false,
+            "source": "candidate_move"
+          },
+          "evaluation": -3,
+          "depth": 18,
+          "principalVariation": [
+            "a0a1",
+            "h7h0",
+            "i0h0"
+          ],
+          "displayPrincipalVariation": [
+            "車九進一",
+            "炮8進7",
+            "車一平二"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "h2e2",
+        "h9g7"
+      ],
+      "displayPrincipalVariation": [
+        "炮二平五",
+        "馬8進7"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "goodAnswer": "**結論**：車九進一讓黑方炮8進7吃掉紅馬，是重大失誤。\n**這步的問題**：車九進一只是出車，沒有處理右馬被炮瞄準的問題，黑方炮8進7吃紅馬。\n**首選想做什麼**：炮二平五讓炮進入中路，走後可以吃黑卒。\n**對手怎麼利用**：黑方炮8進7吃紅馬，紅方只能車一平二吃回炮。\n**下次怎麼想**：走棋前先檢查對方炮有沒有瞄準自己沒保護的子。"
+  },
+  {
+    "id": "endgame-rook",
+    "mode": "position",
+    "language": "zh-TW",
+    "analysis": {
+      "positionFen": "4k4/9/9/9/9/9/9/9/9/R2K5 w - - 0 1",
+      "sideToMove": "red",
+      "scoreAfterUserMove": null,
+      "evaluationAfterUserMove": null,
+      "userMoveEvaluationSource": "unavailable",
+      "bestMove": "a0a9",
+      "displayBestMove": "車九進九",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 2000,
+        "value": 20,
+        "comparableValue": 20,
+        "raw": "score cp 2000",
+        "displayText": "2000",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 20,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "a0a9",
+          "displayMove": "車九進九",
+          "score": {
+            "type": "cp",
+            "cp": 2000,
+            "value": 20,
+            "comparableValue": 20,
+            "raw": "score cp 2000",
+            "displayText": "2000",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 20,
+          "depth": 18,
+          "principalVariation": [
+            "a0a9",
+            "e9e8",
+            "a9a8",
+            "e8e9"
+          ],
+          "displayPrincipalVariation": [
+            "車九進九",
+            "將5進1",
+            "車九退一",
+            "將5退1"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "a0a9",
+        "e9e8",
+        "a9a8",
+        "e8e9"
+      ],
+      "displayPrincipalVariation": [
+        "車九進九",
+        "將5進1",
+        "車九退一",
+        "將5退1"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "goodAnswer": "**局面重點**：紅方單車對單將，車九進九可以直接將軍。\n**首選想做什麼**：車九進九將軍，逼黑將5進1離開底線。\n**對手最強回應與後續**：黑方將5進1，紅方車九退一再將軍，黑將5退1。\n**下一步思考重點**：用車連續將軍，配合帥控制中路。"
+  },
+  {
+    "id": "specific-question",
+    "mode": "question",
+    "language": "zh-TW",
+    "question": "為什麼不能先走馬八進七？",
+    "analysis": {
+      "positionFen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+      "sideToMove": "red",
+      "userMove": "b0c2",
+      "displayUserMove": "馬八進七",
+      "userMovePrincipalVariation": [
+        "b0c2",
+        "h9g7",
+        "h2e2",
+        "b9c7"
+      ],
+      "displayUserMovePrincipalVariation": [
+        "馬八進七",
+        "馬8進7",
+        "炮二平五",
+        "馬2進3"
+      ],
+      "scoreAfterUserMove": {
+        "type": "cp",
+        "cp": 7,
+        "value": 0.07,
+        "comparableValue": 0.07,
+        "raw": "score cp 7",
+        "displayText": "7",
+        "wasInverted": false,
+        "source": "candidate_move"
+      },
+      "evaluationAfterUserMove": 0.07,
+      "userMoveEvaluationSource": "candidate_move",
+      "bestMove": "h2e2",
+      "displayBestMove": "炮二平五",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 42,
+        "value": 0.42,
+        "comparableValue": 0.42,
+        "raw": "score cp 42",
+        "displayText": "42",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 0.42,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "h2e2",
+          "displayMove": "炮二平五",
+          "score": {
+            "type": "cp",
+            "cp": 42,
+            "value": 0.42,
+            "comparableValue": 0.42,
+            "raw": "score cp 42",
+            "displayText": "42",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 0.42,
+          "depth": 18,
+          "principalVariation": [
+            "h2e2",
+            "h9g7",
+            "h0g2",
+            "i9h9"
+          ],
+          "displayPrincipalVariation": [
+            "炮二平五",
+            "馬8進7",
+            "馬二進三",
+            "車9平8"
+          ]
+        },
+        {
+          "move": "b0c2",
+          "displayMove": "馬八進七",
+          "score": {
+            "type": "cp",
+            "cp": 7,
+            "value": 0.07,
+            "comparableValue": 0.07,
+            "raw": "score cp 7",
+            "displayText": "7",
+            "wasInverted": false,
+            "source": "candidate_move"
+          },
+          "evaluation": 0.07,
+          "depth": 18,
+          "principalVariation": [
+            "b0c2",
+            "h9g7",
+            "h2e2",
+            "b9c7"
+          ],
+          "displayPrincipalVariation": [
+            "馬八進七",
+            "馬8進7",
+            "炮二平五",
+            "馬2進3"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "h2e2",
+        "h9g7",
+        "h0g2",
+        "i9h9"
+      ],
+      "displayPrincipalVariation": [
+        "炮二平五",
+        "馬8進7",
+        "馬二進三",
+        "車9平8"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "goodAnswer": "因為馬八進七比炮二平五慢一步：炮二平五走後就可以吃黑卒，而馬八進七之後黑方馬8進7，中卒已經有保護。兩條線前四手都沒有吃子，差別在先手施壓。"
+  },
+  {
+    "id": "rule-question",
+    "mode": "question",
+    "language": "zh-TW",
+    "question": "紅方三路兵過河了嗎？",
+    "analysis": {
+      "positionFen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+      "sideToMove": "red",
+      "scoreAfterUserMove": null,
+      "evaluationAfterUserMove": null,
+      "userMoveEvaluationSource": "unavailable",
+      "bestMove": "h2e2",
+      "displayBestMove": "炮二平五",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 42,
+        "value": 0.42,
+        "comparableValue": 0.42,
+        "raw": "score cp 42",
+        "displayText": "42",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 0.42,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "h2e2",
+          "displayMove": "炮二平五",
+          "score": {
+            "type": "cp",
+            "cp": 42,
+            "value": 0.42,
+            "comparableValue": 0.42,
+            "raw": "score cp 42",
+            "displayText": "42",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 0.42,
+          "depth": 18,
+          "principalVariation": [
+            "h2e2",
+            "h9g7"
+          ],
+          "displayPrincipalVariation": [
+            "炮二平五",
+            "馬8進7"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "h2e2",
+        "h9g7"
+      ],
+      "displayPrincipalVariation": [
+        "炮二平五",
+        "馬8進7"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    }
+  },
+  {
+    "id": "simplified-chinese",
+    "mode": "move",
+    "language": "zh-CN",
+    "analysis": {
+      "positionFen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+      "sideToMove": "red",
+      "userMove": "b0c2",
+      "displayUserMove": "馬八進七",
+      "userMovePrincipalVariation": [
+        "b0c2",
+        "h9g7",
+        "h2e2",
+        "b9c7"
+      ],
+      "displayUserMovePrincipalVariation": [
+        "馬八進七",
+        "馬8進7",
+        "炮二平五",
+        "馬2進3"
+      ],
+      "scoreAfterUserMove": {
+        "type": "cp",
+        "cp": 7,
+        "value": 0.07,
+        "comparableValue": 0.07,
+        "raw": "score cp 7",
+        "displayText": "7",
+        "wasInverted": false,
+        "source": "candidate_move"
+      },
+      "evaluationAfterUserMove": 0.07,
+      "userMoveEvaluationSource": "candidate_move",
+      "bestMove": "h2e2",
+      "displayBestMove": "炮二平五",
+      "scoreAfterBestMove": {
+        "type": "cp",
+        "cp": 42,
+        "value": 0.42,
+        "comparableValue": 0.42,
+        "raw": "score cp 42",
+        "displayText": "42",
+        "wasInverted": false,
+        "source": "root_analysis"
+      },
+      "evaluationAfterBestMove": 0.42,
+      "depth": 18,
+      "candidateMoves": [
+        {
+          "move": "h2e2",
+          "displayMove": "炮二平五",
+          "score": {
+            "type": "cp",
+            "cp": 42,
+            "value": 0.42,
+            "comparableValue": 0.42,
+            "raw": "score cp 42",
+            "displayText": "42",
+            "wasInverted": false,
+            "source": "root_analysis"
+          },
+          "evaluation": 0.42,
+          "depth": 18,
+          "principalVariation": [
+            "h2e2",
+            "h9g7",
+            "h0g2",
+            "i9h9"
+          ],
+          "displayPrincipalVariation": [
+            "炮二平五",
+            "馬8進7",
+            "馬二進三",
+            "車9平8"
+          ]
+        },
+        {
+          "move": "b0c2",
+          "displayMove": "馬八進七",
+          "score": {
+            "type": "cp",
+            "cp": 7,
+            "value": 0.07,
+            "comparableValue": 0.07,
+            "raw": "score cp 7",
+            "displayText": "7",
+            "wasInverted": false,
+            "source": "candidate_move"
+          },
+          "evaluation": 0.07,
+          "depth": 18,
+          "principalVariation": [
+            "b0c2",
+            "h9g7",
+            "h2e2",
+            "b9c7"
+          ],
+          "displayPrincipalVariation": [
+            "馬八進七",
+            "馬8進7",
+            "炮二平五",
+            "馬2進3"
+          ]
+        }
+      ],
+      "principalVariation": [
+        "h2e2",
+        "h9g7",
+        "h0g2",
+        "i9h9"
+      ],
+      "displayPrincipalVariation": [
+        "炮二平五",
+        "馬8進7",
+        "馬二進三",
+        "車9平8"
+      ],
+      "incomplete": false,
+      "warnings": [],
+      "engineId": "engine-1",
+      "engineName": "Pikafish (fixture)"
+    },
+    "goodAnswer": "**结论**：马八进七比炮二平五慢一步施压。\n**这步的问题**：炮二平五走后可以吃黑卒，马八进七没有这个威胁。\n**首选想做什么**：炮二平五让炮进入中路。\n**对手怎么利用**：黑方马8进7之后中卒有保护。\n**下次怎么想**：出子前先看有没有能立刻施压的着法。"
+  }
+]
