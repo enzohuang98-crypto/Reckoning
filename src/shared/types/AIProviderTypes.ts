@@ -36,9 +36,6 @@ export const PROVIDER_LABEL: Record<AIProviderId, string> = {
   'openai-compatible': 'OpenAI 相容／本機模型'
 }
 
-/** UI-only sentinel；刻意不符合真正的 API model id 格式。 */
-export const CUSTOM_MODEL_OPTION_ID = '__custom_model_id__'
-
 const AI_MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/
 
 export function isValidAIModelId(model: string): boolean {

@@ -177,13 +177,3 @@ export function serializeFen(
   const side = sideToMove === 'red' ? 'w' : 'b'
   return `${rows.join('/')} ${side} - - ${halfmoveClock} ${fullmoveNumber}`
 }
-
-/** 從 BoardState 重新序列化 FEN（在編輯棋盤後使用） */
-export function boardToFen(board: BoardState): string {
-  return serializeFen(
-    board.grid,
-    board.sideToMove,
-    board.halfmoveClock,
-    board.fullmoveNumber
-  )
-}

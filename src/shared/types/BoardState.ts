@@ -61,9 +61,6 @@ export const BOARD_COLS = 9
 export const START_FEN =
   'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1'
 
-/** 空棋盤 FEN（用於擺棋編輯器初始狀態） */
-export const EMPTY_FEN = '9/9/9/9/9/9/9/9/9/9 w - - 0 1'
-
 /**
  * 完整棋盤狀態。
  * `fen` 為權威來源，`grid` 為解析後的方便表示。
