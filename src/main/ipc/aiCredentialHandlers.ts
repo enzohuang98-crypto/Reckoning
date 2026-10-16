@@ -173,7 +173,7 @@ export function registerAiCredentialHandlers(
         )
       } catch (error) {
         if (error instanceof OperationBusyError) {
-          return { ok: false, message: '已有金钥匙连线测试进行中，请稍后再试。' }
+          return { ok: false, message: '已有金鑰連線測試進行中，請稍後再試。' }
         }
         logger.warn('AI credential auto configuration failed', {
           error: error instanceof Error ? error.name : 'unknown'

@@ -141,7 +141,7 @@ async function setupWizardFlow(): Promise<void> {
     assert.ok(renderer)
     const input = (): TestRenderer.ReactTestInstance =>
       renderer!.root.findByProps({
-        placeholder: '贴上 OpenAI、Anthropic、Gemini 或 OpenRouter 官方 API Key'
+        placeholder: '貼上 OpenAI、Anthropic、Gemini 或 OpenRouter 官方 API Key'
       })
     TestRenderer.act(() => input().props.onChange({ target: { value: 'sk-or-v1-setup-test' } }))
     TestRenderer.act(() => buttonByText(renderer!.root, '完成設定').props.onClick())
@@ -161,7 +161,7 @@ async function setupWizardFlow(): Promise<void> {
       renderer!.root.findByProps({ id: 'setup-openrouter-free-model' })
     assert.equal(select().props.value, models[0]!.id, '首次目錄成功仍可自動選第一個模型')
     TestRenderer.act(() => select().props.onChange({ target: { value: models[1]!.id } }))
-    TestRenderer.act(() => buttonByText(renderer!.root, '验证模型并完成設定').props.onClick())
+    TestRenderer.act(() => buttonByText(renderer!.root, '驗證模型並完成設定').props.onClick())
     assert.equal(requests.length, 2)
     assert.equal(requests[1]!.model, models[1]!.id)
     TestRenderer.act(() => {
@@ -171,7 +171,7 @@ async function setupWizardFlow(): Promise<void> {
     assert.equal(input().props.value, 'sk-or-v1-setup-test')
     assert.equal(select().props.value, models[1]!.id, '429 必須保留金鑰草稿與模型選擇')
     assert.match(textContent(renderer.root), /429 暫時限流/)
-    TestRenderer.act(() => buttonByText(renderer!.root, '验证模型并完成設定').props.onClick())
+    TestRenderer.act(() => buttonByText(renderer!.root, '驗證模型並完成設定').props.onClick())
     assert.equal(requests.length, 3)
     assert.equal(requests[2]!.model, models[1]!.id)
     TestRenderer.act(() => {
@@ -204,7 +204,7 @@ async function setupWizardFlow(): Promise<void> {
     await flush()
     assert.equal(select().props.value, models[1]!.id, '消失的模型 ID 必須保留')
     assert.match(textContent(renderer.root), /已不在最新清單，請重新選擇模型/)
-    const finishButton = buttonByText(renderer!.root, '验证模型并完成設定')
+    const finishButton = buttonByText(renderer!.root, '驗證模型並完成設定')
     assert.equal(finishButton.props.disabled, true, '失效模型不可直接送出驗證')
     TestRenderer.act(() => select().props.onChange({ target: { value: models[0]!.id } }))
     assert.equal(finishButton.props.disabled, false)
@@ -594,7 +594,7 @@ async function main(): Promise<void> {
     TestRenderer.act(() => input().props.onChange({ target: { value: 'sk-or-v1-test' } }))
     await flush()
     assert.equal(input().props.value, 'sk-or-v1-test')
-    const connectButton = buttonByText(renderer!.root, '自动连线')
+    const connectButton = buttonByText(renderer!.root, '自動連線')
     assert.equal(typeof connectButton.props.onClick, 'function')
     assert.equal(typeof globalThis.window.api.ai.autoConfigureCredential, 'function')
     TestRenderer.act(() => connectButton.props.onClick())
@@ -620,7 +620,7 @@ async function main(): Promise<void> {
       /等待選擇模型/
     )
 
-    TestRenderer.act(() => buttonByText(renderer!.root, '验证并使用此模型').props.onClick())
+    TestRenderer.act(() => buttonByText(renderer!.root, '驗證並使用此模型').props.onClick())
     assert.equal(requests[1]?.model, models[0]!.id)
     TestRenderer.act(() => {
       requests[1]!.deferred.resolve({
@@ -662,13 +662,13 @@ async function main(): Promise<void> {
     )
     assert.match(textContent(renderer.root), /已不在最新清單，請重新選擇模型/)
     assert.equal(
-      buttonByText(renderer!.root, '验证并使用此模型').props.disabled,
+      buttonByText(renderer!.root, '驗證並使用此模型').props.disabled,
       true,
       '失效模型必須先由使用者重新選擇'
     )
     TestRenderer.act(() => modelSelect.props.onChange({ target: { value: models[1]!.id } }))
-    assert.equal(buttonByText(renderer!.root, '验证并使用此模型').props.disabled, false)
-    TestRenderer.act(() => buttonByText(renderer!.root, '验证并使用此模型').props.onClick())
+    assert.equal(buttonByText(renderer!.root, '驗證並使用此模型').props.disabled, false)
+    TestRenderer.act(() => buttonByText(renderer!.root, '驗證並使用此模型').props.onClick())
     assert.equal(requests.length, 4)
     TestRenderer.act(() => {
       requests[3]!.deferred.resolve({

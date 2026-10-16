@@ -64,7 +64,7 @@ export function clearLegacyUpdatePreferences(): void {
 }
 
 /**
- * 只有「发现新版／下载中」与「已下载待安装」需要主动提示；其余状态
+ * 只有「發現新版／下載中」與「已下載待安裝」需要主動提示；其餘狀態
  * （檢查中、已是最新、錯誤）留在設定頁即可，不打擾使用者。
  */
 function updatePrompt(
@@ -78,7 +78,7 @@ function updatePrompt(
   }
   if (status?.phase === 'downloading') {
     return {
-      label: `下载更新 ${Math.round(status.downloadPercent ?? 0)}%`,
+      label: `下載更新 ${Math.round(status.downloadPercent ?? 0)}%`,
       title: status.message
     }
   }
@@ -215,7 +215,7 @@ export function AppShell({
             className={'nav-btn' + (activeTab === 'settings' ? ' active' : '')}
             aria-label="設定"
             aria-current={activeTab === 'settings' ? 'page' : undefined}
-            title="AI、本機引擎與系统設定"
+            title="AI、本機引擎與系統設定"
             onClick={() => onTabChange('settings')}
           >
             <Icon name="settings" size={16} />

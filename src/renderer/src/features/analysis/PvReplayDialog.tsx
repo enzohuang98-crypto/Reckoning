@@ -94,11 +94,11 @@ export function PvReplayDialog({ initialBoard, candidates, onClose }: Props): JS
             <span className="eyebrow">ENGINE LINE</span>
             <h2 id="pv-replay-title">查看引擎想法</h2>
           </div>
-          <button type="button" className="btn ghost small" onClick={onClose}>关闭</button>
+          <button type="button" className="btn ghost small" onClick={onClose}>關閉</button>
         </div>
 
         {candidates.length > 1 && (
-          <div className="pv-replay-candidates" role="tablist" aria-label="候选主线">
+          <div className="pv-replay-candidates" role="tablist" aria-label="候選主線">
             {candidates.map((item, index) => (
               <button
                 key={`${item.move}-${index}`}
@@ -108,7 +108,7 @@ export function PvReplayDialog({ initialBoard, candidates, onClose }: Props): JS
                 className={selectedCandidateIndex === index ? 'active' : ''}
                 onClick={() => selectCandidate(index)}
               >
-                第 {index + 1} 线 · {item.displayMove ?? item.move} · {item.score?.displayText ?? '—'}
+                第 {index + 1} 線 · {item.displayMove ?? item.move} · {item.score?.displayText ?? '—'}
               </button>
             ))}
           </div>
@@ -147,7 +147,7 @@ export function PvReplayDialog({ initialBoard, candidates, onClose }: Props): JS
           </button>
         </div>
 
-        <div className="pv-replay-line" aria-label="完整引擎主线">
+        <div className="pv-replay-line" aria-label="完整引擎主線">
           {replay.steps.map((step, index) => (
             <button
               key={`${step.uci}-${index}`}
