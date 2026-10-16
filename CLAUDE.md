@@ -163,10 +163,11 @@ Harness 模式與預算不是使用者設定：`FIXED_HARNESS_OPTIONS`（main �
 
 ## 尚未完成 / 後續
 
-- **P3-9 live 評分**（使用者本機；demo 門檻見計畫第 7 節：demo 模型 ≥4 分佔 ≥60% 且無 ≤2 分，固定題與
-  `--set holdout` 保留驗證集都要達標）決定 v2 能否上線；通過後才做 P4-1（刪除 v1 Harness、v1 契約測試、
-  `run-ai-acceptance` 改接 v2 或由 P3-9 取代）。見 `docs/plans/ai-chat-reliability-v2.md`。
-- Phase 5：Windows CI 全套＋安裝版 10 步手動驗收。
+- v2 已隨 **v0.4.15**（2026-10-16，未簽章過渡版）發布。P3-9：Claude Sonnet 5.5 在保留驗證集已跑的 5 題全部 ≥4 分，
+  其餘 5 題待補跑（`--set holdout --cases …`）；免費／便宜模型達不到 demo 門檻（計畫第 7 節）。
+- 待做：P4-1（刪除 v1 Harness、v1 契約測試、`run-ai-acceptance` 改接 v2 或由 P3-9 取代）、P4-2、P4-3；
+  Windows 10／11 安裝版 10 步手動驗收。見 `docs/plans/ai-chat-reliability-v2.md`。
+- 發版：`.github/workflows/tag-release.yml` 在 main 建立 annotated 標籤，再執行 `Release`（見 `docs/operations/release.md`）。
 - PGN／中文記譜（炮二平五）匯入（目前支援 FEN、UCI 著法序列與 PlayOK WXF）。
 - 官方與相容服務的 model id 需在發行前依各服務商目前模型頁重新核對。
 - Windows 程式碼簽章：尚無受信任 CA 憑證，`allow_unsigned` 過渡版可能觸發 SmartScreen；
