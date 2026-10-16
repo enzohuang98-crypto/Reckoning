@@ -14,8 +14,10 @@ const fakeIpcMain = {
 const fakeDialog = {
   showSaveDialog: async () => ({ canceled: true })
 }
-const moduleLoader = Module._load
-;(Module as unknown as { _load: typeof Module._load })._load = function (
+type ModuleLoader = (request: string, parent: NodeModule | null, isMain: boolean) => unknown
+const moduleInternals = Module as unknown as { _load: ModuleLoader }
+const moduleLoader = moduleInternals._load
+;moduleInternals._load = function (
   request: string,
   parent: NodeModule | null,
   isMain: boolean
@@ -31,7 +33,7 @@ const { registerAiExplanationHandlers } = require('../../../src/main/ipc/aiExpla
 const { registerDataHandlers } = require('../../../src/main/ipc/dataHandlers') as typeof import('../../../src/main/ipc/dataHandlers')
 const { configureTrustedRendererUrl } = require('../../../src/main/security/IpcSecurity') as typeof import('../../../src/main/security/IpcSecurity')
 
-type Handler = (event: unknown, ...args: unknown[]) => unknown
+type Handler = (event: unknown, ...args: unknown[]) => Promise<unknown>
 const handlers = new Map<string, Handler>()
 const originalHandle = ipcMain.handle
 const originalOn = ipcMain.on
@@ -115,7 +117,7 @@ function credentialStore(options: {
 }
 
 function installFetch(mode: '401' | '429' | 'models503' | 'generation404' | 'success') {
-  globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
     const url = String(input)
     if (url.endsWith('/api/v1/key')) {
       if (mode === '401') return jsonResponse(401, { error: { message: 'fake-key sk-or-v1-secret' } })
@@ -267,8 +269,8 @@ async function main(): Promise<void> {
   }
 
   handlers.clear()
-  let written: AppDataSnapshot | null = null
-  let writtenPath: string | null = null
+  let written = null as AppDataSnapshot | null
+  let writtenPath = null as string | null
   let failWrite = false
   const dataStorage = {
     async readAppDataWithMigration() { return EMPTY_APP_DATA },
@@ -356,7 +358,7 @@ main().finally(() => {
   console.error = originalError
   ipcMain.handle = originalHandle
   ipcMain.on = originalOn
-  ;(Module as unknown as { _load: typeof Module._load })._load = moduleLoader
+  moduleInternals._load = moduleLoader
 }).catch((error) => {
   console.error(error)
   process.exitCode = 1

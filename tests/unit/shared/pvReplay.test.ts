@@ -4,7 +4,6 @@ import { START_FEN } from '../../../src/shared/types/BoardState'
 import { buildPvReplay } from '../../../src/shared/logic/board/PvReplay'
 
 const parsed = parseFen(START_FEN)
-assert.equal(parsed.valid, true)
 if (!parsed.valid) throw new Error(parsed.message)
 
 const replay = buildPvReplay(parsed.board, ['h2e2', 'h9g7'], ['炮二平五', '馬８進７'])

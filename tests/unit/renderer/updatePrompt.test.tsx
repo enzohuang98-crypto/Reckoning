@@ -10,7 +10,6 @@
  *  3. 標題提示與設定頁的手動更新入口仍維持原行為
  */
 
-import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import React from 'react'
@@ -306,7 +305,7 @@ for (const phase of ['idle', 'checking', 'not-available', 'error', 'unconfigured
 }
 
 {
-  let target: AppTab | null = null
+  let target = null as AppTab | null
   const renderer = render(
     status({ phase: 'available', availableVersion: '0.3.7' }),
     'analyze',

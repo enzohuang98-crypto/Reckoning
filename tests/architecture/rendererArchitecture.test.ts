@@ -107,6 +107,7 @@ function registry(verified: boolean): EngineRegistrySnapshot {
         id: 'engine-1',
         profileId: 'pikafish',
         displayName: 'Pikafish',
+        detectedName: null,
         executablePath: 'C:\\Engines\\pikafish.exe',
         protocol: 'uci',
         enabled: true,

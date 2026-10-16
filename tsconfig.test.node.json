@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*",
+    "tests/**/*.ts",
+    "tools/acceptance/explain-v2-live.ts",
+    "tools/acceptance/openrouter-smoke.ts",
+    "tools/acceptance/summarize-traces.ts"
+  ],
+  "exclude": [
+    "tests/integration/ai/harness.test.ts",
+    "tests/architecture/boardAccessibility.test.ts"
+  ]
+}

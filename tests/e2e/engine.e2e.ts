@@ -274,7 +274,7 @@ async function main(): Promise<void> {
   process.env.FAKE_ENGINE_MODE = 'uci'
   {
     const adapter = new PikafishAdapter(FAKE_ENGINE)
-    let detectedProtocol: string | null = null
+    let detectedProtocol = null as string | null
     adapter.onProtocolDetected((p) => {
       detectedProtocol = p
     })
@@ -478,7 +478,7 @@ async function main(): Promise<void> {
   {
     const adapter = new PikafishAdapter(FAKE_ENGINE)
     const controller = new AbortController()
-    let phaseSeen: string | null = null
+    let phaseSeen = null as string | null
     const t0 = Date.now()
     const pending = adapter.analyzePosition({ positionFen: START_FEN }, config, {
       signal: controller.signal,
@@ -507,7 +507,7 @@ async function main(): Promise<void> {
   process.env.FAKE_ENGINE_MODE = 'uci'
   {
     const adapter = new PikafishAdapter(FAKE_ENGINE)
-    let staleControls: EngineProcessControls | null = null
+    let staleControls = null as EngineProcessControls | null
     await adapter.analyzePosition({ positionFen: START_FEN }, config, {
       onPhase: (_phase, controls) => {
         staleControls = controls
