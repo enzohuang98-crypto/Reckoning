@@ -17,7 +17,7 @@ import { scoreUsedAsReason, VAGUE_PHRASES } from './ExplanationQualityScorer'
 
 export type AnswerCheckMode = 'move' | 'position' | 'question'
 
-export type HardErrorCode = 'H1' | 'H2' | 'H3' | 'H4' | 'H5' | 'H6' | 'H7'
+export type HardErrorCode = 'H1' | 'H2' | 'H3' | 'H4' | 'H5' | 'H6' | 'H7' | 'H8'
 export type SoftWarningCode = 'S1' | 'S2' | 'S3' | 'S4'
 
 export interface AnswerIssue<Code extends string> {
@@ -109,26 +109,55 @@ function visibleLength(text: string): number {
   return text.replace(/\s+/g, '').length
 }
 
-const FORCED_PATTERN = /必然|唯一|被迫|forced|only move/gi
+const FORCED_PATTERN = /必然|唯一|被迫|迫使|forced|only move/gi
+/** 指名某一步「被迫／只能／唯一」：事實表沒把那一步標成唯一合法著法時是客觀錯誤（H8）。 */
+const FORCED_MOVE_PATTERN = /被迫|迫使|唯一|只能|forced|only (?:legal )?move/gi
+const NEGATION_PATTERN = /不是|並非|并非|不一定|未必|並不|并不|\bnot\b/i
+const ALTERNATIVE_PATTERN = /或|\bor\b/i
+/** 「只能車一平二吃回炮」說的是唯一的吃回方式，不是全盤唯一合法著法；這類吃子敘述不在 H8 範圍。 */
+const CAPTURE_CONTEXT = /吃|captur/i
+
+function clauseAround(text: string, at: number): string {
+  let start = at
+  while (start > 0 && !CLAUSE_BREAK.test(text[start - 1])) start--
+  let end = at
+  while (end < text.length && !CLAUSE_BREAK.test(text[end])) end++
+  return text.slice(start, end)
+}
 
 /**
  * 「必然／唯一／被迫」只有在事實表標為「唯一合法著法」的那一步才成立：
- * 同一個子句裡提到那一步就不算誤用（P3-9 live：將5進1 是唯一應將，卻被標警告）。
+ * 同一個子句裡提到那一步、或子句是否定句（「並非唯一」），就不算誤用。
  */
 function claimsForcedWithoutFact(text: string, facts: ExplanationFacts): boolean {
   const onlyMoves = new Set([...factOnlyLegalMoves(facts)].map(normalizeMoveText))
   const normalized = normalizeMoveText(text)
   for (const match of normalized.matchAll(FORCED_PATTERN)) {
-    const at = match.index ?? 0
-    let start = at
-    while (start > 0 && !CLAUSE_BREAK.test(normalized[start - 1])) start--
-    let end = at
-    while (end < normalized.length && !CLAUSE_BREAK.test(normalized[end])) end++
-    const clause = normalized.slice(start, end)
+    const clause = clauseAround(normalized, match.index ?? 0)
+    if (NEGATION_PATTERN.test(clause)) continue
     const covered = extractMentionedMoves(clause).some((move) => onlyMoves.has(move.move))
     if (!covered) return true
   }
   return false
+}
+
+/**
+ * 子句同時說「被迫／只能／唯一」並指名著法，但那些著法都不是事實表標的唯一合法著法。
+ * 否定句、「A 或 B」兩種選擇、以及講吃子方式的子句不算（P3-9 live：「迫使黑方必須將5退1」，其實黑將也能進）。
+ */
+function forcedMovesWithoutFact(text: string, facts: ExplanationFacts): string[] {
+  const onlyMoves = new Set([...factOnlyLegalMoves(facts)].map(normalizeMoveText))
+  const normalized = normalizeMoveText(text)
+  const wrong = new Set<string>()
+  for (const match of normalized.matchAll(FORCED_MOVE_PATTERN)) {
+    const clause = clauseAround(normalized, match.index ?? 0)
+    if (NEGATION_PATTERN.test(clause) || CAPTURE_CONTEXT.test(clause)) continue
+    const moves = extractMentionedMoves(clause).map((move) => move.move)
+    if (moves.length === 0 || moves.some((move) => onlyMoves.has(move))) continue
+    if (moves.length >= 2 && ALTERNATIVE_PATTERN.test(clause)) continue
+    for (const move of moves) wrong.add(move)
+  }
+  return [...wrong]
 }
 
 export function checkAnswer(input: AnswerCheckInput): AnswerCheckResult {
@@ -201,6 +230,13 @@ export function checkAnswer(input: AnswerCheckInput): AnswerCheckResult {
   if (wrongSide.test(text)) {
     hardErrors.push(
       issue('H7', `輪走方說錯：目前輪到${input.facts.sideToMove === 'red' ? '紅' : '黑'}方走。`)
+    )
+  }
+
+  const forced = forcedMovesWithoutFact(text, input.facts)
+  if (forced.length > 0) {
+    hardErrors.push(
+      issue('H8', `「${forced.join('」「')}」在事實表中不是唯一合法著法，不能說成被迫、只能或唯一；請改說這是引擎主線的著法。`)
     )
   }
 

@@ -91,4 +91,26 @@ assert.ok(opening.includes('3. 紅 炮二平五：') && opening.includes('黑5�
 assert.ok(black.includes('紅九路兵（吃下後對方能用九路車吃回）'), black)
 assert.ok(factsText('opening-inaccuracy', 'en').includes('can be recaptured by the horse on file 7'))
 
+// 8. 指名某一步「被迫／只能／唯一」，但事實表沒標唯一合法著法 → 硬錯 H8（會觸發一次修正）。
+const hard = (text: string): string[] =>
+  checkAnswer({ text, mode: 'position', language: 'zh-TW', facts: endgameFacts }).hardErrors.map((item) => item.code)
+assert.ok(hard('車九退一再將軍，迫使黑方必須將5退1。').includes('H8'))
+assert.ok(hard('之後黑方只能將5退1。').includes('H8'))
+assert.equal(hard('車九進九將軍，黑方只能將5進1。').includes('H8'), false, '事實表標了唯一合法著法')
+assert.equal(hard('車九退一將軍後，黑將可以將5進1或將5退1。').includes('H8'), false, '兩種選擇不是被迫')
+assert.equal(hard('將5退1 並非唯一的應法。').includes('H8'), false, '否定句')
+assert.equal(hard('黑方只能應將。').includes('H8'), false, '沒指名著法交給軟警告')
+// 「只能用某步吃回」講的是吃回方式（major-blunder 的標準答案就這樣寫），不是全盤唯一合法著法。
+const blunderFacts = buildExplanationFacts(
+  cases.find((item) => item.id === 'major-blunder')!.analysis,
+  compareMove(cases.find((item) => item.id === 'major-blunder')!.analysis)
+)
+assert.equal(
+  checkAnswer({ text: '黑方炮8進7吃紅馬，紅方只能車一平二吃回炮。', mode: 'question', language: 'zh-TW', facts: blunderFacts })
+    .hardErrors.some((item) => item.code === 'H8'),
+  false
+)
+// S3 遇到否定句不再誤報（P3-9 live：「並非唯一或必然」被標警告）。
+assert.equal(s3('這條主線並非唯一或必然。'), false)
+
 console.log('explanationFacts live-case tests passed')
