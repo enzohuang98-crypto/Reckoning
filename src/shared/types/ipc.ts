@@ -41,7 +41,6 @@ import type {
   HarnessProgressPayload
 } from './Harness'
 import type { AppUpdateStatus, LegacyUpdatePreferences } from './AppUpdate'
-import type { DualEngineComparison } from './DualEngine'
 
 /** IPC 通道名稱常數 */
 export const IPC = {
@@ -109,7 +108,6 @@ export interface AnalyzePositionStartPayload {
   /** renderer 生成；analysisId 由 main 生成（§2.16.4） */
   requestId: string
   engineId?: string
-  verificationEngineId?: string
   positionFen: string
   userMove?: string
   analysisConfig: AnalysisConfig
@@ -119,10 +117,6 @@ export interface EngineAnalysisResultPayload {
   requestId: string
   analysisId: string
   engineAnalysis: EngineAnalysis
-  verificationEngineAnalysis?: EngineAnalysis
-  engineDisagreement?: boolean
-  dualEngineComparison?: DualEngineComparison
-  verificationWarning?: string
   moveComparison: MoveComparisonResult
 }
 
@@ -148,7 +142,6 @@ export interface EngineAnalysisProgressPayload {
   principalVariation?: string[]
   displayMove?: string
   displayPrincipalVariation: string[]
-  engineRole?: 'primary' | 'verification'
   engineId?: string
   engineName?: string
 }
@@ -261,7 +254,6 @@ export interface GenerateExplanationStartPayload {
   /** 棋手走這一步時的原始想法；只供教練回應，不是引擎證據 */
   userMoveReason?: string
   engineId?: string
-  verificationEngineId?: string
 }
 
 export interface GenerateExplanationChunkPayload {
@@ -454,10 +446,7 @@ export interface RendererApi {
       selectionToken: string
     }): Promise<EngineInstallation>
     removeInstallation(id: string): Promise<EngineRegistrySnapshot>
-    selectInstallation(
-      activeEngineId: string,
-      verificationEngineId?: string | null
-    ): Promise<EngineRegistrySnapshot>
+    selectInstallation(activeEngineId: string): Promise<EngineRegistrySnapshot>
     testInstallation(id: string): Promise<EngineTestResult>
   }
   ai: {

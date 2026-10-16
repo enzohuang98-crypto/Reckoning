@@ -40,12 +40,10 @@ async function verifyWorkspaceDraftBlocksInstall(): Promise<void> {
       test: async () => ({ ok: false, error: 'fixture unavailable' }),
       listInstallations: async () => ({
         activeEngineId: null,
-        verificationEngineId: null,
         installations: []
       }),
       selectInstallation: async () => ({
         activeEngineId: null,
-        verificationEngineId: null,
         installations: []
       })
     },

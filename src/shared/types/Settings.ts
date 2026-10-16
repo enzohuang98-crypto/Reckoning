@@ -29,7 +29,6 @@ export interface AppSettings {
   userLevel: UserLevel
   /** 解說語言（本專案擴充，SDS 未定義） */
   language: ExplanationLanguage
-  crossEngineEnabled: boolean
   /** schema 版本 */
   version: number
 }
@@ -44,6 +43,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   aiBaseUrl: '',
   userLevel: 'intermediate',
   language: 'zh-TW',
-  crossEngineEnabled: false,
   version: 5
 }

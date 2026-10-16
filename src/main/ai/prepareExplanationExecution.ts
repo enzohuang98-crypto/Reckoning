@@ -51,7 +51,6 @@ export interface EffectiveExplanationInput {
   readonly answerMode: HarnessAnswerMode
   readonly budget?: Readonly<HarnessBudget>
   readonly engineId?: string
-  readonly verificationEngineId?: string
   readonly reuseEvidence?: boolean
   readonly session: Readonly<AnalysisSession>
 }
@@ -130,9 +129,6 @@ export function prepareExplanationExecution(
     answerMode,
     ...(validatedPayload.budget ? { budget: validatedPayload.budget } : {}),
     ...(validatedPayload.engineId ? { engineId: validatedPayload.engineId } : {}),
-    ...(validatedPayload.verificationEngineId
-      ? { verificationEngineId: validatedPayload.verificationEngineId }
-      : {}),
     ...(validatedPayload.reuseEvidence !== undefined
       ? { reuseEvidence: validatedPayload.reuseEvidence }
       : {}),

@@ -164,7 +164,6 @@ function findButton(renderer: ReactTestRenderer, label: string): ReactTestInstan
 async function main(): Promise<void> {
   const registry: EngineRegistrySnapshot = {
     activeEngineId: 'primary-engine',
-    verificationEngineId: null,
     installations: [installation()]
   }
   const engineStarts: AnalyzePositionStartPayload[] = []

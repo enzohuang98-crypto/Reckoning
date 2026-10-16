@@ -120,7 +120,7 @@ async function run(fixture: FixtureCase, steps: Step[], options: RunOptions = {}
       provider,
       apiKey: 'synthetic',
       registry: {
-        list: () => ({ installations: [], activeEngineId: 'engine-1', verificationEngineId: null }),
+        list: () => ({ installations: [], activeEngineId: 'engine-1' }),
         getAdapter: () => null
       } as never,
       traceStore: { save: (trace: HarnessTrace) => traces.push(trace) } as never,

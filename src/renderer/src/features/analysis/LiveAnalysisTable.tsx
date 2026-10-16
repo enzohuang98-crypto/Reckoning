@@ -21,14 +21,13 @@ function formatLargeNumber(value?: number | null): string {
 }
 
 function analysisMethod(item: EngineThoughtEntry): string {
-  const role = item.engineRole === 'verification' ? '複核引擎' : '主引擎'
   const phase =
     item.phase === 'user_move_analysis'
       ? '著法複核'
       : item.phase === 'finalizing'
         ? '結果整理'
         : '主線搜尋'
-  return `${role} · ${phase}`
+  return `主引擎 · ${phase}`
 }
 
 function currentPhase(progress: EngineAnalysisProgressPayload | null): string {
@@ -43,14 +42,6 @@ function continuationAfterMove(item: EngineThoughtEntry): string[] {
   return item.displayMove && item.displayPrincipalVariation[0] === item.displayMove
     ? item.displayPrincipalVariation.slice(1)
     : item.displayPrincipalVariation
-}
-
-function resultNotice(result: EngineAnalysisResultPayload | null): string | null {
-  if (!result) return null
-  if (result.engineDisagreement) {
-    return '主引擎與複核引擎方向不同，請一併查看兩邊的候選著與 PV。'
-  }
-  return result.verificationWarning ?? null
 }
 
 const phaseOrder: Record<EngineThoughtEntry['phase'], number> = {
@@ -73,7 +64,7 @@ export function rankedAnalysisRows(thoughts: EngineThoughtEntry[]): EngineThough
       return
     }
     latestRankedRow.set(
-      `${item.engineRole ?? 'primary'}::${item.phase}::${item.candidateRank}`,
+      `${item.phase}::${item.candidateRank}`,
       item
     )
   })
@@ -92,11 +83,6 @@ export function rankedAnalysisRows(thoughts: EngineThoughtEntry[]): EngineThough
     } else if (rightScore !== null && rightScore !== undefined) {
       return 1
     }
-
-    const roleDifference =
-      (left.engineRole === 'verification' ? 1 : 0) -
-      (right.engineRole === 'verification' ? 1 : 0)
-    if (roleDifference !== 0) return roleDifference
 
     const phaseDifference = phaseOrder[left.phase] - phaseOrder[right.phase]
     if (phaseDifference !== 0) return phaseDifference
@@ -132,7 +118,6 @@ export function LiveAnalysisTable({
   retainingPreviousAnalysis
 }: Props): JSX.Element {
   const rows = rankedAnalysisRows(thoughts)
-  const resultWarning = resultNotice(result)
   const stateClass = !status?.available
     ? 'is-unavailable'
     : busy
@@ -173,10 +158,8 @@ export function LiveAnalysisTable({
           {status?.message ?? '尚未設定可用引擎'}
         </p>
       )}
-      {(notice ?? resultWarning) && (
-        <p className="live-analysis-message engine-status warn">
-          {notice ?? resultWarning}
-        </p>
+      {notice && (
+        <p className="live-analysis-message engine-status warn">{notice}</p>
       )}
 
       <div className="live-analysis-table-scroll">

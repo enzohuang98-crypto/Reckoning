@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict'
 import {
   normalizeSettings,
-  REMOVED_HARNESS_SETTING_KEYS
+  REMOVED_SETTING_KEYS
 } from '../../../src/shared/logic/validation/ValidationUtils'
 import { DEFAULT_SETTINGS } from '../../../src/shared/types/Settings'
 import { validateGenerateExplanationPayload } from '../../../src/main/security/InputValidation'
 import { FIXED_HARNESS_OPTIONS } from '../../../src/main/ai/prepareExplanationExecution'
 
-// P4-4：v4 設定中使用者可調的 Harness 參數一律丟棄，其他設定保留。
+// P4-4／P4-5：v4 設定中使用者可調的 Harness 參數與雙引擎開關一律丟棄，其他設定保留。
 const legacyV4 = {
   ...DEFAULT_SETTINGS,
   aiProvider: 'openrouter',
   aiModel: 'vendor/model:free',
   userLevel: 'basic',
   version: 4,
+  crossEngineEnabled: true,
   harnessAnswerMode: 'focused',
   harnessAutoRun: true,
   harnessReuseEvidence: false,
@@ -25,8 +26,8 @@ const legacyV4 = {
   harnessFocusedMaxOutputTokens: 20_000
 }
 const normalized = normalizeSettings(legacyV4, DEFAULT_SETTINGS)
-assert.equal(REMOVED_HARNESS_SETTING_KEYS.length, 9)
-for (const key of REMOVED_HARNESS_SETTING_KEYS) {
+assert.equal(REMOVED_SETTING_KEYS.length, 10)
+for (const key of REMOVED_SETTING_KEYS) {
   assert.equal(key in normalized, false, `${key} 應被移除`)
 }
 assert.equal(normalized.aiProvider, 'openrouter')

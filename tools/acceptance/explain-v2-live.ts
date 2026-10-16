@@ -103,7 +103,7 @@ export async function runLiveCase(
     const result = await runExplainPipelineV2(execution, {
       provider: deps.provider,
       apiKey: deps.apiKey,
-      registry: { list: () => ({ installations: [], activeEngineId: null, verificationEngineId: null }), getAdapter: () => null } as never,
+      registry: { list: () => ({ installations: [], activeEngineId: null }), getAdapter: () => null } as never,
       traceStore: { save: (trace: HarnessTrace) => traces.push(trace) } as never,
       signal: new AbortController().signal,
       onProgress: () => undefined,

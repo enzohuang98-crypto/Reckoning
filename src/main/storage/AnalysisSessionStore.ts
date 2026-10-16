@@ -33,12 +33,15 @@ export interface AnalysisSession {
   positionFen: string
   userMove?: string
   primaryEngineId?: string
-  verificationEngineId?: string
   engineAnalysis: EngineAnalysis
+  /**
+   * 雙引擎複核已於 P4-5 移除，以下欄位不再寫入；只剩 v1 回滾路徑（HarnessOrchestrator）
+   * 的唯讀分支還引用它們，P4-1 刪除 v1 時一併移除。
+   */
+  verificationEngineId?: string
   verificationEngineAnalysis?: EngineAnalysis
   engineDisagreement?: boolean
   dualEngineComparison?: DualEngineComparison
-  verificationWarning?: string
   moveComparison: MoveComparisonResult
 }
 

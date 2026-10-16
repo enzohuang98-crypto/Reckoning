@@ -102,7 +102,6 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 function registry(verified: boolean): EngineRegistrySnapshot {
   return {
     activeEngineId: 'engine-1',
-    verificationEngineId: null,
     installations: [
       {
         id: 'engine-1',
@@ -502,8 +501,7 @@ async function main(): Promise<void> {
       cssRuleBody(workspaceStyles, '.live-analysis-dock', -1),
       /overflow-y:\s*auto/
     )
-    assert.match(result, /const compactWarnings = \[analysisWarning, result\.verificationWarning\]/)
-    assert.match(result, /compactWarnings\.length > 1/)
+    assert.doesNotMatch(result, /dualEngineComparison|verificationWarning|DUAL ENGINE/)
     assert.match(workspace, /layout\?\.setAttribute\('inert', ''\)/)
     assert.match(workspace, /aria-hidden=\{detailsOpen\}/)
     assert.match(workspace, /event\.key !== 'Escape'/)
@@ -570,8 +568,7 @@ async function main(): Promise<void> {
     assert.match(panel, /payload\.requestId !== activeAiRequestId\.current/)
     assert.match(panel, /const aiRequestedAt = Date\.now\(\)/)
     assert.match(panel, /remainingOneClickDeadlineMs\(aiRequestedAt\)/)
-    assert.match(panel, /settings\.crossEngineEnabled && verificationEngineId/)
-    assert.doesNotMatch(panel, /actualMove \|\| settings\.crossEngineEnabled/)
+    assert.doesNotMatch(panel, /crossEngineEnabled|verificationEngineId|engineRole/)
     assert.match(panel, /!hasBothKings\(board\) \|\|[\s\S]*?livePaused \|\|/)
     assert.match(
       panel,
@@ -617,13 +614,13 @@ async function main(): Promise<void> {
 
     assert.doesNotMatch(coach, /inputTokens|outputTokens|harnessEvidence|harnessWarnings/)
     assert.doesNotMatch(coach, /證據驗證完成/)
-    assert.match(coach, /result\?\.verificationWarning/)
+    assert.doesNotMatch(coach, /verificationWarning/)
     assert.doesNotMatch(coach, /複核引擎尚未提供結果；本次先依主引擎完成比較/)
     assert.doesNotMatch(progress, /modelCallsUsed|engineRoundsUsed|evidenceCount/)
     assert.match(explanation, /replace\(\/\\s\*\\\[E\\d\+\\\]\/g, ''\)/)
   })
 
-  await check('只有實際加入第二個產品引擎時才顯示複核引擎 UI', () => {
+  await check('雙引擎複核已移除：設定與分析資料不再出現複核引擎 UI', () => {
     const engineSettings = readFileSync(
       resolve('src/renderer/src/features/settings/EngineSettingsSection.tsx'),
       'utf8'
@@ -632,11 +629,8 @@ async function main(): Promise<void> {
       resolve('src/renderer/src/features/analysis/DetailsView.tsx'),
       'utf8'
     )
-    assert.match(engineSettings, /\{registry\.installations\.length > 1 && \(/)
-    assert.match(
-      details,
-      /settings\.crossEngineEnabled && registry\.installations\.length > 1/
-    )
+    assert.doesNotMatch(engineSettings, /複核|verificationEngineId/)
+    assert.doesNotMatch(details, /複核|verificationEngine|crossEngineEnabled/)
   })
 
   await check('AI 失敗就地顯示且不清除追問，成功後才清除草稿', () => {

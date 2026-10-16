@@ -24,7 +24,7 @@ interface Props {
   onRefresh: () => void
   onTest: (id: string) => void
   onRemove: (id: string) => void
-  onSelect: (activeId: string, verificationId?: string | null) => void
+  onSelect: (activeId: string) => void
 }
 
 export function EngineSettingsSection({
@@ -122,25 +122,6 @@ export function EngineSettingsSection({
                 ))}
               </select>
             </div>
-            {registry.installations.length > 1 && (
-              <div className="field">
-                <label className="field-label">預設複核引擎（選用）</label>
-                <select
-                  className="select"
-                  value={registry.verificationEngineId ?? ''}
-                  onChange={(event) =>
-                    onSelect(registry.activeEngineId ?? '', event.target.value || null)
-                  }
-                >
-                  <option value="">不使用複核引擎</option>
-                  {registry.installations
-                    .filter((engine) => engine.id !== registry.activeEngineId)
-                    .map((engine) => (
-                      <option value={engine.id} key={engine.id}>{engine.displayName}</option>
-                    ))}
-                </select>
-              </div>
-            )}
           </div>
         )}
       </section>

@@ -16,7 +16,6 @@ export interface EngineThoughtEntry {
   candidateRank?: number
   displayMove?: string
   displayPrincipalVariation: string[]
-  engineRole?: 'primary' | 'verification'
   engineName?: string
 }
 
@@ -40,7 +39,6 @@ export function thoughtSignature(entry: EngineThoughtEntry): string {
     entry.scoreComparableValue ?? 'none',
     entry.candidateRank ?? 'unranked',
     entry.displayMove ?? 'none',
-    entry.engineRole ?? 'primary',
     entry.engineName ?? 'unknown',
     entry.displayPrincipalVariation.join('|')
   ].join('::')
@@ -70,7 +68,7 @@ function EngineThoughtRow({
     <div className={`engine-console-row${latest ? ' latest' : ''}`}>
       <div className="engine-console-meta">
         <b>
-          {item.engineRole === 'verification' ? '複核' : '主引擎'} ·{' '}
+          主引擎 ·{' '}
           {item.phase === 'user_move_analysis' ? '你的著法後' : '局面分析'}
         </b>
         {item.engineName && <span>{item.engineName}</span>}
@@ -113,7 +111,7 @@ export function EngineConsole({
   const reversed = thoughts.slice().reverse()
   const [latestThought, ...historyThoughts] = reversed
   const activeEngineLabel = progress
-    ? `${progress.engineRole === 'verification' ? '複核引擎' : '主引擎'}${
+    ? `主引擎${
         progress.engineName ? ` ${progress.engineName}` : ''
       }`
     : null

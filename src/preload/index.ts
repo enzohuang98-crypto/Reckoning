@@ -51,11 +51,8 @@ const api: RendererApi = {
     listInstallations: () => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_LIST),
     addInstallation: (input) => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_ADD, input),
     removeInstallation: (id) => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_REMOVE, id),
-    selectInstallation: (activeEngineId, verificationEngineId) =>
-      ipcRenderer.invoke(IPC.ENGINE_REGISTRY_SELECT, {
-        activeEngineId,
-        verificationEngineId
-      }),
+    selectInstallation: (activeEngineId) =>
+      ipcRenderer.invoke(IPC.ENGINE_REGISTRY_SELECT, { activeEngineId }),
     testInstallation: (id) => ipcRenderer.invoke(IPC.ENGINE_REGISTRY_TEST, id)
   },
   ai: {

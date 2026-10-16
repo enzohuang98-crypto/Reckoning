@@ -68,7 +68,6 @@ function installation(id: string, displayName: string): EngineInstallation {
 
 const registry: EngineRegistrySnapshot = {
   activeEngineId: 'primary-engine',
-  verificationEngineId: null,
   installations: [installation('primary-engine', 'Pikafish')]
 }
 
@@ -327,7 +326,7 @@ async function main(): Promise<void> {
     assert.equal(engineStarts.length, 1, '選取實戰步後應自動啟動一次本機分析')
     assert.equal(aiStarts.length, 0, '選取實戰步不得自動呼叫 AI')
     const firstRequestId = engineStarts[0].requestId
-    assert.equal(engineStarts[0].verificationEngineId, undefined)
+    assert.equal('verificationEngineId' in engineStarts[0], false)
     assert.deepEqual(engineStarts[0].analysisConfig, {
       rootAnalysisMovetimeMs: AUTO_INITIAL_ANALYSIS_MAX_MS,
       userMoveEvalMovetimeMs: AUTO_USER_MOVE_ANALYSIS_MAX_MS,
@@ -354,7 +353,6 @@ async function main(): Promise<void> {
         principalVariation: ['b2e2', 'b9c7'],
         displayMove: '炮八平五',
         displayPrincipalVariation: ['炮八平五', '馬2進3'],
-        engineRole: 'primary',
         engineId: 'primary-engine',
         engineName: 'Primary Engine'
       } as EngineAnalysisProgressPayload)
@@ -404,7 +402,7 @@ async function main(): Promise<void> {
     assert.equal(aiStarts.length, 1, '連續點擊也只能啟動一個完整 AI 請求')
     assert.equal(aiStarts[0].analysisId, 'analysis-2')
     assert.equal(aiStarts[0].attachedMove, secondMove.move)
-    assert.equal(aiStarts[0].verificationEngineId, undefined)
+    assert.equal('verificationEngineId' in aiStarts[0], false)
     assert.equal(aiStarts[0].explanationStyle, 'long_analytical')
     assert.equal(aiStarts[0].followUpQuestion, undefined)
 

@@ -53,8 +53,7 @@ const EMPTY_SECRET_STATUS: SecretStatus = {
 
 const EMPTY_ENGINE_REGISTRY: EngineRegistrySnapshot = {
   installations: [],
-  activeEngineId: null,
-  verificationEngineId: null
+  activeEngineId: null
 }
 
 export function SettingsPage({
@@ -521,21 +520,13 @@ export function SettingsPage({
     }
   }
 
-  const selectEngines = async (
-    activeEngineId: string,
-    verificationEngineId: string | null = engineRegistry.verificationEngineId
-  ): Promise<void> => {
+  const selectEngine = async (activeEngineId: string): Promise<void> => {
     if (!activeEngineId) return
     try {
-      setEngineRegistry(
-        await window.api.engine.selectInstallation(
-          activeEngineId,
-          verificationEngineId === activeEngineId ? null : verificationEngineId
-        )
-      )
+      setEngineRegistry(await window.api.engine.selectInstallation(activeEngineId))
       setEngineMessage(null)
     } catch {
-      setEngineMessage('主引擎與複核引擎必須是不同的已加入引擎。')
+      setEngineMessage('無法切換主引擎，請重新測試該引擎。')
     }
   }
 
@@ -694,9 +685,7 @@ export function SettingsPage({
               onRefresh={() => void refreshEngine()}
               onTest={(id) => void testEngine(id)}
               onRemove={(id) => void removeEngine(id)}
-              onSelect={(activeId, verificationId) =>
-                void selectEngines(activeId, verificationId)
-              }
+              onSelect={(activeId) => void selectEngine(activeId)}
             />
           )}
 
