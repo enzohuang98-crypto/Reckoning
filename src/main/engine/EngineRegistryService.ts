@@ -12,6 +12,7 @@ import type { EngineProtocol } from '@shared/types/EngineAnalysis'
 import type { StorageService } from '../storage/StorageService'
 import { normalizeEnginePath } from '../security/InputValidation'
 import { PikafishAdapter } from './PikafishAdapter'
+import { logger } from '../logger'
 
 export const ENGINE_REGISTRY_FILE = 'engine-registry.json'
 const LEGACY_ENGINE_CONFIG_FILE = 'engine-config.json'
@@ -195,8 +196,24 @@ export class EngineRegistryService {
     return migrated
   }
 
+  private writeQueue: Promise<void> = Promise.resolve()
+
+  /**
+   * 記憶體中的 snapshot 是唯一事實來源；檔案以非同步原子寫入依序落地（設計原則 §9），
+   * 新增、移除或切換引擎不會在 main 行程上做同步磁碟 I/O。寫入失敗只記錄，不影響目前執行。
+   */
   private persist(): void {
-    this.storage.write(ENGINE_REGISTRY_FILE, this.snapshot)
+    const snapshot = structuredClone(this.snapshot)
+    this.writeQueue = this.writeQueue
+      .then(() => this.storage.writeAsync(ENGINE_REGISTRY_FILE, snapshot))
+      .catch((error: unknown) => {
+        logger.error('引擎登錄寫入失敗', error instanceof Error ? error.name : 'unknown')
+      })
+  }
+
+  /** 等待排隊中的登錄寫入完成（測試與需要確定已落地的流程使用）。 */
+  flush(): Promise<void> {
+    return this.writeQueue
   }
 
   list(): EngineRegistrySnapshot {
