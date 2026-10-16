@@ -34,11 +34,3 @@ export interface UserGuess {
   /** 建立時間 (epoch ms) */
   createdAt: number
 }
-
-/** 猜著模式統計（用於成績面板） */
-export interface GuessModeStats {
-  totalGuesses: number
-  correctGuesses: number
-  /** 平均評估差距（兵/卒單位） */
-  averageScoreDifference: number
-}

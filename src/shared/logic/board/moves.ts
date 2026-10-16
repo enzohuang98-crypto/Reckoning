@@ -34,11 +34,6 @@ export interface MoveCoords {
 
 const UCI_MOVE_PATTERN = /^[a-i]\d[a-i]\d$/
 
-/** UCI 著法格式是否正確（不檢查合法性） */
-export function isUciMoveFormat(move: string): boolean {
-  return UCI_MOVE_PATTERN.test(move)
-}
-
 /** 將 UCI 著法解析為 grid 座標；格式錯誤回 null */
 export function parseUciMove(move: string): MoveCoords | null {
   if (!UCI_MOVE_PATTERN.test(move)) return null

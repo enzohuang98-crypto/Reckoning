@@ -65,7 +65,3 @@ export const CONCRETE_TERM_EXAMPLES =
 export function containsConcreteXiangqiTerm(text: string): boolean {
   return XIANGQI_CONCRETE_TERMS.some((term) => text.includes(term))
 }
-
-export function findConcreteXiangqiTerms(text: string): string[] {
-  return XIANGQI_CONCRETE_TERMS.filter((term) => text.includes(term))
-}

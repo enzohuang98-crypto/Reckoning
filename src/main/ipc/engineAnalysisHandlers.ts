@@ -9,7 +9,7 @@ import {
   type EngineStatus,
   type EngineTestResult
 } from '@shared/types/ipc'
-import type { EngineAnalysis, EngineProtocol } from '@shared/types/EngineAnalysis'
+import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
 import { isEngineProfileId } from '@shared/types/EngineRegistry'
 import { compareMove } from '@shared/logic/analysis/MoveComparisonService'
 import {
@@ -17,7 +17,6 @@ import {
   type EngineProcessControls
 } from '../engine/PikafishAdapter'
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
-import type { StorageService } from '../storage/StorageService'
 import { logger } from '../logger'
 import {
   DEFAULT_ANALYSIS_SESSION_TTL_MS,
@@ -41,36 +40,7 @@ import {
   OperationBusyError
 } from '../security/KeyedOperationGate'
 
-export const ENGINE_CONFIG_FILE = 'engine-config.json'
-
-export interface EngineConfig {
-  enginePath: string | null
-  engineProtocol: EngineProtocol | null
-}
-
-const DEFAULT_ENGINE_CONFIG: EngineConfig = {
-  enginePath: null,
-  engineProtocol: null
-}
 const MAX_ACTIVE_ANALYSES = 3
-
-// Kept for backwards-compatible tests and migration tooling.
-export function loadEngineConfig(storage: StorageService): EngineConfig {
-  const stored = storage.read<unknown>(ENGINE_CONFIG_FILE, DEFAULT_ENGINE_CONFIG)
-  if (typeof stored !== 'object' || stored === null) return DEFAULT_ENGINE_CONFIG
-  const value = stored as Record<string, unknown>
-  let enginePath: string | null = null
-  try {
-    enginePath = normalizeEnginePath(value.enginePath)
-  } catch {
-    enginePath = null
-  }
-  const engineProtocol =
-    value.engineProtocol === 'uci' || value.engineProtocol === 'ucci'
-      ? value.engineProtocol
-      : null
-  return { enginePath, engineProtocol }
-}
 
 interface EngineAnalysisHandle {
   controller: AbortController
