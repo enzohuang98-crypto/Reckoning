@@ -170,7 +170,7 @@ export function AiSettingsSection({
               </p>
             )}
             <p className="muted small">
-              清單來自 OpenRouter 官方即時目錄；只列具名的 :free 模型，不使用會隨機換模型的自動路由。
+              清單來自 OpenRouter 官方即時目錄；列出具名的 :free 模型，另加經過實戰驗收的付費模型（標示「付費」，費用記在你的 OpenRouter 帳戶）；不使用會隨機換模型的自動路由。
             </p>
             {selectedModelUnavailable && (
               <p className="error-text">
