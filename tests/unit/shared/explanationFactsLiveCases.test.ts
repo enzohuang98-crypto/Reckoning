@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs'
 import { buildExplanationFacts, formatFactsForPrompt } from '../../../src/shared/logic/analysis/ExplanationFacts'
 import { compareMove } from '../../../src/shared/logic/analysis/MoveComparisonService'
 import { checkAnswer } from '../../../src/shared/logic/ai/AnswerCheck'
+import { loadLiveCases } from '../../../tools/acceptance/explain-v2-live'
 import type { EngineAnalysis } from '../../../src/shared/types/EngineAnalysis'
 
 const cases = JSON.parse(
@@ -112,5 +113,14 @@ assert.equal(
 )
 // S3 遇到否定句不再誤報（P3-9 live：「並非唯一或必然」被標警告）。
 assert.equal(s3('這條主線並非唯一或必然。'), false)
+
+// 9. 主線截在交換中途要註明（P3-9 holdout：只看前 10 手是「紅方多吃 3 子」，其實黑方之後會吃回，評估對黑方有利）。
+const midExchange = loadLiveCases('holdout').find((item) => item.id.endsWith('718-10'))!
+const midText = formatFactsForPrompt(buildExplanationFacts(midExchange.analysis, compareMove(midExchange.analysis)))
+assert.ok(midText.includes('紅方多吃 3 子'), midText)
+assert.ok(midText.includes('列出的手數之後下一手還有吃子，交換尚未結束'), midText)
+// 交換已經結束的線不加這句。
+assert.equal(capture.includes('交換尚未結束'), false)
+assert.equal(black.includes('交換尚未結束'), false)
 
 console.log('explanationFacts live-case tests passed')
