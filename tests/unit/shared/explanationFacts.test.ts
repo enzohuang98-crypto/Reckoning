@@ -90,7 +90,8 @@ function analysis(): EngineAnalysis {
 const engine = analysis()
 const facts = buildExplanationFacts(engine, compareMove(engine))
 assert.equal(facts.bestMove.move, '炮二平五')
-assert.equal(facts.bestMove.scoreText, engine.scoreAfterBestMove?.displayText)
+// 評估用兵（comparableValue），不用原始 centipawn 文字；殺棋保留「殺 N」。
+assert.deepEqual(facts.bestMove.score, { kind: 'pawns', value: engine.scoreAfterBestMove?.comparableValue })
 assert.equal(facts.userMove?.move, '馬八進七')
 assert.equal(facts.userIsBest, false)
 assert.equal(facts.mistakeLevel, 'inaccuracy')
@@ -103,7 +104,8 @@ assert.deepEqual(factMoveEvents(facts).get('炮二平五'), { captures: false, c
 
 const zh = formatFactsForPrompt(facts, 'zh-TW')
 assert.match(zh, /輪到：紅方/)
-assert.ok(zh.includes(`引擎首選：炮二平五（評估 ${engine.scoreAfterBestMove?.displayText}）`), zh)
+assert.ok(zh.includes('引擎首選：炮二平五（評估 +0.42 兵）'), zh)
+assert.ok(zh.includes('評估都以紅方來看，單位是兵；正數對紅方有利，負數對紅方不利。'), zh)
 assert.match(zh, / 3\. 紅 炮二平五：炮進入中路；未吃子；未將軍；走後可吃：黑卒（有保護）/, 'after 馬8進7 the central pawn is protected')
 assert.match(zh, /差距：緩手／不精確（0\.35 兵）/)
 assert.match(zh, / 1\. 紅 炮二平五：炮進入中路；未吃子；未將軍；走後可吃：黑卒（無保護）/)
