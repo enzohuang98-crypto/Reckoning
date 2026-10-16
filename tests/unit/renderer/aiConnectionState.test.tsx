@@ -282,9 +282,6 @@ async function settingsBackupFlow(): Promise<void> {
     engine: {
       listInstallations: async () => emptyEngineRegistry
     },
-    license: {
-      status: async () => ({ activated: false, message: 'not activated' })
-    },
     update: {
       onChanged: () => () => undefined,
       status: async () => null
@@ -424,7 +421,6 @@ async function savedOpenRouterSwitchFlow(): Promise<void> {
       delete: async () => ({ ok: true as const, status: emptySecretStatus })
     },
     engine: { listInstallations: async () => emptyEngineRegistry },
-    license: { status: async () => ({ activated: false, message: 'not activated' }) },
     update: {
       onChanged: () => () => undefined,
       status: async () => null
@@ -553,9 +549,6 @@ async function main(): Promise<void> {
     },
     engine: {
       listInstallations: async () => emptyEngineRegistry
-    },
-    license: {
-      status: async () => ({ activated: false, message: 'not activated' })
     },
     update: {
       onChanged: () => () => undefined,

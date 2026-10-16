@@ -17,7 +17,6 @@ export const MAX_AI_RESPONSE_CHARS = 1_000_000
 
 const MAX_REQUEST_ID_LENGTH = 128
 const MAX_API_KEY_LENGTH = 8192
-const MAX_LICENSE_KEY_LENGTH = 16_384
 const MAX_ENGINE_PATH_LENGTH = 2048
 const MAX_CONVERSATION_MESSAGES = 50
 const MAX_CONVERSATION_TEXT_LENGTH = 4000
@@ -165,10 +164,6 @@ export function isLoopbackAiBaseUrl(value: string | undefined): boolean {
   } catch {
     return false
   }
-}
-
-export function normalizeLicenseKey(value: unknown): string {
-  return boundedString(value, 'License Key', MAX_LICENSE_KEY_LENGTH)
 }
 
 export function normalizeEnginePath(

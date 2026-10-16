@@ -1,11 +1,8 @@
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
-import type { LicenseStatus } from '@shared/types/License'
 
 interface Props {
   updateStatus: AppUpdateStatus | null
   updateBusy: boolean
-  license: LicenseStatus | null
-  licenseGateDisabled: boolean
   onExportBackup: () => void
   canExportBackup: boolean
   onImportBackup: () => void
@@ -13,28 +10,19 @@ interface Props {
   onDownloadUpdate: () => void
   onInstallUpdate: () => void
   onSetBackgroundPreparation: (enabled: boolean) => void
-  onDeactivateLicense: () => void
 }
 
 export function SystemSettingsSection({
   updateStatus,
   updateBusy,
-  license,
-  licenseGateDisabled,
   onExportBackup,
   canExportBackup,
   onImportBackup,
   onCheckUpdate,
   onDownloadUpdate,
   onInstallUpdate,
-  onSetBackgroundPreparation,
-  onDeactivateLicense
+  onSetBackgroundPreparation
 }: Props): JSX.Element {
-  const deactivateLicense = (): void => {
-    if (!window.confirm('確定要解除這台電腦上的授權嗎？解除後需要重新輸入 License Key 才能再次啟用。')) return
-    onDeactivateLicense()
-  }
-
   const installUpdate = (): void => {
     if (!window.confirm('更新已準備完成。現在要先保存資料，再重新啟動 Reckoning 完成更新嗎？')) return
     onInstallUpdate()
@@ -67,44 +55,6 @@ export function SystemSettingsSection({
             <p className="muted small">
               目前資料讀取失敗；先完成重新讀取，避免把保護用的空白資料誤當成備份。
             </p>
-          )}
-        </section>
-
-        <section className="card">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">LICENSE</span>
-              <h3>軟體授權</h3>
-            </div>
-          </div>
-          {license === null ? (
-            <p className="muted">正在查詢授權狀態…</p>
-          ) : license.activated ? (
-            <>
-              <div className="engine-status ok">
-                已啟用買斷授權
-                {license.info && (
-                  <div className="license-details">
-                    <span>被授權人：{license.info.licensee}</span>
-                    <span className="mono">授權編號：{license.info.licenseId}</span>
-                    {license.activatedAt && (
-                      <span>啟用於 {new Date(license.activatedAt).toLocaleDateString()}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <button className="btn danger" onClick={deactivateLicense}>解除啟用</button>
-              <p className="muted small system-note">
-                解除只會清除本機紀錄；重新輸入同一組 License Key 即可再次啟用。
-              </p>
-            </>
-          ) : (
-            <div className="engine-status warn">
-              {license.message ?? '尚未啟用。'}
-              {licenseGateDisabled
-                ? '（測試版暫不阻擋使用）'
-                : '（重新啟動後會顯示啟用頁）'}
-            </div>
           )}
         </section>
       </div>

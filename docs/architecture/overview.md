@@ -115,7 +115,6 @@ BoardState change
 - API Key：`SecretStore` + OS `safeStorage`，與一般資料完全分離。
 - 引擎登錄：main process JSON，只允許本機絕對路徑。
 - Harness trace：本機限量保存，可匯出成 regression case。
-- 產品階段旗標：集中於 `app/productFlags.ts`；公開商業發行不得保留測試授權旁路。
 
 ## 5. AI 解說 Loop 與本機知識
 
