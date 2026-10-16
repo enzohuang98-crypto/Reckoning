@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { buildExplanationFacts, formatFactsForPrompt } from '../../../src/shared/logic/analysis/ExplanationFacts'
 import { compareMove } from '../../../src/shared/logic/analysis/MoveComparisonService'
+import { checkAnswer } from '../../../src/shared/logic/ai/AnswerCheck'
 import type { EngineAnalysis } from '../../../src/shared/types/EngineAnalysis'
 
 const cases = JSON.parse(
@@ -69,5 +70,19 @@ assert.ok(capture.includes('下一手可吃：黑6路士（吃下後對方能吃
 assert.ok(black.includes('下一手可吃：紅五路兵（中兵；吃下後對方吃不回）'), black)
 assert.equal(/有保護|無保護|走後可吃/.test(capture + black), false)
 assert.ok(factsText('capture-line', 'en').includes('after this move it can capture next: Black advisor on file 6 (can be recaptured)'))
+
+// 6. 唯一合法著法由規則引擎數出來：車九進九將軍後，黑方只有將5進1；
+//    車九退一再將軍時，黑將可以進（將5進1）也可以退（將5退1），所以將5退1 不是唯一。
+assert.ok(endgame.includes('2. 黑 將5進1：唯一合法著法；'), endgame)
+assert.equal(endgame.includes('4. 黑 將5退1：唯一合法著法'), false, endgame)
+assert.equal(black.includes('唯一合法著法'), false, '開局沒有唯一合法著法')
+const endgameAnalysis = cases.find((item) => item.id === 'endgame-rook')!.analysis
+const endgameFacts = buildExplanationFacts(endgameAnalysis)
+const s3 = (text: string): boolean =>
+  checkAnswer({ text, mode: 'position', language: 'zh-TW', facts: endgameFacts }).softWarnings.some((item) => item.code === 'S3')
+// 說「只能／唯一」的子句提到唯一合法著法：不警告；說到其他著法被迫：照舊警告。
+assert.equal(s3('車九進九將軍，黑方唯一的應法是將5進1。'), false)
+assert.equal(s3('車九退一再將軍，黑方被迫將5退1。'), true)
+assert.equal(s3('這條主線是必然的。'), true)
 
 console.log('explanationFacts live-case tests passed')
