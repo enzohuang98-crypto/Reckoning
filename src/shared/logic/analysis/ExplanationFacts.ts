@@ -16,7 +16,7 @@ import {
   type MistakeLevel,
   type MoveComparisonResult
 } from '../../types/MoveComparisonResult'
-import { formatChineseMove } from '../board/ChineseNotation'
+import { fileNumber, fileNumeral, formatChineseMove } from '../board/ChineseNotation'
 import { parseFen } from '../board/fen'
 import {
   applyUciMove,
@@ -43,6 +43,8 @@ export type PlyDescriptor =
 export interface ThreatFact {
   piece: PieceType
   side: PieceColor
+  /** 目標所在的路（該方自己右手邊起算 1–9）。 */
+  file: number
   /** 假設被吃下後，對方能否在同一格吃回（將/帥一步可及也算；即象棋所說的「有根」）。 */
   protected: boolean
 }
@@ -54,6 +56,8 @@ export interface PlyFact {
   move: string
   piece: PieceType
   captured: PieceType | null
+  /** 被吃的子所在的路（被吃方自己右手邊起算 1–9）。 */
+  capturedFile: number | null
   givesCheck: boolean
   threats: ThreatFact[]
   /** 這一手新製造的可吃目標（走前已存在的不重複列出），依子力價值排序，最多 3 個。 */
@@ -169,7 +173,7 @@ function newThreats(before: BoardState, after: BoardState, attacker: PieceColor)
     .filter((threat) => !existing.has(`${threat.square}:${threat.piece}`))
     .sort((left, right) => right.value - left.value)
     .slice(0, MAX_FACT_THREATS)
-    .map(({ piece, side, protected: isProtected }) => ({ piece, side, protected: isProtected }))
+    .map(({ piece, side, file, protected: isProtected }) => ({ piece, side, file, protected: isProtected }))
 }
 
 /** 行棋方此刻可以合法吃到的敵子（不含將/帥）。 */
@@ -199,6 +203,7 @@ function capturableTargets(grid: BoardState['grid'], attacker: PieceColor): Loca
       found.push({
         piece: target.type,
         side: defender,
+        file: fileNumber(defender, col),
         protected: isSquareAttackedBy(afterCapture, row, col, defender, true),
         square: `${row},${col}`,
         value: PIECE_VALUE[target.type]
@@ -270,6 +275,7 @@ export function buildLineFacts(
       move: display,
       piece: moving.type,
       captured: applied.captured?.type ?? null,
+      capturedFile: applied.captured ? fileNumber(applied.captured.color, coords.toCol) : null,
       givesCheck: isKingInCheck(next.grid, opponent(side)),
       threats: newThreats(board, next, side),
       descriptors: describePly(uci, moving.type, side)
@@ -443,6 +449,8 @@ interface FactLabels {
   side: Record<PieceColor, string>
   /** 「黑卒」「Black pawn」：哪一方的哪個子。 */
   named: (side: string, piece: string) => string
+  /** 「黑5路卒（中卒）」：哪一方、哪一路的哪個子；第 5 路的兵卒加上「中兵／中卒」。 */
+  located: (side: string, file: string, piece: string, central: boolean) => string
   piece: Record<PieceColor, Record<PieceType, string>>
   descriptor: Record<PlyDescriptor, (piece: string) => string>
   noCapture: string
@@ -501,6 +509,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
   'zh-TW': {
     side: { red: '紅', black: '黑' },
     named: (side, piece) => `${side}${piece}`,
+    located: (side, file, piece, central) => `${side}${file}路${piece}${central ? `（中${piece}）` : ''}`,
     piece: PIECES_TW,
     descriptor: {
       enters_center: (piece) => `${piece}進入中路`,
@@ -549,6 +558,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
   'zh-CN': {
     side: { red: '红', black: '黑' },
     named: (side, piece) => `${side}${piece}`,
+    located: (side, file, piece, central) => `${side}${file}路${piece}${central ? `（中${piece}）` : ''}`,
     piece: PIECES_CN,
     descriptor: {
       enters_center: (piece) => `${piece}进入中路`,
@@ -597,6 +607,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
   en: {
     side: { red: 'Red', black: 'Black' },
     named: (side, piece) => `${side} ${piece}`,
+    located: (side, file, piece, central) => `${side} ${piece} on file ${file}${central ? ' (central pawn)' : ''}`,
     piece: PIECES_EN,
     descriptor: {
       enters_center: (piece) => `${piece} moves to the central file`,
@@ -661,13 +672,23 @@ function capturesText(
   return parts.length > 0 ? parts.join('；') : labels.capturesNone
 }
 
-function formatPly(ply: PlyFact, labels: FactLabels): string {
+/** 帶「路」的子名：紅方用中文數字、黑方用阿拉伯數字（英文一律用數字）。 */
+function locatedName(side: PieceColor, piece: PieceType, file: number, labels: FactLabels, language: ExplanationLanguage): string {
+  const numeral = language === 'en' ? String(file) : fileNumeral(side, side === 'red' ? 9 - file : file - 1)
+  return labels.located(labels.side[side], numeral, labels.piece[side][piece], piece === 'pawn' && file === 5)
+}
+
+function formatPly(ply: PlyFact, labels: FactLabels, language: ExplanationLanguage): string {
   const pieceName = labels.piece[ply.side][ply.piece]
   const parts: string[] = ply.descriptors.map((descriptor) => labels.descriptor[descriptor](pieceName))
   const enemy = opponent(ply.side)
   parts.push(
     ply.captured
-      ? labels.capture(labels.named(labels.side[enemy], labels.piece[enemy][ply.captured]))
+      ? labels.capture(
+          ply.capturedFile !== null
+            ? locatedName(enemy, ply.captured, ply.capturedFile, labels, language)
+            : labels.named(labels.side[enemy], labels.piece[enemy][ply.captured])
+        )
       : labels.noCapture
   )
   parts.push(ply.givesCheck ? labels.check : labels.noCheck)
@@ -676,7 +697,7 @@ function formatPly(ply: PlyFact, labels: FactLabels): string {
       `${labels.threats}：${ply.threats
         .map(
           (threat) =>
-            `${labels.named(labels.side[threat.side], labels.piece[threat.side][threat.piece])}（${
+            `${locatedName(threat.side, threat.piece, threat.file, labels, language)}（${
               threat.protected ? labels.protectedLabel : labels.unprotectedLabel
             }）`
         )
@@ -690,11 +711,12 @@ function formatLine(
   title: string,
   line: LineFacts,
   labels: FactLabels,
-  maxPlies: number
+  maxPlies: number,
+  language: ExplanationLanguage
 ): string[] {
   const lines = [`${title}：`]
   const shown = line.plies.slice(0, maxPlies)
-  for (const ply of shown) lines.push(formatPly(ply, labels))
+  for (const ply of shown) lines.push(formatPly(ply, labels, language))
   // 只列子數：子力價值要看局面，沒有固定換算，交給引擎評估，不在事實表裡判斷誰划算。
   const taken: Record<PieceColor, PieceType[]> = { red: [], black: [] }
   for (const ply of shown) if (ply.captured) taken[ply.side].push(ply.captured)
@@ -770,8 +792,8 @@ function render(facts: ExplanationFacts, labels: FactLabels, maxPlies: number, l
   }
   out.push(headline.join('；'))
   if (facts.userIsBest) out.push(labels.userIsBest)
-  out.push(...formatLine(labels.bestLine, facts.bestLine, labels, maxPlies))
-  if (facts.userLine) out.push(...formatLine(labels.userLine, facts.userLine, labels, maxPlies))
+  out.push(...formatLine(labels.bestLine, facts.bestLine, labels, maxPlies, language))
+  if (facts.userLine) out.push(...formatLine(labels.userLine, facts.userLine, labels, maxPlies, language))
   if (facts.differences.length > 0) {
     out.push(`${labels.differences}：`)
     for (const difference of facts.differences) out.push(` - ${formatDifference(difference, labels)}`)

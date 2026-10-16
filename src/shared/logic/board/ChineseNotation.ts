@@ -39,6 +39,18 @@ function numeral(color: PieceColor, colOrDistance: number, isDistance = false): 
   return color === 'red' ? RED_NUMERALS[colOrDistance] : BLACK_NUMERALS[colOrDistance]
 }
 
+/**
+ * 棋子所在的「路」：各方由自己的右手邊起算 1–9（紅方用中文數字、黑方用阿拉伯數字，與記譜相同）。
+ * 第 5 路是中路。
+ */
+export function fileNumber(color: PieceColor, col: number): number {
+  return color === 'red' ? 9 - col : col + 1
+}
+
+export function fileNumeral(color: PieceColor, col: number): string {
+  return numeral(color, col)
+}
+
 function sameFilePrefix(
   board: BoardState,
   piece: Piece,

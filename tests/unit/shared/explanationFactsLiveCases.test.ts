@@ -42,4 +42,14 @@ assert.equal((factsText('opening-inaccuracy').match(/吃子合計/g) ?? []).leng
 assert.equal(/划算|值錢|價值/.test(black + blunder + capture), false)
 assert.ok(factsText('major-blunder', 'en').includes('each side captured 1, equal piece count'))
 
+// 3. 被吃與可吃的子標出是哪一路（各方自己右手邊起算），第 5 路的兵卒標「中兵／中卒」。
+assert.ok(capture.includes('1. 紅 炮二進七：吃黑8路馬；未將軍；走後可吃：黑6路士'), capture)
+assert.ok(capture.includes('2. 黑 車9平8：吃紅二路炮'), capture)
+assert.ok(black.includes('2. 紅 炮五進四：吃黑5路卒（中卒）；將軍'), black)
+assert.ok(black.includes('3. 黑 炮5進4：吃紅五路兵（中兵）'), black)
+assert.ok(black.includes('紅九路兵') && black.includes('紅一路兵'), black)
+assert.ok(blunder.includes('2. 黑 炮8進7：吃紅二路馬'), blunder)
+assert.ok(blunder.includes('3. 紅 車一平二：吃黑8路炮'), blunder)
+assert.ok(factsText('opening-inaccuracy', 'en').includes('Black pawn on file 5 (central pawn)'))
+
 console.log('explanationFacts live-case tests passed')
