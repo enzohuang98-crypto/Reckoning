@@ -55,7 +55,7 @@ import type {
 } from '../../src/shared/types/EngineAnalysis'
 import type { EngineInstallation } from '../../src/shared/types/EngineRegistry'
 import type { HarnessTrace } from '../../src/shared/types/Harness'
-import type { GenerateExplanationStartPayload } from '../../src/shared/types/ipc'
+import type { ExplanationExecutionRequest } from '../../src/main/ai/prepareExplanationExecution'
 
 const PROVIDER = 'gemini' as const
 const PRIMARY_MODEL = modelRegistry.getModel(
@@ -1691,7 +1691,7 @@ async function runHarnessAttempt(input: {
   traceStore: HarnessTraceStore
 }): Promise<AcceptanceAttempt> {
   const requestId = input.requestId
-  const payload: GenerateExplanationStartPayload = {
+  const payload: ExplanationExecutionRequest = {
     requestId,
     analysisId: input.session.analysisId,
     provider: PROVIDER,

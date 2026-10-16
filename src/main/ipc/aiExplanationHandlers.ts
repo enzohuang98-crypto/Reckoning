@@ -60,6 +60,7 @@ import {
   describeCredentialTestError
 } from '../ai/http'
 import {
+  FIXED_HARNESS_OPTIONS,
   prepareExplanationExecution,
   TeacherCaseBusyError,
   TeacherCaseRejectedError,
@@ -776,7 +777,7 @@ export function registerAiExplanationHandlers(
           effectivePayload.model
         ).model
         const execution = prepareExplanationExecution(
-          effectivePayload,
+          { ...effectivePayload, ...FIXED_HARNESS_OPTIONS },
           session,
           resolvedModel,
           teacherTestRun

@@ -317,7 +317,7 @@ async function main(): Promise<void> {
     liveDockElement: null,
     detailsDockElement: null,
     board,
-    settings: { ...DEFAULT_SETTINGS, harnessAutoRun: true },
+    settings: DEFAULT_SETTINGS,
     submittedGuess: null,
     actualMove,
     conversation: null,

@@ -77,6 +77,7 @@ export function SettingsPage({
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
+  const [traceCount, setTraceCount] = useState<number | null>(null)
   const [secretBusy, setSecretBusy] = useState(false)
   const [engineTest, setEngineTest] = useState<EngineTestResult | null>(null)
   const [engineMessage, setEngineMessage] = useState<string | null>(null)
@@ -135,6 +136,12 @@ export function SettingsPage({
       .catch(() => setOperationError('無法查詢 API Key 狀態。'))
     void refreshEngine()
     // 舊版 preload 或測試替身可能沒有這個通道；讀不到就維持空白，不影響其他設定。
+    // 舊版 preload 或測試替身可能沒有診斷通道；讀不到就不顯示筆數。
+    window.api.ai?.listHarnessTraces?.()
+      ?.then((traces) => {
+        if (mountedRef.current) setTraceCount(traces.length)
+      })
+      .catch(() => undefined)
     window.api.ai?.getOpenRouterBackupModels?.()
       ?.then((result) => {
         if (result.ok && mountedRef.current) setBackupModels(result.models)
@@ -551,6 +558,29 @@ export function SettingsPage({
     }
   }
 
+  const exportTraces = async (): Promise<void> => {
+    try {
+      const result = await window.api.ai.exportHarnessTraces()
+      if (result.ok) {
+        setSavedMessage(`診斷紀錄已匯出：${result.filePath}`)
+      } else if (!result.cancelled) {
+        setOperationError(result.message ?? '診斷紀錄匯出失敗。')
+      }
+    } catch {
+      setOperationError('診斷紀錄匯出失敗，請確認儲存位置後重試。')
+    }
+  }
+
+  const clearTraces = async (): Promise<void> => {
+    try {
+      await window.api.ai.clearHarnessTraces()
+      setTraceCount(0)
+      setSavedMessage('診斷紀錄已清除。')
+    } catch {
+      setOperationError('診斷紀錄清除失敗，請稍後再試。')
+    }
+  }
+
   const importBackup = async (): Promise<void> => {
     try {
       const result = await window.api.data.importBackup()
@@ -675,6 +705,9 @@ export function SettingsPage({
               updateStatus={updateStatus}
               updateBusy={updateBusy}
               onExportBackup={() => void exportBackup()}
+              traceCount={traceCount}
+              onExportTraces={() => void exportTraces()}
+              onClearTraces={() => void clearTraces()}
               canExportBackup={!dataRecoveryRequired}
               onImportBackup={() => void importBackup()}
               onCheckUpdate={() => void runUpdateAction(() => window.api.update.check())}

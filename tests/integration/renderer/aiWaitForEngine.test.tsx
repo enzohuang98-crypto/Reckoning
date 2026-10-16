@@ -297,7 +297,6 @@ async function main(): Promise<void> {
   }
   const originalSettings: AppSettings = {
     ...DEFAULT_SETTINGS,
-    harnessAutoRun: false,
     aiModel: 'original-model'
   }
   const panelRef = React.createRef<AnalysisPanelHandle>()

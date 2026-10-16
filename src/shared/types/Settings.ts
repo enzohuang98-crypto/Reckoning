@@ -7,7 +7,6 @@
 
 import type { AIProviderId } from './AIProviderTypes'
 import type { ExplanationLanguage } from './AIExplanationTypes'
-import type { HarnessAnswerMode } from './Harness'
 
 /** 使用者棋力（§2.6.7），影響 AI 解說深淺 */
 export type UserLevel = 'basic' | 'intermediate' | 'advanced'
@@ -31,15 +30,6 @@ export interface AppSettings {
   /** 解說語言（本專案擴充，SDS 未定義） */
   language: ExplanationLanguage
   crossEngineEnabled: boolean
-  harnessAnswerMode: HarnessAnswerMode
-  harnessAutoRun: boolean
-  harnessReuseEvidence: boolean
-  harnessEngineTimeMs: number
-  harnessMaxEngineRounds: number
-  harnessResearchMaxModelCalls: number
-  harnessResearchMaxOutputTokens: number
-  harnessFocusedMaxModelCalls: number
-  harnessFocusedMaxOutputTokens: number
   /** schema 版本 */
   version: number
 }
@@ -55,14 +45,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   userLevel: 'intermediate',
   language: 'zh-TW',
   crossEngineEnabled: false,
-  harnessAnswerMode: 'research',
-  harnessAutoRun: false,
-  harnessReuseEvidence: true,
-  harnessEngineTimeMs: 20_000,
-  harnessMaxEngineRounds: 3,
-  harnessResearchMaxModelCalls: 6,
-  harnessResearchMaxOutputTokens: 10_000,
-  harnessFocusedMaxModelCalls: 4,
-  harnessFocusedMaxOutputTokens: 4_000,
-  version: 4
+  version: 5
 }

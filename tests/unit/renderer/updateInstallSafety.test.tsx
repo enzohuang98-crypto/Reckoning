@@ -265,6 +265,9 @@ async function run(): Promise<void> {
       onDownloadUpdate={() => downloads++}
       onInstallUpdate={() => readyInstalls++}
       onSetBackgroundPreparation={() => undefined}
+      traceCount={null}
+      onExportTraces={() => undefined}
+      onClearTraces={() => undefined}
     />
   )
   const testWindow = globalThis as typeof globalThis & {

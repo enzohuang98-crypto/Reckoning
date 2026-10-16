@@ -37,8 +37,6 @@ import type {
   EngineRegistrySnapshot
 } from './EngineRegistry'
 import type {
-  HarnessAnswerMode,
-  HarnessBudget,
   HarnessEvidence,
   HarnessProgressPayload,
   TeacherTestRunStatusV1
@@ -266,11 +264,8 @@ export interface GenerateExplanationStartPayload {
   attachedMove?: string
   /** 棋手走這一步時的原始想法；只供教練回應，不是引擎證據 */
   userMoveReason?: string
-  answerMode?: HarnessAnswerMode
-  budget?: HarnessBudget
   engineId?: string
   verificationEngineId?: string
-  reuseEvidence?: boolean
 }
 
 export interface GenerateExplanationChunkPayload {

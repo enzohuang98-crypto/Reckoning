@@ -10,6 +10,10 @@ interface Props {
   onDownloadUpdate: () => void
   onInstallUpdate: () => void
   onSetBackgroundPreparation: (enabled: boolean) => void
+  /** 本機解說診斷紀錄筆數；null 表示尚未讀取。 */
+  traceCount: number | null
+  onExportTraces: () => void
+  onClearTraces: () => void
 }
 
 export function SystemSettingsSection({
@@ -21,8 +25,16 @@ export function SystemSettingsSection({
   onCheckUpdate,
   onDownloadUpdate,
   onInstallUpdate,
-  onSetBackgroundPreparation
+  onSetBackgroundPreparation,
+  traceCount,
+  onExportTraces,
+  onClearTraces
 }: Props): JSX.Element {
+  const clearTraces = (): void => {
+    if (!window.confirm('確定要清除本機所有解說診斷紀錄嗎？清除後無法復原。')) return
+    onClearTraces()
+  }
+
   const installUpdate = (): void => {
     if (!window.confirm('更新已準備完成。現在要先保存資料，再重新啟動 Reckoning 完成更新嗎？')) return
     onInstallUpdate()
@@ -56,6 +68,23 @@ export function SystemSettingsSection({
               目前資料讀取失敗；先完成重新讀取，避免把保護用的空白資料誤當成備份。
             </p>
           )}
+        </section>
+
+        <section className="card">
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">LOCAL DIAGNOSTICS</span>
+              <h3>解說診斷紀錄</h3>
+            </div>
+            {traceCount !== null && <span className="badge plain">{traceCount} 筆</span>}
+          </div>
+          <p className="muted">
+            AI 解說出問題時，可匯出診斷紀錄回報；紀錄只存在本機，不包含 API Key。
+          </p>
+          <div className="row gap">
+            <button className="btn ghost" onClick={onExportTraces}>匯出診斷紀錄</button>
+            <button className="btn danger" onClick={clearTraces}>清除紀錄</button>
+          </div>
         </section>
       </div>
 
