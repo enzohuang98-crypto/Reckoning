@@ -32,6 +32,8 @@ export const MAX_FACT_LINE_PLIES = 10
 export const MAX_FACT_THREATS = 3
 export const MAX_FACT_DIFFERENCES = 3
 export const MAX_FACTS_PROMPT_CHARS = 1_500
+/** 盤面子數不超過這個數時（殘局），事實表列出全部棋子，避免模型自己想像盤面上還有哪些子。 */
+export const MAX_INVENTORY_PIECES = 12
 
 export type PlyDescriptor =
   | 'enters_center'
@@ -126,6 +128,20 @@ export interface ExplanationFacts {
   userLine?: LineFacts
   candidates: MoveFact[]
   differences: FactDifference[]
+  /** 殘局時目前盤面上的全部棋子（依子種排序）；子多時不列。 */
+  inventory?: Record<PieceColor, PieceType[]>
+}
+
+const INVENTORY_ORDER: PieceType[] = ['king', 'rook', 'horse', 'cannon', 'advisor', 'elephant', 'pawn']
+
+function boardInventory(board: BoardState): Record<PieceColor, PieceType[]> | undefined {
+  const pieces: Record<PieceColor, PieceType[]> = { red: [], black: [] }
+  for (const row of board.grid) for (const cell of row) if (cell) pieces[cell.color].push(cell.type)
+  if (pieces.red.length + pieces.black.length > MAX_INVENTORY_PIECES) return undefined
+  for (const side of ['red', 'black'] as const) {
+    pieces[side].sort((left, right) => INVENTORY_ORDER.indexOf(left) - INVENTORY_ORDER.indexOf(right))
+  }
+  return pieces
 }
 
 /**
@@ -413,7 +429,8 @@ export function buildExplanationFacts(
       move: displayOf(candidate.move, candidate.displayMove),
       ...(factScore(candidate.score) ? { score: factScore(candidate.score) } : {})
     })),
-    differences: buildDifferences(bestLine, userLine)
+    differences: buildDifferences(bestLine, userLine),
+    ...(parsed.valid && boardInventory(parsed.board) ? { inventory: boardInventory(parsed.board) } : {})
   }
 }
 
@@ -473,6 +490,9 @@ interface FactLabels {
   evaluation: string
   /** 評估的視角與單位說明（一行）。 */
   perspective: (side: string) => string
+  inventory: (pieces: string) => string
+  inventorySide: (side: string, pieces: string) => string
+  inventoryEmpty: string
   checkmate: (side: string) => string
   stalemate: (side: string) => string
   noCaptures: (plies: number) => string
@@ -537,6 +557,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     candidates: '其他候選',
     evaluation: '評估',
     perspective: (side) => `評估都以${side}方來看，單位是兵；正數對${side}方有利，負數對${side}方不利。`,
+    inventory: (pieces) => `盤面上全部的棋子：${pieces}。`,
+    inventorySide: (side, pieces) => `${side}方 ${pieces}`,
+    inventoryEmpty: '無',
     checkmate: (side) => `主線結束時${side}方無合法著法且被將軍：將死。`,
     stalemate: (side) => `主線結束時${side}方無子可動：困斃（象棋規則判${side}方負）。`,
     noCaptures: (plies) => `兩線前 ${plies} 手都沒有吃子。`,
@@ -586,6 +609,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     candidates: '其他候选',
     evaluation: '评估',
     perspective: (side) => `评估都以${side}方来看，单位是兵；正数对${side}方有利，负数对${side}方不利。`,
+    inventory: (pieces) => `盘面上全部的棋子：${pieces}。`,
+    inventorySide: (side, pieces) => `${side}方 ${pieces}`,
+    inventoryEmpty: '无',
     checkmate: (side) => `主线结束时${side}方无合法着法且被将军：将死。`,
     stalemate: (side) => `主线结束时${side}方无子可动：困毙（象棋规则判${side}方负）。`,
     noCaptures: (plies) => `两线前 ${plies} 手都没有吃子。`,
@@ -635,6 +661,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     candidates: 'Other candidates',
     evaluation: 'eval',
     perspective: (side) => `All evals are from ${side}'s point of view, in pawns; positive favours ${side}, negative favours the opponent.`,
+    inventory: (pieces) => `All pieces on the board: ${pieces}.`,
+    inventorySide: (side, pieces) => `${side} ${pieces}`,
+    inventoryEmpty: 'none',
     checkmate: (side) => `At the end of the line ${side} has no legal move and is in check: checkmate.`,
     stalemate: (side) => `At the end of the line ${side} has no legal move: stalemate (a loss for ${side}).`,
     noCaptures: (plies) => `Neither line captures anything in the first ${plies} plies.`,
@@ -769,6 +798,19 @@ function formatDifference(difference: FactDifference, labels: FactLabels): strin
 function render(facts: ExplanationFacts, labels: FactLabels, maxPlies: number, language: ExplanationLanguage): string {
   const out: string[] = []
   out.push(`${labels.toMove}：${labels.side[facts.sideToMove]}${language === 'en' ? '' : '方'}`)
+  if (facts.inventory) {
+    const inventory = facts.inventory
+    const sides = (['red', 'black'] as const).map((side) => {
+      // 同種子合併成「兵×3」。
+      const names = INVENTORY_ORDER.flatMap((piece) => {
+        const count = inventory[side].filter((item) => item === piece).length
+        if (count === 0) return []
+        return [`${labels.piece[side][piece]}${count > 1 ? `×${count}` : ''}`]
+      })
+      return labels.inventorySide(labels.side[side], names.length > 0 ? names.join('、') : labels.inventoryEmpty)
+    })
+    out.push(labels.inventory(sides.join('；')))
+  }
   const scores = [facts.bestMove, facts.userMove, ...facts.candidates].map((move) => move?.score)
   if (scores.some((item) => item?.kind === 'pawns')) out.push(labels.perspective(labels.side[facts.sideToMove]))
   const score = (move: MoveFact): string => {

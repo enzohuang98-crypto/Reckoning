@@ -52,4 +52,16 @@ assert.ok(blunder.includes('2. 黑 炮8進7：吃紅二路馬'), blunder)
 assert.ok(blunder.includes('3. 紅 車一平二：吃黑8路炮'), blunder)
 assert.ok(factsText('opening-inaccuracy', 'en').includes('Black pawn on file 5 (central pawn)'))
 
+// 4. 殘局列出盤面全部棋子：endgame-rook 黑方只剩一個將（live 回答曾說「黑方其他棋子混亂」）。
+const endgame = factsText('endgame-rook')
+assert.ok(endgame.includes('盤面上全部的棋子：紅方 帥、車；黑方 將。'), endgame)
+const pawnEnding = buildExplanationFacts({
+  ...cases.find((item) => item.id === 'endgame-rook')!.analysis,
+  positionFen: '3k5/9/9/9/2p1p4/9/2P1P1P2/9/9/4K4 w - - 0 1'
+})
+assert.ok(formatFactsForPrompt(pawnEnding).includes('紅方 帥、兵×3；黑方 將、卒×2'), formatFactsForPrompt(pawnEnding))
+// 子多（開局）時不列，免得事實表變長。
+assert.equal(factsText('opening-inaccuracy').includes('盤面上全部的棋子'), false)
+assert.ok(factsText('endgame-rook', 'en').includes('All pieces on the board: Red king, rook; Black king.'))
+
 console.log('explanationFacts live-case tests passed')
