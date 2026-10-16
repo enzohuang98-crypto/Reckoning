@@ -78,6 +78,8 @@ export interface LineFacts {
   captures: Record<PieceColor, PieceType[]>
   /** 主線無法重播時的說明（之後的著法已省略）。 */
   warning?: string
+  /** 列出的手數之後，主線下一手還是吃子（交換還沒結束）。 */
+  capturesContinue?: boolean
 }
 
 /**
@@ -355,7 +357,17 @@ export function buildLineFacts(
   if (plies.length > 0 && !warning && !hasAnyLegalMove(board.grid, board.sideToMove)) {
     endsWith = isKingInCheck(board.grid, board.sideToMove) ? 'checkmate' : 'stalemate'
   }
-  return { plies, endsWith, captures, ...(warning ? { warning } : {}) }
+  // 主線被截在交換中途時要說清楚，否則「紅方多吃 3 子」會被讀成最後結果（P3-9 holdout：其實黑方之後會吃回）。
+  const next = !warning ? moves[plies.length] : undefined
+  const nextApplied = next !== undefined ? applyUciMove(board, next) : null
+  const capturesContinue = Boolean(nextApplied?.valid && nextApplied.captured)
+  return {
+    plies,
+    endsWith,
+    captures,
+    ...(warning ? { warning } : {}),
+    ...(capturesContinue ? { capturesContinue } : {})
+  }
 }
 
 function firstCapture(line: LineFacts): PlyFact | undefined {
@@ -570,6 +582,8 @@ interface FactLabels {
   capturesOf: (side: string, pieces: string) => string
   /** 列出的手數內，雙方吃子的合計與子數比較（只算子數，不做子力價值換算）。 */
   lineCaptures: (captures: string, note: string) => string
+  /** 列出的手數之後還有吃子：吃子合計不是最後結果。 */
+  capturesContinue: string
   capturesEven: (count: number) => string
   capturesMore: (side: string, count: number) => string
   bestLineName: string
@@ -642,6 +656,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capturesNone: '雙方都沒有吃子',
     capturesOf: (side, pieces) => `${side}方吃掉${pieces}`,
     lineCaptures: (captures, note) => `列出手數內吃子合計：${captures}（${note}）`,
+    capturesContinue: '列出的手數之後下一手還有吃子，交換尚未結束：吃子合計不是最後結果，最後優劣以評估為準。',
     capturesEven: (count) => `雙方各吃 ${count} 子，子數相同`,
     capturesMore: (side, count) => `${side}方多吃 ${count} 子`,
     bestLineName: '首選線',
@@ -699,6 +714,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capturesNone: '双方都没有吃子',
     capturesOf: (side, pieces) => `${side}方吃掉${pieces}`,
     lineCaptures: (captures, note) => `列出手数内吃子合计：${captures}（${note}）`,
+    capturesContinue: '列出的手数之后下一手还有吃子，交换尚未结束：吃子合计不是最后结果，最后优劣以评估为准。',
     capturesEven: (count) => `双方各吃 ${count} 子，子数相同`,
     capturesMore: (side, count) => `${side}方多吃 ${count} 子`,
     bestLineName: '首选线',
@@ -756,6 +772,7 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capturesNone: 'no captures by either side',
     capturesOf: (side, pieces) => `${side} captured ${pieces}`,
     lineCaptures: (captures, note) => `Captures within the listed plies: ${captures} (${note})`,
+    capturesContinue: 'The line continues with another capture after the listed plies, so the exchange is not over: the capture total is not the final result; the eval decides.',
     capturesEven: (count) => `each side captured ${count}, equal piece count`,
     capturesMore: (side, count) => `${side} captured ${count} more`,
     bestLineName: 'best line',
@@ -862,6 +879,9 @@ function formatLine(
         : labels.capturesMore(labels.side[diff > 0 ? 'red' : 'black'], Math.abs(diff))
     lines.push(` ${labels.lineCaptures(capturesText(taken, labels), note)}`)
   }
+  // 版面縮短時看「下一手（未列出）」是否吃子；沒縮短時看主線之後的那一手。
+  const continues = shown.length < line.plies.length ? line.plies[shown.length].captured !== null : Boolean(line.capturesContinue)
+  if (continues) lines.push(` ${labels.capturesContinue}`)
   if (line.plies.length > maxPlies) lines.push(` ${labels.truncatedNote}`)
   if (line.warning) lines.push(` ${line.warning}`)
   const last = line.plies.at(-1)
