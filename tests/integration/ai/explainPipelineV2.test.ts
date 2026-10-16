@@ -296,6 +296,18 @@ async function main(): Promise<void> {
     ['UND_ERR_SOCKET', 'UND_ERR_SOCKET', 'UND_ERR_SOCKET']
   )
 
+  // HTTPS 憑證被攔截（防毒軟體）：重試、備援都不會好 → 一次呼叫後直接交付摘要並說明原因。
+  const intercepted = (): TypeError =>
+    Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('self-signed certificate in certificate chain'), { code: 'SELF_SIGNED_CERT_IN_CHAIN' })
+    })
+  const certificate = await run(opening, [{ error: intercepted() }], { backupModels: ['vendor/backup:free'] })
+  assert.equal(certificate.error, null)
+  assert.equal(certificate.result?.answerKind, 'engine_summary')
+  assert.equal(certificate.provider.requests.length, 1)
+  assert.match(certificate.result?.finalText ?? '', /HTTPS 憑證驗證失敗，可能是防毒軟體攔截了連線/)
+  assert.equal(certificate.traces.at(-1)?.attempts?.[0].networkCode, 'SELF_SIGNED_CERT_IN_CHAIN')
+
   // 沒有底層代碼的 TypeError 一樣歸類 network 並重試，但不會捏造代碼。
   const bare = await run(opening, [{ error: new TypeError('x is undefined') }, { text: opening.goodAnswer! }])
   assert.equal(bare.result?.answerKind, 'ai')

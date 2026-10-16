@@ -1,4 +1,5 @@
 import type { AICredentialDiagnostic } from '../../types/AIProviderTypes'
+import { CERTIFICATE_ERROR_MESSAGE, isCertificateErrorCode } from './networkErrorCodes'
 import type {
   AIExplanationErrorCode,
   AIExplanationFailureReason
@@ -79,6 +80,16 @@ export function presentAiError(input: AiErrorInput): AiErrorPresentation | null 
       detail: `請等 ${waitSeconds} 秒後再重試。`,
       actions: ['retry'],
       waitSeconds
+    }
+  }
+  if (
+    (code === 'network_error' || diagnostic?.category === 'network') &&
+    isCertificateErrorCode(diagnostic?.networkCode)
+  ) {
+    return {
+      title: 'HTTPS 憑證驗證失敗',
+      detail: CERTIFICATE_ERROR_MESSAGE,
+      actions: ['retry']
     }
   }
   if (code === 'network_error' || diagnostic?.category === 'network') {

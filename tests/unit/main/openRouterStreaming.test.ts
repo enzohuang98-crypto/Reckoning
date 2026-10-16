@@ -197,6 +197,15 @@ async function main(): Promise<void> {
   assert.equal(networkErrorCode(new TypeError('fetch failed', { cause: { code: 'leak sk-or-secret' } })), undefined)
   assert.equal(networkErrorCode(new TypeError('x is undefined')), undefined)
 
+  // 憑證被攔截：訊息指出防毒軟體／公司網路，且不標為可重試。
+  const intercepted = describeAIExecutionError(
+    new TypeError('fetch failed', { cause: { code: 'SELF_SIGNED_CERT_IN_CHAIN' } })
+  )
+  assert.equal(intercepted.category, 'network')
+  assert.equal(intercepted.networkCode, 'SELF_SIGNED_CERT_IN_CHAIN')
+  assert.equal(intercepted.retryable, false)
+  assert.match(intercepted.message, /防毒軟體/)
+
   console.log('OpenRouter streaming tests passed')
 }
 

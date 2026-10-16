@@ -14,6 +14,10 @@ import {
   ProviderEndpointMismatchError
 } from '../ai/explanationCredential'
 import { SecurityValidationError } from '../security/InputValidation'
+import {
+  CERTIFICATE_ERROR_MESSAGE,
+  isCertificateErrorCode
+} from '@shared/logic/ai/networkErrorCodes'
 
 export function mapStreamingErrorToPayload(
   requestId: string,
@@ -113,11 +117,14 @@ export function mapStreamingErrorToPayload(
     }
     // fetch 網路層失敗（DNS/連線中斷）為 TypeError；SDK 為 APIConnectionError
     if (error.name === 'APIConnectionError' || error instanceof TypeError) {
+      const diagnostic = describeAIExecutionError(error, 'AI 服務')
       return {
         requestId,
         code: 'network_error',
-        message: '網路連線失敗，請檢查網路後重試。',
-        diagnostic: describeAIExecutionError(error, 'AI 服務')
+        message: isCertificateErrorCode(diagnostic.networkCode)
+          ? CERTIFICATE_ERROR_MESSAGE
+          : '網路連線失敗，請檢查網路後重試。',
+        diagnostic
       }
     }
     if (typeof status === 'number' || /API 錯誤/.test(error.message)) {
