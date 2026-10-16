@@ -30,5 +30,6 @@
 ## 去哪裡看
 
 - 開發規則與目錄：`CLAUDE.md`；架構：`docs/architecture/overview.md`；資安：`docs/architecture/security-l2.md`
+- 架構整理待辦（依優先序）：`docs/architecture/maintenance-backlog.md`
 - 發行：`docs/operations/release.md`、`docs/operations/update-channel.md`；版本說明：`docs/releases/`
 - 歷史：`docs/history/`（CLAUDE.md Stage 1–10）、`docs/archive/`（v0.3.x 發行證據、老師試點、舊版本頁）
