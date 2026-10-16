@@ -13,6 +13,10 @@ import type {
   AICredentialTestStage,
   AITestCredentialResult
 } from '@shared/types/AIProviderTypes'
+import {
+  CERTIFICATE_ERROR_MESSAGE,
+  isCertificateErrorCode
+} from '@shared/logic/ai/networkErrorCodes'
 
 export const MAX_AI_HTTP_RESPONSE_BYTES = 5 * 1024 * 1024
 
@@ -390,6 +394,13 @@ export function describeCredentialTestError(
   }
   if (error instanceof TypeError || error instanceof RangeError) {
     const networkCode = networkErrorCode(error)
+    // 憑證驗證失敗（多半是防毒軟體攔截 HTTPS）重試也不會好，訊息要指出真正的處理方式。
+    if (isCertificateErrorCode(networkCode)) {
+      return diagnostic('network', CERTIFICATE_ERROR_MESSAGE, {
+        retryable: false,
+        networkCode
+      })
+    }
     return diagnostic('network', '網路連線失敗，請檢查網路後重試。', {
       retryable: true,
       ...(networkCode ? { networkCode } : {})

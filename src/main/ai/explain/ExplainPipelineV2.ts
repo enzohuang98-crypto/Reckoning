@@ -40,6 +40,7 @@ import {
 } from './budget'
 import { buildPromptV2, type ExplainMode } from './promptV2'
 import { buildRepairPrompt } from './repairPrompt'
+import { isCertificateErrorCode } from '@shared/logic/ai/networkErrorCodes'
 
 export interface ExplainPipelineDeps {
   provider: AIProvider
@@ -80,7 +81,7 @@ class PipelineCallTimeoutError extends Error {
   }
 }
 
-type FailureClass = 'fatal' | 'backup_eligible' | 'incomplete' | 'network'
+type FailureClass = 'fatal' | 'backup_eligible' | 'incomplete' | 'network' | 'certificate'
 
 /**
  * 依診斷分類決定：
@@ -88,7 +89,9 @@ type FailureClass = 'fatal' | 'backup_eligible' | 'incomplete' | 'network'
  * - backup_eligible：限流（每分鐘）、5xx、403、404、逾時、格式錯，可改用備援模型；
  * - incomplete：空白或截斷，先以關閉推理重試同一模型；
  * - network：連線中斷（常見是重用了已被服務端關閉的連線），先重試同一模型一次，
- *   仍失敗就照一般流程改備援或交付引擎摘要，不讓一次瞬間斷線變成整題失敗。
+ *   仍失敗就照一般流程改備援或交付引擎摘要，不讓一次瞬間斷線變成整題失敗；
+ * - certificate：HTTPS 憑證驗證失敗（多半是防毒軟體攔截），重試或換模型都不會好，
+ *   直接交付引擎摘要並說明原因。
  */
 export function classifyModelFailure(error: unknown): FailureClass {
   const diagnostic = describeAIExecutionError(error, 'AI 服務')
@@ -96,7 +99,7 @@ export function classifyModelFailure(error: unknown): FailureClass {
     case 'generation_incomplete':
       return 'incomplete'
     case 'network':
-      return 'network'
+      return isCertificateErrorCode(diagnostic.networkCode) ? 'certificate' : 'network'
     case 'rate_limited':
       return diagnostic.quota === 'daily' ? 'fatal' : 'backup_eligible'
     case 'provider_unavailable':
@@ -113,34 +116,42 @@ export function classifyModelFailure(error: unknown): FailureClass {
 
 const FAILURE_REASON: Record<
   ExplanationLanguage,
-  Record<'check' | 'unavailable' | 'timeout' | 'incomplete' | 'network', string>
+  Record<'check' | 'unavailable' | 'timeout' | 'incomplete' | 'network' | 'certificate', string>
 > = {
   'zh-TW': {
     check: '回答與引擎事實不符',
     unavailable: '模型暫時無法回應',
     timeout: '模型超過時間沒有回答',
     incomplete: '模型沒有給出完整答案',
-    network: '連不上 AI 服務，請檢查網路'
+    network: '連不上 AI 服務，請檢查網路',
+    certificate: 'HTTPS 憑證驗證失敗，可能是防毒軟體攔截了連線'
   },
   'zh-CN': {
     check: '回答与引擎事实不符',
     unavailable: '模型暂时无法回应',
     timeout: '模型超过时间没有回答',
     incomplete: '模型没有给出完整答案',
-    network: '连不上 AI 服务，请检查网络'
+    network: '连不上 AI 服务，请检查网络',
+    certificate: 'HTTPS 证书验证失败，可能是杀毒软件拦截了连接'
   },
   en: {
     check: 'the answer contradicted the engine facts',
     unavailable: 'the model is temporarily unavailable',
     timeout: 'the model took too long',
     incomplete: 'the model did not finish an answer',
-    network: 'could not reach the AI service; check the network'
+    network: 'could not reach the AI service; check the network',
+    certificate: 'HTTPS certificate verification failed; antivirus HTTPS scanning may be intercepting the connection'
   }
 }
 
-function failureReasonKey(error: unknown): 'unavailable' | 'timeout' | 'incomplete' | 'network' {
-  const category = describeAIExecutionError(error, 'AI 服務').category
-  if (category === 'network') return 'network'
+function failureReasonKey(
+  error: unknown
+): 'unavailable' | 'timeout' | 'incomplete' | 'network' | 'certificate' {
+  const diagnostic = describeAIExecutionError(error, 'AI 服務')
+  const category = diagnostic.category
+  if (category === 'network') {
+    return isCertificateErrorCode(diagnostic.networkCode) ? 'certificate' : 'network'
+  }
   if (category === 'timeout') return 'timeout'
   if (category === 'generation_incomplete' || category === 'response_format') return 'incomplete'
   return 'unavailable'
@@ -473,7 +484,7 @@ export async function runExplainPipelineV2(
       throw lastError
     }
     const backup = (deps.backupModels ?? []).find((model) => model !== payload.model)
-    if (!answer && lastError && backup && canCallAgain()) {
+    if (!answer && lastError && backup && classifyModelFailure(lastError) !== 'certificate' && canCallAgain()) {
       fallbackFromModel = payload.model
       fallbackReason = FAILURE_REASON[language][failureReasonKey(lastError)]
       progress('provider_retry', `${payload.model} 暫時無法使用，改用備援模型 ${backup}。`)

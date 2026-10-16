@@ -21,6 +21,8 @@ const rows: Array<[string, AiErrorInput, string, string[]]> = [
   ['403', { code: 'provider_error', diagnostic: diagnostic('permission', { httpStatus: 403 }) }, '此模型不開放這類使用', ['change_model']],
   ['404', { code: 'provider_error', diagnostic: diagnostic('model_unavailable', { httpStatus: 404 }) }, '模型已下架或不在免費清單', ['change_model']],
   ['network', { code: 'network_error', diagnostic: diagnostic('network') }, '網路連線失敗', ['retry']],
+  ['network reset', { code: 'network_error', diagnostic: diagnostic('network', { networkCode: 'ECONNRESET' }) }, '網路連線失敗', ['retry']],
+  ['certificate', { code: 'network_error', diagnostic: diagnostic('network', { networkCode: 'SELF_SIGNED_CERT_IN_CHAIN' }) }, 'HTTPS 憑證驗證失敗', ['retry']],
   ['timeout', { code: 'provider_error', failureReason: 'model_timeout' }, '模型太慢，超過時間', ['retry', 'change_model']],
   ['empty', { code: 'provider_error', diagnostic: diagnostic('generation_incomplete', { reason: 'empty_content' }) }, '模型沒有給出完整答案', ['retry', 'change_model']],
   ['truncated', { code: 'provider_error', diagnostic: diagnostic('generation_incomplete', { reason: 'output_truncated' }) }, '模型沒有給出完整答案', ['retry', 'change_model']],
