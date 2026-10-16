@@ -192,7 +192,7 @@ export type ExplanationAnswerKind = 'ai' | 'engine_summary' | 'board_rule'
 /** v2 每一次模型呼叫的紀錄（不含 prompt 或回答原文）。 */
 export interface ExplainAttemptTrace {
   model: string
-  kind: 'primary' | 'network_retry' | 'recovery' | 'backup' | 'repair'
+  kind: 'primary' | 'network_retry' | 'rate_limit_retry' | 'recovery' | 'backup' | 'repair'
   durationMs: number
   finishReason?: string
   outputTokens?: number
