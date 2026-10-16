@@ -34,7 +34,8 @@ async function main(): Promise<void> {
           data: [
             { id: 'vendor/good:free', supported_parameters: ['max_tokens'] },
             { id: 'vendor/limited:free', supported_parameters: ['max_tokens'] },
-            { id: 'vendor/drop:free', supported_parameters: ['max_tokens'] }
+            { id: 'vendor/drop:free', supported_parameters: ['max_tokens'] },
+            { id: 'vendor/busy:free', supported_parameters: ['max_tokens'] }
           ]
         }))
         return
@@ -44,6 +45,11 @@ async function main(): Promise<void> {
       if (body.model === 'vendor/limited:free') {
         response.writeHead(429, { 'content-type': 'application/json' })
         response.end(JSON.stringify({ error: { message: 'Rate limit exceeded: free-models-per-day. secret detail' } }))
+        return
+      }
+      if (body.model === 'vendor/busy:free') {
+        response.writeHead(503, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { message: 'overloaded' } }))
         return
       }
       if (body.model === 'vendor/drop:free') {
@@ -88,6 +94,15 @@ async function main(): Promise<void> {
     assert.match(dropped.attemptLog[0], /^primary .*network（[A-Z][A-Z0-9_]+）$/)
     assert.match(dropped.attemptLog[1], /^network_retry /)
     assert.match(formatLiveReport([dropped]), /呼叫紀錄：primary .* → network_retry /)
+
+    // 主模型過載、備援也失敗：備援那一行寫出備援的名字與結果，不會出現 undefined。
+    const bothDown = await runLiveCase(opening!, 'vendor/busy:free', { ...deps, backupModels: ['vendor/drop:free'] })
+    assert.equal(bothDown.answerKind, 'engine_summary')
+    assert.equal(bothDown.fallback.includes('undefined'), false, bothDown.fallback)
+    assert.match(bothDown.fallback, /^主模型 vendor\/busy:free 失敗（模型暫時無法回應）→ 改用 vendor\/drop:free：備援也沒有交出可用答案/)
+    const rescued = await runLiveCase(opening!, 'vendor/busy:free', { ...deps, backupModels: ['vendor/good:free'] })
+    assert.equal(rescued.answerKind, 'ai')
+    assert.match(rescued.fallback, /改用 vendor\/good(:free)?：由備援回答$/)
 
     // 預設只收 :free；--allow-paid 才放行，報表會標示付費輪不代表免費模型的交付率。
     assert.equal(validateModelArgs(['vendor/good:free'], [], false), null)

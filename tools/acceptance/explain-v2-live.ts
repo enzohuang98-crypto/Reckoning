@@ -29,6 +29,7 @@ import type { EngineAnalysis } from '../../src/shared/types/EngineAnalysis'
 import type { HarnessTrace } from '../../src/shared/types/Harness'
 import type { AnalysisSession } from '../../src/main/storage/AnalysisSessionStore'
 import { resolveLocalReviewPath } from './openrouter-smoke'
+import { trustSystemCertificates } from '../../src/main/security/SystemCertificates'
 
 export interface LiveCase {
   id: string
@@ -72,6 +73,21 @@ function attemptLogFor(trace: HarnessTrace | undefined): string[] {
         attempt.error ? describeFailure(attempt.error, undefined, attempt.networkCode) : 'ok'
       }`
   )
+}
+
+/**
+ * 備援那一行：主模型失敗的原因、改用哪個備援、備援結果。
+ * 交付摘要時 actualModel 沒有值，不能直接印（之前會出現「→ undefined」）；
+ * 摘要開頭的原因是「最後一次」失敗（通常是備援的），和這裡的主模型原因不同。
+ */
+function describeFallback(
+  result: { fallbackFromModel?: string; fallbackReason?: string; actualModel?: string; answerKind: string },
+  backupModels: string[]
+): string {
+  if (!result.fallbackFromModel) return ''
+  const backup = result.actualModel ?? backupModels.find((model) => model !== result.fallbackFromModel) ?? '備援模型'
+  const outcome = result.answerKind === 'ai' ? '由備援回答' : '備援也沒有交出可用答案，改交引擎摘要'
+  return `主模型 ${result.fallbackFromModel} 失敗（${result.fallbackReason ?? '原因不明'}）→ 改用 ${backup}：${outcome}`
 }
 
 /** 預設只允許 :free；--allow-paid 才放行付費模型（會計費）。回傳錯誤訊息或 null。 */
@@ -150,7 +166,7 @@ export async function runLiveCase(
       durationMs: Date.now() - started,
       firstTokenMs,
       repairUsed: result.repairUsed,
-      fallback: result.fallbackFromModel ? `${result.fallbackFromModel} → ${result.actualModel}（${result.fallbackReason}）` : '',
+      fallback: describeFallback(result, deps.backupModels ?? []),
       hardErrors: trace?.hardErrors ?? [],
       softWarnings: trace?.softWarnings ?? [],
       answer: result.finalText,
@@ -250,6 +266,9 @@ function list(value: string | undefined): string[] {
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
+  // 與 App 相同：信任系統根憑證，防毒軟體攔截 HTTPS 時才不會整輪失敗。
+  const certificates = trustSystemCertificates()
+  if (!certificates.ok) console.log('注意：讀不到系統根憑證，只使用 Node 內建清單。')
   const apiKey = process.env.OPENROUTER_API_KEY?.trim()
   if (!apiKey) {
     console.error('請先設定環境變數 OPENROUTER_API_KEY（不要把金鑰寫進檔案）。')
