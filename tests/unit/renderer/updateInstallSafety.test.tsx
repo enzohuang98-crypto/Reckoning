@@ -58,13 +58,6 @@ async function verifyWorkspaceDraftBlocksInstall(): Promise<void> {
       onExplanationError: () => unsubscribe,
       onHarnessProgress: () => unsubscribe,
       setHarnessFeedback: async () => ({ ok: true as const })
-    },
-    teacherTest: {
-      status: async () => ({
-        currentAppVersion: '0.4.14',
-        active: false,
-        manifest: null
-      })
     }
   } as unknown as RendererApi
 

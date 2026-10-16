@@ -153,7 +153,6 @@ async function runCredentialCase(
     store as never,
     {} as never,
     {} as never,
-    {} as never,
     {} as never
   )
   const result = await autoHandler()(trustedEvent, {
@@ -187,7 +186,6 @@ async function main(): Promise<void> {
   const failingStore = credentialStore({ failWrite: true })
   registerAiExplanationHandlers(
     failingStore as never,
-    {} as never,
     {} as never,
     {} as never,
     {} as never
@@ -238,8 +236,7 @@ async function main(): Promise<void> {
       credentialStore() as never,
       {} as never,
       {} as never,
-      { filePath: (name: string) => join(preferencesDir, name) } as never,
-      {} as never
+      { filePath: (name: string) => join(preferencesDir, name) } as never
     )
     const setBackup = handlers.get(IPC.AI_OPENROUTER_SET_BACKUP_MODELS)
     const getBackup = handlers.get(IPC.AI_OPENROUTER_GET_BACKUP_MODELS)

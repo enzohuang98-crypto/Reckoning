@@ -246,13 +246,6 @@ async function main(): Promise<void> {
         }
       },
       setHarnessFeedback: async () => ({ ok: true as const })
-    },
-    teacherTest: {
-      status: async () => ({
-        currentAppVersion: '0.4.10',
-        active: false,
-        manifest: null
-      })
     }
   } as unknown as RendererApi
 

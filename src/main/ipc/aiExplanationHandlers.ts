@@ -62,8 +62,6 @@ import {
 import {
   FIXED_HARNESS_OPTIONS,
   prepareExplanationExecution,
-  TeacherCaseBusyError,
-  TeacherCaseRejectedError,
   type PreparedExplanationExecution
 } from '../ai/prepareExplanationExecution'
 import { buildExplanationPrompt } from '../ai/promptBuilder'
@@ -85,8 +83,7 @@ import {
 import type { EngineRegistryService } from '../engine/EngineRegistryService'
 import type { StorageService } from '../storage/StorageService'
 import { HarnessTraceStore } from '../storage/HarnessTraceStore'
-import type { TeacherTestExportV1 } from '@shared/types/Harness'
-import { TeacherTestRunService } from '../teacherTest/TeacherTestRunService'
+import type { HarnessTraceExportV1 } from '@shared/types/Harness'
 import {
   KeyedOperationGate,
   OperationBusyError
@@ -268,20 +265,6 @@ export function mapStreamingErrorToPayload(
       message: '這次分析結果已過期，請重新分析局面後再生成 AI 解釋。'
     }
   }
-  if (error instanceof TeacherCaseRejectedError) {
-    return {
-      requestId,
-      code: 'teacher_case_rejected',
-      message: error.message
-    }
-  }
-  if (error instanceof TeacherCaseBusyError) {
-    return {
-      requestId,
-      code: 'teacher_case_busy',
-      message: error.message
-    }
-  }
   if (error instanceof HarnessExplanationUnavailableError) {
     return {
       requestId,
@@ -375,12 +358,10 @@ export function registerAiExplanationHandlers(
   secretStore: SecretStore,
   sessionStore: AnalysisSessionStore,
   engineRegistry: EngineRegistryService,
-  storage: StorageService,
-  teacherTestRun: TeacherTestRunService
+  storage: StorageService
 ): void {
   const traceStore = new HarnessTraceStore(storage)
   const credentialTestGate = new KeyedOperationGate(2)
-  const formalCaseGate = new KeyedOperationGate(2)
   const savedOpenRouterModels = new OpenRouterSavedModelService(secretStore)
   let aiPreferencesStore: AiPreferencesStore | null = null
   // 第一次用到才建立，避免只註冊通道的流程（與測試）就觸碰檔案系統。
@@ -490,16 +471,13 @@ export function registerAiExplanationHandlers(
     if (result.canceled || !result.filePath) {
       return { ok: false as const, cancelled: true }
     }
-    const runManifest = teacherTestRun.getManifest()
-    const testRunId = runManifest?.testRunId
     storage.writeAbsolute(result.filePath, {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),
-      runManifest,
-      traces: traceStore.listForExport(testRunId),
+      traces: traceStore.listForExport(),
       // 使用者標記「不清楚／不正確／證據不足」的解說，轉為可重放的回歸案例
-      regressionCases: traceStore.listRegressionCases(testRunId)
-    } satisfies TeacherTestExportV1)
+      regressionCases: traceStore.listRegressionCases()
+    } satisfies HarnessTraceExportV1)
     return { ok: true as const, filePath: result.filePath }
   })
 
@@ -779,8 +757,7 @@ export function registerAiExplanationHandlers(
         const execution = prepareExplanationExecution(
           { ...effectivePayload, ...FIXED_HARNESS_OPTIONS },
           session,
-          resolvedModel,
-          teacherTestRun
+          resolvedModel
         )
         if (selectExplainPipeline(execution) === 'v2') {
           const credential = await resolveExplanationCredential(execution, {
@@ -849,45 +826,33 @@ export function registerAiExplanationHandlers(
           credentialSnapshot: capturedActive
         })
         const provider = getAIProvider(request.provider)
-        const runHarness = () =>
-          runExplanationHarness(execution, {
-            provider,
-            apiKey: request.apiKey,
-            registry: engineRegistry,
-            traceStore,
-            signal: controller.signal,
-            explanationPrompt: request.prompt,
-            onProgress: (progress) => {
-              event.reply(IPC.AI_HARNESS_PROGRESS, {
-                requestId,
-                ...progress
+        const result = await runExplanationHarness(execution, {
+          provider,
+          apiKey: request.apiKey,
+          registry: engineRegistry,
+          traceStore,
+          signal: controller.signal,
+          explanationPrompt: request.prompt,
+          onProgress: (progress) => {
+            event.reply(IPC.AI_HARNESS_PROGRESS, {
+              requestId,
+              ...progress
+            })
+          },
+          waitForContinuation: () =>
+            new Promise<void>((resolve, reject) => {
+              const onAbort = (): void => {
+                activeHarnessContinuations.delete(requestId)
+                reject(new DOMException('Request cancelled', 'AbortError'))
+              }
+              controller.signal.addEventListener('abort', onAbort, { once: true })
+              activeHarnessContinuations.set(requestId, () => {
+                controller.signal.removeEventListener('abort', onAbort)
+                activeHarnessContinuations.delete(requestId)
+                resolve()
               })
-            },
-            waitForContinuation: () =>
-              new Promise<void>((resolve, reject) => {
-                const onAbort = (): void => {
-                  activeHarnessContinuations.delete(requestId)
-                  reject(new DOMException('Request cancelled', 'AbortError'))
-                }
-                controller.signal.addEventListener('abort', onAbort, { once: true })
-                activeHarnessContinuations.set(requestId, () => {
-                  controller.signal.removeEventListener('abort', onAbort)
-                  activeHarnessContinuations.delete(requestId)
-                  resolve()
-                })
-              })
-          })
-        let result
-        try {
-          result = execution.formalAttemptKey
-            ? await formalCaseGate.runExclusive(execution.formalAttemptKey, runHarness)
-            : await runHarness()
-        } catch (error) {
-          if (error instanceof OperationBusyError && execution.formalAttemptKey) {
-            throw new TeacherCaseBusyError()
-          }
-          throw error
-        }
+            })
+        })
         if (
           controller.signal.aborted ||
           activeExplanationRequests.get(requestId) !== controller
@@ -911,28 +876,7 @@ export function registerAiExplanationHandlers(
           evidence: result.evidence,
           warnings: result.warnings,
           traceId: result.traceId,
-          clarificationRequired: result.clarificationRequired,
-          ...(execution.interactionKind === 'ordinary'
-            ? {}
-            : {
-                teacherExecution: {
-                  interactionKind: execution.interactionKind,
-                  executionSemanticsVersion: execution.executionSemanticsVersion,
-                  ...(execution.teacherCase
-                    ? {
-                        caseSetId: execution.teacherCase.caseSetId,
-                        caseSetStatus: execution.teacherCase.caseSetStatus,
-                        caseKey: execution.teacherCase.caseKey
-                      }
-                    : {}),
-                  ...(execution.evaluation
-                    ? {
-                        testCaseId: execution.evaluation.testCaseId,
-                        externalReviewId: execution.evaluation.externalReviewId
-                      }
-                    : {})
-                }
-              })
+          clarificationRequired: result.clarificationRequired
         })
       } catch (error) {
         if (!completedNormally) {

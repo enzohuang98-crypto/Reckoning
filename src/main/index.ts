@@ -14,7 +14,6 @@ import { StorageService } from './storage/StorageService'
 import { registerEngineAnalysisHandlers } from './ipc/engineAnalysisHandlers'
 import { registerAiExplanationHandlers } from './ipc/aiExplanationHandlers'
 import { registerDataHandlers } from './ipc/dataHandlers'
-import { registerTeacherTestHandlers } from './ipc/teacherTestHandlers'
 import {
   InMemoryAnalysisSessionStore,
   startAnalysisSessionCleanup
@@ -28,10 +27,6 @@ import {
 import { configureTrustedRendererUrl } from './security/IpcSecurity'
 import { AppUpdaterService } from './update/AppUpdaterService'
 import { startupFailurePageUrl } from './startup/StartupFailurePage'
-import {
-  getDefaultTeacherTestRuntime,
-  TeacherTestRunService
-} from './teacherTest/TeacherTestRunService'
 
 const isDev = !app.isPackaged
 
@@ -138,20 +133,15 @@ function registerIpc(): AppUpdaterService {
     packagedEnginePath && existsSync(packagedEnginePath) ? packagedEnginePath : null
   )
   const secretStore = new SecretStore()
-  const teacherTestRun = new TeacherTestRunService({
-    getRuntime: () => getDefaultTeacherTestRuntime(app.getVersion())
-  })
   // 短期分析快取（SDS §2.18）：in-memory + TTL，啟動 10 分鐘定時清理
   const sessionStore = new InMemoryAnalysisSessionStore()
   startAnalysisSessionCleanup(sessionStore)
   registerEngineAnalysisHandlers(engineRegistry, sessionStore)
-  registerTeacherTestHandlers(teacherTestRun)
   registerAiExplanationHandlers(
     secretStore,
     sessionStore,
     engineRegistry,
-    storage,
-    teacherTestRun
+    storage
   )
   registerDataHandlers(storage)
   const appUpdater = new AppUpdaterService()

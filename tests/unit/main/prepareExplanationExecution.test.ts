@@ -1,18 +1,30 @@
 import { strict as assert } from 'node:assert'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
 import type { AnalysisSession } from '../../../src/main/storage/AnalysisSessionStore'
 import {
   prepareExplanationExecution,
-  TeacherCaseRejectedError
+  type ExplanationExecutionRequest
 } from '../../../src/main/ai/prepareExplanationExecution'
-import { getTeacherTestCatalog } from '../../../src/main/teacherTest/TeacherTestCatalog'
-import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
-import { normalizeTeacherTestQuestion } from '../../../src/shared/logic/teacherTestEvaluation'
 
-function sessionFor(testCase: ReturnType<typeof getTeacherTestCatalog>['cases'][number]): AnalysisSession {
+/** 原本借用老師凍結題目當資料；老師測試移除後改用固定的開局局面。 */
+interface FixtureCase {
+  caseKey: string
+  positionFen: string
+  sideToMove: 'w' | 'b'
+  attachedMove: string
+  question: string
+  mode: 'research'
+}
+
+const ordinaryCase: FixtureCase = {
+  caseKey: 'opening',
+  positionFen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1',
+  sideToMove: 'w',
+  attachedMove: 'h2e2',
+  question: '為什麼這步比較好？',
+  mode: 'research'
+}
+
+function sessionFor(testCase: FixtureCase): AnalysisSession {
   const sideToMove = testCase.sideToMove === 'w' ? 'red' : 'black'
   return {
     analysisId: `analysis-${testCase.caseKey}`,
@@ -61,9 +73,7 @@ function sessionFor(testCase: ReturnType<typeof getTeacherTestCatalog>['cases'][
   }
 }
 
-function payloadFor(
-  testCase: ReturnType<typeof getTeacherTestCatalog>['cases'][number]
-): GenerateExplanationStartPayload {
+function payloadFor(testCase: FixtureCase): ExplanationExecutionRequest {
   return {
     requestId: `ai-${testCase.caseKey}`,
     analysisId: `analysis-${testCase.caseKey}`,
@@ -92,27 +102,7 @@ function payloadFor(
   }
 }
 
-async function expectRejected(run: () => unknown): Promise<void> {
-  assert.throws(run, TeacherCaseRejectedError)
-}
-
 async function main(): Promise<void> {
-  const catalog = getTeacherTestCatalog()
-  assert.equal(catalog.cases.length, 6)
-  assert.ok(Object.isFrozen(catalog))
-  assert.ok(Object.isFrozen(catalog.cases))
-  assert.ok(Object.isFrozen(catalog.cases[0]))
-
-  const service = new TeacherTestRunService({
-    getRuntime: () => ({
-      appVersion: '0.3.11',
-      platform: 'win32',
-      systemVersion: '10.0.22631',
-      osBuild: 'Windows 11 10.0.22631',
-      arch: 'x64'
-    })
-  })
-  const ordinaryCase = catalog.cases[0]
   const mutablePayload = payloadFor(ordinaryCase)
   mutablePayload.followUpQuestion = undefined
   mutablePayload.conversationHistory = []
@@ -120,18 +110,16 @@ async function main(): Promise<void> {
   const ordinaryMove = prepareExplanationExecution(
     mutablePayload,
     mutableSession,
-    'gpt-5.6-sol',
-    service
+    'gpt-5.6-sol'
   )
   assert.equal(ordinaryMove.interactionKind, 'ordinary')
   assert.equal(ordinaryMove.answerStrategy, 'move-comparison')
-  assert.equal(ordinaryMove.evaluation, undefined)
+  assert.equal(ordinaryMove.executionSemanticsVersion, 2)
 
   const ordinaryPosition = prepareExplanationExecution(
     { ...mutablePayload, attachedMove: undefined },
     { ...mutableSession, userMove: undefined, engineAnalysis: { ...mutableSession.engineAnalysis, userMove: undefined } },
-    'gpt-5.6-sol',
-    service
+    'gpt-5.6-sol'
   )
   assert.equal(ordinaryPosition.answerStrategy, 'position-explanation')
 
@@ -139,29 +127,25 @@ async function main(): Promise<void> {
   const firstQuestion = prepareExplanationExecution(
     { ...mutablePayload, followUpQuestion: '照我的想法走會怎樣' },
     mutableSession,
-    'gpt-5.6-sol',
-    service
+    'gpt-5.6-sol'
   )
   assert.equal(firstQuestion.answerStrategy, 'conversation-follow-up')
   const explicitOverview = prepareExplanationExecution(
     { ...mutablePayload, followUpQuestion: '請給我完整解說' },
     mutableSession,
-    'gpt-5.6-sol',
-    service
+    'gpt-5.6-sol'
   )
   assert.equal(explicitOverview.answerStrategy, 'move-comparison')
   const blankQuestion = prepareExplanationExecution(
     { ...mutablePayload, followUpQuestion: '   ' },
     mutableSession,
-    'gpt-5.6-sol',
-    service
+    'gpt-5.6-sol'
   )
   assert.equal(blankQuestion.answerStrategy, 'move-comparison')
   const positionQuestion = prepareExplanationExecution(
     { ...mutablePayload, attachedMove: undefined, followUpQuestion: '紅方現在該怎麼走' },
     { ...mutableSession, userMove: undefined, engineAnalysis: { ...mutableSession.engineAnalysis, userMove: undefined } },
-    'gpt-5.6-sol',
-    service
+    'gpt-5.6-sol'
   )
   assert.equal(positionQuestion.answerStrategy, 'conversation-follow-up')
 
@@ -169,8 +153,7 @@ async function main(): Promise<void> {
   const ordinaryFollowUp = prepareExplanationExecution(
     ordinaryFollowUpPayload,
     sessionFor(ordinaryCase),
-    'gpt-5.6-sol',
-    service
+    'gpt-5.6-sol'
   )
   assert.equal(ordinaryFollowUp.answerStrategy, 'conversation-follow-up')
   assert.equal(ordinaryFollowUp.effective.conversationHistory.length, 1)
@@ -187,105 +170,6 @@ async function main(): Promise<void> {
   assert.ok(Object.isFrozen(ordinaryFollowUp.effective.conversationHistory))
   assert.equal(Object.getOwnPropertySymbols(ordinaryFollowUp).length, 1)
 
-  const directory = await mkdtemp(join(tmpdir(), 'prepared-explanation-'))
-  const installerPath = join(directory, 'xiangqi-analyzer-0.3.11-setup.exe')
-  await writeFile(installerPath, 'candidate bytes')
-  try {
-    await service.start({
-      releaseTag: 'v0.3.11',
-      productSourceCommit: 'a'.repeat(40),
-      installerPath
-    })
-
-    const prelude = prepareExplanationExecution(
-      { ...payloadFor(ordinaryCase), followUpQuestion: undefined },
-      sessionFor(ordinaryCase),
-      'gpt-5.6-sol',
-      service
-    )
-    assert.equal(prelude.interactionKind, 'teacher-prelude')
-    assert.equal(prelude.evaluation, undefined)
-
-    const testCaseIds = new Set<string>()
-    let firstPrepared: ReturnType<typeof prepareExplanationExecution> | null = null
-    for (const testCase of catalog.cases) {
-      const prepared = prepareExplanationExecution(
-        payloadFor(testCase),
-        sessionFor(testCase),
-        'gpt-5.6-sol',
-        service
-      )
-      assert.equal(prepared.interactionKind, 'teacher-formal-case')
-      assert.equal(prepared.answerStrategy, 'formal-move-comparison')
-      assert.equal(prepared.effective.conversationHistory.length, 0)
-      assert.equal(prepared.effective.followUpQuestion, testCase.question)
-      assert.equal(prepared.teacherCase?.caseKey, testCase.caseKey)
-      assert.equal(prepared.teacherCase?.caseSetId, 'teacher-test-cases-v1')
-      assert.equal(prepared.teacherCase?.caseSetStatus, 'fixture-only; teacher-confirmation-pending')
-      assert.equal(prepared.executionSemanticsVersion, 2)
-      assert.match(prepared.evaluation?.testCaseId ?? '', /^[0-9a-f]{64}$/)
-      assert.match(prepared.evaluation?.externalReviewId ?? '', /^review-/)
-      assert.equal(
-        prepared.formalAttemptKey,
-        `${prepared.evaluation?.testRunId}:${prepared.evaluation?.testCaseId}`
-      )
-      testCaseIds.add(prepared.evaluation!.testCaseId)
-      firstPrepared ??= prepared
-    }
-    assert.equal(testCaseIds.size, 6)
-    assert(firstPrepared?.evaluation)
-    const resubmitted = prepareExplanationExecution(
-      payloadFor(ordinaryCase),
-      sessionFor(ordinaryCase),
-      'gpt-5.6-sol',
-      service
-    )
-    assert.equal(resubmitted.evaluation?.testCaseId, firstPrepared.evaluation.testCaseId)
-    assert.notEqual(
-      resubmitted.evaluation?.externalReviewId,
-      firstPrepared.evaluation.externalReviewId
-    )
-
-    const wrongQuestion = payloadFor(ordinaryCase)
-    wrongQuestion.followUpQuestion = '這不是凍結題目'
-    await expectRejected(() =>
-      prepareExplanationExecution(
-        wrongQuestion,
-        sessionFor(ordinaryCase),
-        'gpt-5.6-sol',
-        service
-      )
-    )
-
-    const wrongMove = payloadFor(ordinaryCase)
-    wrongMove.attachedMove = 'a0a1'
-    await expectRejected(() =>
-      prepareExplanationExecution(
-        wrongMove,
-        sessionFor(ordinaryCase),
-        'gpt-5.6-sol',
-        service
-      )
-    )
-
-    const inconsistentSession = sessionFor(ordinaryCase)
-    inconsistentSession.moveComparison.userMove = 'a0a1'
-    await expectRejected(() =>
-      prepareExplanationExecution(
-        payloadFor(ordinaryCase),
-        inconsistentSession,
-        'gpt-5.6-sol',
-        service
-      )
-    )
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-
-  assert.equal(
-    normalizeTeacherTestQuestion('caf\u0065\u0301\r\n下一行'),
-    'caf\u00e9\n下一行'
-  )
   console.log('Prepared explanation execution checks passed.')
 }
 

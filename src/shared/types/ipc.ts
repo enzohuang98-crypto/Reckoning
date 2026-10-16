@@ -38,8 +38,7 @@ import type {
 } from './EngineRegistry'
 import type {
   HarnessEvidence,
-  HarnessProgressPayload,
-  TeacherTestRunStatusV1
+  HarnessProgressPayload
 } from './Harness'
 import type { AppUpdateStatus, LegacyUpdatePreferences } from './AppUpdate'
 import type { DualEngineComparison } from './DualEngine'
@@ -81,9 +80,6 @@ export const IPC = {
   AI_OPENROUTER_SWITCH_MODEL: 'ai:openrouter:switch-model',
   AI_OPENROUTER_GET_BACKUP_MODELS: 'ai:openrouter:get-backup-models',
   AI_OPENROUTER_SET_BACKUP_MODELS: 'ai:openrouter:set-backup-models',
-  TEACHER_TEST_STATUS: 'teacher-test:status',
-  TEACHER_TEST_START: 'teacher-test:start',
-  TEACHER_TEST_END: 'teacher-test:end',
   // 永久資料與備份
   DATA_LOAD: 'data:load',
   DATA_SAVE: 'data:save',
@@ -295,15 +291,6 @@ export interface GenerateExplanationDonePayload {
   fallbackReason?: string
   /** v2：是否用了一次自動修正。 */
   repairUsed?: boolean
-  teacherExecution?: {
-    interactionKind: 'teacher-prelude' | 'teacher-formal-case'
-    executionSemanticsVersion: 2
-    caseSetId?: 'teacher-test-cases-v1'
-    caseSetStatus?: 'fixture-only; teacher-confirmation-pending'
-    caseKey?: string
-    testCaseId?: string
-    externalReviewId?: string
-  }
 }
 
 export type AIExplanationErrorCode =
@@ -315,8 +302,6 @@ export type AIExplanationErrorCode =
   | 'network_error'
   | 'rate_limited'
   | 'too_many_requests'
-  | 'teacher_case_rejected'
-  | 'teacher_case_busy'
   | 'cancelled'
   | 'unknown_error'
 
@@ -441,15 +426,6 @@ export type HarnessTraceExportResult =
   | { ok: true; filePath: string }
   | { ok: false; cancelled?: boolean; message?: string }
 
-export interface TeacherTestStartInput {
-  releaseTag: string
-  productSourceCommit: string
-}
-
-export type TeacherTestActionResult =
-  | { ok: true; status: TeacherTestRunStatusV1 }
-  | { ok: false; cancelled?: boolean; message?: string }
-
 /* ---------- preload API 形狀 ---------- */
 
 export interface RendererApi {
@@ -534,11 +510,6 @@ export interface RendererApi {
     setOpenRouterBackupModels(
       input: SetOpenRouterBackupModelsInput
     ): Promise<OpenRouterBackupModelsResult>
-  }
-  teacherTest: {
-    status(): Promise<TeacherTestRunStatusV1>
-    start(input: TeacherTestStartInput): Promise<TeacherTestActionResult>
-    end(): Promise<TeacherTestActionResult>
   }
   data: {
     load(): Promise<DataLoadResult>

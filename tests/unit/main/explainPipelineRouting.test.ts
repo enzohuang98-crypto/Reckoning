@@ -8,8 +8,6 @@ import {
 
 assert.equal(EXPLAIN_PIPELINE, 'v2')
 assert.equal(selectExplainPipeline({ interactionKind: 'ordinary' }, {}), 'v2')
-assert.equal(selectExplainPipeline({ interactionKind: 'teacher-prelude' }, {}), 'v1')
-assert.equal(selectExplainPipeline({ interactionKind: 'teacher-formal-case' }, {}), 'v1')
 assert.equal(selectExplainPipeline({ interactionKind: 'ordinary' }, { XQA_EXPLAIN_PIPELINE: 'v1' }), 'v1', 'environment rollback')
 assert.equal(configuredExplainPipeline({ XQA_EXPLAIN_PIPELINE: 'v3' }), 'v2', 'unknown values keep the default')
 

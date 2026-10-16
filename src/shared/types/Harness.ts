@@ -8,63 +8,15 @@ import type { ExplanationLanguage } from './AIExplanationTypes'
 
 export type HarnessAnswerMode = 'focused' | 'research'
 
-export type ExplanationInteractionKind =
-  | 'ordinary'
-  | 'teacher-prelude'
-  | 'teacher-formal-case'
+/** v2 起只剩一般互動；保留此欄位讓 trace 格式與舊紀錄相容（老師測試已於 P4-5 移除）。 */
+export type ExplanationInteractionKind = 'ordinary'
 
 export type ExplanationAnswerStrategy =
   | 'position-explanation'
   | 'move-comparison'
   | 'conversation-follow-up'
-  | 'formal-move-comparison'
 
 export const EXPLANATION_EXECUTION_SEMANTICS_VERSION = 2 as const
-
-export const TEACHER_TEST_SCHEMA_VERSION = 1 as const
-export const TEACHER_TEST_CANONICALIZATION_VERSION = 1 as const
-
-/** 可把本機 trace 對接到外部老師評分表的匿名連結。 */
-export interface HarnessEvaluationLinkV1 {
-  schemaVersion: typeof TEACHER_TEST_SCHEMA_VERSION
-  testRunId: string
-  testCaseId: string
-  canonicalizationVersion: typeof TEACHER_TEST_CANONICALIZATION_VERSION
-  externalReviewId: string
-}
-
-export interface TeacherTestRunManifestV1 {
-  schemaVersion: typeof TEACHER_TEST_SCHEMA_VERSION
-  testRunId: string
-  startedAt: string
-  endedAt?: string
-  artifactClaim: {
-    appVersion: string
-    releaseTag: string
-    productSourceCommit: string
-    installerFileName: string
-    installerSha256: string
-  }
-  runtime: {
-    platform: 'win32'
-    systemVersion: string
-    osBuild: string
-    arch: string
-  }
-}
-
-export interface TeacherTestRunStatusV1 {
-  currentAppVersion: string
-  active: boolean
-  manifest: TeacherTestRunManifestV1 | null
-}
-
-export interface TeacherTestCaseIdentityV1 {
-  positionFen: string
-  question?: string
-  attachedMove?: string
-  mode: HarnessAnswerMode
-}
 
 /**
  * Stable machine-readable section identifiers. Display headings may be
@@ -218,13 +170,9 @@ export interface HarnessTrace {
   usage?: TokenUsage
   providerDiagnostic?: AICredentialDiagnostic
   feedback?: 'helpful' | 'unclear' | 'incorrect' | 'missing_evidence'
-  /** 正式 teacher run 才會存在；舊 trace 保持相容。 */
-  evaluation?: HarnessEvaluationLinkV1
   /** v2 起由 main-process prepared execution 明確指定；舊 trace 不得反推。 */
   interactionKind?: ExplanationInteractionKind
   executionSemanticsVersion?: typeof EXPLANATION_EXECUTION_SEMANTICS_VERSION
-  teacherCaseSetId?: 'teacher-test-cases-v1'
-  teacherCaseKey?: string
   status: 'completed' | 'clarification_required' | 'cancelled' | 'failed'
   /** 最終顯示給使用者的文字（供未來建立回歸評測集用）；儲存時會截斷長度。 */
   finalText?: string
@@ -251,10 +199,10 @@ export interface ExplainAttemptTrace {
   error?: string
 }
 
-export interface TeacherTestExportV1 {
-  schemaVersion: typeof TEACHER_TEST_SCHEMA_VERSION
+/** 「匯出診斷紀錄」的檔案格式。 */
+export interface HarnessTraceExportV1 {
+  schemaVersion: 1
   exportedAt: string
-  runManifest: TeacherTestRunManifestV1 | null
   traces: HarnessTrace[]
   regressionCases: HarnessRegressionCase[]
 }
