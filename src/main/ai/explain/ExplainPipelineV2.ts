@@ -175,7 +175,7 @@ function checkFailureReason(
   check: AnswerCheckResult
 ): 'check' | 'unknownMove' | 'format' | 'side' | 'incomplete' {
   const codes = new Set(check.hardErrors.map((error) => error.code))
-  if (codes.has('H5')) return 'check'
+  if (codes.has('H5') || codes.has('H8')) return 'check'
   if (codes.has('H4')) return 'unknownMove'
   if (codes.has('H7')) return 'side'
   if (codes.has('H1') || codes.has('H2')) return 'incomplete'
