@@ -14,11 +14,13 @@ import type {
   AIExplanationRequest,
   AIExplanationResponse
 } from '@shared/types/AIExplanationTypes'
+import type { AIQuotaKind } from '@shared/types/AIProviderTypes'
 import {
+  AIHttpError,
   CREDENTIAL_TEST_TIMEOUT_MS,
   aiErrorStatus,
+  parseRetryAfterMs,
   describeCredentialTestError,
-  extractApiErrorMessage,
   fetchAiResponseBounded,
   readJsonResponseBounded
 } from '../http'
@@ -76,6 +78,39 @@ interface GeminiModelsResponse {
     name?: string
     supportedGenerationMethods?: string[]
   }>
+}
+
+/** Gemini 的結束原因換成共用代碼：MAX_TOKENS → length（讓 AnswerCheck 判截斷），STOP → stop。 */
+function geminiFinishReason(reason: string | undefined): string | undefined {
+  if (reason === 'MAX_TOKENS') return 'length'
+  if (reason === 'STOP') return 'stop'
+  return undefined
+}
+
+/**
+ * 從 429 回應的固定欄位判讀額度種類與建議等待時間（QuotaFailure.quotaId 含 PerDay／PerMinute、
+ * RetryInfo.retryDelay 例如 "7s"）。只讀這些欄位，不保留任何原文。
+ */
+async function readGeminiRateLimit(res: Response): Promise<{ quota?: AIQuotaKind; retryAfterMs?: number }> {
+  try {
+    const body = await readJsonResponseBounded<{ error?: { details?: unknown[] } }>(res, 64 * 1024)
+    const details = Array.isArray(body.error?.details) ? body.error!.details : []
+    let quota: AIQuotaKind | undefined
+    let retryAfterMs: number | undefined
+    for (const detail of details) {
+      const record = (detail ?? {}) as { violations?: Array<{ quotaId?: unknown }>; retryDelay?: unknown }
+      for (const violation of record.violations ?? []) {
+        if (typeof violation.quotaId !== 'string') continue
+        if (/PerDay/i.test(violation.quotaId)) quota = 'daily'
+        else if (!quota && /PerMinute/i.test(violation.quotaId)) quota = 'minute'
+      }
+      const delay = typeof record.retryDelay === 'string' ? /^(\d+(?:\.\d+)?)s$/.exec(record.retryDelay) : null
+      if (delay) retryAfterMs = Math.round(Number(delay[1]) * 1000)
+    }
+    return { ...(quota ? { quota } : {}), ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) }
+  } catch {
+    return {}
+  }
 }
 
 export class GeminiProvider implements AIProvider {
@@ -141,7 +176,16 @@ export class GeminiProvider implements AIProvider {
     )
 
     if (!res.ok) {
-      throw new Error(`Gemini API 錯誤 (${res.status})：${await extractApiErrorMessage(res)}`)
+      // 只帶狀態碼與固定代碼判讀的額度種類，不把服務回應原文帶進錯誤（設計原則 §2）。
+      // 429 讓 v2 依分鐘／每日額度決定稍等重試、改交摘要或顯示錯誤卡。
+      const limits = res.status === 429 ? await readGeminiRateLimit(res) : {}
+      throw new AIHttpError(
+        res.status,
+        'generation',
+        `Gemini API 錯誤 (${res.status})。`,
+        parseRetryAfterMs(res.headers.get('retry-after')) ?? limits.retryAfterMs,
+        limits.quota
+      )
     }
 
     const data = await readJsonResponseBounded<GeminiGenerateContentResponse>(res)
@@ -173,6 +217,7 @@ export class GeminiProvider implements AIProvider {
       provider: this.id,
       model: request.model,
       usage,
+      ...(geminiFinishReason(candidate?.finishReason) ? { finishReason: geminiFinishReason(candidate?.finishReason) } : {}),
       createdAt: Date.now(),
       groundedOnEngineData: true
     }
@@ -186,7 +231,11 @@ export class GeminiProvider implements AIProvider {
     const response = await this.generateExplanation(request, signal)
     if (signal.aborted) throw new DOMException('Request cancelled', 'AbortError')
     yield { type: 'text_delta', deltaText: response.text }
-    yield { type: 'done', usage: response.usage }
+    yield {
+      type: 'done',
+      usage: response.usage,
+      ...(response.finishReason ? { finishReason: response.finishReason } : {})
+    }
   }
 
   async listModels(

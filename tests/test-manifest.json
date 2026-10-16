@@ -59,6 +59,7 @@
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/openRouterRequestPolicy.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/sse.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/openRouterStreaming.test.ts"},
+  {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/geminiErrors.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/aiPreferencesStore.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/explanationFacts.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/explanationFactsLiveCases.test.ts"},
