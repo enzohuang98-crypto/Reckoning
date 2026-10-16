@@ -51,6 +51,7 @@ import {
 import { LiveAnalysisTable } from './LiveAnalysisTable'
 import type {
   ActualMoveSelection,
+  AiAnswerMeta,
   AnalysisPanelHandle,
   AnalysisPanelStatus,
   AnalysisView
@@ -218,6 +219,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [aiBusy, setAiBusy] = useState(false)
   const [aiCancelling, setAiCancelling] = useState(false)
   const [streamingText, setStreamingText] = useState('')
+  const [streamingAttempt, setStreamingAttempt] = useState(1)
+  const [answerMeta, setAnswerMeta] = useState<AiAnswerMeta | null>(null)
+  const streamingAttemptRef = useRef(1)
   const [followUp, setFollowUp] = useState('')
   const [engineRegistry, setEngineRegistry] = useState<EngineRegistrySnapshot>({
     installations: [],
@@ -389,6 +393,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setExplainedResult(null)
     setLiveRetryCount(0)
     setStreamingText('')
+    setAnswerMeta(null)
     setFollowUp('')
     setHarnessProgress(null)
     setTraceId(null)
@@ -532,6 +537,14 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     const offAiChunk = window.api.ai.onExplanationChunk((payload) => {
       if (payload.requestId !== activeAiRequestId.current) return
       if (!isActiveAiRequest(payload.requestId)) return
+      const attempt = payload.attempt ?? 1
+      if (attempt !== streamingAttemptRef.current) {
+        // 修正或備援的新回答取代上一次的串流文字，不把兩次回答接在一起。
+        streamingAttemptRef.current = attempt
+        setStreamingAttempt(attempt)
+        setStreamingText(payload.deltaText)
+        return
+      }
       setStreamingText((previous) => previous + payload.deltaText)
     })
     const offHarnessProgress = window.api.ai.onHarnessProgress((payload) => {
@@ -547,7 +560,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         aiDeadlineTimer.current = null
       }
       const pending = pendingAiRequest.current
-      retryableAiRequest.current = null
+      const isEngineSummary = payload.answerKind === 'engine_summary'
+      // 引擎摘要不是 AI 回答：保留原請求，讓「重試 AI」可以原樣再送一次。
+      if (!isEngineSummary) retryableAiRequest.current = null
       activeAiRequestId.current = null
       pendingAiRequest.current = null
       setAiBusy(false)
@@ -556,10 +571,21 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setStreamingText('')
       setTraceId(payload.traceId ?? null)
       setTeacherExecution(payload.teacherExecution ?? null)
+      setAnswerMeta(
+        payload.answerKind
+          ? {
+              answerKind: payload.answerKind,
+              ...(payload.actualModel ? { actualModel: payload.actualModel } : {}),
+              ...(payload.fallbackFromModel
+                ? { fallbackFromModel: payload.fallbackFromModel, fallbackReason: payload.fallbackReason }
+                : {})
+            }
+          : null
+      )
       const response: AIExplanationResponse = {
         text: payload.finalText,
         provider: payload.provider ?? pending?.provider ?? settingsRef.current.aiProvider,
-        model: payload.model ?? pending?.model ?? settingsRef.current.aiModel,
+        model: payload.actualModel ?? payload.model ?? pending?.model ?? settingsRef.current.aiModel,
         usage: payload.usage,
         createdAt: Date.now(),
         groundedOnEngineData: true
@@ -573,14 +599,14 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
           pending.question === null
             ? [newMessage('assistant', payload.finalText, {
                 provider: payload.provider ?? pending.provider,
-                model: payload.model ?? pending.model
+                model: payload.actualModel ?? payload.model ?? pending.model
               })]
             : [
                 ...pending.conversationMessages,
                 newMessage('user', pending.question),
                 newMessage('assistant', payload.finalText, {
                   provider: payload.provider ?? pending.provider,
-                  model: payload.model ?? pending.model
+                  model: payload.actualModel ?? payload.model ?? pending.model
                 })
               ]
         const next: AIConversation = {
@@ -966,6 +992,9 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setAiDiagnostic(undefined)
     setAiNotice(null)
     setStreamingText('')
+    streamingAttemptRef.current = 1
+    setStreamingAttempt(1)
+    setAnswerMeta(null)
     setHarnessProgress(null)
     window.api.ai.startExplanation({
       requestId,
@@ -1275,6 +1304,12 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               actualMove={actualMove}
               aiBusy={aiBusy}
               streamingText={streamingText}
+              streamingAttempt={streamingAttempt}
+              answerMeta={answerMeta}
+              onRetryAi={() => {
+                if (activeAiRequestId.current) return
+                generateExplanation(null, retryableAiRequest.current !== null)
+              }}
               harnessProgress={harnessProgress}
               traceId={traceId}
               aiBlockedReason={

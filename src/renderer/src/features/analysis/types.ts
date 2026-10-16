@@ -46,3 +46,11 @@ export interface AnalysisPanelHandle {
   cancelExplain: () => void
   stopAll: () => void
 }
+
+/** v2 交付資訊：AI 回答由哪個模型完成，或改交引擎重點摘要（非 AI）。 */
+export interface AiAnswerMeta {
+  answerKind: 'ai' | 'engine_summary' | 'board_rule'
+  actualModel?: string
+  fallbackFromModel?: string
+  fallbackReason?: string
+}
