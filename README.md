@@ -58,9 +58,13 @@ OpenRouter 免費模型不使用寫死的清單。貼上 `sk-or-v1-...` 金鑰�
 4. 讓使用者看到並選擇完整模型 ID，例如 `provider/model-name:free`。
 5. 使用所選 ID 做真實測試，成功後才綁定並保存。
 
-每次請求只傳送一個使用者選定的 `model`，不傳 fallback `models` 陣列，也不使用會隨機挑選模型的 `openrouter/free` 或可能轉向付費模型的自動路由。回應若回報不同模型 ID，程式會拒絕該結果，而不是把「畫面顯示 A、後端實際使用 B」當成成功。
+每次請求只傳送一個明確的 `model`，不傳 fallback `models` 陣列，也不使用會隨機挑選模型的 `openrouter/free` 或可能轉向付費模型的自動路由。回應回報的模型若不是同一個模型（只容許 `:free` 這類變體後綴不同），程式會拒絕該結果，而不是把「畫面顯示 A、後端實際使用 B」當成成功。
 
-免費模型與供應狀態會變動；若已選模型不再出現在即時免費清單，Reckoning 會要求重新選擇，不會暗中換成另一個模型。實作依據與驗證紀錄見 [OpenRouter 免費模型整合研究](docs/research/openrouter-free-models-integration.md)。
+推理（thinking）依每個模型在 `/models` 公布的能力設定：能關閉就關閉、必須推理的模型則排除推理文字並加大輸出預算；回答以串流即時顯示。
+
+可在「設定 → AI 與金鑰」另外核可最多 2 個 `:free` 備援模型（必須出現在這把金鑰當下的免費清單中）。只有主模型逾時、過載、分鐘級限流、暫時無法使用或回應格式錯誤時才會改用備援，畫面會標示「由 X 回答（Y 暫時無法使用：原因）」；每日免費額度用完、金鑰或網路錯誤則直接顯示錯誤卡，不會改用備援。
+
+免費模型與供應狀態會變動；若已選模型不再出現在即時免費清單，Reckoning 會要求重新選擇，不會在使用者未核可的情況下換成其他模型。實作依據與驗證紀錄見 [OpenRouter 免費模型整合研究](docs/research/openrouter-free-models-integration.md)。
 
 ## 基本使用流程
 
@@ -89,7 +93,7 @@ Reckoning 採 Electron 的權限分層。使用者介面不能直接讀取 Node.
 │ Electron Main                                        │
 │  ├─ Analysis Session：以 analysisId 保存可信分析     │
 │  ├─ Engine：Pikafish／UCI／UCCI、取消、MultiPV       │
-│  ├─ AI：Prompt、Provider adapter、逾時與回應驗證     │
+│  ├─ AI：事實表、Prompt、答案檢查、Provider adapter   │
 │  ├─ Storage：設定、局面、備份、SecretStore           │
 │  └─ Update／Security：更新策略、輸入與網路邊界       │
 └──────────────┬───────────────────────┬───────────────┘
@@ -100,6 +104,7 @@ Reckoning 採 Electron 的權限分層。使用者介面不能直接讀取 Node.
 幾個不能被破壞的邊界：
 
 - Renderer 只傳 `analysisId` 與使用者輸入；不能自行組造一份引擎分析再交給 AI。
+- 吃子、將軍、威脅、將死與困斃由程式重播引擎主線計算，AI 只能引用這份事實表；回答再由程式檢查是否提到不存在的著法或與事實矛盾。
 - API Key 只在主程序解密與使用，不經 IPC 回傳明文。
 - Provider adapter 只連到該 Provider 的固定官方端點；Provider、模型與金鑰必須成套保存與取用。
 - 引擎原始輸出先解析成共用型別，排序、視角、將殺與分數顯示再由共享邏輯統一處理。
@@ -111,6 +116,7 @@ Reckoning 採 Electron 的權限分層。使用者介面不能直接讀取 Node.
 - 一般設定、儲存局面、分析工作資料與備份以本機資料為主；匯入資料會先經格式與大小驗證。
 - AI 解說會把完成任務所需的局面、引擎證據與使用者文字送到所選 Provider；各 Provider 的保存與隱私政策仍由該服務商決定。
 - 日誌與錯誤訊息會遮蔽金鑰；請仍避免把真實 Key 貼到 GitHub issue、測試資料、螢幕截圖或聊天紀錄。
+- 每次 AI 解說會在本機保存一筆有上限的診斷紀錄（不含金鑰）；可在「設定 → 資料與系統」匯出或清除，回報問題時可附上匯出檔。
 - Electron 啟用 context isolation、sandbox、CSP 與封裝完整性相關限制；依賴套件另有安全稽核指令。
 
 安全政策與私下通報方式請見 [SECURITY.md](SECURITY.md)。
@@ -119,10 +125,10 @@ Reckoning 採 Electron 的權限分層。使用者介面不能直接讀取 Node.
 
 Windows 安裝版以本專案的 GitHub Releases 作為唯一更新來源：
 
-- 啟動後自動檢查，執行期間也會定期重新檢查。
-- 發現新版時顯示「立即更新」「稍後提醒我」「跳過此版本」。
-- 選擇立即更新後在背景下載；完成時程式自動關閉、安裝並重新開啟，不需要使用者再手動尋找安裝檔。
-- 手動檢查與更新入口仍保留在設定頁。
+- 啟動後自動檢查，執行期間每 4 小時重新檢查。
+- 發現新版時顯示「立即背景準備」「稍後提醒我」「跳過此版本」；稍後提醒會在 4 小時後再問。
+- 更新在背景下載，期間可繼續使用；準備完成後**不會自動關閉或安裝**，由使用者明確選擇重新啟動，且會先保存目前資料（有未提交的著法草稿時會先提醒）。
+- 可在設定頁關閉背景準備；手動檢查與更新入口也保留在設定頁。
 - `latest.yml`、NSIS 安裝檔與 blockmap 必須屬於同一個版本，否則不應發布。
 
 更完整的通道規則見 [自動更新文件](docs/operations/update-channel.md)。只有 GitHub Release 中通過檢查的正式資產才代表可交付版本；原始碼分支上的功能不等於已安裝版本已更新。
@@ -146,13 +152,27 @@ npm.cmd run dev
 主要品質檢查：
 
 ```powershell
-npm.cmd run typecheck
+npm.cmd run typecheck      # 主程序、renderer 與測試檔
 npm.cmd test
 npm.cmd run security:audit
 npm.cmd run build
 ```
 
-測試範圍包含象棋規則、分數與排序、PV 重播、Provider／模型綁定、金鑰儲存、IPC 架構、安全邊界、PlayOK 匯入、更新流程、解說事實表與答案檢查、v2 解說管線、AI 品質 Harness 與引擎端對端行為。
+測試範圍包含象棋規則、分數與排序、PV 重播、Provider／模型綁定、金鑰儲存、IPC 架構與來源驗證、安全邊界、PlayOK 匯入、更新流程、設定遷移、解說事實表與答案檢查、v2 解說管線與引擎端對端行為。`npm test` 是 `package.json` 中逐一執行的測試清單；單獨執行某一檔時照抄其中對應指令即可。部分測試（安全基線、引擎登錄、引擎端對端、`safeStorage`）只能在 Windows 執行。
+
+### AI 解說的開發與驗收
+
+- 預設使用 v2 解說流程（`src/main/ai/explain/`）。設定環境變數 `XQA_EXPLAIN_PIPELINE=v1` 可整體退回舊版流程，僅供比較與回滾。
+- 真實模型驗收需要自己的 OpenRouter 金鑰，金鑰只從環境變數讀取，輸出寫到已被 git 忽略的 `.local-review/`：
+
+  ```powershell
+  $env:OPENROUTER_API_KEY="（你的金鑰）"
+  npx.cmd tsx --tsconfig tsconfig.node.json tools/acceptance/explain-v2-live.ts --models <模型>:free --out v2-review.md
+  Remove-Item Env:OPENROUTER_API_KEY
+  ```
+
+- 匯出的診斷紀錄可用 `tools/acceptance/summarize-traces.ts` 統計失敗類別（不輸出回答原文或局面）。
+- 進行中的改善計畫與上線門檻見 [AI 對話可靠性計畫](docs/plans/ai-chat-reliability-v2.md)。
 
 建立未安裝的 Windows 測試目錄：
 
@@ -178,7 +198,7 @@ npm.cmd run verify:update
 - `resources/engine/`：隨安裝包提供的 Pikafish 執行檔、NNUE 權重與各自授權。
 - `tests/`：單元、整合、架構、安全與端對端測試。
 - `tools/`：驗收、安全稽核、簽章、安裝與發行工具。
-- `docs/`：架構、操作、研究、驗收與發行文件。
+- `docs/`：架構（`architecture/`）、操作與發行（`operations/`、`releases/`）、計畫（`plans/`）與研究；`history/` 與 `archive/` 只保存歷史紀錄。
 
 ## 授權
 
@@ -189,6 +209,7 @@ npm.cmd run verify:update
 ## 參與專案
 
 - 架構說明：[docs/architecture/overview.md](docs/architecture/overview.md)
+- 開發規則與目錄職責：[CLAUDE.md](CLAUDE.md)；專案現況：[PROJECT_STATUS.md](PROJECT_STATUS.md)
 - 更新通道：[docs/operations/update-channel.md](docs/operations/update-channel.md)
 - 發行流程：[docs/operations/release.md](docs/operations/release.md)
 - 提交與問題回報：[CONTRIBUTING.md](CONTRIBUTING.md)
