@@ -54,7 +54,7 @@ OpenRouter 免費模型不使用寫死的清單。貼上 `sk-or-v1-...` 金鑰�
 
 1. 向 OpenRouter 的 `/api/v1/key` 驗證目前金鑰。
 2. 從官方 `/api/v1/models` 即時取得模型目錄。
-3. 只列出當下仍存在、可輸出文字、官方模型 ID 以 `:free` 結尾且輸入／輸出價格為零的具體模型。
+3. 只列出當下仍存在、可輸出文字、官方模型 ID 以 `:free` 結尾且輸入／輸出價格為零的具體模型。另外只開放經過實戰局面驗收的付費模型（目前 `anthropic/claude-sonnet-5.5`、`anthropic/claude-haiku-5.5`），清單中標示「付費」，費用記在使用者自己的 OpenRouter 帳戶。
 4. 讓使用者看到並選擇完整模型 ID，例如 `provider/model-name:free`。
 5. 使用所選 ID 做真實測試，成功後才綁定並保存。
 
