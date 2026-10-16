@@ -41,7 +41,8 @@ npm run security:audit   # 相依弱點分層把關（政策見 docs/architectur
 - 只能在 Windows 跑：`tests/security/security.test.ts`（含 Windows 路徑斷言）、
   `tests/unit/main/engineRegistry.test.ts`、`tests/e2e/engine.e2e.ts`（需先用 `csc` 編譯
   `tests/support/FakeEngine.cs` 成 `fake-engine.exe`）與 `npx electron tests/support/run-secret-store-test.cjs`。
-- 測試檔不在任何 tsconfig 的 include 內，`npm run typecheck` 抓不到測試裡的型別錯誤，只有實際執行會。
+- `npm run typecheck` 也檢查測試檔（`tsconfig.test.node.json`／`tsconfig.test.web.json`；v1 的 `harness.test.ts`
+  暫時排除）。renderer 測試由 tsx 以 classic JSX 轉譯，所以必須 `import React`。
 - 新測試：`node:assert/strict`、本機 HTTP mock、失敗設 `process.exitCode = 1`，並加入 `test` 指令鏈。
 - 需要真實金鑰的工具（不在 `npm test` 內，金鑰只從環境變數讀、輸出不得含金鑰）：
   - `tools/acceptance/explain-v2-live.ts`：v2 解說 10 題 live 驗收＋人工評分表（`OPENROUTER_API_KEY`，輸出到 `.local-review/`）。
