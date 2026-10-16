@@ -475,6 +475,10 @@ interface FactLabels {
   material: (best: string, user: string) => string
   capturesNone: string
   capturesOf: (side: string, pieces: string) => string
+  /** 列出的手數內，雙方吃子的合計與子數比較（只算子數，不做子力價值換算）。 */
+  lineCaptures: (captures: string, note: string) => string
+  capturesEven: (count: number) => string
+  capturesMore: (side: string, count: number) => string
   bestLineName: string
   userLineName: string
   truncatedNote: string
@@ -535,6 +539,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     material: (best, user) => `吃子結果：首選線${best}；實戰線${user}。`,
     capturesNone: '雙方都沒有吃子',
     capturesOf: (side, pieces) => `${side}方吃掉${pieces}`,
+    lineCaptures: (captures, note) => `列出手數內吃子合計：${captures}（${note}）`,
+    capturesEven: (count) => `雙方各吃 ${count} 子，子數相同`,
+    capturesMore: (side, count) => `${side}方多吃 ${count} 子`,
     bestLineName: '首選線',
     userLineName: '實戰線',
     truncatedNote: '（主線只列出部分手數）'
@@ -580,6 +587,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     material: (best, user) => `吃子结果：首选线${best}；实战线${user}。`,
     capturesNone: '双方都没有吃子',
     capturesOf: (side, pieces) => `${side}方吃掉${pieces}`,
+    lineCaptures: (captures, note) => `列出手数内吃子合计：${captures}（${note}）`,
+    capturesEven: (count) => `双方各吃 ${count} 子，子数相同`,
+    capturesMore: (side, count) => `${side}方多吃 ${count} 子`,
     bestLineName: '首选线',
     userLineName: '实战线',
     truncatedNote: '（主线只列出部分手数）'
@@ -625,6 +635,9 @@ const LABELS: Record<ExplanationLanguage, FactLabels> = {
     material: (best, user) => `Captures: best line ${best}; player's line ${user}.`,
     capturesNone: 'no captures by either side',
     capturesOf: (side, pieces) => `${side} captured ${pieces}`,
+    lineCaptures: (captures, note) => `Captures within the listed plies: ${captures} (${note})`,
+    capturesEven: (count) => `each side captured ${count}, equal piece count`,
+    capturesMore: (side, count) => `${side} captured ${count} more`,
     bestLineName: 'best line',
     userLineName: "player's line",
     truncatedNote: '(only part of the line is listed)'
@@ -680,7 +693,19 @@ function formatLine(
   maxPlies: number
 ): string[] {
   const lines = [`${title}：`]
-  for (const ply of line.plies.slice(0, maxPlies)) lines.push(formatPly(ply, labels))
+  const shown = line.plies.slice(0, maxPlies)
+  for (const ply of shown) lines.push(formatPly(ply, labels))
+  // 只列子數：子力價值要看局面，沒有固定換算，交給引擎評估，不在事實表裡判斷誰划算。
+  const taken: Record<PieceColor, PieceType[]> = { red: [], black: [] }
+  for (const ply of shown) if (ply.captured) taken[ply.side].push(ply.captured)
+  if (taken.red.length + taken.black.length > 0) {
+    const diff = taken.red.length - taken.black.length
+    const note =
+      diff === 0
+        ? labels.capturesEven(taken.red.length)
+        : labels.capturesMore(labels.side[diff > 0 ? 'red' : 'black'], Math.abs(diff))
+    lines.push(` ${labels.lineCaptures(capturesText(taken, labels), note)}`)
+  }
   if (line.plies.length > maxPlies) lines.push(` ${labels.truncatedNote}`)
   if (line.warning) lines.push(` ${line.warning}`)
   const last = line.plies.at(-1)
