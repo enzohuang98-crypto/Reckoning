@@ -50,7 +50,10 @@ export interface LiveRow {
   firstTokenMs: number | null
   repairUsed: boolean
   fallback: string
+  /** 最後一輪（修正後）的硬錯。 */
   hardErrors: string[]
+  /** 有修正時，修正前那一輪的硬錯。 */
+  firstHardErrors?: string[]
   softWarnings: string[]
   answer: string
   error: string | null
@@ -168,6 +171,7 @@ export async function runLiveCase(
       repairUsed: result.repairUsed,
       fallback: describeFallback(result, deps.backupModels ?? []),
       hardErrors: trace?.hardErrors ?? [],
+      ...(trace?.firstHardErrors ? { firstHardErrors: trace.firstHardErrors } : {}),
       softWarnings: trace?.softWarnings ?? [],
       answer: result.finalText,
       error: null,
@@ -248,7 +252,9 @@ export function formatLiveReport(rows: LiveRow[]): string {
     lines.push(`### ${row.caseId} · ${row.model}`)
     if (row.attemptLog.length) lines.push(`呼叫紀錄：${row.attemptLog.join(' → ')}`)
     if (row.fallback) lines.push(`備援：${row.fallback}`)
-    if (row.hardErrors.length) lines.push(`首輪硬錯：${row.hardErrors.join('；')}`)
+    const firstRound = row.firstHardErrors ?? row.hardErrors
+    if (firstRound.length) lines.push(`首輪硬錯：${firstRound.join('；')}`)
+    if (row.firstHardErrors && row.hardErrors.length) lines.push(`修正後仍有硬錯：${row.hardErrors.join('；')}`)
     if (row.softWarnings.length) lines.push(`軟警告：${row.softWarnings.join('；')}`)
     lines.push('', row.error ? `（失敗：${row.error}）` : row.answer, '')
   }
