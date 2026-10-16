@@ -20,7 +20,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { OpenRouterProvider } from '../../src/main/ai/providers/OpenRouterProvider'
 import { runExplainPipelineV2 } from '../../src/main/ai/explain/ExplainPipelineV2'
 import { prepareExplanationExecution } from '../../src/main/ai/prepareExplanationExecution'
-import { TeacherTestRunService } from '../../src/main/teacherTest/TeacherTestRunService'
 import { compareMove } from '../../src/shared/logic/analysis/MoveComparisonService'
 import type { ExplanationLanguage } from '../../src/shared/types/AIExplanationTypes'
 import type { AIProvider } from '../../src/shared/types/AIProviderTypes'
@@ -56,10 +55,6 @@ export interface LiveRow {
 
 const MAX_MODELS = 3
 const DEFAULT_SPACING_MS = 3_500
-
-const teacherRun = new TeacherTestRunService({
-  getRuntime: () => ({ appVersion: 'acceptance', platform: 'win32', systemVersion: '', osBuild: '', arch: 'x64' })
-})
 
 export function loadLiveCases(): LiveCase[] {
   const path = resolve(dirname(fileURLToPath(import.meta.url)), '../../tests/fixtures/explain-v2/cases.json')
@@ -102,8 +97,7 @@ export async function runLiveCase(
       ...(fixture.userMoveReason ? { userMoveReason: fixture.userMoveReason } : {})
     },
     sessionFor(fixture),
-    model,
-    teacherRun
+    model
   )
   try {
     const result = await runExplainPipelineV2(execution, {

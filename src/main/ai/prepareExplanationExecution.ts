@@ -3,21 +3,11 @@ import type {
   ExplanationAnswerStrategy,
   ExplanationInteractionKind,
   HarnessAnswerMode,
-  HarnessBudget,
-  HarnessEvaluationLinkV1,
-  TeacherTestCaseIdentityV1,
-  TeacherTestRunManifestV1
+  HarnessBudget
 } from '@shared/types/Harness'
 import { EXPLANATION_EXECUTION_SEMANTICS_VERSION } from '@shared/types/Harness'
 import type { GenerateExplanationStartPayload } from '@shared/types/ipc'
-import { normalizeTeacherTestQuestion } from '@shared/logic/teacherTestEvaluation'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
-import {
-  findFrozenTeacherTestCase,
-  TEACHER_CASE_SET_ID,
-  TEACHER_CASE_SET_STATUS,
-  TeacherTestCatalogError
-} from '../teacherTest/TeacherTestCatalog'
 
 const PREPARED_EXECUTION = Symbol('PreparedExplanationExecution')
 
@@ -45,13 +35,6 @@ export const FIXED_HARNESS_OPTIONS: Readonly<Required<HarnessRequestOptions>> = 
   reuseEvidence: true
 })
 
-interface TeacherRunEvaluationCapability {
-  getActiveManifest(): TeacherTestRunManifestV1 | null
-  createEvaluationLink(
-    input: TeacherTestCaseIdentityV1
-  ): HarnessEvaluationLinkV1 | undefined
-}
-
 export interface EffectiveExplanationInput {
   readonly requestId: string
   readonly analysisId: string
@@ -78,29 +61,8 @@ export type PreparedExplanationExecution = Readonly<{
   interactionKind: ExplanationInteractionKind
   answerStrategy: ExplanationAnswerStrategy
   effective: Readonly<EffectiveExplanationInput>
-  evaluation?: Readonly<HarnessEvaluationLinkV1>
-  teacherCase?: Readonly<{
-    caseSetId: typeof TEACHER_CASE_SET_ID
-    caseSetStatus: typeof TEACHER_CASE_SET_STATUS
-    caseKey: string
-  }>
-  formalAttemptKey?: string
   executionSemanticsVersion: typeof EXPLANATION_EXECUTION_SEMANTICS_VERSION
 }>
-
-export class TeacherCaseRejectedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'TeacherCaseRejectedError'
-  }
-}
-
-export class TeacherCaseBusyError extends Error {
-  constructor() {
-    super('同一個老師凍結案例正在執行，請等待完成後再重試。')
-    this.name = 'TeacherCaseBusyError'
-  }
-}
 
 function cloneAndFreeze<T>(value: T): T {
   const cloned = structuredClone(value)
@@ -135,40 +97,10 @@ function ordinaryStrategy(
   return attachedMove ? 'move-comparison' : 'position-explanation'
 }
 
-function assertFormalSessionMatches(
-  session: AnalysisSession,
-  positionFen: string,
-  attachedMove: string
-): void {
-  const fenValues = [
-    session.positionFen,
-    session.engineAnalysis.positionFen,
-    session.moveComparison.positionFen,
-    session.verificationEngineAnalysis?.positionFen
-  ].filter((value): value is string => value !== undefined)
-  const moveValues = [
-    session.userMove,
-    session.engineAnalysis.userMove,
-    session.moveComparison.userMove,
-    session.verificationEngineAnalysis?.userMove
-  ].filter((value): value is string => value !== undefined)
-  if (
-    fenValues.length < 3 ||
-    fenValues.some((value) => value !== positionFen) ||
-    moveValues.length < 3 ||
-    moveValues.some((value) => value !== attachedMove)
-  ) {
-    throw new TeacherCaseRejectedError(
-      '凍結案例與目前引擎分析資料不一致，請重新載入案例並重新分析。'
-    )
-  }
-}
-
 export function prepareExplanationExecution(
   validatedPayload: ExplanationExecutionRequest,
   authoritativeSession: AnalysisSession,
-  resolvedModel: string,
-  teacherRun: TeacherRunEvaluationCapability
+  resolvedModel: string
 ): PreparedExplanationExecution {
   const session = cloneAndFreeze(authoritativeSession)
   const sourceHistory = cloneAndFreeze(validatedPayload.conversationHistory ?? [])
@@ -177,65 +109,8 @@ export function prepareExplanationExecution(
     validatedPayload.attachedMove ??
     authoritativeSession.userMove ??
     authoritativeSession.engineAnalysis.userMove
-  const activeManifest = teacherRun.getActiveManifest()
-  const rawQuestion = validatedPayload.followUpQuestion
-
-  let interactionKind: ExplanationInteractionKind = 'ordinary'
-  let answerStrategy = ordinaryStrategy(rawQuestion, sourceHistory, attachedMove)
-  let conversationHistory: readonly ConversationMessage[] = sourceHistory
-  let effectiveQuestion = rawQuestion
-  let evaluation: HarnessEvaluationLinkV1 | undefined
-  let teacherCase: PreparedExplanationExecution['teacherCase']
-  let formalAttemptKey: string | undefined
-
-  if (activeManifest && !rawQuestion) {
-    interactionKind = 'teacher-prelude'
-  } else if (activeManifest && rawQuestion) {
-    effectiveQuestion = normalizeTeacherTestQuestion(rawQuestion)
-    if (!validatedPayload.attachedMove) {
-      throw new TeacherCaseRejectedError('老師正式案例缺少凍結著法，請重新載入案例。')
-    }
-    let frozenCase
-    try {
-      frozenCase = findFrozenTeacherTestCase({
-        positionFen: authoritativeSession.positionFen,
-        question: effectiveQuestion,
-        attachedMove: validatedPayload.attachedMove,
-        mode: answerMode
-      })
-    } catch (error) {
-      if (error instanceof TeacherTestCatalogError) {
-        throw new TeacherCaseRejectedError(error.message)
-      }
-      throw error
-    }
-    if (!frozenCase) {
-      throw new TeacherCaseRejectedError('問題、局面、著法或模式未命中凍結題目，正式案例已阻止。')
-    }
-    assertFormalSessionMatches(
-      authoritativeSession,
-      frozenCase.positionFen,
-      frozenCase.attachedMove
-    )
-    evaluation = teacherRun.createEvaluationLink({
-      positionFen: frozenCase.positionFen,
-      question: effectiveQuestion,
-      attachedMove: frozenCase.attachedMove,
-      mode: frozenCase.mode
-    })
-    if (!evaluation) {
-      throw new TeacherCaseRejectedError('老師實測 run 已結束，正式案例未執行。')
-    }
-    interactionKind = 'teacher-formal-case'
-    answerStrategy = 'formal-move-comparison'
-    conversationHistory = cloneAndFreeze([] as ConversationMessage[])
-    teacherCase = cloneAndFreeze({
-      caseSetId: TEACHER_CASE_SET_ID,
-      caseSetStatus: TEACHER_CASE_SET_STATUS,
-      caseKey: frozenCase.caseKey
-    })
-    formalAttemptKey = `${evaluation.testRunId}:${evaluation.testCaseId}`
-  }
+  const question = validatedPayload.followUpQuestion
+  const answerStrategy = ordinaryStrategy(question, sourceHistory, attachedMove)
 
   const effective = cloneAndFreeze({
     requestId: validatedPayload.requestId,
@@ -246,8 +121,8 @@ export function prepareExplanationExecution(
     userLevel: validatedPayload.userLevel,
     explanationStyle: validatedPayload.explanationStyle,
     language: validatedPayload.language,
-    conversationHistory,
-    ...(effectiveQuestion ? { followUpQuestion: effectiveQuestion } : {}),
+    conversationHistory: sourceHistory,
+    ...(question ? { followUpQuestion: question } : {}),
     ...(attachedMove ? { attachedMove } : {}),
     ...(validatedPayload.userMoveReason
       ? { userMoveReason: validatedPayload.userMoveReason }
@@ -266,12 +141,9 @@ export function prepareExplanationExecution(
 
   return freezeDeep({
     [PREPARED_EXECUTION]: true as const,
-    interactionKind,
+    interactionKind: 'ordinary' as const,
     answerStrategy,
     effective,
-    ...(evaluation ? { evaluation } : {}),
-    ...(teacherCase ? { teacherCase } : {}),
-    ...(formalAttemptKey ? { formalAttemptKey } : {}),
     executionSemanticsVersion: EXPLANATION_EXECUTION_SEMANTICS_VERSION
   })
 }

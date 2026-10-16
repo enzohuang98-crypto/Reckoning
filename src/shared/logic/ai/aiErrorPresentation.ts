@@ -54,13 +54,6 @@ export function presentAiError(input: AiErrorInput): AiErrorPresentation | null 
       actions: ['reanalyze']
     }
   }
-  if (code === 'teacher_case_rejected' || code === 'teacher_case_busy') {
-    return {
-      title: '老師案例無法執行',
-      detail: input.message ?? '請重新載入案例後再試。',
-      actions: code === 'teacher_case_busy' ? ['retry'] : []
-    }
-  }
   if (code === 'too_many_requests') {
     return {
       title: '同時進行的 AI 工作過多',

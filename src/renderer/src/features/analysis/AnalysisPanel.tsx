@@ -13,7 +13,6 @@ import type {
   EngineAnalysisProgressPayload,
   EngineAnalysisResultPayload,
   EngineStatus,
-  GenerateExplanationDonePayload,
   GenerateExplanationStartPayload,
   GenerateExplanationErrorPayload
 } from '@shared/types/ipc'
@@ -22,10 +21,7 @@ import type { EngineCandidateMove } from '@shared/types/EngineAnalysis'
 import type {
   EngineRegistrySnapshot
 } from '@shared/types/EngineRegistry'
-import type {
-  HarnessProgressPayload,
-  TeacherTestRunStatusV1
-} from '@shared/types/Harness'
+import type { HarnessProgressPayload } from '@shared/types/Harness'
 import type {
   AIConversation,
   ConversationMessage
@@ -234,10 +230,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   const [harnessProgress, setHarnessProgress] =
     useState<HarnessProgressPayload | null>(null)
   const [traceId, setTraceId] = useState<string | null>(null)
-  const [teacherTestStatus, setTeacherTestStatus] =
-    useState<TeacherTestRunStatusV1 | null>(null)
-  const [teacherExecution, setTeacherExecution] =
-    useState<GenerateExplanationDonePayload['teacherExecution'] | null>(null)
   const activeRequestId = useRef<string | null>(null)
   const activeAnalysisKey = useRef<string | null>(null)
   const engineDeadlineTimer = useRef<number | null>(null)
@@ -274,22 +266,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   useEffect(() => {
     conversationRef.current = conversation
   }, [conversation])
-
-  useEffect(() => {
-    if (activeView !== 'coach') return
-    let current = true
-    void window.api.teacherTest
-      .status()
-      .then((next) => {
-        if (current) setTeacherTestStatus(next)
-      })
-      .catch(() => {
-        if (current) setTeacherTestStatus(null)
-      })
-    return () => {
-      current = false
-    }
-  }, [activeView, board.fen, actualMove?.selectionId])
 
   const refreshEngineState = useCallback(async (): Promise<void> => {
     try {
@@ -401,7 +377,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     setNotice(null)
     setAiError(null)
     setAiNotice(null)
-    setTeacherExecution(null)
     onResult(null)
     onExplanation(null)
   }, [board.fen, analysisMove, actualMove?.selectionId, onReplayCandidates])
@@ -569,7 +544,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       setHarnessProgress(null)
       setStreamingText('')
       setTraceId(payload.traceId ?? null)
-      setTeacherExecution(payload.teacherExecution ?? null)
       setAnswerMeta(
         payload.answerKind
           ? {
@@ -1314,21 +1288,12 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               }
               onChangeModel={onOpenAiSettings}
               notice={aiNotice}
-              teacherTestStatus={teacherTestStatus}
-              teacherExecution={teacherExecution}
               followUp={followUp}
               onFollowUpChange={setFollowUp}
               onContinue={continueExplain}
               onCancel={cancelExplain}
               onSubmitFollowUp={submitFollowUp}
               onCopy={() => void copyExplanation()}
-              onCopyTeacherId={(value) => {
-                void navigator.clipboard.writeText(value).then(() => {
-                  setAiNotice('已複製老師案例識別碼。')
-                }).catch(() => {
-                  setAiError('無法複製識別碼，請手動選取。')
-                })
-              }}
               onFeedback={(feedback) => {
                 if (!traceId) return
                 void window.api.ai

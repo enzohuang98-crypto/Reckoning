@@ -27,15 +27,12 @@ function props(
     aiBlockedReason: null,
     error: null,
     notice: null,
-    teacherTestStatus: null,
-    teacherExecution: null,
     followUp: '',
     onFollowUpChange: () => undefined,
     onContinue: () => undefined,
     onCancel: () => undefined,
     onSubmitFollowUp: () => undefined,
     onCopy: () => undefined,
-    onCopyTeacherId: () => undefined,
     onFeedback: () => undefined,
     ...overrides
   }

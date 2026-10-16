@@ -52,13 +52,13 @@ assert.deepEqual(exported[0].providerDiagnostic, {
   message: 'safe diagnostic'
 })
 
-const teacherRunId = 'teacher-run-a'
-const teacherTrace = {
+// 老師測試已移除（P4-5）：舊紀錄中的 teacher 欄位在匯出時一律丟棄，匯出包含所有 trace。
+const legacyTeacherTrace = {
   ...trace,
-  id: 'trace-teacher-run-a',
+  id: 'trace-legacy-teacher',
   evaluation: {
     schemaVersion: 1,
-    testRunId: teacherRunId,
+    testRunId: 'teacher-run-a',
     testCaseId: 'case-a',
     canonicalizationVersion: 1,
     externalReviewId: 'review-a'
@@ -69,36 +69,32 @@ const teacherTrace = {
   teacherCaseKey: 'case-a',
   feedback: 'incorrect'
 } as unknown as HarnessTrace
-const previousRunTrace = {
+const ordinaryV2Trace = {
   ...trace,
-  id: 'trace-previous-run',
-  evaluation: {
-    schemaVersion: 1,
-    testRunId: 'teacher-run-previous',
-    testCaseId: 'case-previous',
-    canonicalizationVersion: 1,
-    externalReviewId: 'review-previous'
-  },
-  feedback: 'incorrect'
+  id: 'trace-ordinary-v2',
+  interactionKind: 'ordinary',
+  executionSemanticsVersion: 2,
+  feedback: 'unclear'
 } as unknown as HarnessTrace
-const runScopedStore = new HarnessTraceStore({
-  read: () => [teacherTrace, previousRunTrace]
+const legacyStore = new HarnessTraceStore({
+  read: () => [legacyTeacherTrace, ordinaryV2Trace, trace]
 } as never)
 assert.deepEqual(
-  runScopedStore.listForExport(teacherRunId).map((item) => item.id),
-  ['trace-teacher-run-a']
+  legacyStore.listForExport().map((item) => item.id),
+  ['trace-legacy-teacher', 'trace-ordinary-v2', trace.id]
 )
 assert.deepEqual(
-  runScopedStore.listRegressionCases(teacherRunId).map((item) => item.traceId),
-  ['trace-teacher-run-a']
+  legacyStore.listRegressionCases().map((item) => item.traceId),
+  ['trace-legacy-teacher', 'trace-ordinary-v2']
 )
-const exportedTeacherTrace = runScopedStore.listForExport(teacherRunId)[0]
-assert.equal(exportedTeacherTrace.interactionKind, 'teacher-formal-case')
-assert.equal(exportedTeacherTrace.executionSemanticsVersion, 2)
-assert.equal(exportedTeacherTrace.teacherCaseSetId, 'teacher-test-cases-v1')
-assert.equal(exportedTeacherTrace.teacherCaseKey, 'case-a')
+const exportedLegacy = legacyStore.listForExport()[0] as unknown as Record<string, unknown>
+for (const key of ['evaluation', 'interactionKind', 'teacherCaseSetId', 'teacherCaseKey']) {
+  assert.equal(key in exportedLegacy, false, `${key} 不得出現在匯出中`)
+}
+assert.equal(legacyStore.listForExport()[1].interactionKind, 'ordinary')
+assert.equal(legacyStore.listForExport()[1].executionSemanticsVersion, 2)
 assert.equal(
-  Object.prototype.hasOwnProperty.call(runScopedStore.listForExport('teacher-run-previous')[0], 'executionSemanticsVersion'),
+  Object.prototype.hasOwnProperty.call(legacyStore.listForExport()[2], 'executionSemanticsVersion'),
   false,
   '舊 trace 不得被推斷成 v2 isolated-input evidence'
 )

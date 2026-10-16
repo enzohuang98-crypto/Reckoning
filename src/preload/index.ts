@@ -17,8 +17,7 @@ import {
   type GenerateExplanationDonePayload,
   type GenerateExplanationErrorPayload,
   type GenerateExplanationStartPayload,
-  type RendererApi,
-  type TeacherTestStartInput
+  type RendererApi
 } from '@shared/types/ipc'
 import type { AppDataSnapshot } from '@shared/types/AppData'
 import type { HarnessProgressPayload } from '@shared/types/Harness'
@@ -90,12 +89,6 @@ const api: RendererApi = {
       ipcRenderer.invoke(IPC.AI_OPENROUTER_GET_BACKUP_MODELS),
     setOpenRouterBackupModels: (input) =>
       ipcRenderer.invoke(IPC.AI_OPENROUTER_SET_BACKUP_MODELS, input)
-  },
-  teacherTest: {
-    status: () => ipcRenderer.invoke(IPC.TEACHER_TEST_STATUS),
-    start: (input: TeacherTestStartInput) =>
-      ipcRenderer.invoke(IPC.TEACHER_TEST_START, input),
-    end: () => ipcRenderer.invoke(IPC.TEACHER_TEST_END)
   },
   data: {
     load: () => ipcRenderer.invoke(IPC.DATA_LOAD),

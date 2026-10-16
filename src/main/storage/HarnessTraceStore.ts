@@ -223,26 +223,6 @@ function sanitizeEvidence(value: unknown): HarnessEvidence | null {
   }
 }
 
-function sanitizeEvaluation(value: unknown): HarnessTrace['evaluation'] | undefined {
-  if (!isRecord(value)) return undefined
-  if (
-    value.schemaVersion !== 1 ||
-    typeof value.testRunId !== 'string' ||
-    typeof value.testCaseId !== 'string' ||
-    value.canonicalizationVersion !== 1 ||
-    typeof value.externalReviewId !== 'string'
-  ) {
-    return undefined
-  }
-  return {
-    schemaVersion: 1,
-    testRunId: value.testRunId,
-    testCaseId: value.testCaseId,
-    canonicalizationVersion: 1,
-    externalReviewId: value.externalReviewId
-  }
-}
-
 function sanitizeProviderDiagnostic(value: unknown): AICredentialDiagnostic | undefined {
   if (!isRecord(value)) return undefined
   const stages: AICredentialTestStage[] = ['key', 'catalog', 'generation', 'storage']
@@ -351,22 +331,11 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
       ? { providerDiagnostic: sanitizeProviderDiagnostic(trace.providerDiagnostic) }
       : {}),
     ...(feedback ? { feedback } : {}),
-    ...(sanitizeEvaluation(trace.evaluation)
-      ? { evaluation: sanitizeEvaluation(trace.evaluation) }
-      : {}),
-    ...(trace.interactionKind === 'ordinary' ||
-    trace.interactionKind === 'teacher-prelude' ||
-    trace.interactionKind === 'teacher-formal-case'
+    ...(trace.interactionKind === 'ordinary'
       ? { interactionKind: trace.interactionKind }
       : {}),
     ...(trace.executionSemanticsVersion === 2
       ? { executionSemanticsVersion: 2 as const }
-      : {}),
-    ...(trace.teacherCaseSetId === 'teacher-test-cases-v1'
-      ? { teacherCaseSetId: trace.teacherCaseSetId }
-      : {}),
-    ...(typeof trace.teacherCaseKey === 'string'
-      ? { teacherCaseKey: trace.teacherCaseKey.slice(0, 128) }
       : {}),
     status: trace.status,
     ...(typeof trace.finalText === 'string'
@@ -445,9 +414,8 @@ export class HarnessTraceStore {
   }
 
   /** Export uses the same positive allowlist as storage, never arbitrary JSON fields. */
-  listForExport(testRunId?: string): HarnessTrace[] {
+  listForExport(): HarnessTrace[] {
     return this.list()
-      .filter((trace) => testRunId === undefined || trace.evaluation?.testRunId === testRunId)
       .map(sanitizeTrace)
       .filter((trace): trace is HarnessTrace => trace !== null)
   }
@@ -474,14 +442,9 @@ export class HarnessTraceStore {
    * 匯出後可直接加入 tests/fixtures 的回歸評測集，
    * 用 screenExplanationText 驗證未來版本不再產出同類問題。
    */
-  listRegressionCases(testRunId?: string): HarnessRegressionCase[] {
+  listRegressionCases(): HarnessRegressionCase[] {
     return this.list()
-      .filter(
-        (trace) =>
-          (testRunId === undefined || trace.evaluation?.testRunId === testRunId) &&
-          trace.feedback !== undefined &&
-          trace.feedback !== 'helpful'
-      )
+      .filter((trace) => trace.feedback !== undefined && trace.feedback !== 'helpful')
       .map((trace) => ({
         traceId: trace.id,
         createdAt: trace.createdAt,

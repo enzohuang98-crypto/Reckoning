@@ -11,10 +11,10 @@ export function configuredExplainPipeline(
   return env.XQA_EXPLAIN_PIPELINE === 'v1' ? 'v1' : EXPLAIN_PIPELINE
 }
 
-/** 老師測試（prelude／正式案例）仍走 v1，直到計畫 P4-5 決定其去留。 */
+/** 一般解說的管線選擇（老師測試已移除，所有解說都依旗標決定）。 */
 export function selectExplainPipeline(
-  execution: Pick<PreparedExplanationExecution, 'interactionKind'>,
+  _execution: Pick<PreparedExplanationExecution, 'interactionKind'>,
   env: Readonly<Record<string, string | undefined>> = process.env
 ): ExplainPipelineVersion {
-  return execution.interactionKind === 'ordinary' ? configuredExplainPipeline(env) : 'v1'
+  return configuredExplainPipeline(env)
 }

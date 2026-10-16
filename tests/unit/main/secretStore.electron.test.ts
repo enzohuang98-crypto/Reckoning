@@ -14,7 +14,6 @@ import {
   SecretCredentialChangedError,
   SecretCredentialConflictError
 } from '../../../src/main/storage/SecretStore'
-import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
 
 const encryption = {
@@ -96,15 +95,6 @@ async function main(): Promise<void> {
         uncertaintyReasons: ['credential test']
       }
     }
-    const teacherRun = new TeacherTestRunService({
-      getRuntime: () => ({
-        appVersion: '0.3.11',
-        platform: 'win32',
-        systemVersion: '10.0.22631',
-        osBuild: 'Windows 11 10.0.22631',
-        arch: 'x64'
-      })
-    })
     const requestPayload: GenerateExplanationStartPayload = {
       requestId: 'credential-binding-request',
       analysisId: session.analysisId,
@@ -117,8 +107,7 @@ async function main(): Promise<void> {
     const proExecution = prepareExplanationExecution(
       requestPayload,
       session,
-      requestPayload.model,
-      teacherRun
+      requestPayload.model
     )
     const proRequest = await buildAIExplanationRequest(proExecution, { secretStore: store })
     assert.equal(
@@ -132,8 +121,7 @@ async function main(): Promise<void> {
           prepareExplanationExecution(
             { ...requestPayload, model: 'gemini-3.1-flash-lite' },
             session,
-            'gemini-3.1-flash-lite',
-            teacherRun
+            'gemini-3.1-flash-lite'
           ),
           { secretStore: store }
         ),
@@ -179,8 +167,7 @@ async function main(): Promise<void> {
         model: openRouterModel
       },
       session,
-      openRouterModel,
-      teacherRun
+      openRouterModel
     )
     const openRouterRequest = await buildAIExplanationRequest(
       openRouterExecution,

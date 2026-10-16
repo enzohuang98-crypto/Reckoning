@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 import { runExplainPipelineV2, type ExplainPipelineDeps } from '../../../src/main/ai/explain/ExplainPipelineV2'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
 import { AIHttpError, AIResponseValidationError } from '../../../src/main/ai/http'
-import { TeacherTestRunService } from '../../../src/main/teacherTest/TeacherTestRunService'
 import { checkAnswer } from '../../../src/shared/logic/ai/AnswerCheck'
 import { buildExplanationFacts } from '../../../src/shared/logic/analysis/ExplanationFacts'
 import { compareMove } from '../../../src/shared/logic/analysis/MoveComparisonService'
@@ -74,10 +73,6 @@ class ScriptedProvider implements AIProvider {
   }
 }
 
-const inactiveTeacherRun = new TeacherTestRunService({
-  getRuntime: () => ({ appVersion: '0.4.14', platform: 'win32', systemVersion: '10', osBuild: '10', arch: 'x64' })
-})
-
 function sessionFor(fixture: FixtureCase): AnalysisSession {
   return {
     analysisId: `analysis-${fixture.id}`,
@@ -116,8 +111,7 @@ async function run(fixture: FixtureCase, steps: Step[], options: RunOptions = {}
       ...(fixture.userMoveReason ? { userMoveReason: fixture.userMoveReason } : {})
     },
     sessionFor(fixture),
-    'vendor/primary:free',
-    inactiveTeacherRun
+    'vendor/primary:free'
   )
   let error: unknown = null
   let result: Awaited<ReturnType<typeof runExplainPipelineV2>> | null = null

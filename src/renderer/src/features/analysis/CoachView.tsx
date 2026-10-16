@@ -1,14 +1,7 @@
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { AIConversation } from '@shared/types/AppData'
-import type {
-  EngineAnalysisResultPayload,
-  GenerateExplanationDonePayload
-} from '@shared/types/ipc'
-import type {
-  HarnessProgressPayload,
-  HarnessTrace,
-  TeacherTestRunStatusV1
-} from '@shared/types/Harness'
+import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
+import type { HarnessProgressPayload, HarnessTrace } from '@shared/types/Harness'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
 import {
   presentAiError,
@@ -44,15 +37,12 @@ interface Props {
   canChangeModel?: boolean
   onChangeModel?: () => void
   notice: string | null
-  teacherTestStatus: TeacherTestRunStatusV1 | null
-  teacherExecution: GenerateExplanationDonePayload['teacherExecution'] | null
   followUp: string
   onFollowUpChange: (value: string) => void
   onContinue: () => void
   onCancel: () => void
   onSubmitFollowUp: () => void
   onCopy: () => void
-  onCopyTeacherId: (value: string) => void
   onFeedback: (feedback: NonNullable<HarnessTrace['feedback']>) => void
 }
 
@@ -77,15 +67,12 @@ export function CoachView({
   canChangeModel = false,
   onChangeModel,
   notice,
-  teacherTestStatus,
-  teacherExecution,
   followUp,
   onFollowUpChange,
   onContinue,
   onCancel,
   onSubmitFollowUp,
   onCopy,
-  onCopyTeacherId,
   onFeedback
 }: Props): JSX.Element {
   const engineAnalysis = result?.engineAnalysis
@@ -116,48 +103,6 @@ export function CoachView({
         </div>
       )}
       {notice && <div className="notice-text" role="status">{notice}</div>}
-      {teacherTestStatus?.active && (
-        <div className="notice-text small" role="status">
-          目前是工程凍結題測試，狀態仍為 fixture-only、teacher-confirmation-pending。
-          正式案例不會把上方 prelude 或先前對話送入模型；非 frozen-case 問題會被阻止。
-        </div>
-      )}
-      {teacherExecution?.interactionKind === 'teacher-prelude' && (
-        <div className="notice-text small" role="status">
-          這次是老師測試 prelude，不計入正式案例。
-        </div>
-      )}
-      {teacherExecution?.interactionKind === 'teacher-formal-case' && (
-        <div className="notice-text small teacher-execution-identity" role="status">
-          <b>老師凍結案例已記錄</b>
-          <span>Case：{teacherExecution.caseKey}</span>
-          <span>
-            testCaseId：{teacherExecution.testCaseId}
-            {teacherExecution.testCaseId && (
-              <button
-                type="button"
-                className="btn ghost small"
-                onClick={() => onCopyTeacherId(teacherExecution.testCaseId!)}
-              >
-                複製
-              </button>
-            )}
-          </span>
-          <span>
-            externalReviewId：{teacherExecution.externalReviewId}
-            {teacherExecution.externalReviewId && (
-              <button
-                type="button"
-                className="btn ghost small"
-                onClick={() => onCopyTeacherId(teacherExecution.externalReviewId!)}
-              >
-                複製
-              </button>
-            )}
-          </span>
-        </div>
-      )}
-
       {aiBusy && harnessProgress && (
         <HarnessProgressCard
           progress={harnessProgress}
