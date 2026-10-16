@@ -267,6 +267,40 @@ async function main(): Promise<void> {
   assert.equal(capped.provider.requests.length, 3)
   assert.equal(capped.result?.answerKind, 'engine_summary')
 
+  // 連線中斷（fetch 的 TypeError，底層代碼在 cause）→ 同一模型重試一次，並記下代碼。
+  const socketError = (): TypeError =>
+    Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' })
+    })
+  const reconnected = await run(opening, [{ error: socketError() }, { text: opening.goodAnswer! }])
+  assert.equal(reconnected.result?.answerKind, 'ai')
+  assert.equal(reconnected.provider.requests.length, 2)
+  assert.equal(reconnected.provider.requests[1].model, 'vendor/primary:free')
+  assert.equal(reconnected.provider.requests[1].reasoningMode, undefined)
+  assert.deepEqual(
+    reconnected.traces.at(-1)?.attempts?.map((attempt) => [attempt.kind, attempt.error, attempt.networkCode]),
+    [['primary', 'network', 'UND_ERR_SOCKET'], ['network_retry', undefined, undefined]]
+  )
+  assert.ok(reconnected.progress.some((text) => /連線中斷/.test(text)))
+
+  // 重試仍斷線且有備援 → 改用備援；備援也斷線 → 交付引擎摘要（不再是錯誤卡）。
+  const offline = await run(opening, [{ error: socketError() }, { error: socketError() }, { error: socketError() }], {
+    backupModels: ['vendor/backup:free']
+  })
+  assert.equal(offline.error, null)
+  assert.equal(offline.result?.answerKind, 'engine_summary')
+  assert.match(offline.result?.finalText ?? '', /連不上 AI 服務/)
+  assert.deepEqual(offline.traces.at(-1)?.attempts?.map((attempt) => attempt.kind), ['primary', 'network_retry', 'backup'])
+  assert.deepEqual(
+    offline.traces.at(-1)?.attempts?.map((attempt) => attempt.networkCode),
+    ['UND_ERR_SOCKET', 'UND_ERR_SOCKET', 'UND_ERR_SOCKET']
+  )
+
+  // 沒有底層代碼的 TypeError 一樣歸類 network 並重試，但不會捏造代碼。
+  const bare = await run(opening, [{ error: new TypeError('x is undefined') }, { text: opening.goodAnswer! }])
+  assert.equal(bare.result?.answerKind, 'ai')
+  assert.equal(bare.traces.at(-1)?.attempts?.[0].networkCode, undefined)
+
   // 簡體中文模式：繁體記譜與簡體字不會被誤判。
   const simplified = await run(byId('simplified-chinese'), [{ text: byId('simplified-chinese').goodAnswer! }])
   assert.equal(simplified.result?.answerKind, 'ai')

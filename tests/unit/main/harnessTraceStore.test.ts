@@ -21,8 +21,13 @@ const trace = {
     retryable: true,
     finishReason: 'length',
     outputTokens: 2500,
+    networkCode: 'UND_ERR_SOCKET',
     message: 'safe diagnostic'
   },
+  attempts: [
+    { model: 'vendor/a:free', kind: 'primary', durationMs: 90, error: 'network', networkCode: 'ECONNRESET' },
+    { model: 'vendor/a:free', kind: 'network_retry', durationMs: 900, networkCode: 'raw text: should-never-export' }
+  ],
   finalText: 'safe text',
   apiKey: 'should-never-export',
   authorization: 'Bearer should-never-export',
@@ -50,8 +55,14 @@ assert.deepEqual(exported[0].providerDiagnostic, {
   retryable: true,
   finishReason: 'length',
   outputTokens: 2500,
+  networkCode: 'UND_ERR_SOCKET',
   message: 'safe diagnostic'
 })
+// 連線錯誤代碼只保留大寫代碼格式；network_retry 是合法的呼叫種類。
+assert.deepEqual(exported[0].attempts, [
+  { model: 'vendor/a:free', kind: 'primary', durationMs: 90, error: 'network', networkCode: 'ECONNRESET' },
+  { model: 'vendor/a:free', kind: 'network_retry', durationMs: 900 }
+])
 
 // 老師測試已移除（P4-5）：舊紀錄中的 teacher 欄位在匯出時一律丟棄，匯出包含所有 trace。
 const legacyTeacherTrace = {

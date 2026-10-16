@@ -190,13 +190,15 @@ export type ExplanationAnswerKind = 'ai' | 'engine_summary' | 'board_rule'
 /** v2 每一次模型呼叫的紀錄（不含 prompt 或回答原文）。 */
 export interface ExplainAttemptTrace {
   model: string
-  kind: 'primary' | 'recovery' | 'backup' | 'repair'
+  kind: 'primary' | 'network_retry' | 'recovery' | 'backup' | 'repair'
   durationMs: number
   finishReason?: string
   outputTokens?: number
   reasoningTokens?: number
   /** 失敗時的分類（例如 rate_limited、timeout）；不含服務原文。 */
   error?: string
+  /** network 失敗時的底層連線錯誤代碼（例如 ECONNRESET）。 */
+  networkCode?: string
 }
 
 /** 「匯出診斷紀錄」的檔案格式。 */
