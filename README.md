@@ -158,7 +158,7 @@ npm.cmd run security:audit
 npm.cmd run build
 ```
 
-測試範圍包含象棋規則、分數與排序、PV 重播、Provider／模型綁定、金鑰儲存、IPC 架構與來源驗證、安全邊界、PlayOK 匯入、更新流程、設定遷移、解說事實表與答案檢查、v2 解說管線與引擎端對端行為。`npm test` 是 `package.json` 中逐一執行的測試清單；單獨執行某一檔時照抄其中對應指令即可。部分測試（安全基線、引擎登錄、引擎端對端、`safeStorage`）只能在 Windows 執行。
+測試範圍包含象棋規則、分數與排序、PV 重播、Provider／模型綁定、金鑰儲存、IPC 架構與來源驗證、安全邊界、PlayOK 匯入、更新流程、設定遷移、解說事實表與答案檢查、v2 解說管線與引擎端對端行為。`npm test` 依 `tests/test-manifest.json` 逐一執行並在最後列出所有失敗；`npm.cmd test -- --only <路徑片段>` 只跑部分測試。部分測試（安全基線、引擎登錄、引擎端對端、`safeStorage`、Electron 更新測試）只能在 Windows 執行，其他平台可用 `--portable` 略過。
 
 ### AI 解說的開發與驗收
 
