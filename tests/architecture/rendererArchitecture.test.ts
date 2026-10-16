@@ -523,7 +523,8 @@ async function main(): Promise<void> {
     assert.match(panel, /conversationMessages: currentConversation\?\.messages\.slice\(\) \?\? \[\]/)
     assert.match(panel, /\.\.\.pending\.conversationMessages/)
     assert.match(panel, /provider: payload\.provider \?\? pending\?\.provider/)
-    assert.match(panel, /model: payload\.model \?\? pending\?\.model/)
+    // v2 備援時以實際回答的模型（actualModel）優先，仍然先於 renderer 的 pending 設定。
+    assert.match(panel, /model: payload\.actualModel \?\? payload\.model \?\? pending\?\.model/)
     assert.match(panel, /if \(!result \|\| activeAiRequestId\.current\) return/)
   })
 

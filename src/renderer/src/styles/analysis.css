@@ -971,3 +971,16 @@
 .ai-question {
   margin-top: 12px;
 }
+
+.ai-summary-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-color: #e8c96b;
+  background: #fff8e1;
+}
+
+.ai-answer-model {
+  margin: 6px 0;
+}

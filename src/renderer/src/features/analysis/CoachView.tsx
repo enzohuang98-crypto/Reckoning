@@ -15,7 +15,7 @@ import {
   type AiErrorAction,
   type AiErrorInput
 } from '@shared/logic/ai/aiErrorPresentation'
-import type { ActualMoveSelection } from './types'
+import type { ActualMoveSelection, AiAnswerMeta } from './types'
 import { ExplanationView } from '../explanations/ExplanationView'
 import { AiErrorCard } from './AiErrorCard'
 import { HarnessProgressCard } from './HarnessProgressCard'
@@ -28,6 +28,11 @@ interface Props {
   actualMove: ActualMoveSelection | null
   aiBusy: boolean
   streamingText: string
+  /** v2：目前串流的是第幾次模型呼叫；大於 1 代表正在修正或改用備援。 */
+  streamingAttempt?: number
+  /** v2：上一個完成的回答是 AI（由哪個模型）還是引擎重點摘要。 */
+  answerMeta?: AiAnswerMeta | null
+  onRetryAi?: () => void
   harnessProgress: HarnessProgressPayload | null
   traceId: string | null
   aiBlockedReason: string | null
@@ -59,6 +64,9 @@ export function CoachView({
   actualMove,
   aiBusy,
   streamingText,
+  streamingAttempt = 1,
+  answerMeta = null,
+  onRetryAi,
   harnessProgress,
   traceId,
   aiBlockedReason,
@@ -193,10 +201,31 @@ export function CoachView({
         <section className="ai-explanation streaming">
           <div className="section-heading">
             <h4>AI 解說生成中</h4>
-            <span className="muted small">正在整理重點</span>
+            <span className="muted small">
+              {streamingAttempt > 1 ? '正在檢查並修正…' : '正在整理重點'}
+            </span>
           </div>
           <ExplanationView text={streamingText} />
         </section>
+      )}
+
+      {answerMeta && !aiBusy && answerMeta.answerKind === 'engine_summary' && (
+        <div className="notice-text ai-summary-banner" role="status">
+          <span>AI 這次沒有通過檢查，下方是引擎重點摘要（非 AI 生成）。</span>
+          {onRetryAi && (
+            <button type="button" className="btn small" onClick={onRetryAi}>
+              重試 AI
+            </button>
+          )}
+        </div>
+      )}
+      {answerMeta && !aiBusy && answerMeta.answerKind === 'ai' && answerMeta.actualModel && (
+        <div className="muted small ai-answer-model" role="note">
+          由 {answerMeta.actualModel} 回答
+          {answerMeta.fallbackFromModel
+            ? `（${answerMeta.fallbackFromModel} 暫時無法使用：${answerMeta.fallbackReason ?? '服務故障'}）`
+            : ''}
+        </div>
       )}
 
       {conversation && latestMessage && (
