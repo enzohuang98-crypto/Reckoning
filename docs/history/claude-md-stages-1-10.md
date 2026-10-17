@@ -68,7 +68,7 @@
     請求形狀、回應解析、大小上限、金鑰遮蔽與 UI／catalog 模型一致性）。
     當時 `npm test` 依序執行全部 14 個測試檔（現已增至約 24 個，見上方「啟動指令」）。
 - Stage 8：SDS v0.2 全面對齊 + 買斷授權 License Key
-  （規格書：`docs/specifications/SDS-v0.2.docx`，差異分析：`docs/specifications/gap-analysis-v0.2.md`）。
+  （規格書：`docs/specifications/SDS-v0.2.docx`，差異分析：`docs/archive/specifications/gap-analysis-v0.2.md`）。
   - **資料契約對齊 SDS v0.2**：`EngineScore`（cp/mate、comparableValue、displayText、
     wasInverted、source；raw 僅 debug）、六級 `MistakeLevel` 半開區間 + §2.13.6
     confidence、雙階段分析與 `invertEngineScore`（mate 0 反轉為 +MATE_SCORE

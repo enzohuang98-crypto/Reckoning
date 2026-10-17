@@ -90,7 +90,7 @@ Workspace
 - Live 採有界 movetime 搜尋區段連續串接：先快速產生可用結果，再以較長區段持續加深；錯誤使用 1、2、4、5 秒上限退避重試。不能直接改成 `go infinite`，因為每段完成後的穩定 analysis ID 是 AI session 與持久化的邊界。
 - 常用動作直接顯示；低頻局面功能放在「局面工具」選單。
 - 原始輸出、主引擎選擇與收藏工具由頂部「分析資料」展開，不占用右側教練／猜著空間。
-- 設定依用途分成 AI、本機引擎、資料與系統三類，分類導覽固定在設定內容上方。Harness 模式與預算不是使用者設定，由 main 的 `FIXED_HARNESS_OPTIONS` 固定（設定 schema v5）；本機診斷紀錄的匯出／清除在「資料與系統」。
+- 設定依用途分成 AI、本機引擎、資料與系統三類，分類導覽固定在設定內容上方。解說預算不是使用者設定（`explain/budget.ts` 常數；設定 schema v5）；本機診斷紀錄的匯出／清除在「資料與系統」。
 - 錯題本／待理解頁面上方都有搜尋（錯題本另加錯誤等級與理解狀態篩選），沿用 `.list-toolbar` 樣式，篩選結果數與總數並列顯示在頁首右上角。
 
 ## 4. 資料流
@@ -118,24 +118,20 @@ BoardState change
 
 ## 5. AI 解說 Loop 與本機知識
 
-正常解說不是單次 prompt，而是固定上限的品質迴圈：
+解說只走 v2 管線（`src/main/ai/explain/`；v1 Harness 已於 P4-1 刪除），每一步都有固定上限：
 
 ```text
-deterministic plan
-  → engine evidence packet
-  → consequence audit
-  → structured writer
-  → deterministic validation + causal-chain score
-  → diagnose failed sections
-  → rewrite failed sections only (最多固定輪數)
-  → validated answer 或 evidence-based fallback
+事實表（程式重播 PV 算出）
+  → 純文字 prompt（promptV2）
+  → AnswerCheck 客觀檢查
+  → 有硬錯就修正一次
+  → AI 回答，或「引擎重點摘要（非 AI 生成）」＋原因
 ```
 
-- 一般成功路徑只需要「後果審查 + 寫作」兩次模型呼叫；規劃、證據關聯、術語檢查與品質評分都在本機完成。
-- `resolveExplanationCredential()` 是 production 唯一注入 API Key 的入口。一般解說預設走 v2 管線（`src/main/ai/explain/`：事實表 → 純文字 prompt → 客觀檢查 → 修正一次 → 引擎重點摘要），由 `promptV2` 組裝 prompt；老師測試案例與 `XQA_EXPLAIN_PIPELINE=v1` 回滾時走 v1，由 `buildAIExplanationRequest()` 組 PromptBuilder prompt。多輪 `conversationHistory`、追問與目標語言都必須經這兩個入口之一送進模型，不可只停留在 renderer 顯示或 IPC 型別。計畫見 `docs/plans/ai-chat-reliability-v2.md`。
+- `resolveExplanationCredential()` 是 production 唯一注入 API Key 的入口；prompt 由 `promptV2` 組裝。多輪 `conversationHistory`、追問與目標語言都必須經 v2 管線送進模型，不可只停留在 renderer 顯示或 IPC 型別。計畫見 `docs/plans/ai-chat-reliability-v2.md`。
 - AI 請求與 Live refinement 可平行執行。Conversation 必須綁定發問當下捕捉的 analysis ID 與 FEN，AI 完成事件不得改用當時最新的 Live result。
-- 每個核心主張必須引用 `evidenceIds`，並連到已驗證的 `findingIds`；空泛標籤、唯分數理由、虛構主線與不完整因果鏈都不得通過。
-- 暫時性 429 / 5xx / timeout 只自動重試一次；模型呼叫與引擎加深都有固定預算，不能形成無限 loop。
+- AnswerCheck 只擋客觀錯誤（不存在的著法、吃子／將軍與事實矛盾、內部格式外洩、輪走方錯誤、截斷等）；以分數當理由、空泛詞只記軟警告。
+- 連線中斷、暫時性 429 只自動重試一次；模型呼叫有固定預算（`explain/budget.ts`），不能形成無限 loop。
 - `xiangqiKnowledge.ts` 是可檢索的結構化本機知識庫；只把與局面相關的小段放進 prompt。它協助低階模型理解術語，但永遠不能冒充本局引擎證據。
 - 穩定術語參考來源包括中國象棋協會 2020 規則術語、世界象棋聯合會入門與記譜資料，以及公開術語分類。知識定義均重新整理，不逐字複製來源。
 
@@ -143,7 +139,7 @@ deterministic plan
 
 - 分析只使用一個主引擎；雙引擎複核已於 P4-5 移除（設定開關、複核引擎選擇、平行分析與 UI 都已刪除）。
 - 分數單位是「兵」，分差門檻不得誤用 centipawn。
-- `DualEngineComparison` 與 `AnalysisSession` 的複核欄位只剩 v1 Harness（`XQA_EXPLAIN_PIPELINE=v1` 回滾路徑）唯讀引用，不再有任何程式寫入；P4-1 刪除 v1 時一併移除。
+- `DualEngineComparison` 與 `AnalysisSession` 的複核欄位已隨 P4-1 刪除 v1 時一併移除。
 
 ## 7. 外接 AI 相容層
 

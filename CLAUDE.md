@@ -42,8 +42,8 @@ npm run security:audit   # 相依弱點分層把關（政策見 docs/architectur
 - 只能在 Windows 跑：`tests/security/security.test.ts`（含 Windows 路徑斷言）、
   `tests/unit/main/engineRegistry.test.ts`、`tests/e2e/engine.e2e.ts`（需先用 `csc` 編譯
   `tests/support/FakeEngine.cs` 成 `fake-engine.exe`）與 `npx electron tests/support/run-secret-store-test.cjs`。
-- `npm run typecheck` 也檢查測試檔（`tsconfig.test.node.json`／`tsconfig.test.web.json`；v1 的 `harness.test.ts`
-  暫時排除）。renderer 測試由 tsx 以 classic JSX 轉譯，所以必須 `import React`。
+- `npm run typecheck` 也檢查測試檔（`tsconfig.test.node.json`／`tsconfig.test.web.json`）。
+  renderer 測試由 tsx 以 classic JSX 轉譯，所以必須 `import React`。
 - 新測試：`node:assert/strict`、本機 HTTP mock、失敗設 `process.exitCode = 1`，並加入 `tests/test-manifest.json`
   （`tests/architecture/testManifest.test.ts` 會擋下沒被執行的測試檔）。
 - 需要真實金鑰的工具（不在 `npm test` 內，金鑰只從環境變數讀、輸出不得含金鑰）：
@@ -51,7 +51,6 @@ npm run security:audit   # 相依弱點分層把關（政策見 docs/architectur
     預設只收 `:free`；`--allow-paid` 才放行付費模型（會計費），報表會標示付費輪不代表免費模型的交付率。
   - `tools/acceptance/openrouter-smoke.ts`：OpenRouter 免費模型探測。
   - `tools/acceptance/summarize-traces.ts`：統計「匯出診斷紀錄」的失敗類別（不輸出回答原文／FEN）。
-  - `npm run acceptance:ai`（`run-ai-acceptance`，綁定 v1 Harness；`npm run test:acceptance:ai` 為離線自測）。
 - 本機若 `node` 不在 PATH，先把 `C:\Program Files\nodejs` 加入 PATH。
 
 ## 目錄結構與職責
@@ -63,11 +62,9 @@ src/
     logger.ts                   #   輸出前遮蔽 apiKey/Authorization/token/舊 License Key
     engine/                     #   PikafishAdapter（UCI/UCCI 自動偵測、視角反轉）、EngineOutputParser、EngineRegistryService
     ai/
-      explain/                  #   ★ v2 解說管線（預設）：ExplainPipelineV2、promptV2、repairPrompt、budget、pipelineFlag
-      HarnessOrchestrator.ts    #   v1 Harness：只剩 XQA_EXPLAIN_PIPELINE=v1 回滾路徑使用
-      prepareExplanationExecution.ts # 由驗證過的 payload + 權威 session 建立不可變執行（含 FIXED_HARNESS_OPTIONS）
-      explanationCredential.ts  #   唯一把 API key 帶進解說的入口（resolveExplanationCredential）＋ v1 請求組裝
-      promptBuilder.ts          #   v1 prompt（護欄；禁用 EngineScore.raw）
+      explain/                  #   ★ v2 解說管線（唯一路徑）：ExplainPipelineV2、promptV2、repairPrompt、budget
+      prepareExplanationExecution.ts # 由驗證過的 payload + 權威 session 建立不可變執行
+      explanationCredential.ts  #   唯一把 API key 帶進解說的入口（resolveExplanationCredential）
       AiPreferencesStore.ts     #   OpenRouter 備援模型（最多 2 個 :free；async 原子寫入）
       http.ts                   #   共用 fetch 包裝：大小上限、redirect: 'error'、錯誤遮蔽、429 額度判讀
       providers/                #   Anthropic / OpenAI / Gemini / OpenAI-compatible / OpenRouter（真 SSE、能力快取、推理控制）
@@ -88,7 +85,7 @@ src/
     storage/localSettings.ts    #   一般設定（schema v5；v4→v5 遷移只丟棄已移除欄位）
   shared/                       # 純型別與純邏輯（不得引用 main 或 node:*）
     logic/analysis/             #   MoveComparisonService、ExplanationFacts（重播 PV 算事實表）、EngineScoreDisplay
-    logic/ai/                   #   AnswerCheck（客觀硬錯 H1–H7／軟警告）、EngineSummary（非 AI 摘要）、aiErrorPresentation、知識庫與術語
+    logic/ai/                   #   AnswerCheck（客觀硬錯 H1–H7／軟警告）、EngineSummary（非 AI 摘要）、aiErrorPresentation、象棋知識庫
     logic/board/                #   FEN、走子規則、中文記譜、PlayOK WXF、PV 重播
     types/                      #   核心型別；ipc.ts 是所有 IPC 通道與 window.api 形狀
 ```
@@ -96,9 +93,9 @@ src/
 `tests/unit|integration|e2e|architecture|security|support|fixtures`、`tools/acceptance|release|security`、
 `docs/architecture|operations|plans|releases|specifications|history|archive`（archive 只放歷史證據）。
 
-## AI 解說（v2，預設）
+## AI 解說（v2）
 
-`aiExplanationHandlers` 以 `selectExplainPipeline` 分流：預設 v2；設環境變數 `XQA_EXPLAIN_PIPELINE=v1` 整體回滾到 v1 Harness。
+`aiExplanationHandlers` 一律走 v2 管線（`runExplainPipelineV2`）。v1 Harness 與 `XQA_EXPLAIN_PIPELINE=v1` 回滾路徑已於 P4-1 刪除。
 
 1. **事實表**（`ExplanationFacts`）：程式逐手重播首選線與實戰線，算出吃子、將軍、新威脅（吃下後對方能否吃回）、
    將死／困斃（象棋困斃判負）、唯一合法著法、每條線的吃子合計（只算子數，不做子力價值換算）與兩線差異；
@@ -114,7 +111,7 @@ src/
 6. 棋規問題（如「這步合法嗎」）走規則引擎捷徑，不呼叫模型。
 7. UI：真串流；修正時顯示「正在檢查並修正…」；「由 X 回答（Y 暫時無法使用：原因）」；摘要橫幅附「重試 AI」。
 
-Harness 模式與預算不是使用者設定：`FIXED_HARNESS_OPTIONS`（main 常數）只影響 v1 回滾路徑。
+預算不是使用者設定（`explain/budget.ts` 常數）；舊設定與 renderer 傳來的 Harness 模式／預算欄位一律丟棄。
 
 ## 重要設計原則（務必遵守）
 
@@ -153,20 +150,23 @@ Harness 模式與預算不是使用者設定：`FIXED_HARNESS_OPTIONS`（main �
     設定頁只能測試、選擇引擎，只剩一個引擎時不能移除（v0.4.18 起不再提供加入引擎的介面）。分析只用一個主引擎（雙引擎複核已移除）。
 11. **UI 文字用繁體中文**；`src/shared/logic/**` 保持純函式；renderer 不得引用 main 或 `node:*`。
 
-## 已移除的子系統（P4-4／P4-5）
+## 已移除的子系統（P4-1／P4-4／P4-5）
 
 - 買斷授權（LicenseService、license:* IPC、LicensePage、`tools/license`）。`logger` 仍遮蔽舊 `XQA1.*` key，
   備份匯入仍剔除 `licenseKey`，`.gitignore` 仍保護 `tools/license/keys/`。
 - 老師測試（teacher-test run／凍結案例／prelude）。`release.yml` 的 `teacher-candidate` 發行模式仍保留（發行通道，非 App 程式）。
-- 雙引擎複核。v1 Harness 內仍有不會執行的唯讀複核分支與 `DualEngineComparison.ts`，P4-1 刪除 v1 時一併刪除。
+- 雙引擎複核（`DualEngineComparison.ts`、`AnalysisSession` 的複核欄位已隨 P4-1 刪除）。
+- v1 Harness（P4-1）：`HarnessOrchestrator`、`promptBuilder`、`QuestionAnswerQuality`、v1 品質評分器、
+  `XQA_EXPLAIN_PIPELINE` 旗標、`ai:harness:continue` 通道與進度卡的「繼續分析」、`run-ai-acceptance`（`acceptance:ai`）
+  及其測試。`HarnessTrace`／進度型別保留（v2 沿用，舊診斷紀錄仍可讀）。
 - 「解說品質」Harness 參數設定頁（改為 main 常數）；診斷紀錄匯出／清除移到「資料與系統」。
 
 ## 尚未完成 / 後續
 
 - v2 已隨 **v0.4.15**（2026-10-16，未簽章過渡版）發布。P3-9：Claude Sonnet 5.5 在保留驗證集已跑的 5 題全部 ≥4 分，
   其餘 5 題待補跑（`--set holdout --cases …`）；免費／便宜模型達不到 demo 門檻（計畫第 7 節）。
-- 待做：P4-1（刪除 v1 Harness、v1 契約測試、`run-ai-acceptance` 改接 v2 或由 P3-9 取代）、P4-2、P4-3；
-  Windows 10／11 安裝版 10 步手動驗收。見 `docs/plans/ai-chat-reliability-v2.md`。
+- P4-1（刪除 v1 Harness 與其測試）已完成；`run-ai-acceptance` 由 P3-9 的 `explain-v2-live.ts` 取代。
+- 待做：P4-2、P4-3；Windows 10／11 安裝版 10 步手動驗收。見 `docs/plans/ai-chat-reliability-v2.md`。
 - 發版：`.github/workflows/tag-release.yml` 在 main 建立 annotated 標籤，再執行 `Release`（見 `docs/operations/release.md`）。
 - PGN／中文記譜（炮二平五）匯入（目前支援 FEN、UCI 著法序列與 PlayOK WXF）。
 - 官方與相容服務的 model id 需在發行前依各服務商目前模型頁重新核對。
