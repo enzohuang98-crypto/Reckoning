@@ -266,19 +266,6 @@ export function selectXiangqiKnowledge(
   return scored.slice(0, options.limit ?? 18).map((item) => item.entry)
 }
 
-export function formatXiangqiKnowledgeForPrompt(
-  entries: readonly XiangqiKnowledgeEntry[]
-): string {
-  if (entries.length === 0) return ''
-  return [
-    '【本機象棋知識：只協助解釋術語，不得冒充引擎證據】',
-    ...entries.map(
-      (entry) =>
-        `- ${entry.term}：${entry.definition} 教練用途：${entry.coachingUse} 證據限制：${entry.evidenceRule}`
-    )
-  ].join('\n')
-}
-
 export function findXiangqiKnowledgeEntry(
   termOrAlias: string
 ): XiangqiKnowledgeEntry | undefined {

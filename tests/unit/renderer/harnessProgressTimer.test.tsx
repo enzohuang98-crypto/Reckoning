@@ -37,15 +37,14 @@ const progress: HarnessProgressPayload = {
   engineRoundsUsed: 0,
   evidenceCount: 2,
   depth: 12,
-  displayPrincipalVariation: [],
-  verifiedConsequenceCount: 0
+  displayPrincipalVariation: []
 }
 
 try {
   let renderer!: ReturnType<typeof create>
   act(() => {
     renderer = create(
-      <HarnessProgressCard progress={progress} onContinue={() => undefined} onCancel={() => undefined} />
+      <HarnessProgressCard progress={progress} onCancel={() => undefined} />
     )
   })
   assert.match(textContent(renderer.root), /等待 AI 回覆與整理解說 · 0 秒/)

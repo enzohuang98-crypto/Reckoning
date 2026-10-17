@@ -1,9 +1,7 @@
 import { strict as assert } from 'node:assert'
 import type { AnalysisSession } from '../../../src/main/storage/AnalysisSessionStore'
-import {
-  prepareExplanationExecution,
-  type ExplanationExecutionRequest
-} from '../../../src/main/ai/prepareExplanationExecution'
+import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
+import type { GenerateExplanationStartPayload } from '../../../src/shared/types/ipc'
 
 /** 原本借用老師凍結題目當資料；老師測試移除後改用固定的開局局面。 */
 interface FixtureCase {
@@ -12,7 +10,6 @@ interface FixtureCase {
   sideToMove: 'w' | 'b'
   attachedMove: string
   question: string
-  mode: 'research'
 }
 
 const ordinaryCase: FixtureCase = {
@@ -20,8 +17,7 @@ const ordinaryCase: FixtureCase = {
   positionFen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1',
   sideToMove: 'w',
   attachedMove: 'h2e2',
-  question: '為什麼這步比較好？',
-  mode: 'research'
+  question: '為什麼這步比較好？'
 }
 
 function sessionFor(testCase: FixtureCase): AnalysisSession {
@@ -73,7 +69,7 @@ function sessionFor(testCase: FixtureCase): AnalysisSession {
   }
 }
 
-function payloadFor(testCase: FixtureCase): ExplanationExecutionRequest {
+function payloadFor(testCase: FixtureCase): GenerateExplanationStartPayload {
   return {
     requestId: `ai-${testCase.caseKey}`,
     analysisId: `analysis-${testCase.caseKey}`,
@@ -91,14 +87,7 @@ function payloadFor(testCase: FixtureCase): ExplanationExecutionRequest {
       }
     ],
     followUpQuestion: testCase.question,
-    attachedMove: testCase.attachedMove,
-    answerMode: testCase.mode,
-    budget: {
-      engineTimeMs: 1000,
-      maxEngineRounds: 1,
-      maxModelCalls: 2,
-      maxOutputTokens: 4000
-    }
+    attachedMove: testCase.attachedMove
   }
 }
 
@@ -159,12 +148,12 @@ async function main(): Promise<void> {
   assert.equal(ordinaryFollowUp.effective.conversationHistory.length, 1)
 
   ordinaryFollowUpPayload.conversationHistory![0].text = 'mutated history'
-  ordinaryFollowUpPayload.budget!.maxModelCalls = 999
   assert.equal(
     ordinaryFollowUp.effective.conversationHistory[0].text,
     'GENERIC-PRELUDE-MARKER-DO-NOT-SEND'
   )
-  assert.equal(ordinaryFollowUp.effective.budget?.maxModelCalls, 2)
+  // 診斷紀錄的答題模式由 main 固定，renderer 無法指定。
+  assert.equal(ordinaryFollowUp.effective.answerMode, 'research')
   assert.ok(Object.isFrozen(ordinaryFollowUp))
   assert.ok(Object.isFrozen(ordinaryFollowUp.effective))
   assert.ok(Object.isFrozen(ordinaryFollowUp.effective.conversationHistory))

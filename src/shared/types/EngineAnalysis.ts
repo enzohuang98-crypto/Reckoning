@@ -7,7 +7,7 @@
  *
  * 重要規則：
  *  - 分數不得只存裸數字（§2.6.1）；EngineScore 保留語義、顯示文字與來源。
- *  - raw 可在 UI 與 PromptBuilder 中原樣顯示作為證據，但不得被
+ *  - raw 可在 UI 與 prompt 組裝（promptV2）中原樣顯示作為證據，但不得被
  *    MoveComparisonService、分級邏輯或棋理解釋使用（§2.6.1、§2.15.5）。
  *  - 不得讓 Infinity / -Infinity 進入 EngineScore（§2.14.1）。
  */

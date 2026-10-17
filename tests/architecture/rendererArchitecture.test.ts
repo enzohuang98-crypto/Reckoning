@@ -659,19 +659,20 @@ async function main(): Promise<void> {
     assert.doesNotMatch(coach, /coach-ready-card|引擎證據已準備完成|產生完整 AI 解說/)
   })
 
-  await check('AI IPC 透過單一 PromptBuilder 入口把多輪上下文交給 Harness', () => {
+  await check('AI IPC 只走 v2 管線：單一憑證入口，備援模型只來自 main 偏好', () => {
     const handler = readFileSync(
       resolve('src/main/ipc/aiExplanationHandlers.ts'),
       'utf8'
     )
-    const harness = readFileSync(
-      resolve('src/main/ai/HarnessOrchestrator.ts'),
-      'utf8'
+    assert.equal(existsSync(resolve('src/main/ai/HarnessOrchestrator.ts')), false)
+    assert.match(handler, /await resolveExplanationCredential\(execution/)
+    assert.match(handler, /await runExplainPipelineV2\(execution/)
+    assert.match(handler, /aiPreferences\(\)\.get\(\)\)\.openRouterBackupModels/)
+    assert.doesNotMatch(handler, /payload\.backup/i, 'renderer cannot name a backup model')
+    assert.doesNotMatch(
+      handler,
+      /buildAIExplanationRequest|buildExplanationPrompt|selectExplainPipeline|runExplanationHarness|XQA_EXPLAIN_PIPELINE/
     )
-    assert.match(handler, /const request = await buildAIExplanationRequest/)
-    assert.match(handler, /explanationPrompt: request\.prompt/)
-    assert.match(harness, /deps\.explanationPrompt/)
-    assert.match(harness, /所有給使用者閱讀的自然語言欄位/)
   })
 
   await check('renderer 維持 Electron / Node / main process 信任邊界', () => {

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { app } from 'electron'
 import {
-  buildAIExplanationRequest,
-  MissingApiKeyError
+  MissingApiKeyError,
+  resolveExplanationCredential
 } from '../../../src/main/ai/explanationCredential'
 import { prepareExplanationExecution } from '../../../src/main/ai/prepareExplanationExecution'
 import type { AnalysisSession } from '../../../src/main/storage/AnalysisSessionStore'
@@ -109,15 +109,15 @@ async function main(): Promise<void> {
       session,
       requestPayload.model
     )
-    const proRequest = await buildAIExplanationRequest(proExecution, { secretStore: store })
+    const proCredential = await resolveExplanationCredential(proExecution, { secretStore: store })
     assert.equal(
-      proRequest.apiKey,
+      proCredential.apiKey,
       'gemini-pro-key',
       'backend 必須選到 Gemini Pro 自己的 key'
     )
     await assert.rejects(
       () =>
-        buildAIExplanationRequest(
+        resolveExplanationCredential(
           prepareExplanationExecution(
             { ...requestPayload, model: 'gemini-3.1-flash-lite' },
             session,
@@ -169,17 +169,17 @@ async function main(): Promise<void> {
       session,
       openRouterModel
     )
-    const openRouterRequest = await buildAIExplanationRequest(
+    const openRouterCredential = await resolveExplanationCredential(
       openRouterExecution,
       { secretStore: store }
     )
-    assert.equal(openRouterRequest.provider, 'openrouter')
+    assert.equal(openRouterCredential.provider, 'openrouter')
     assert.equal(
-      openRouterRequest.model,
+      openRouterCredential.model,
       openRouterModel,
       'renderer 选择的 OpenRouter 完整模型 ID 必须原样进入后端请求'
     )
-    assert.equal(openRouterRequest.apiKey, 'sk-or-v1-secret')
+    assert.equal(openRouterCredential.apiKey, 'sk-or-v1-secret')
 
     const modelB = 'vendor/model-b:free'
     const firstSnapshot = await store.captureActiveCredential({
@@ -190,7 +190,7 @@ async function main(): Promise<void> {
     await store.rebindOpenRouterCredential(firstSnapshot, modelB)
     assert.equal(await store.getCredential('openrouter', openRouterModel), null)
     assert.equal(await store.getCredential('openrouter', modelB), 'sk-or-v1-secret')
-    const admittedBeforeSwitch = await buildAIExplanationRequest(
+    const admittedBeforeSwitch = await resolveExplanationCredential(
       openRouterExecution,
       { secretStore: store, credentialSnapshot: firstSnapshot }
     )

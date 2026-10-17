@@ -691,11 +691,6 @@
   background: linear-gradient(135deg, rgba(73, 151, 115, 0.09), transparent 70%), #f7fbf8;
 }
 
-.harness-progress.awaiting {
-  border-color: #ead9bc;
-  background: linear-gradient(135deg, rgba(226, 180, 97, 0.14), transparent 70%), #fffaf0;
-}
-
 .live-analysis-head {
   display: flex;
   align-items: flex-start;
@@ -718,16 +713,6 @@
   border-radius: 8px;
   color: var(--color-text-soft);
   background: rgba(255, 255, 255, 0.72);
-  font-size: 11px;
-}
-
-.harness-decision {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 10px;
-  color: var(--color-warning);
   font-size: 11px;
 }
 

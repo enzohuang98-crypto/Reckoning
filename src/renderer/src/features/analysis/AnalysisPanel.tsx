@@ -1104,14 +1104,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
       .catch(() => setAiNotice('無法存取剪貼簿。'))
   }
 
-  const continueExplain = (): void => {
-    if (!activeAiRequestId.current) return
-    window.api.ai.continueExplanation(activeAiRequestId.current)
-    setHarnessProgress((current) =>
-      current ? { ...current, awaitingDecision: false } : current
-    )
-  }
-
   const canAnalyze = Boolean(status?.available && hasBothKings(board) && !busy && !aiBusy)
   const analysisBlockedReason = !hasBothKings(board)
     ? '棋盤需要同時有紅帥與黑將才能分析。'
@@ -1254,7 +1246,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               showQuestion={showQuestion}
               followUp={followUp}
               onFollowUpChange={setFollowUp}
-              onContinue={continueExplain}
               onCancel={cancelExplain}
               onSubmitFollowUp={submitFollowUp}
               onCopy={() => void copyExplanation()}

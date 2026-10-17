@@ -2,8 +2,7 @@ import type { ConversationMessage } from '@shared/types/AppData'
 import type {
   ExplanationAnswerStrategy,
   ExplanationInteractionKind,
-  HarnessAnswerMode,
-  HarnessBudget
+  HarnessAnswerMode
 } from '@shared/types/Harness'
 import { EXPLANATION_EXECUTION_SEMANTICS_VERSION } from '@shared/types/Harness'
 import type { GenerateExplanationStartPayload } from '@shared/types/ipc'
@@ -11,29 +10,11 @@ import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 
 const PREPARED_EXECUTION = Symbol('PreparedExplanationExecution')
 
-/** main 內部的 Harness 參數；不屬於 IPC 契約，只有 main（與測試、驗收工具）可以指定。 */
-export interface HarnessRequestOptions {
-  answerMode?: HarnessAnswerMode
-  budget?: HarnessBudget
-  reuseEvidence?: boolean
-}
-
-export type ExplanationExecutionRequest = GenerateExplanationStartPayload & HarnessRequestOptions
-
 /**
- * 一般解說使用的固定 Harness 參數（P4-4：取代原本使用者可調的設定頁）。
- * 數值等於移除前設定頁的預設值，讓 v1 回滾路徑的行為不變。
+ * 診斷紀錄（HarnessTrace.mode）沿用的答題模式。v1 Harness 刪除後（P4-1）只剩這一種，
+ * 保留欄位讓新舊診斷紀錄格式一致。
  */
-export const FIXED_HARNESS_OPTIONS: Readonly<Required<HarnessRequestOptions>> = Object.freeze({
-  answerMode: 'research',
-  budget: Object.freeze({
-    engineTimeMs: 20_000,
-    maxEngineRounds: 3,
-    maxModelCalls: 6,
-    maxOutputTokens: 10_000
-  }),
-  reuseEvidence: true
-})
+const ANSWER_MODE: HarnessAnswerMode = 'research'
 
 export interface EffectiveExplanationInput {
   readonly requestId: string
@@ -49,9 +30,7 @@ export interface EffectiveExplanationInput {
   readonly attachedMove?: string
   readonly userMoveReason?: string
   readonly answerMode: HarnessAnswerMode
-  readonly budget?: Readonly<HarnessBudget>
   readonly engineId?: string
-  readonly reuseEvidence?: boolean
   readonly session: Readonly<AnalysisSession>
 }
 
@@ -97,13 +76,12 @@ function ordinaryStrategy(
 }
 
 export function prepareExplanationExecution(
-  validatedPayload: ExplanationExecutionRequest,
+  validatedPayload: GenerateExplanationStartPayload,
   authoritativeSession: AnalysisSession,
   resolvedModel: string
 ): PreparedExplanationExecution {
   const session = cloneAndFreeze(authoritativeSession)
   const sourceHistory = cloneAndFreeze(validatedPayload.conversationHistory ?? [])
-  const answerMode = validatedPayload.answerMode ?? 'research'
   const attachedMove =
     validatedPayload.attachedMove ??
     authoritativeSession.userMove ??
@@ -126,12 +104,8 @@ export function prepareExplanationExecution(
     ...(validatedPayload.userMoveReason
       ? { userMoveReason: validatedPayload.userMoveReason }
       : {}),
-    answerMode,
-    ...(validatedPayload.budget ? { budget: validatedPayload.budget } : {}),
+    answerMode: ANSWER_MODE,
     ...(validatedPayload.engineId ? { engineId: validatedPayload.engineId } : {}),
-    ...(validatedPayload.reuseEvidence !== undefined
-      ? { reuseEvidence: validatedPayload.reuseEvidence }
-      : {}),
     session
   }) satisfies Readonly<EffectiveExplanationInput>
 

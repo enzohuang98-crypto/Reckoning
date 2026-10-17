@@ -13,7 +13,6 @@
 
 import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
 import type { MoveComparisonResult } from '@shared/types/MoveComparisonResult'
-import type { DualEngineComparison } from '@shared/types/DualEngine'
 
 /** TTL：2 小時（§2.18.3） */
 export const DEFAULT_ANALYSIS_SESSION_TTL_MS = 2 * 60 * 60 * 1000
@@ -34,14 +33,6 @@ export interface AnalysisSession {
   userMove?: string
   primaryEngineId?: string
   engineAnalysis: EngineAnalysis
-  /**
-   * 雙引擎複核已於 P4-5 移除，以下欄位不再寫入；只剩 v1 回滾路徑（HarnessOrchestrator）
-   * 的唯讀分支還引用它們，P4-1 刪除 v1 時一併移除。
-   */
-  verificationEngineId?: string
-  verificationEngineAnalysis?: EngineAnalysis
-  engineDisagreement?: boolean
-  dualEngineComparison?: DualEngineComparison
   moveComparison: MoveComparisonResult
 }
 

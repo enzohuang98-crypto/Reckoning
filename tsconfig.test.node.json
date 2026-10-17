@@ -14,7 +14,6 @@
     "tools/acceptance/summarize-traces.ts"
   ],
   "exclude": [
-    "tests/integration/ai/harness.test.ts",
     "tests/architecture/boardAccessibility.test.ts"
   ]
 }

@@ -1,7 +1,7 @@
 /**
  * AI Provider 工廠 (getAIProvider) — SDS v0.2 §2.17.8
  *
- * 只依 provider 名稱回傳對應 adapter：不讀 API key、不呼叫 PromptBuilder、
+ * 只依 provider 名稱回傳對應 adapter：不讀 API key、不組裝 prompt、
  * 不讀寫 AppSettings、不碰 UI、不決定 fallback model。
  * Provider 為無狀態單例。
  */

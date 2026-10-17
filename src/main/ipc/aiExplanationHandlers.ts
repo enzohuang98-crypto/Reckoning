@@ -9,9 +9,8 @@
  *   ai:generate-explanation:cancel (renderer→main)
  *
  * 規則（§2.17.10）：
- *  - resolveExplanationCredential()（ai/explanationCredential）是唯一注入 API key 的入口；v1 由
- *    buildAIExplanationRequest() 組 PromptBuilder prompt，v2 由 explain/promptV2 組 prompt
- *    （XQA_EXPLAIN_PIPELINE=v1 可回滾）。
+ *  - resolveExplanationCredential()（ai/explanationCredential）是唯一注入 API key 的入口；
+ *    prompt 由 explain/promptV2 組裝（v2 管線；v1 Harness 已於 P4-1 刪除）。
  *  - abort 檢查放在 chunk 處理之後；done 分支先設 completedNormally=true 再 reply。
  *  - catch 僅在 !completedNormally 時送 error；finally 清除 activeExplanationRequests。
  *  - cancel 必須實際呼叫 controller.abort()。
@@ -33,17 +32,9 @@ import {
 } from '../storage/AnalysisSessionStore'
 import { getAIProvider } from '../ai/AIProvider'
 import { AiPreferencesStore } from '../ai/AiPreferencesStore'
-import { runExplanationHarness } from '../ai/HarnessOrchestrator'
-import {
-  FIXED_HARNESS_OPTIONS,
-  prepareExplanationExecution
-} from '../ai/prepareExplanationExecution'
-import {
-  buildAIExplanationRequest,
-  resolveExplanationCredential
-} from '../ai/explanationCredential'
+import { prepareExplanationExecution } from '../ai/prepareExplanationExecution'
+import { resolveExplanationCredential } from '../ai/explanationCredential'
 import { runExplainPipelineV2 } from '../ai/explain/ExplainPipelineV2'
-import { selectExplainPipeline } from '../ai/explain/pipelineFlag'
 import { modelRegistry } from '../ai/ModelRegistry'
 import { logger } from '../logger'
 import { assertTrustedIpcSender } from '../security/IpcSecurity'
@@ -78,7 +69,6 @@ export function registerAiExplanationHandlers(
 
   // ---- AI 解釋 streaming（§2.17.5 最終版 loop） ----
   const activeExplanationRequests = new Map<string, AbortController>()
-  const activeHarnessContinuations = new Map<string, () => void>()
   const MAX_ACTIVE_EXPLANATION_REQUESTS = 2
 
   ipcMain.on(
@@ -140,103 +130,42 @@ export function registerAiExplanationHandlers(
           effectivePayload.model
         ).model
         const execution = prepareExplanationExecution(
-          { ...effectivePayload, ...FIXED_HARNESS_OPTIONS },
+          effectivePayload,
           session,
           resolvedModel
         )
-        if (selectExplainPipeline(execution) === 'v2') {
-          const credential = await resolveExplanationCredential(execution, {
-            secretStore,
-            credentialSnapshot: capturedActive
-          })
-          // 備援模型只來自 main 保存且已驗證的偏好；renderer 不能在請求中指定。
-          const backupModels =
-            credential.provider === 'openrouter' && !credential.baseUrl
-              ? (await aiPreferences().get()).openRouterBackupModels
-              : []
-          const v2 = await runExplainPipelineV2(execution, {
-            provider: getAIProvider(credential.provider),
-            apiKey: credential.apiKey,
-            registry: engineRegistry,
-            traceStore,
-            signal: controller.signal,
-            backupModels,
-            onProgress: (progress) => {
-              event.reply(IPC.AI_HARNESS_PROGRESS, { requestId, ...progress })
-            },
-            onDelta: (deltaText, attempt) => {
-              if (
-                controller.signal.aborted ||
-                activeExplanationRequests.get(requestId) !== controller
-              ) {
-                return
-              }
-              event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
-                requestId,
-                deltaText,
-                attempt
-              })
-            }
-          })
-          if (
-            controller.signal.aborted ||
-            activeExplanationRequests.get(requestId) !== controller
-          ) {
-            throw new DOMException('Request cancelled', 'AbortError')
-          }
-          if (v2.finalText.length > MAX_AI_RESPONSE_CHARS) {
-            throw new SecurityValidationError('AI 回應超過允許大小。')
-          }
-          completedNormally = true
-          event.reply(IPC.AI_GENERATE_EXPLANATION_DONE, {
-            requestId,
-            finalText: v2.finalText,
-            provider: credential.provider,
-            model: credential.model,
-            usage: v2.usage,
-            warnings: v2.warnings,
-            traceId: v2.traceId,
-            clarificationRequired: false,
-            answerKind: v2.answerKind,
-            ...(v2.actualModel ? { actualModel: v2.actualModel } : {}),
-            ...(v2.fallbackFromModel
-              ? { fallbackFromModel: v2.fallbackFromModel, fallbackReason: v2.fallbackReason }
-              : {}),
-            repairUsed: v2.repairUsed
-          })
-          return
-        }
-        const request = await buildAIExplanationRequest(execution, {
+        const credential = await resolveExplanationCredential(execution, {
           secretStore,
           credentialSnapshot: capturedActive
         })
-        const provider = getAIProvider(request.provider)
-        const result = await runExplanationHarness(execution, {
-          provider,
-          apiKey: request.apiKey,
+        // 備援模型只來自 main 保存且已驗證的偏好；renderer 不能在請求中指定。
+        const backupModels =
+          credential.provider === 'openrouter' && !credential.baseUrl
+            ? (await aiPreferences().get()).openRouterBackupModels
+            : []
+        const v2 = await runExplainPipelineV2(execution, {
+          provider: getAIProvider(credential.provider),
+          apiKey: credential.apiKey,
           registry: engineRegistry,
           traceStore,
           signal: controller.signal,
-          explanationPrompt: request.prompt,
+          backupModels,
           onProgress: (progress) => {
-            event.reply(IPC.AI_HARNESS_PROGRESS, {
-              requestId,
-              ...progress
-            })
+            event.reply(IPC.AI_HARNESS_PROGRESS, { requestId, ...progress })
           },
-          waitForContinuation: () =>
-            new Promise<void>((resolve, reject) => {
-              const onAbort = (): void => {
-                activeHarnessContinuations.delete(requestId)
-                reject(new DOMException('Request cancelled', 'AbortError'))
-              }
-              controller.signal.addEventListener('abort', onAbort, { once: true })
-              activeHarnessContinuations.set(requestId, () => {
-                controller.signal.removeEventListener('abort', onAbort)
-                activeHarnessContinuations.delete(requestId)
-                resolve()
-              })
+          onDelta: (deltaText, attempt) => {
+            if (
+              controller.signal.aborted ||
+              activeExplanationRequests.get(requestId) !== controller
+            ) {
+              return
+            }
+            event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
+              requestId,
+              deltaText,
+              attempt
             })
+          }
         })
         if (
           controller.signal.aborted ||
@@ -244,24 +173,25 @@ export function registerAiExplanationHandlers(
         ) {
           throw new DOMException('Request cancelled', 'AbortError')
         }
-        if (result.finalText.length > MAX_AI_RESPONSE_CHARS) {
+        if (v2.finalText.length > MAX_AI_RESPONSE_CHARS) {
           throw new SecurityValidationError('AI 回應超過允許大小。')
         }
-        event.reply(IPC.AI_GENERATE_EXPLANATION_CHUNK, {
-          requestId,
-          deltaText: result.finalText
-        })
         completedNormally = true
         event.reply(IPC.AI_GENERATE_EXPLANATION_DONE, {
           requestId,
-          finalText: result.finalText,
-          provider: request.provider,
-          model: request.model,
-          usage: result.usage,
-          evidence: result.evidence,
-          warnings: result.warnings,
-          traceId: result.traceId,
-          clarificationRequired: result.clarificationRequired
+          finalText: v2.finalText,
+          provider: credential.provider,
+          model: credential.model,
+          usage: v2.usage,
+          warnings: v2.warnings,
+          traceId: v2.traceId,
+          clarificationRequired: false,
+          answerKind: v2.answerKind,
+          ...(v2.actualModel ? { actualModel: v2.actualModel } : {}),
+          ...(v2.fallbackFromModel
+            ? { fallbackFromModel: v2.fallbackFromModel, fallbackReason: v2.fallbackReason }
+            : {}),
+          repairUsed: v2.repairUsed
         })
       } catch (error) {
         if (!completedNormally) {
@@ -273,7 +203,6 @@ export function registerAiExplanationHandlers(
           event.reply(IPC.AI_GENERATE_EXPLANATION_ERROR, errorPayload)
         }
       } finally {
-        activeHarnessContinuations.delete(requestId)
         if (activeExplanationRequests.get(requestId) === controller) {
           activeExplanationRequests.delete(requestId)
         }
@@ -300,19 +229,4 @@ export function registerAiExplanationHandlers(
       controller.abort()
     }
   )
-
-  ipcMain.on(IPC.AI_HARNESS_CONTINUE, (event, payload: unknown) => {
-    try {
-      assertTrustedIpcSender(event)
-    } catch {
-      return
-    }
-    const requestId = safeRequestId(
-      typeof payload === 'object' && payload !== null
-        ? (payload as Record<string, unknown>).requestId
-        : undefined
-    )
-    if (requestId === 'invalid-request') return
-    activeHarnessContinuations.get(requestId)?.()
-  })
 }

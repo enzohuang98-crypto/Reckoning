@@ -10,7 +10,7 @@
  *  - mateIn === 0 必須有獨立 terminal case。
  *  - Parser 階段不得取負號；視角反轉只由 PikafishAdapter 的 invertEngineScore 負責。
  *  - 不得讓 Infinity / -Infinity 進入 EngineScore。
- *  - raw 只供 debug，不得供 UI、PromptBuilder、MoveComparisonService 或分級邏輯使用。
+ *  - raw 只供 debug，不得供 UI、prompt 組裝（promptV2）、MoveComparisonService 或分級邏輯使用。
  *
  * 純函式，便於單元測試，不持有任何子行程。
  */

@@ -131,8 +131,7 @@
 
   .settings-key-input,
   .settings-path-input,
-  .engine-item-actions,
-  .harness-decision {
+  .engine-item-actions {
     align-items: stretch;
     flex-direction: column;
   }

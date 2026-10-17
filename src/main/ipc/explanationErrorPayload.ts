@@ -2,7 +2,6 @@
 
 import type { GenerateExplanationErrorPayload } from '@shared/types/ipc'
 import { AnalysisSessionNotFoundError } from '../storage/AnalysisSessionStore'
-import { HarnessExplanationUnavailableError } from '../ai/HarnessOrchestrator'
 import {
   AIResponseValidationError,
   aiErrorStatus,
@@ -54,14 +53,6 @@ export function mapStreamingErrorToPayload(
       requestId,
       code: 'analysis_session_not_found',
       message: '這次分析結果已過期，請重新分析局面後再生成 AI 解釋。'
-    }
-  }
-  if (error instanceof HarnessExplanationUnavailableError) {
-    return {
-      requestId,
-      code: 'provider_error',
-      message: error.message,
-      failureReason: error.reason
     }
   }
   if (error instanceof SecurityValidationError) {
