@@ -1,3 +1,4 @@
+import type { BoardState } from '@shared/types/BoardState'
 import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
 
 export const AUTO_INITIAL_ANALYSIS_MAX_MS = 1_100
@@ -19,6 +20,20 @@ export interface LiveAnalysisScheduleState {
   engineAvailable: boolean
   boardValid: boolean
   analysisBusy: boolean
+}
+
+/** 棋盤要同時有紅帥與黑將，引擎才能分析。 */
+export function hasBothKings(board: BoardState): boolean {
+  let red = false
+  let black = false
+  for (const row of board.grid) {
+    for (const piece of row) {
+      if (piece?.type !== 'king') continue
+      if (piece.color === 'red') red = true
+      else black = true
+    }
+  }
+  return red && black
 }
 
 export function isSameAnalysisTarget(

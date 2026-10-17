@@ -31,6 +31,25 @@ function sourceFiles(root: string): string[] {
   })
 }
 
+const ANALYSIS_FEATURE = 'src/renderer/src/features/analysis'
+
+/** AnalysisPanel 拆成組裝元件＋三個 hook；這裡依檔案讀出各自的原始碼。 */
+function analysisControllerSources(): {
+  panel: string
+  engine: string
+  ai: string
+  orchestration: string
+  all: string
+} {
+  const read = (name: string): string =>
+    readFileSync(resolve(`${ANALYSIS_FEATURE}/${name}`), 'utf8')
+  const panel = read('AnalysisPanel.tsx')
+  const engine = read('useEngineAnalysis.ts')
+  const ai = read('useAiExplanation.ts')
+  const orchestration = read('useAnalysisOrchestration.ts')
+  return { panel, engine, ai, orchestration, all: [panel, engine, ai, orchestration].join('\n') }
+}
+
 function cssRuleBody(source: string, selector: string, occurrence = 0): string {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const matches = Array.from(
@@ -516,31 +535,25 @@ async function main(): Promise<void> {
   })
 
   await check('每次 AI 提問使用當下最新分析，並完整快照對話與模型來源', () => {
-    const panel = readFileSync(
-      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
-      'utf8'
-    )
-    assert.match(panel, /analysisId: pending\.analysisId/)
-    assert.match(panel, /positionFen: pending\.positionFen/)
-    assert.match(panel, /const resultSnapshot = result/)
-    assert.match(panel, /conversationMessages: currentConversation\?\.messages\.slice\(\) \?\? \[\]/)
-    assert.match(panel, /\.\.\.pending\.conversationMessages/)
-    assert.match(panel, /provider: payload\.provider \?\? pending\?\.provider/)
+    const { ai } = analysisControllerSources()
+    assert.match(ai, /analysisId: pending\.analysisId/)
+    assert.match(ai, /positionFen: pending\.positionFen/)
+    assert.match(ai, /const resultSnapshot = result/)
+    assert.match(ai, /conversationMessages: currentConversation\?\.messages\.slice\(\) \?\? \[\]/)
+    assert.match(ai, /\.\.\.pending\.conversationMessages/)
+    assert.match(ai, /provider: payload\.provider \?\? pending\?\.provider/)
     // v2 備援時以實際回答的模型（actualModel）優先，仍然先於 renderer 的 pending 設定。
-    assert.match(panel, /model: payload\.actualModel \?\? payload\.model \?\? pending\?\.model/)
-    assert.match(panel, /if \(!result \|\| activeAiRequestId\.current\) return/)
+    assert.match(ai, /model: payload\.actualModel \?\? payload\.model \?\? pending\?\.model/)
+    assert.match(ai, /if \(!result \|\| activeAiRequestId\.current\) return/)
   })
 
   await check('AI 只由一次性 submissionId 觸發，持續分析不會自行重跑', () => {
-    const panel = readFileSync(
-      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
-      'utf8'
-    )
-    assert.match(panel, /const lastSubmittedExplanationId = useRef<string \| null>\(null\)/)
-    assert.match(panel, /submittedGuess\?\.submissionId/)
-    assert.match(panel, /lastSubmittedExplanationId\.current === submissionId/)
-    assert.match(panel, /lastSubmittedExplanationId\.current = submissionId/)
-    assert.doesNotMatch(panel, /settings\.harnessAutoRun[\s\S]{0,300}generateExplanation\(null\)/)
+    const { orchestration, all } = analysisControllerSources()
+    assert.match(orchestration, /const lastSubmittedExplanationId = useRef<string \| null>\(null\)/)
+    assert.match(orchestration, /submittedGuess\?\.submissionId/)
+    assert.match(orchestration, /lastSubmittedExplanationId\.current === submissionId/)
+    assert.match(orchestration, /lastSubmittedExplanationId\.current = submissionId/)
+    assert.doesNotMatch(all, /settings\.harnessAutoRun[\s\S]{0,300}generateExplanation\(null\)/)
   })
 
   await check('棋譜點擊只自動比較引擎；明確按一次 AI 解說才產生完整內容', () => {
@@ -552,10 +565,7 @@ async function main(): Promise<void> {
       resolve('src/renderer/src/features/workspace/AnalysisWorkspace.tsx'),
       'utf8'
     )
-    const panel = readFileSync(
-      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
-      'utf8'
-    )
+    const { panel, engine, ai, orchestration, all } = analysisControllerSources()
 
     assert.match(gameImport, /position: game\.positions\[index\]/)
     assert.match(gameImport, /move: game\.moves\[index\]/)
@@ -565,25 +575,35 @@ async function main(): Promise<void> {
     assert.match(workspace, /highlightedMove=\{actualMove\?\.move\}/)
     assert.match(workspace, /actualMove=\{actualMove\}/)
     assert.match(panel, /const analysisMove = actualMove\?\.move \?\? submittedGuess\?\.move \?\? ''/)
-    assert.match(panel, /positionFen: board\.fen,[\s\S]*?userMove: move \|\| undefined/)
-    assert.match(panel, /explicitAnalysisTarget\.current = target[\s\S]*?startAnalysis\(true\)/)
-    assert.match(panel, /submissionId:\s*submittedGuess\?\.submissionId \?\? null/)
-    assert.doesNotMatch(panel, /forcedByGameMove/)
-    assert.match(panel, /payload\.requestId !== activeRequestId\.current/)
-    assert.match(panel, /payload\.requestId !== activeAiRequestId\.current/)
-    assert.match(panel, /const aiRequestedAt = Date\.now\(\)/)
-    assert.match(panel, /remainingOneClickDeadlineMs\(aiRequestedAt\)/)
-    assert.doesNotMatch(panel, /crossEngineEnabled|verificationEngineId|engineRole/)
-    assert.match(panel, /!hasBothKings\(board\) \|\|[\s\S]*?livePaused \|\|/)
+    assert.match(engine, /positionFen: board\.fen,[\s\S]*?userMove: move \|\| undefined/)
+    assert.match(orchestration, /explicitAnalysisTarget\.current = target[\s\S]*?startAnalysis\(true\)/)
+    assert.match(ai, /submissionId:\s*submittedGuess\?\.submissionId \?\? null/)
+    assert.doesNotMatch(all, /forcedByGameMove/)
+    assert.match(engine, /payload\.requestId !== activeRequestId\.current/)
+    assert.match(ai, /payload\.requestId !== activeAiRequestId\.current/)
+    assert.match(ai, /const aiRequestedAt = Date\.now\(\)/)
+    assert.match(ai, /remainingOneClickDeadlineMs\(aiRequestedAt\)/)
+    assert.doesNotMatch(all, /crossEngineEnabled|verificationEngineId|engineRole/)
+    assert.match(orchestration, /!hasBothKings\(board\) \|\|[\s\S]*?livePaused \|\|/)
+    // 卸載時同時取消引擎與 AI 請求：引擎 hook 的卸載 effect 先取消搜尋，AI hook 的再取消解說；
+    // 先後由 AnalysisPanel 呼叫兩個 hook 的順序保證。
     assert.match(
-      panel,
-      /useEffect\(\(\) => \(\) => \{[\s\S]*?cancelAnalysis\(activeRequestId\.current\)[\s\S]*?cancelExplanation\(activeAiRequestId\.current\)/
+      engine,
+      /useEffect\(\(\) => \(\) => \{[\s\S]*?cancelAnalysis\(activeRequestId\.current\)/
+    )
+    assert.match(
+      ai,
+      /useEffect\(\(\) => \(\) => \{[\s\S]*?cancelExplanation\(activeAiRequestId\.current\)/
     )
     assert.match(
       panel,
+      /useEngineAnalysis\(\{[\s\S]*?useAiExplanation\(\{[\s\S]*?useAnalysisOrchestration\(\{/
+    )
+    assert.match(
+      orchestration,
       /actualMove[\s\S]*?isSameAnalysisTarget\(result\?\.engineAnalysis[\s\S]*?return/
     )
-    assert.match(panel, /actualMove && liveRetryCount > 0/)
+    assert.match(orchestration, /actualMove && liveRetryCount > 0/)
     assert.match(
       panel,
       /actualMove[\s\S]*?\? !status\?\.available[\s\S]*?\? analysisBlockedReason[\s\S]*?: null/
@@ -596,11 +616,8 @@ async function main(): Promise<void> {
   })
 
   await check('局面切換開始新搜尋時保留既有分析列，直到新進度到達', () => {
-    const panel = readFileSync(
-      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
-      'utf8'
-    )
-    assert.doesNotMatch(panel, /setEngineThoughts\(\[\]\)/)
+    const { all } = analysisControllerSources()
+    assert.doesNotMatch(all, /setEngineThoughts\(\[\]\)/)
   })
 
   await check('棋手預設 AI 畫面不呈現 token、證據編號或內部迴圈計數', () => {
@@ -639,19 +656,16 @@ async function main(): Promise<void> {
   })
 
   await check('AI 失敗就地顯示且不清除追問，成功後才清除草稿', () => {
-    const panel = readFileSync(
-      resolve('src/renderer/src/features/analysis/AnalysisPanel.tsx'),
-      'utf8'
-    )
+    const { panel, ai } = analysisControllerSources()
     const coach = readFileSync(
       resolve('src/renderer/src/features/analysis/CoachView.tsx'),
       'utf8'
     )
-    const submitStart = panel.indexOf('const submitFollowUp')
-    const copyStart = panel.indexOf('const copyExplanation')
+    const submitStart = ai.indexOf('const submitFollowUp')
+    const copyStart = ai.indexOf('const copyExplanation')
     assert.equal(submitStart >= 0 && copyStart > submitStart, true)
-    assert.doesNotMatch(panel.slice(submitStart, copyStart), /setFollowUp\(''\)/)
-    assert.match(panel, /if \(pending\.question !== null\) setFollowUp\(''\)/)
+    assert.doesNotMatch(ai.slice(submitStart, copyStart), /setFollowUp\(''\)/)
+    assert.match(ai, /if \(pending\.question !== null\) setFollowUp\(''\)/)
     assert.match(panel, /error=\{aiError \?\? \(actualMove \? error : null\)\}/)
     assert.match(panel, /notice=\{aiNotice\}/)
     assert.match(coach, /role="alert"/)

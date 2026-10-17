@@ -64,6 +64,8 @@ src/renderer/src/
 - `App.tsx`：只組裝頂層頁面、設定、資料 store 與棋盤工作階段。
 - `AnalysisWorkspace.tsx`：管理首頁版面、右側教練／猜著選擇與猜著互動，不執行 IPC 驗證。
 - `AnalysisPanel.tsx`：唯一的分析與 AI IPC controller；同一份狀態透過 portal 餵給右側教練、頂部資料抽屜與底部 Live dock，禁止為不同區塊重複掛載 controller。
+  元件本身只組裝三個 hook：`useEngineAnalysis`（引擎分析生命週期）、`useAiExplanation`（AI 解說生命週期）、
+  `useAnalysisOrchestration`（自動分析、live 精煉、等引擎再回答、提交觸發解說）；呼叫順序即 effect 順序，不可調換。
 - `SettingsPage.tsx`：設定頁組合層；各分類畫面放到 `features/settings`，各分類的狀態與 IPC 放在同目錄的 `useAiCredentialSettings`／`useEngineSettings`／`useSystemSettings` hook。
 - `styles/*.css`：一個 selector 應只有一個主要定義；響應式覆蓋只放 `responsive.css`。
 
