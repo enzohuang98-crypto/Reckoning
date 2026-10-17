@@ -162,7 +162,7 @@ npm.cmd run build
 
 ### AI 解說的開發與驗收
 
-- 預設使用 v2 解說流程（`src/main/ai/explain/`）。設定環境變數 `XQA_EXPLAIN_PIPELINE=v1` 可整體退回舊版流程，僅供比較與回滾。
+- 解說只使用 v2 流程（`src/main/ai/explain/`）；舊版 v1 Harness 與 `XQA_EXPLAIN_PIPELINE=v1` 回滾已移除。
 - 真實模型驗收需要自己的 OpenRouter 金鑰，金鑰只從環境變數讀取，輸出寫到已被 git 忽略的 `.local-review/`：
 
   ```powershell

@@ -6,3 +6,5 @@
 - `operations/release-v0.3.*-evidence.md`：v0.3.7–v0.3.11 的發行證據紀錄。
 - `operations/teacher-test-protocol-v1.md`、`learning-history/teacher-pilot-v0.3.11-draft.md`：老師試點的流程與紀錄；
   老師測試功能已於 P4-5 移除，凍結題目資料 `teacher-test-cases-v1.json` 一併刪除（可從 git 歷史取回）。
+- `specifications/gap-analysis-v0.2.md`、`specifications/SDS-v0.2.txt`：SDS v0.2 的差異分析（2026-06）與規格書文字匯出；
+  其中 `buildAIExplanationRequest`／`PromptBuilder` 等 v1 名詞已隨 P4-1 刪除。規格書原檔仍在 `docs/specifications/SDS-v0.2.docx`。
