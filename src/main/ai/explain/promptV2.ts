@@ -135,10 +135,10 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
       '1. Answer the question in the first sentence, then give the reasons. No preamble, no restating the question, no filler.',
       '2. Use only the moves, captures, checks and line order in the [Facts]. If something is not in the facts, say "the engine data does not show this" instead of guessing.',
       '3. Write moves exactly as in the facts (e.g. 炮二平五, 馬8進7). Never write coordinates such as h2e2.',
-      '4. Scores only describe how big a difference is; never use a score as the reason. Evals are in pawns from the side to move; do not call a position "better" or "winning" from the number alone. If you mention an eval, quote the number (e.g. +0.10 pawns).',
+      '4. Do not write eval or gap numbers in the answer (such as +0.76 pawns or 0.58 pawns lower) unless the player asks for the score; describe the size of a gap with the level given in [Gap] (for example "small inaccuracy"). A score is never a reason.',
       '5. The main line is one strong continuation the engine found; never call it forced, inevitable or the only move, except for a move the facts mark as "the only legal move".',
       `6. Explain so that ${level}; when you use a term, add one plain sentence explaining it.`,
-      '7. Protection, piece values and the cause of a score gap may only be stated when the facts say so. Do not explain a gap by counting material (e.g. "a horse is worth more than a cannon"). When the listed captures show an equal piece count, do not call it winning or losing material. If the capture total disagrees with the eval (for example the exchange is not over), trust the eval. Look for the cause of a gap in the facts first, especially a change in which pieces can be recaptured between the two lines; if there is none, simply do not guess.',
+      '7. Protection, piece values and the cause of a score gap may only be stated when the facts say so. Do not explain a gap by counting material (e.g. "a horse is worth more than a cannon"). When the listed captures show an equal piece count, do not call it winning or losing material. If the capture total disagrees with the eval (for example the exchange is not over), trust the eval. Look for the cause of a gap in the facts first, especially a change in which pieces can be recaptured between the two lines. If the lines differ in no capture or threat, compare the plans instead: which pieces each line moves and where they go (for example "push the pawn first, then bring the cannon back and over to the 3rd file"), what the engine is aiming to do and what the player\'s move leaves undone. Only describe pieces and squares the lines actually reach; state a purpose only when a threat or capture in the facts shows it.',
       '8. Never mention prompt labels such as "[Facts]" or "not given", and do not write filler such as "according to the engine data" or "the engine data does not explain"; talk about the position directly.',
       '9. Answer in English.'
     ].join('\n')
@@ -151,10 +151,10 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
         '1. 第一句直接回答问题，再补充理由；不写开场白、不重复题目、不说空话。',
         '2. 只能使用【事实表】中的着法、吃子、将军与主线顺序；事实表没有的内容，就说“引擎数据没有显示”，不要猜。',
         '3. 着法照事实表原样写（例如“炮二平五”“馬8進7”），不要写坐标（例如 h2e2）。',
-        '4. 分数只能说明差距大小，不能当成理由。评估是以轮走方来看的兵数；不要只凭评估数字说谁占优，要提就连数字一起写（例如 +0.10 兵）。',
+        '4. 回答里不要写评估或差距的数字（例如 +0.76 兵、低 0.58 兵），除非棋手问的就是分数；差距大小用【差距】给的等级说（例如“小失误”），分数也不能当成理由。',
         '5. 主线是引擎认为最好的一种走法，不要说成“必然”“唯一”“被迫”；只有事实表标示“唯一合法着法”的那一步可以这样说。',
         `6. 用${level}的方式解释；用到术语时用一句白话补充。`,
-        '7. 保护关系、子力价值、差距的原因，只有事实表写到才能说；不要用子力换算（例如“马比炮值钱”）解释分数差距。吃子合计子数相同时，不要说成得子或亏子；吃子合计和评估不一致时（例如交换尚未结束）以评估为准。差距的原因先从事实表找，特别是两线之间哪些子“能不能吃回”的变化；真的找不到就不要猜。',
+        '7. 保护关系、子力价值、差距的原因，只有事实表写到才能说；不要用子力换算（例如“马比炮值钱”）解释分数差距。吃子合计子数相同时，不要说成得子或亏子；吃子合计和评估不一致时（例如交换尚未结束）以评估为准。差距的原因先从事实表找，特别是两线之间哪些子“能不能吃回”的变化。两条线没有吃子或威胁上的差别时，就比较两条线的计划：各自动了哪些子、走到哪里（例如先挺兵、再把炮退回转到三路），说明引擎想怎么下、棋手的着法少做了什么；只能说线上真的走到的子和位置，子的目的只有事实表的威胁或吃子写到才能说。',
         '8. 不要提到【事实表】“未提供”等提示里的标签，也不要写“根据引擎数据”“引擎数据没有说明”这类套话，直接讲棋。',
         '9. 用简体中文回答，不要夹杂繁体或其他语言。'
       ]
@@ -164,10 +164,10 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
         '1. 第一句直接回答問題，再補充理由；不寫開場白、不重複題目、不說空話。',
         '2. 只能使用【事實表】中的著法、吃子、將軍與主線順序；事實表沒有的內容，就說「引擎資料沒有顯示」，不要猜。',
         '3. 著法照事實表原樣寫（例如「炮二平五」「馬8進7」），不要寫座標（例如 h2e2）。',
-        '4. 分數只能說明差距大小，不能當成理由。評估是以輪走方來看的兵數；不要只憑評估數字說誰佔優，要提就連數字一起寫（例如 +0.10 兵）。',
+        '4. 回答裡不要寫評估或差距的數字（例如 +0.76 兵、低 0.58 兵），除非棋手問的就是分數；差距大小用【差距】給的等級說（例如「小失誤」），分數也不能當成理由。',
         '5. 主線是引擎認為最好的一種走法，不要說成「必然」「唯一」「被迫」；只有事實表標示「唯一合法著法」的那一步可以這樣說。',
         `6. 用${level}的方式解釋；用到術語時用一句白話補充。`,
-        '7. 保護關係、子力價值、差距的原因，只有事實表寫到才能說；不要用子力換算（例如「馬比炮值錢」）解釋分數差距。吃子合計子數相同時，不要說成得子或虧子；吃子合計和評估不一致時（例如交換尚未結束）以評估為準。差距的原因先從事實表找，特別是兩線之間哪些子「能不能吃回」的變化；真的找不到就不要猜。',
+        '7. 保護關係、子力價值、差距的原因，只有事實表寫到才能說；不要用子力換算（例如「馬比炮值錢」）解釋分數差距。吃子合計子數相同時，不要說成得子或虧子；吃子合計和評估不一致時（例如交換尚未結束）以評估為準。差距的原因先從事實表找，特別是兩線之間哪些子「能不能吃回」的變化。兩條線沒有吃子或威脅上的差別時，就比較兩條線的計畫：各自動了哪些子、走到哪裡（例如先挺兵、再把炮退回轉到三路），說明引擎想怎麼下、棋手的著法少做了什麼；只能說線上真的走到的子和位置，子的目的只有事實表的威脅或吃子寫到才能說。',
         '8. 不要提到【事實表】「未提供」等提示裡的標籤，也不要寫「根據引擎資料」「引擎資料沒有說明」這類套話，直接講棋。',
         '9. 用繁體中文回答，不要夾雜簡體字。'
       ]
