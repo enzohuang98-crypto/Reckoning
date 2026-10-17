@@ -8,10 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppDataSnapshot } from '@shared/types/AppData'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
-import {
-  type EngineProfileId,
-  type EngineRegistrySnapshot
-} from '@shared/types/EngineRegistry'
+import type { EngineRegistrySnapshot } from '@shared/types/EngineRegistry'
 import type { AppSettings } from '@shared/types/Settings'
 import type { AIModelInfo } from '@shared/types/AIProviderTypes'
 import type {
@@ -82,11 +79,6 @@ export function SettingsPage({
   const [engineMessage, setEngineMessage] = useState<string | null>(null)
   const [engineRegistry, setEngineRegistry] =
     useState<EngineRegistrySnapshot>(EMPTY_ENGINE_REGISTRY)
-  const [newEngineProfile, setNewEngineProfile] = useState<EngineProfileId>('pikafish')
-  const [newEngineName, setNewEngineName] = useState('')
-  const [newEnginePath, setNewEnginePath] = useState('')
-  const [newEngineSelectionToken, setNewEngineSelectionToken] =
-    useState<string | null>(null)
   const [testingEngineId, setTestingEngineId] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
@@ -462,41 +454,6 @@ export function SettingsPage({
     }
   }
 
-  const browseNewEngine = async (): Promise<void> => {
-    try {
-      const picked = await window.api.engine.browsePath()
-      if (picked) {
-        setNewEnginePath(picked.displayPath)
-        setNewEngineSelectionToken(picked.token)
-      }
-    } catch {
-      setEngineMessage('無法開啟檔案選擇器，請稍後重試。')
-    }
-  }
-
-  const addEngine = async (): Promise<void> => {
-    if (!newEnginePath.trim() || !newEngineSelectionToken) {
-      setEngineMessage('請先選擇本機引擎 EXE。')
-      return
-    }
-    try {
-      const installation = await window.api.engine.addInstallation({
-        profileId: newEngineProfile,
-        displayName: newEngineName.trim() || undefined,
-        selectionToken: newEngineSelectionToken
-      })
-      setNewEngineName('')
-      setNewEnginePath('')
-      setNewEngineSelectionToken(null)
-      setEngineMessage(
-        `已加入 ${installation.displayName}；實際通過搜尋測試後才會標示已驗證。`
-      )
-      await refreshEngine()
-    } catch {
-      setEngineMessage('無法加入引擎，請確認是本機磁碟上的 EXE 絕對路徑。')
-    }
-  }
-
   const removeEngine = async (id: string): Promise<void> => {
     try {
       setEngineRegistry(await window.api.engine.removeInstallation(id))
@@ -629,8 +586,6 @@ export function SettingsPage({
         <div className="settings-content">
           {activeCategory === 'ai' && (
             <AiSettingsSection
-              settings={settings}
-              update={update}
               apiKey={apiKey}
               onApiKeyChange={(value) => {
                 connectAttemptRef.current += 1
@@ -672,16 +627,9 @@ export function SettingsPage({
               settings={settings}
               update={update}
               registry={engineRegistry}
-              newProfile={newEngineProfile}
-              onNewProfileChange={setNewEngineProfile}
-              newName={newEngineName}
-              onNewNameChange={setNewEngineName}
-              newPath={newEnginePath}
               testingEngineId={testingEngineId}
               message={engineMessage}
               testResult={engineTest}
-              onBrowse={() => void browseNewEngine()}
-              onAdd={() => void addEngine()}
               onRefresh={() => void refreshEngine()}
               onTest={(id) => void testEngine(id)}
               onRemove={(id) => void removeEngine(id)}

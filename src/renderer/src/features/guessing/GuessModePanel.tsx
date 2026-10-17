@@ -114,10 +114,19 @@ export function GuessModePanel({
             readOnly
             aria-label="你的走法"
             onClick={() => {
-              if (submittedGuess === null) onBeginMoveSelection()
+              if (submittedGuess === null) {
+                // 再點一次就退出選擇，回到可以正常在棋盤走棋。
+                if (selectionActive) onCancelMoveSelection()
+                else onBeginMoveSelection()
+              }
               setSubmitError(null)
             }}
           />
+          {submittedGuess === null && selectionActive && !draftMove && (
+            <button className="btn ghost" onClick={onCancelMoveSelection}>
+              取消選擇
+            </button>
+          )}
           {submittedGuess === null && draftMove && (
             <button
               className="btn ghost"
@@ -143,7 +152,7 @@ export function GuessModePanel({
       </div>
       {selectionActive && (
         <div className="guess-selection-note">
-          請到棋盤先點選要走的棋子，再點目的地；選擇過程不會改變棋盤。
+          請到棋盤先點選要走的棋子，再點目的地；選擇過程不會改變棋盤。不選了可按「取消選擇」或 Esc。
         </div>
       )}
       <div className="field guess-reason-field">

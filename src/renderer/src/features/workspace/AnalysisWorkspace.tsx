@@ -141,6 +141,8 @@ export function AnalysisWorkspace({
 
   const changeView = (next: AnalysisView): void => {
     if (next === 'guess') setActualMove(null)
+    // 離開猜著時一併退出「選擇你的著法」，否則棋盤點擊仍被當成選猜著，無法正常走棋。
+    else setGuessSelectionActive(false)
     setActiveView(next)
   }
 
