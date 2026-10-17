@@ -192,6 +192,16 @@ const useSaved = savedOpenRouter.root.findAllByType('button').find(
 assert(useSaved)
 assert.equal(useSaved.props.disabled, true, '尚未讀取候選清單時不可提交草稿模型')
 assert.equal(savedSwitchCalls, 0)
+assert.equal(
+  savedOpenRouter.root.findAll(
+    (node) =>
+      node.type === 'p' &&
+      node.props.className === 'error-text' &&
+      /已不在最新清單/.test(node.children.join(''))
+  ).length,
+  0,
+  '尚未讀取候選清單時，不得誤報目前模型「已不在最新清單」'
+)
 
 const wizard = TestRenderer.create(
   <SetupWizard

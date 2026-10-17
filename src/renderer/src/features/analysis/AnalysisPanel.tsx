@@ -83,6 +83,8 @@ interface Props {
   onExplanation: (explanation: AIExplanationResponse | null) => void
   onStatusChange: (status: AnalysisPanelStatus) => void
   onOpenAiSettings?: () => void
+  /** 猜著練習尚未提交時隱藏提問框，避免與「你的走法」同時出現兩個輸入處。 */
+  showQuestion?: boolean
 }
 
 interface PendingAiRequest {
@@ -186,7 +188,8 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     onReplayCandidates,
     onExplanation,
     onStatusChange,
-    onOpenAiSettings
+    onOpenAiSettings,
+    showQuestion = true
   }: Props,
   ref
 ): JSX.Element {
@@ -1248,6 +1251,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               }
               onChangeModel={onOpenAiSettings}
               notice={aiNotice}
+              showQuestion={showQuestion}
               followUp={followUp}
               onFollowUpChange={setFollowUp}
               onContinue={continueExplain}

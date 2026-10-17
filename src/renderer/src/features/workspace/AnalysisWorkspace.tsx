@@ -350,6 +350,7 @@ export function AnalysisWorkspace({
                   onExplanation={() => undefined}
                   onStatusChange={setAnalysisStatus}
                   onOpenAiSettings={onOpenAiSettings}
+                  showQuestion={activeView !== 'guess' || submittedGuess !== null}
                 />
               </div>
 
