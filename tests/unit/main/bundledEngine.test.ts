@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { resolve } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
 import {
   ILLEGAL_INSTRUCTION_EXIT_CODE,
@@ -57,7 +58,8 @@ async function main(): Promise<void> {
     read: <T,>(_file: string, fallback: T): T => fallback,
     writeAsync: async (_file: string, value: unknown) => { writes.push(value) }
   } as unknown as StorageService
-  const bundled = '/opt/app/engine/pikafish.exe'
+  // 用平台的絕對路徑：登錄會以 path.resolve 正規化（Windows 會補上磁碟代號）。
+  const bundled = resolve('/opt/app/engine/pikafish.exe')
   const fallback = compatibleEnginePath(bundled)
   const registry = new EngineRegistryService(storage, bundled)
   const before = registry.list().installations
