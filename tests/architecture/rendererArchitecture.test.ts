@@ -278,7 +278,9 @@ async function main(): Promise<void> {
     assert.equal(remainingOneClickDeadlineMs(10_000, 140_000), 1)
   })
 
-  await check('首頁右上只保留猜著按鈕，AI 教練內容與局面分析位置不變', () => {
+  // 原本只有一顆「猜著」切換鈕：使用者看不出目前在哪個模式、該在哪一格輸入（實測回報），
+  // 改為兩個並排且標出目前模式的選項；其餘版面規則不變。
+  await check('分析模式並排顯示「問 AI 教練／猜著練習」，AI 教練內容與局面分析位置不變', () => {
     const tabs = readFileSync(
       resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
       'utf8'
@@ -289,8 +291,9 @@ async function main(): Promise<void> {
     )
     assert.doesNotMatch(tabs, /id: 'live'/)
     assert.doesNotMatch(tabs, /id: 'details'/)
-    assert.doesNotMatch(tabs, /AI 教練/)
-    assert.match(tabs, /猜著/)
+    assert.match(tabs, /問 AI 教練/)
+    assert.match(tabs, /猜著練習/)
+    assert.match(tabs, /inspector-mode-hint/)
     assert.match(workspace, /className="live-analysis-dock"/)
     assert.match(
       workspace,
@@ -319,8 +322,8 @@ async function main(): Promise<void> {
       'utf8'
     )
 
-    assert.match(tabs, /aria-pressed=\{activeView === 'guess'\}/)
-    assert.match(tabs, /activeView === 'guess' \? 'coach' : 'guess'/)
+    assert.match(tabs, /aria-pressed=\{activeView === view\.id\}/)
+    assert.match(tabs, /onClick=\{\(\) => onChange\(view\.id\)\}/)
     assert.doesNotMatch(console, /<section className="engine-console" aria-live=/)
     assert.match(console, /<span role="status" aria-atomic="true">/)
     assert.match(table, /<section className="live-analysis-table" aria-live="polite">/)

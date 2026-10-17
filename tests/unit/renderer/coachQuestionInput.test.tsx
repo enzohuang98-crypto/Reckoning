@@ -80,5 +80,15 @@ act(() => {
   renderer!.update(<CoachView {...props({ result, aiBusy: true, followUp: 'x' })} />)
 })
 assert.equal(renderer!.root.findAllByType('input')[0].props.disabled, true)
+
+// 猜著練習尚未提交時，畫面上只留「你的走法」一個輸入處。
+act(() => {
+  renderer!.update(<CoachView {...props({ result, showQuestion: false })} />)
+})
+assert.equal(
+  renderer!.root.findAllByType('input').length,
+  0,
+  'guess drafting hides the question box so there is only one place to type'
+)
 act(() => renderer!.unmount())
 console.log('Coach question input renderer checks passed.')

@@ -62,7 +62,9 @@ export function AiSettingsSection({
   const [deleteConfirmation, setDeleteConfirmation] = useState(false)
   const active = secretStatus.activeCredential
   const savedOpenRouterActive = active?.provider === 'openrouter'
+  // 清單尚未讀取時無從比對，不能把「還沒讀」說成「已不在清單」。
   const selectedModelUnavailable =
+    openRouterModels.length > 0 &&
     selectedOpenRouterModel !== '' &&
     !openRouterModels.some((model) => model.id === selectedOpenRouterModel)
 

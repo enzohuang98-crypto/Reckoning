@@ -37,6 +37,8 @@ interface Props {
   canChangeModel?: boolean
   onChangeModel?: () => void
   notice: string | null
+  /** 猜著練習尚未提交時為 false，畫面上只留「你的走法」一個輸入處。 */
+  showQuestion?: boolean
   followUp: string
   onFollowUpChange: (value: string) => void
   onContinue: () => void
@@ -67,6 +69,7 @@ export function CoachView({
   canChangeModel = false,
   onChangeModel,
   notice,
+  showQuestion = true,
   followUp,
   onFollowUpChange,
   onContinue,
@@ -196,7 +199,7 @@ export function CoachView({
         </section>
       )}
 
-      {result && (
+      {result && showQuestion && (
         <section className="ai-question" aria-label="直接提問">
           <div className="follow-up-row">
             <input
