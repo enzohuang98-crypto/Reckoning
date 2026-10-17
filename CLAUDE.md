@@ -17,7 +17,8 @@ Stage 1–10 的開發歷史已移到 `docs/history/claude-md-stages-1-10.md`（
   棋局資料：main 的 AppData JSON；機密：Electron `safeStorage`（`SecretStore`，加密落地）。
 - 內建引擎：`resources/engine/` 隨附多種 CPU 指令集的 Pikafish 與 `pikafish.nnue`
   （GPL v3 + 權重授權條款，不受根目錄 MIT 涵蓋）；登錄為空時 `EngineRegistryService`
-  自動加入「Pikafish（內建）」。設定頁的「加入本機引擎」已於 v0.4.18 移除（main 端加入引擎的 IPC 仍在）；
+  自動加入「Pikafish（內建）」（`pikafish.exe` 為 AVX2 版；啟動時 `bundledEngine.probeEngineCpu` 試跑，
+  只有 STATUS_ILLEGAL_INSTRUCTION 才把內建項目改指同目錄的 `pikafish-sse41-popcnt.exe`）。設定頁的「加入本機引擎」已於 v0.4.18 移除（main 端加入引擎的 IPC 仍在）；
   自備 Pikafish 必須把 `pikafish.nnue` 放在同目錄（或 `setoption name EvalFile`），否則可能過不了 `isready`。
 - 自動更新：`electron-updater`（`AppUpdaterService`）只在已封裝的 Windows 版啟用；啟動 5 秒後首次檢查、
   之後每 4 小時；下載完成絕不自動安裝，必須由使用者選擇重新啟動（先持久化資料）。

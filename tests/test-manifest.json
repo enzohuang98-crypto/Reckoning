@@ -37,6 +37,7 @@
   {"command":"tsx --tsconfig tsconfig.node.json tests/security/security.test.ts","windowsOnly":true},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/sessionStore.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/engineRegistry.test.ts","windowsOnly":true},
+  {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/bundledEngine.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/quality.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/architecture/rendererArchitecture.test.ts"},
   {"command":"tsx --tsconfig tsconfig.web.json tests/integration/renderer/actualMoveFlow.test.tsx"},
