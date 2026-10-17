@@ -1,69 +1,30 @@
 import {
   forwardRef,
-  useCallback,
   useEffect,
   useImperativeHandle,
-  useRef,
-  useState
+  useRef
 } from 'react'
 import { createPortal } from 'react-dom'
 import type { BoardState } from '@shared/types/BoardState'
 import type { AppSettings } from '@shared/types/Settings'
-import type {
-  EngineAnalysisProgressPayload,
-  EngineAnalysisResultPayload,
-  EngineStatus,
-  GenerateExplanationStartPayload,
-  GenerateExplanationErrorPayload
-} from '@shared/types/ipc'
+import type { EngineAnalysisResultPayload } from '@shared/types/ipc'
 import type { AIExplanationResponse } from '@shared/types/AIExplanationTypes'
 import type { EngineCandidateMove } from '@shared/types/EngineAnalysis'
-import type {
-  EngineRegistrySnapshot
-} from '@shared/types/EngineRegistry'
-import type { HarnessProgressPayload } from '@shared/types/Harness'
-import type {
-  AIConversation,
-  ConversationMessage
-} from '@shared/types/AppData'
+import type { AIConversation } from '@shared/types/AppData'
 import type { SubmittedGuess } from '@shared/types/UserGuess'
-import { validateMoveInput } from '@shared/logic/validation/ValidationUtils'
-import {
-  aiErrorDiagnosticsText,
-  type AiErrorAction,
-  type AiErrorInput
-} from '@shared/logic/ai/aiErrorPresentation'
-import { buildConversationHistoryForRequest } from './aiRequest'
 import { CoachView } from './CoachView'
 import { DetailsView } from './DetailsView'
-import {
-  hasVerifiedActiveEngine,
-  retryOnce
-} from './engineHealth'
-import {
-  thoughtSignature,
-  type EngineThoughtEntry
-} from './EngineConsole'
 import { LiveAnalysisTable } from './LiveAnalysisTable'
+import { hasBothKings } from './liveAnalysis'
 import type {
   ActualMoveSelection,
-  AiAnswerMeta,
   AnalysisPanelHandle,
   AnalysisPanelStatus,
   AnalysisView
 } from './types'
-import {
-  automaticRootMovetimeMs,
-  automaticUserMoveMovetimeMs,
-  canExplainWithCompletedResult,
-  canScheduleLiveAnalysis,
-  isSameAnalysisTarget,
-  liveAnalysisRetryDelayMs,
-  ACTUAL_MOVE_ENGINE_DEADLINE_MS,
-  AI_REQUEST_DEADLINE_MS,
-  remainingActualMoveEngineDeadlineMs,
-  remainingOneClickDeadlineMs
-} from './liveAnalysis'
+import { useAiExplanation } from './useAiExplanation'
+import { useAnalysisOrchestration } from './useAnalysisOrchestration'
+import { useEngineAnalysis, type EngineAiLink } from './useEngineAnalysis'
 
 export type { AnalysisPanelHandle, AnalysisPanelStatus } from './types'
 
@@ -87,91 +48,15 @@ interface Props {
   showQuestion?: boolean
 }
 
-interface PendingAiRequest {
-  target: AiRequestTarget
-  question: string | null
-  conversationId: string
-  conversationCreatedAt: string | null
-  conversationMessages: ConversationMessage[]
-  analysisId: string
-  positionFen: string
-  resultSnapshot: EngineAnalysisResultPayload
-  provider: AIExplanationResponse['provider']
-  model: string
-}
-
-interface AiRequestTarget {
-  boardFen: string
-  analysisMove: string
-  actualMoveSelectionId: string | null
-  submissionId: string | null
-}
-
-interface RetryableAiRequest {
-  target: AiRequestTarget
-  pending: PendingAiRequest
-  start: Omit<GenerateExplanationStartPayload, 'requestId'>
-}
-
-const MAX_ENGINE_THOUGHTS = 80
-
-function hasBothKings(board: BoardState): boolean {
-  let red = false
-  let black = false
-  for (const row of board.grid) {
-    for (const piece of row) {
-      if (piece?.type !== 'king') continue
-      if (piece.color === 'red') red = true
-      else black = true
-    }
-  }
-  return red && black
-}
-
-function newMessage(
-  role: ConversationMessage['role'],
-  text: string,
-  provenance?: Pick<PendingAiRequest, 'provider' | 'model'>
-): ConversationMessage {
-  return {
-    id: crypto.randomUUID(),
-    role,
-    text,
-    createdAt: new Date().toISOString(),
-    ...(role === 'assistant' && provenance ? provenance : {})
-  }
-}
-
-function isSameAiRequestTarget(
-  left: AiRequestTarget,
-  right: AiRequestTarget | null
-): boolean {
-  return Boolean(
-    right &&
-      left.boardFen === right.boardFen &&
-      left.analysisMove === right.analysisMove &&
-      left.actualMoveSelectionId === right.actualMoveSelectionId &&
-      left.submissionId === right.submissionId
-  )
-}
-
-function cloneExplanationStart(
-  start: Omit<GenerateExplanationStartPayload, 'requestId'>
-): Omit<GenerateExplanationStartPayload, 'requestId'> {
-  return {
-    ...start,
-    conversationHistory: start.conversationHistory?.map((message) => ({ ...message }))
-  }
-}
-
-function clonePendingAiRequest(pending: PendingAiRequest): PendingAiRequest {
-  return {
-    ...pending,
-    target: { ...pending.target },
-    conversationMessages: pending.conversationMessages.map((message) => ({ ...message }))
-  }
-}
-
+/**
+ * 唯一的分析與 AI IPC controller（見 docs/architecture/overview.md）。本元件只負責組裝：
+ * - useEngineAnalysis：本機引擎分析的生命週期（狀態、啟動／取消、進度、截止計時）。
+ * - useAiExplanation：AI 解說的生命週期（請求、串流、截止、取消、重試、對話）。
+ * - useAnalysisOrchestration：兩者之間的規則（自動分析、live 精煉、等引擎再回答、提交觸發解說）。
+ * 同一份狀態透過 portal 餵給教練畫面、Live dock 與資料抽屜。
+ *
+ * 三個 hook 的呼叫順序就是 effect 的執行順序（引擎重設 → AI 重設 → 自動分析與排隊提問），不可調換。
+ */
 export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function AnalysisPanel(
   {
     visible,
@@ -193,841 +78,90 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
   }: Props,
   ref
 ): JSX.Element {
-  const [status, setStatus] = useState<EngineStatus | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [refining, setRefining] = useState(false)
-  const [livePaused, setLivePaused] = useState(false)
-  const [progress, setProgress] = useState<EngineAnalysisProgressPayload | null>(null)
-  const [engineThoughts, setEngineThoughts] = useState<EngineThoughtEntry[]>([])
-  const [retainingPreviousAnalysis, setRetainingPreviousAnalysis] = useState(false)
-  const [cancelling, setCancelling] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [engineDiagnostics, setEngineDiagnostics] = useState<string[]>([])
-  const [notice, setNotice] = useState<string | null>(null)
-  const [aiError, setAiError] = useState<string | null>(null)
-  const [aiDiagnostic, setAiDiagnostic] =
-    useState<GenerateExplanationErrorPayload['diagnostic']>(undefined)
-  const [aiErrorInfo, setAiErrorInfo] =
-    useState<(AiErrorInput & { model?: string }) | null>(null)
-  const [aiNotice, setAiNotice] = useState<string | null>(null)
-  const [result, setResult] = useState<EngineAnalysisResultPayload | null>(null)
-  const [explanation, setExplanation] = useState<AIExplanationResponse | null>(null)
-  const [explainedResult, setExplainedResult] =
-    useState<EngineAnalysisResultPayload | null>(null)
-  const [aiBusy, setAiBusy] = useState(false)
-  const [aiCancelling, setAiCancelling] = useState(false)
-  const [streamingText, setStreamingText] = useState('')
-  const [streamingAttempt, setStreamingAttempt] = useState(1)
-  const [answerMeta, setAnswerMeta] = useState<AiAnswerMeta | null>(null)
-  const streamingAttemptRef = useRef(1)
-  const [followUp, setFollowUp] = useState('')
-  const [engineRegistry, setEngineRegistry] = useState<EngineRegistrySnapshot>({
-    installations: [],
-    activeEngineId: null
-  })
-  const [primaryEngineId, setPrimaryEngineId] = useState<string | null>(null)
-  const [harnessProgress, setHarnessProgress] =
-    useState<HarnessProgressPayload | null>(null)
-  const [traceId, setTraceId] = useState<string | null>(null)
-  const activeRequestId = useRef<string | null>(null)
-  const activeAnalysisKey = useRef<string | null>(null)
-  const engineDeadlineTimer = useRef<number | null>(null)
-  const explicitAnalysisTarget = useRef<string | null>(null)
-  const queuedExplanation = useRef<{question: string | null; regenerate: boolean; target: AiRequestTarget} | null>(null)
-  const activeAiRequestId = useRef<string | null>(null)
-  const aiDeadlineTimer = useRef<number | null>(null)
-  const pendingAiRequest = useRef<PendingAiRequest | null>(null)
-  const retryableAiRequest = useRef<RetryableAiRequest | null>(null)
-  const lastSubmittedExplanationId = useRef<string | null>(null)
-  const settingsRef = useRef(settings)
-  const conversationRef = useRef(conversation)
-  const resultRef = useRef(result)
   const explanationAnchorRef = useRef<HTMLDivElement>(null)
-  const analysisStartedAtRef = useRef<number | null>(null)
-  const lastThoughtAtRef = useRef<number | null>(null)
-  const pendingThoughtResetRequestId = useRef<string | null>(null)
-  const liveReplayCandidatesByRank = useRef<Map<number, EngineCandidateMove>>(new Map())
-  const [liveNow, setLiveNow] = useState(() => Date.now())
-  const [liveRetryCount, setLiveRetryCount] = useState(0)
   const analysisMove = actualMove?.move ?? submittedGuess?.move ?? ''
-  const currentAiTargetRef = useRef<AiRequestTarget | null>(null)
-  currentAiTargetRef.current = {
-    boardFen: board.fen,
-    analysisMove,
-    actualMoveSelectionId: actualMove?.selectionId ?? null,
-    submissionId: submittedGuess?.submissionId ?? null
-  }
+  const aiLink = useRef<EngineAiLink | null>(null)
 
-  useEffect(() => {
-    settingsRef.current = settings
-  }, [settings])
-
-  useEffect(() => {
-    conversationRef.current = conversation
-  }, [conversation])
-
-  const refreshEngineState = useCallback(async (): Promise<void> => {
-    try {
-      const registry = await window.api.engine.listInstallations()
-      setEngineRegistry(registry)
-      setPrimaryEngineId(registry.activeEngineId)
-      const current = await window.api.engine.status()
-      if (!current.available) {
-        setStatus(current)
-        return
-      }
-
-      const active = registry.installations.find(
-        (installation) => installation.id === registry.activeEngineId
-      )
-      if (hasVerifiedActiveEngine(registry)) {
-        setEngineDiagnostics([])
-        setStatus({ ...current, protocol: active?.protocol ?? current.protocol })
-        return
-      }
-
-      const test = await retryOnce(
-        () => window.api.engine.test(),
-        (result) => result.ok,
-        600
-      )
-      setEngineDiagnostics(test.ok ? [] : test.diagnostics ?? [])
-      setStatus(
-        test.ok
-          ? { ...current, protocol: test.protocol ?? current.protocol }
-          : {
-              ...current,
-              available: false,
-              message: test.message ?? '引擎無法完成搜尋測試。'
-            }
-      )
-    } catch {
-      setStatus({ available: false, engineName: '引擎', message: '無法查詢引擎狀態' })
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!visible) return
-    void refreshEngineState()
-  }, [refreshEngineState, visible])
-
-  useEffect(() => () => {
-    if (activeRequestId.current) {
-      window.api.engine.cancelAnalysis(activeRequestId.current)
-    }
-    if (engineDeadlineTimer.current !== null) {
-      window.clearTimeout(engineDeadlineTimer.current)
-      engineDeadlineTimer.current = null
-    }
-    if (activeAiRequestId.current) {
-      window.api.ai.cancelExplanation(activeAiRequestId.current)
-    }
-    if (aiDeadlineTimer.current !== null) {
-      window.clearTimeout(aiDeadlineTimer.current)
-      aiDeadlineTimer.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    if (activeRequestId.current) window.api.engine.cancelAnalysis(activeRequestId.current)
-    if (engineDeadlineTimer.current !== null) {
-      window.clearTimeout(engineDeadlineTimer.current)
-      engineDeadlineTimer.current = null
-    }
-    if (activeAiRequestId.current) {
-      window.api.ai.cancelExplanation(activeAiRequestId.current)
-    }
-    if (aiDeadlineTimer.current !== null) {
-      window.clearTimeout(aiDeadlineTimer.current)
-      aiDeadlineTimer.current = null
-    }
-    activeRequestId.current = null
-    activeAnalysisKey.current = null
-    explicitAnalysisTarget.current = null
-    activeAiRequestId.current = null
-    queuedExplanation.current = null
-    pendingAiRequest.current = null
-    retryableAiRequest.current = null
-    analysisStartedAtRef.current = null
-    lastThoughtAtRef.current = null
-    setBusy(false)
-    setRefining(false)
-    setLivePaused(false)
-    setProgress(null)
-    pendingThoughtResetRequestId.current = null
-    liveReplayCandidatesByRank.current.clear()
-    onReplayCandidates([])
-    setCancelling(false)
-    setAiBusy(false)
-    setAiCancelling(false)
-    setResult(null)
-    resultRef.current = null
-    setExplanation(null)
-    setExplainedResult(null)
-    setLiveRetryCount(0)
-    setStreamingText('')
-    setAnswerMeta(null)
-    setFollowUp('')
-    setHarnessProgress(null)
-    setTraceId(null)
-    setError(null)
-    setEngineDiagnostics([])
-    setNotice(null)
-    setAiError(null)
-    setAiNotice(null)
-    onResult(null)
-    onExplanation(null)
-  }, [board.fen, analysisMove, actualMove?.selectionId, onReplayCandidates])
-
-  useEffect(() => {
-    const isActiveAiRequest = (requestId: string): boolean => {
-      const pending = pendingAiRequest.current
-      return Boolean(
-        requestId === activeAiRequestId.current &&
-          pending &&
-          isSameAiRequestTarget(pending.target, currentAiTargetRef.current)
-      )
-    }
-
-    const offProgress = window.api.engine.onAnalysisProgress((payload) => {
-      if (payload.requestId !== activeRequestId.current) return
-      lastThoughtAtRef.current = Date.now()
-      setProgress(payload)
-      if (
-        payload.phase === 'preparing_engine' ||
-        (payload.depth === null &&
-          payload.score === null &&
-          !payload.displayMove &&
-          payload.displayPrincipalVariation.length === 0)
-      ) {
-        return
-      }
-      const entry: EngineThoughtEntry = {
-        id: crypto.randomUUID(),
-        phase: payload.phase,
-        elapsedMs: payload.elapsedMs,
-        depth: payload.depth,
-        selDepth: payload.selDepth,
-        nodes: payload.nodes,
-        nps: payload.nps,
-        scoreDisplay: payload.score?.displayText ?? null,
-        scoreComparableValue: payload.score?.comparableValue ?? null,
-        candidateRank: payload.candidateRank,
-        displayMove: payload.displayMove,
-        displayPrincipalVariation: payload.displayPrincipalVariation,
-        engineName: payload.engineName
-      }
-      const replacePreviousRows =
-        pendingThoughtResetRequestId.current === payload.requestId
-      if (replacePreviousRows) {
-        pendingThoughtResetRequestId.current = null
-        setRetainingPreviousAnalysis(false)
-      }
-      setEngineThoughts((previous) => {
-        const rows = replacePreviousRows ? [] : previous
-        const last = rows[rows.length - 1]
-        if (last && thoughtSignature(last) === thoughtSignature(entry)) {
-          return rows
-        }
-        return [...rows, entry].slice(-MAX_ENGINE_THOUGHTS)
-      })
-      if (
-        payload.phase === 'root_analysis' &&
-        payload.candidateRank &&
-        payload.move &&
-        payload.principalVariation?.length
-      ) {
-        liveReplayCandidatesByRank.current.set(payload.candidateRank, {
-          move: payload.move,
-          displayMove: payload.displayMove,
-          score: payload.score,
-          evaluation: payload.score?.comparableValue ?? null,
-          depth: payload.depth,
-          principalVariation: payload.principalVariation,
-          displayPrincipalVariation: payload.displayPrincipalVariation
-        })
-        onReplayCandidates(
-          [...liveReplayCandidatesByRank.current.entries()]
-            .sort(([left], [right]) => left - right)
-            .map(([, candidate]) => candidate)
-        )
-      }
-    })
-    const offResult = window.api.engine.onAnalysisResult((payload) => {
-      if (payload.requestId !== activeRequestId.current) return
-      if (engineDeadlineTimer.current !== null) {
-        window.clearTimeout(engineDeadlineTimer.current)
-        engineDeadlineTimer.current = null
-      }
-      activeRequestId.current = null
-      activeAnalysisKey.current = null
-      analysisStartedAtRef.current = null
-      lastThoughtAtRef.current = null
-      setBusy(false)
-      setRefining(false)
-      setProgress(null)
-      setCancelling(false)
-      setLiveRetryCount(0)
-      setRetainingPreviousAnalysis(false)
-      setResult(payload)
-      resultRef.current = payload
-      onResult(payload)
-      liveReplayCandidatesByRank.current = new Map(
-        payload.engineAnalysis.candidateMoves.map((candidate, index) => [index + 1, candidate])
-      )
-      onReplayCandidates(payload.engineAnalysis.candidateMoves)
-    })
-    const offError = window.api.engine.onAnalysisError((payload) => {
-      if (payload.requestId !== activeRequestId.current) return
-      if (engineDeadlineTimer.current !== null) {
-        window.clearTimeout(engineDeadlineTimer.current)
-        engineDeadlineTimer.current = null
-      }
-      activeRequestId.current = null
-      activeAnalysisKey.current = null
-      analysisStartedAtRef.current = null
-      lastThoughtAtRef.current = null
-      setBusy(false)
-      setRefining(false)
-      setProgress(null)
-      setCancelling(false)
-      if (queuedExplanation.current) {
-        queuedExplanation.current = null
-        setAiBusy(false)
-        setAiNotice(null)
-        setAiError(payload.code === 'cancelled' ? '已取消等待皮卡魚分析，問題仍保留。' : '皮卡魚分析未完成，請重試分析後再回答。')
-      }
-      if (payload.code === 'cancelled') setNotice('已取消分析。')
-      else {
-        setLiveRetryCount((current) => current + 1)
-        setError(payload.message)
-        setEngineDiagnostics(payload.diagnostics ?? [])
-      }
-    })
-    const offAiChunk = window.api.ai.onExplanationChunk((payload) => {
-      if (payload.requestId !== activeAiRequestId.current) return
-      if (!isActiveAiRequest(payload.requestId)) return
-      const attempt = payload.attempt ?? 1
-      if (attempt !== streamingAttemptRef.current) {
-        // 修正或備援的新回答取代上一次的串流文字，不把兩次回答接在一起。
-        streamingAttemptRef.current = attempt
-        setStreamingAttempt(attempt)
-        setStreamingText(payload.deltaText)
-        return
-      }
-      setStreamingText((previous) => previous + payload.deltaText)
-    })
-    const offHarnessProgress = window.api.ai.onHarnessProgress((payload) => {
-      if (payload.requestId !== activeAiRequestId.current) return
-      if (!isActiveAiRequest(payload.requestId)) return
-      setHarnessProgress(payload)
-    })
-    const offAiDone = window.api.ai.onExplanationDone((payload) => {
-      if (payload.requestId !== activeAiRequestId.current) return
-      if (!isActiveAiRequest(payload.requestId)) return
-      if (aiDeadlineTimer.current !== null) {
-        window.clearTimeout(aiDeadlineTimer.current)
-        aiDeadlineTimer.current = null
-      }
-      const pending = pendingAiRequest.current
-      const isEngineSummary = payload.answerKind === 'engine_summary'
-      // 引擎摘要不是 AI 回答：保留原請求，讓「重試 AI」可以原樣再送一次。
-      if (!isEngineSummary) retryableAiRequest.current = null
-      activeAiRequestId.current = null
-      pendingAiRequest.current = null
-      setAiBusy(false)
-      setAiCancelling(false)
-      setHarnessProgress(null)
-      setStreamingText('')
-      setTraceId(payload.traceId ?? null)
-      setAnswerMeta(
-        payload.answerKind
-          ? {
-              answerKind: payload.answerKind,
-              ...(payload.actualModel ? { actualModel: payload.actualModel } : {}),
-              ...(payload.fallbackFromModel
-                ? { fallbackFromModel: payload.fallbackFromModel, fallbackReason: payload.fallbackReason }
-                : {})
-            }
-          : null
-      )
-      const response: AIExplanationResponse = {
-        text: payload.finalText,
-        provider: payload.provider ?? pending?.provider ?? settingsRef.current.aiProvider,
-        model: payload.actualModel ?? payload.model ?? pending?.model ?? settingsRef.current.aiModel,
-        usage: payload.usage,
-        createdAt: Date.now(),
-        groundedOnEngineData: true
-      }
-      setExplanation(response)
-      onExplanation(response)
-
-      if (pending) {
-        const now = new Date().toISOString()
-        const messages =
-          pending.question === null
-            ? [newMessage('assistant', payload.finalText, {
-                provider: payload.provider ?? pending.provider,
-                model: payload.actualModel ?? payload.model ?? pending.model
-              })]
-            : [
-                ...pending.conversationMessages,
-                newMessage('user', pending.question),
-                newMessage('assistant', payload.finalText, {
-                  provider: payload.provider ?? pending.provider,
-                  model: payload.actualModel ?? payload.model ?? pending.model
-                })
-              ]
-        const next: AIConversation = {
-          id: pending.conversationId,
-          analysisId: pending.analysisId,
-          positionFen: pending.positionFen,
-          createdAt: pending.conversationCreatedAt ?? now,
-          updatedAt: now,
-          messages
-        }
-        conversationRef.current = next
-        setExplainedResult(pending.resultSnapshot)
-        if (pending.question !== null) setFollowUp('')
-        onConversationChange(next)
-      }
-    })
-    const offAiError = window.api.ai.onExplanationError((payload) => {
-      if (payload.requestId !== activeAiRequestId.current) return
-      if (!isActiveAiRequest(payload.requestId)) return
-      if (aiDeadlineTimer.current !== null) {
-        window.clearTimeout(aiDeadlineTimer.current)
-        aiDeadlineTimer.current = null
-      }
-      const failedModel = pendingAiRequest.current?.model
-      activeAiRequestId.current = null
-      pendingAiRequest.current = null
-      setAiBusy(false)
-      setAiCancelling(false)
-      setHarnessProgress(null)
-      setStreamingText('')
-      if (payload.code === 'cancelled') setAiNotice('已取消生成；追問內容仍保留。')
-      else {
-        setAiError(payload.message)
-        setAiDiagnostic(payload.diagnostic)
-        setAiErrorInfo({
-          code: payload.code,
-          message: payload.message,
-          diagnostic: payload.diagnostic,
-          failureReason: payload.failureReason,
-          model: failedModel
-        })
-      }
-    })
-    return () => {
-      offProgress()
-      offResult()
-      offError()
-      offAiChunk()
-      offHarnessProgress()
-      offAiDone()
-      offAiError()
-    }
-  }, [onConversationChange, onExplanation, onReplayCandidates, onResult])
-
-  useEffect(() => {
-    resultRef.current = result
-  }, [result])
-
-  // 每秒重新渲染一次，讓「仍在分析中」的耗時持續走動，即使引擎暫時沒有新的 info 行也不會看起來像停止。
-  useEffect(() => {
-    if (!busy) return
-    const timer = window.setInterval(() => setLiveNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [busy])
-
-  const startAnalysis = useCallback((automatic = false): void => {
-    if (!hasBothKings(board)) {
-      if (!automatic) setError('棋盤需要同時有紅帥與黑將才能分析。')
-      return
-    }
-    if (!automatic) setLivePaused(false)
-    const move = analysisMove
-    const refinement =
-      automatic &&
-      isSameAnalysisTarget(resultRef.current?.engineAnalysis ?? null, board.fen, move)
-    if (move) {
-      const check = validateMoveInput(board, move)
-      if (!check.ok) {
-        setError(
-          `${actualMove ? '實戰著法' : '你的猜測著法'}不合法：${check.message}`
-        )
-        return
-      }
-    }
-
-    const rootAnalysisMovetimeMs = automatic
-      ? automaticRootMovetimeMs(settings.rootAnalysisMovetimeMs, refinement)
-      : settings.rootAnalysisMovetimeMs
-    const userMoveEvalMovetimeMs = automatic
-      ? automaticUserMoveMovetimeMs(settings.userMoveEvalMovetimeMs)
-      : settings.userMoveEvalMovetimeMs
-    const analysisKey = [
-      automatic ? (refinement ? 'auto-refine' : 'auto-initial') : 'manual',
-      board.fen,
-      move,
-      primaryEngineId ?? '',
-      rootAnalysisMovetimeMs,
-      userMoveEvalMovetimeMs,
-      settings.multiPv
-    ].join('|')
-    if (
-      automatic &&
-      activeRequestId.current &&
-      activeAnalysisKey.current === analysisKey
-    ) {
-      return
-    }
-
-    if (activeRequestId.current) {
-      window.api.engine.cancelAnalysis(activeRequestId.current)
-    }
-    if (engineDeadlineTimer.current !== null) {
-      window.clearTimeout(engineDeadlineTimer.current)
-      engineDeadlineTimer.current = null
-    }
-    setError(null)
-    setEngineDiagnostics([])
-    setNotice(null)
-    if (!refinement) {
-      setExplanation(null)
-      if (!conversationRef.current) setExplainedResult(null)
-      onExplanation(null)
-    }
-
-    const requestId = crypto.randomUUID()
-    activeRequestId.current = requestId
-    activeAnalysisKey.current = analysisKey
-    analysisStartedAtRef.current = Date.now()
-    lastThoughtAtRef.current = Date.now()
-    setLiveNow(Date.now())
-    setBusy(true)
-    setRefining(refinement)
-    setProgress({
-      requestId,
-      phase: 'preparing_engine',
-      elapsedMs: 0,
-      targetMs: null,
-      percent: 2,
-      depth: null,
-      score: null,
-      displayPrincipalVariation: []
-    })
-    if (!refinement) {
-      pendingThoughtResetRequestId.current = requestId
-      setRetainingPreviousAnalysis(true)
-      setResult(null)
-      resultRef.current = null
-      onResult(null)
-    }
-    window.api.engine.startAnalysis({
-      requestId,
-      engineId: primaryEngineId ?? undefined,
-      positionFen: board.fen,
-      userMove: move || undefined,
-      analysisConfig: {
-        rootAnalysisMovetimeMs,
-        userMoveEvalMovetimeMs,
-        multiPv: settings.multiPv
-      }
-    })
-    if (actualMove && automatic && !refinement) {
-      engineDeadlineTimer.current = window.setTimeout(() => {
-        if (activeRequestId.current !== requestId) return
-        window.api.engine.cancelAnalysis(requestId)
-        activeRequestId.current = null
-        activeAnalysisKey.current = null
-        analysisStartedAtRef.current = null
-        lastThoughtAtRef.current = null
-        engineDeadlineTimer.current = null
-        setBusy(false)
-        setRefining(false)
-        setProgress(null)
-        setCancelling(false)
-        setLivePaused(true)
-        setError(
-          `引擎比較在點擊後 ${ACTUAL_MOVE_ENGINE_DEADLINE_MS / 1000} 秒內未完成，請重試或檢查本機引擎。`
-        )
-      }, remainingActualMoveEngineDeadlineMs(actualMove.selectedAt))
-    }
-  }, [
+  const engine = useEngineAnalysis({
+    visible,
     board,
-    onExplanation,
-    onResult,
-    settings.multiPv,
-    settings.rootAnalysisMovetimeMs,
-    settings.userMoveEvalMovetimeMs,
-    analysisMove,
-    primaryEngineId,
-    actualMove
-  ])
-
-  useEffect(() => {
-    if (
-      !actualMove ||
-      actualMove.positionFen !== board.fen ||
-      !visible ||
-      !status?.available ||
-      !hasBothKings(board) ||
-      livePaused ||
-      busy ||
-      activeRequestId.current
-    ) {
-      return
-    }
-    const target = `${actualMove.selectionId}|${actualMove.positionFen}|${actualMove.move}`
-    if (explicitAnalysisTarget.current === target) return
-    explicitAnalysisTarget.current = target
-    startAnalysis(true)
-  }, [actualMove, board, busy, livePaused, startAnalysis, status?.available, visible])
-
-  useEffect(() => {
-    // 一鍵實戰步採用第一個穩定快照直接解說；不要在背景再啟動 15 秒精煉，
-    // 否則會和模型請求搶資源，也違反點擊後的快速路徑契約。
-    if (
-      actualMove &&
-      isSameAnalysisTarget(result?.engineAnalysis ?? null, board.fen, analysisMove)
-    ) {
-      return
-    }
-    if (actualMove && liveRetryCount > 0) return
-    if (
-      aiBusy || queuedExplanation.current ||
-      !canScheduleLiveAnalysis({
-        livePaused,
-        visible,
-        engineAvailable: Boolean(status?.available),
-        boardValid: hasBothKings(board),
-        analysisBusy: busy
-      }) ||
-      activeRequestId.current
-    ) return
-
-    const retryDelay = liveAnalysisRetryDelayMs(liveRetryCount)
-    const delay = retryDelay || (result ? 320 : 180)
-    const timer = window.setTimeout(() => startAnalysis(true), delay)
-    return () => window.clearTimeout(timer)
-  }, [
-    board,
-    busy,
-    livePaused,
-    liveRetryCount,
-    result?.analysisId,
-    aiBusy,
-    startAnalysis,
-    status?.available,
+    settings,
     analysisMove,
     actualMove,
-    visible
-  ])
+    onResult,
+    onReplayCandidates,
+    onExplanation,
+    aiLink
+  })
+  const ai = useAiExplanation({
+    board,
+    settings,
+    analysisMove,
+    actualMove,
+    submittedGuess,
+    conversation,
+    onConversationChange,
+    onExplanation,
+    onOpenAiSettings,
+    engine
+  })
+  // 引擎 hook 先建立（AI 需要它的結果），所以它反過來通知 AI 時經由這個 ref；
+  // 引擎只在 effect、計時器與 IPC 事件中呼叫，都晚於這裡的指定。
+  aiLink.current = ai.engineLink
+  const { stopAll } = useAnalysisOrchestration({
+    visible,
+    board,
+    analysisMove,
+    actualMove,
+    submittedGuess,
+    engine,
+    ai
+  })
 
-  const cancelAnalysis = (): void => {
-    if (!activeRequestId.current) return
-    setLivePaused(true)
-    setCancelling(true)
-    if (engineDeadlineTimer.current !== null) {
-      window.clearTimeout(engineDeadlineTimer.current)
-      engineDeadlineTimer.current = null
-    }
-    window.api.engine.cancelAnalysis(activeRequestId.current)
-  }
-
-  const stopAll = (): void => {
-    queuedExplanation.current = null
-    if (!activeAiRequestId.current) setAiBusy(false)
-    setLivePaused(true)
-    if (activeRequestId.current) {
-      setCancelling(true)
-      if (engineDeadlineTimer.current !== null) {
-        window.clearTimeout(engineDeadlineTimer.current)
-        engineDeadlineTimer.current = null
-      }
-      window.api.engine.cancelAnalysis(activeRequestId.current)
-    }
-    if (activeAiRequestId.current) {
-      setAiCancelling(true)
-      window.api.ai.cancelExplanation(activeAiRequestId.current)
-    }
-  }
-
-  const generateExplanation = (question: string | null, regenerate = false): void => {
-    if (activeAiRequestId.current || queuedExplanation.current) return
-    if (
-      activeRequestId.current &&
-      currentAiTargetRef.current &&
-      !canExplainWithCompletedResult(result?.engineAnalysis, board.fen, analysisMove)
-    ) {
-      queuedExplanation.current = {question, regenerate, target: {...currentAiTargetRef.current}}
-      setAiBusy(true)
-      setAiError(null)
-      setAiDiagnostic(undefined)
-      setAiNotice('正在等待皮卡魚完成這輪分析，完成後會依結果回答。')
-      return
-    }
-    if (!result || activeAiRequestId.current) return
-    if (!isSameAnalysisTarget(result.engineAnalysis, board.fen, analysisMove)) return
-    const cleanedQuestion = question?.trim() || null
-    const target = currentAiTargetRef.current
-    if (!target) return
-    const retained = regenerate ? retryableAiRequest.current : null
-    if (retained && !isSameAiRequestTarget(retained.target, target)) return
-    const resultSnapshot = result
-    const requestId = crypto.randomUUID()
-    const aiRequestedAt = Date.now()
-    const currentConversation = regenerate ? null : conversationRef.current
-    const start = retained
-      ? cloneExplanationStart(retained.start)
-      : {
-          analysisId: resultSnapshot.analysisId,
-          provider: settings.aiProvider,
-          model: settings.aiModel,
-          baseUrl:
-            settings.aiProvider === 'openai-compatible'
-              ? settings.aiBaseUrl
-              : undefined,
-          userLevel: settings.userLevel,
-          explanationStyle: 'long_analytical' as const,
-          language: settings.language,
-          conversationHistory: buildConversationHistoryForRequest(
-            currentConversation?.messages
-          ),
-          followUpQuestion: cleanedQuestion ?? undefined,
-          attachedMove: analysisMove || undefined,
-          userMoveReason: submittedGuess?.reason,
-          engineId: primaryEngineId ?? undefined
-        }
-    const pending = retained
-      ? {
-          ...clonePendingAiRequest(retained.pending),
-          target: { ...target }
-        }
-      : {
-          target: { ...target },
-          question: cleanedQuestion,
-          conversationId: currentConversation?.id ?? crypto.randomUUID(),
-          conversationCreatedAt: currentConversation?.createdAt ?? null,
-          conversationMessages: currentConversation?.messages.slice() ?? [],
-          analysisId: resultSnapshot.analysisId,
-          positionFen: resultSnapshot.engineAnalysis.positionFen,
-          resultSnapshot,
-          provider: settings.aiProvider,
-          model: settings.aiModel
-        }
-    activeAiRequestId.current = requestId
-    pendingAiRequest.current = pending
-    retryableAiRequest.current = {
-      target: { ...target },
-      pending: clonePendingAiRequest(pending),
-      start: cloneExplanationStart(start)
-    }
-    if (explainedResult === null && conversationRef.current === null) {
-      setExplainedResult(pending.resultSnapshot)
-    }
-    setAiBusy(true)
-    setAiCancelling(false)
-    setAiError(null)
-    setAiDiagnostic(undefined)
-    setAiNotice(null)
-    setStreamingText('')
-    streamingAttemptRef.current = 1
-    setStreamingAttempt(1)
-    setAnswerMeta(null)
-    setHarnessProgress(null)
-    window.api.ai.startExplanation({
-      requestId,
-      ...start
-    })
-    // 每個 AI 請求（一鍵解說、局面解說、追問）都有同一個硬截止，不會無限停在「生成中」。
-    if (aiDeadlineTimer.current !== null) {
-      window.clearTimeout(aiDeadlineTimer.current)
-    }
-    aiDeadlineTimer.current = window.setTimeout(() => {
-      if (
-        activeAiRequestId.current !== requestId ||
-        !isSameAiRequestTarget(target, currentAiTargetRef.current)
-      ) {
-        return
-      }
-      const timedOutModel = pendingAiRequest.current?.model
-      activeAiRequestId.current = null
-      pendingAiRequest.current = null
-      aiDeadlineTimer.current = null
-      window.api.ai.cancelExplanation(requestId)
-      setAiBusy(false)
-      setAiCancelling(false)
-      setHarnessProgress(null)
-      setStreamingText('')
-      const deadlineMessage = `AI 解說在點擊後 ${AI_REQUEST_DEADLINE_MS / 1000} 秒內未完成，本次已停止。請重試。`
-      setAiError(deadlineMessage)
-      setAiErrorInfo({
-        code: 'provider_error',
-        message: deadlineMessage,
-        failureReason: 'model_timeout',
-        model: timedOutModel
-      })
-    }, remainingOneClickDeadlineMs(aiRequestedAt))
-  }
-
-  useEffect(() => {
-    const queued = queuedExplanation.current
-    if (!queued || busy || activeRequestId.current || !result) return
-    queuedExplanation.current = null
-    setAiBusy(false)
-    if (!isSameAiRequestTarget(queued.target, currentAiTargetRef.current)) return
-    generateExplanation(queued.question, queued.regenerate)
-  }, [busy, result?.analysisId])
-
-  useEffect(() => {
-    const submissionId = submittedGuess?.submissionId
-    if (!submissionId || lastSubmittedExplanationId.current === submissionId) return
-    lastSubmittedExplanationId.current = submissionId
-    const target = currentAiTargetRef.current
-    if (!target) return
-
-    if (activeAiRequestId.current) {
-      window.api.ai.cancelExplanation(activeAiRequestId.current)
-    }
-    if (aiDeadlineTimer.current !== null) {
-      window.clearTimeout(aiDeadlineTimer.current)
-      aiDeadlineTimer.current = null
-    }
-    activeAiRequestId.current = null
-    pendingAiRequest.current = null
-    retryableAiRequest.current = null
-    queuedExplanation.current = null
-    conversationRef.current = null
-    onConversationChange(null)
-    setExplanation(null)
-    setExplainedResult(null)
-    setStreamingText('')
-    setHarnessProgress(null)
-    setAiError(null)
-    setAiNotice(null)
-
-    if (
-      result &&
-      !busy &&
-      !activeRequestId.current &&
-      isSameAnalysisTarget(result.engineAnalysis, board.fen, analysisMove)
-    ) {
-      generateExplanation(null)
-      return
-    }
-
-    queuedExplanation.current = {
-      question: null,
-      regenerate: false,
-      target: { ...target }
-    }
-    setAiBusy(true)
-    setAiNotice('正在等待皮卡魚完成這輪分析，完成後會依結果回答。')
-    if (!activeRequestId.current) startAnalysis(true)
-  }, [submittedGuess?.submissionId])
+  const {
+    status,
+    busy,
+    refining,
+    progress,
+    engineThoughts,
+    retainingPreviousAnalysis,
+    cancelling,
+    error,
+    engineDiagnostics,
+    notice,
+    result,
+    engineRegistry,
+    primaryEngineId,
+    liveElapsedMs,
+    sinceLastThoughtMs,
+    startAnalysis,
+    cancelAnalysis,
+    selectPrimaryEngine
+  } = engine
+  const {
+    aiError,
+    aiDiagnostic,
+    aiErrorInfo,
+    aiNotice,
+    explanation,
+    explainedResult,
+    aiBusy,
+    aiCancelling,
+    streamingText,
+    streamingAttempt,
+    answerMeta,
+    followUp,
+    setFollowUp,
+    harnessProgress,
+    traceId,
+    conversationRef,
+    generateExplanation,
+    submitFollowUp,
+    copyExplanation,
+    cancelExplain,
+    handleAiErrorAction,
+    copyAiDiagnostics
+  } = ai
 
   // 不傳 deps：generateExplanation/startAnalysis 等閉包捕捉了 settings/引擎選擇等會變動的值，
   // 每次 render 都重建這個 handle 才能避免呼叫到過期的閉包。
@@ -1046,63 +180,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     stopAll
   }))
 
-  const submitFollowUp = (): void => {
-    const question = followUp.trim()
-    if (!question) return
-    generateExplanation(question)
-  }
-
-  const copyExplanation = async (): Promise<void> => {
-    const currentConversation = conversationRef.current
-    const text = currentConversation?.messages.length
-      ? currentConversation.messages
-          .map((message) => `${message.role === 'user' ? '問' : '答'}：${message.text}`)
-          .join('\n\n')
-      : explanation?.text
-    if (!text) return
-    try {
-      await navigator.clipboard.writeText(text)
-      setAiNotice('已複製 AI 解說。')
-      setAiError(null)
-    } catch {
-      setAiError('無法存取剪貼簿，請手動選取文字複製。')
-      setAiNotice(null)
-    }
-  }
-
   const coachResult = explainedResult ?? result
-
-  const cancelExplain = (): void => {
-    if (queuedExplanation.current) {
-      queuedExplanation.current = null
-      setAiBusy(false)
-      setAiNotice('已取消等待皮卡魚分析，問題仍保留。')
-      return
-    }
-    if (!activeAiRequestId.current) return
-    setAiCancelling(true)
-    window.api.ai.cancelExplanation(activeAiRequestId.current)
-  }
-
-  const handleAiErrorAction = (action: AiErrorAction): void => {
-    if (action === 'open_settings' || action === 'change_model') {
-      onOpenAiSettings?.()
-      return
-    }
-    if (action === 'reanalyze') {
-      startAnalysis(false)
-      return
-    }
-    generateExplanation(null, retryableAiRequest.current !== null)
-  }
-
-  const copyAiDiagnostics = (): void => {
-    if (!aiErrorInfo) return
-    void navigator.clipboard
-      .writeText(aiErrorDiagnosticsText(aiErrorInfo))
-      .then(() => setAiNotice('已複製診斷資訊（不含金鑰與對局內容）。'))
-      .catch(() => setAiNotice('無法存取剪貼簿。'))
-  }
 
   const canAnalyze = Boolean(status?.available && hasBothKings(board) && !busy && !aiBusy)
   const analysisBlockedReason = !hasBothKings(board)
@@ -1150,24 +228,6 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
     aiBlockedReason,
     onStatusChange
   ])
-
-  const liveElapsedMs =
-    busy && analysisStartedAtRef.current !== null
-      ? liveNow - analysisStartedAtRef.current
-      : null
-  const sinceLastThoughtMs =
-    busy && lastThoughtAtRef.current !== null ? liveNow - lastThoughtAtRef.current : null
-
-  const selectPrimaryEngine = async (id: string): Promise<void> => {
-    try {
-      setPrimaryEngineId(id)
-      setEngineRegistry(await window.api.engine.selectInstallation(id))
-      setStatus(await window.api.engine.status())
-      setError(null)
-    } catch {
-      setError('無法切換主引擎，請到設定頁重新測試該引擎。')
-    }
-  }
 
   const liveDock = (
     <div className="analysis-panel live-analysis-panel">
@@ -1220,10 +280,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               streamingText={streamingText}
               streamingAttempt={streamingAttempt}
               answerMeta={answerMeta}
-              onRetryAi={() => {
-                if (activeAiRequestId.current) return
-                generateExplanation(null, retryableAiRequest.current !== null)
-              }}
+              onRetryAi={ai.retryAi}
               harnessProgress={harnessProgress}
               traceId={traceId}
               aiBlockedReason={
@@ -1249,19 +306,7 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
               onCancel={cancelExplain}
               onSubmitFollowUp={submitFollowUp}
               onCopy={() => void copyExplanation()}
-              onFeedback={(feedback) => {
-                if (!traceId) return
-                void window.api.ai
-                  .setHarnessFeedback(traceId, feedback)
-                  .then(() => {
-                    setAiNotice('已記錄這次解說回饋。')
-                    setAiError(null)
-                  })
-                  .catch(() => {
-                    setAiError('回饋儲存失敗，請稍後再試。')
-                    setAiNotice(null)
-                  })
-              }}
+              onFeedback={ai.sendFeedback}
             />
           </div>
         )}

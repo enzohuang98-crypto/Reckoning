@@ -29,13 +29,12 @@
 | `screenExplanationText`（回饋回歸案例） | 停用並刪除（含 `harness-regression-cases.json`）；回饋案例仍可從診斷紀錄匯出，需要時改寫成 `AnswerCheck` 測試 |
 | `buildAIExplanationRequest` | 刪除；`secretStore.electron.test.ts` 的憑證斷言改接 `resolveExplanationCredential` |
 
-## 2. 拆 `AnalysisPanel.tsx`（約 1,270 行；31 個 useState、21 個 useRef、14 個 useEffect）
+## 2. 拆 `AnalysisPanel.tsx` — 已完成（2026-10-17）
 
-同一個元件同時管引擎生命週期（自動分析、精煉、截止計時）、AI 請求（串流、重試、錯誤卡、等待引擎）
-與畫面組裝，是目前最難安全修改的檔案。建議拆成 `useEngineAnalysis`、`useAiExplanation` 兩個 hook，元件只負責組裝。
-
-- 風險：`tests/architecture/rendererArchitecture.test.ts` 有 48 處直接讀原始碼做正則比對，拆檔一定要同步改寫這些斷言
-  （見第 3 項）。行為由 `actualMoveFlow`、`aiRegenerationFlow`、`aiWaitForEngine`、`aiStreamingV2` 整合測試把關。
+`AnalysisPanel.tsx`（原約 1,270 行）改為組裝元件，邏輯搬到 `useEngineAnalysis`、`useAiExplanation`
+與 `useAnalysisOrchestration`（跨兩條生命週期的規則）；純函式移到 `liveAnalysis.ts`（`hasBothKings`）
+與 `aiRequest.ts`（請求快照型別與複製）。行為不變：四個整合測試的 IPC 呼叫序列與拆分前逐筆相同。
+`rendererArchitecture.test.ts` 的相關斷言改讀對應的 hook 檔，並新增 hook 呼叫順序的斷言。
 
 ## 3. 原始碼正則測試偏多
 
