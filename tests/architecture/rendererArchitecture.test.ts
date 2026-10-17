@@ -126,20 +126,21 @@ async function main(): Promise<void> {
   console.log('\n## Renderer 架構與啟動復原')
 
   await check('OpenRouter 切換逾時後的兩段對帳都有期限', () => {
-    const settingsPage = readFileSync(
-      resolve('src/renderer/src/pages/SettingsPage.tsx'),
+    // 設定頁的 AI 狀態與 IPC 已從 SettingsPage.tsx 拆到 useAiCredentialSettings.ts。
+    const aiCredentialSettings = readFileSync(
+      resolve('src/renderer/src/features/settings/useAiCredentialSettings.ts'),
       'utf8'
     )
     assert.match(
-      settingsPage,
+      aiCredentialSettings,
       /withTimeout\(\s*window\.api\.ai\.switchSavedOpenRouterModel\(input\),\s*AI_RECONCILE_TIMEOUT_MS/
     )
     assert.match(
-      settingsPage,
+      aiCredentialSettings,
       /withTimeout\(\s*window\.api\.secret\.status\(\),\s*AI_RECONCILE_TIMEOUT_MS/
     )
     assert.match(
-      settingsPage,
+      aiCredentialSettings,
       /catch \(error\) \{[\s\S]*?const status = await withTimeout\([\s\S]*?window\.api\.secret\.status\(\)[\s\S]*?try \{[\s\S]*?const reconciled = await withTimeout\(/,
       '初次切換逾時後必須先查權威 status，再決定是否接回原 operation'
     )

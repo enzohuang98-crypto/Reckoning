@@ -64,7 +64,7 @@ src/renderer/src/
 - `App.tsx`：只組裝頂層頁面、設定、資料 store 與棋盤工作階段。
 - `AnalysisWorkspace.tsx`：管理首頁版面、右側教練／猜著選擇與猜著互動，不執行 IPC 驗證。
 - `AnalysisPanel.tsx`：唯一的分析與 AI IPC controller；同一份狀態透過 portal 餵給右側教練、頂部資料抽屜與底部 Live dock，禁止為不同區塊重複掛載 controller。
-- `SettingsPage.tsx`：設定 IPC controller；各分類畫面放到 `features/settings`。
+- `SettingsPage.tsx`：設定頁組合層；各分類畫面放到 `features/settings`，各分類的狀態與 IPC 放在同目錄的 `useAiCredentialSettings`／`useEngineSettings`／`useSystemSettings` hook。
 - `styles/*.css`：一個 selector 應只有一個主要定義；響應式覆蓋只放 `responsive.css`。
 
 ## 3. UI 資訊架構

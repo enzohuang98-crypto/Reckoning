@@ -45,5 +45,5 @@
 
 ## 4. 較低優先
 
-- `SettingsPage.tsx`（723 行、25 個 useState）：可依設定分類拆出各自的狀態 hook。
+- ~~`SettingsPage.tsx`（723 行、25 個 useState）：可依設定分類拆出各自的狀態 hook。~~ 已完成：狀態與 IPC 拆到 `features/settings/useAiCredentialSettings.ts`、`useEngineSettings.ts`、`useSystemSettings.ts`。
 - `PikafishAdapter.ts`（998 行）：核心且測試完整，除非要改協定處理，否則不動。
