@@ -63,6 +63,13 @@ assert.equal(move.systemPrompt.includes('就說引擎資料沒有說明原因'),
 assert.match(move.systemPrompt, /不要寫「根據引擎資料」「引擎資料沒有說明」這類套話/)
 assert.match(move.systemPrompt, /能不能吃回」的變化/)
 assert.match(move.systemPrompt, /不要夾雜簡體字/)
+// 棋手要的是下法上的理由，不是分數（實測：回答一直寫「+0.76 兵」「低 0.58 兵」）；沒有吃子／威脅差別時改比兩條線的計畫。
+assert.match(move.systemPrompt, /回答裡不要寫評估或差距的數字/)
+assert.equal(move.systemPrompt.includes('要提就連數字一起寫'), false)
+assert.match(move.systemPrompt, /就比較兩條線的計畫：各自動了哪些子、走到哪裡/)
+assert.match(move.systemPrompt, /只能說線上真的走到的子和位置/)
+assert.match(outputs['move-zh-CN'].systemPrompt, /回答里不要写评估或差距的数字/)
+assert.match(outputs['move-en'].systemPrompt, /compare the plans instead/)
 assert.match(outputs['move-zh-CN'].systemPrompt, /用简体中文回答/)
 assert.match(outputs['move-en'].systemPrompt, /Answer in English/)
 
