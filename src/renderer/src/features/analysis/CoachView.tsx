@@ -41,7 +41,6 @@ interface Props {
   showQuestion?: boolean
   followUp: string
   onFollowUpChange: (value: string) => void
-  onContinue: () => void
   onCancel: () => void
   onSubmitFollowUp: () => void
   onCopy: () => void
@@ -72,7 +71,6 @@ export function CoachView({
   showQuestion = true,
   followUp,
   onFollowUpChange,
-  onContinue,
   onCancel,
   onSubmitFollowUp,
   onCopy,
@@ -107,11 +105,7 @@ export function CoachView({
       )}
       {notice && <div className="notice-text" role="status">{notice}</div>}
       {aiBusy && harnessProgress && (
-        <HarnessProgressCard
-          progress={harnessProgress}
-          onContinue={onContinue}
-          onCancel={onCancel}
-        />
+        <HarnessProgressCard progress={harnessProgress} onCancel={onCancel} />
       )}
 
       {!result && (submittedGuess || actualMove) && (

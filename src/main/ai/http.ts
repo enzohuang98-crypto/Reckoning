@@ -46,11 +46,6 @@ export function networkErrorCode(error: unknown): string | undefined {
   return undefined
 }
 
-/** 診斷紀錄讀回時使用：只接受符合格式的連線錯誤代碼。 */
-export function isNetworkErrorCode(value: unknown): value is string {
-  return typeof value === 'string' && NETWORK_CODE_PATTERN.test(value)
-}
-
 /** 可安全傳給憑證測試分類器的 HTTP 錯誤；message 不包含回應本文。 */
 export class AIHttpError extends Error {
   readonly name = 'AIHttpError'

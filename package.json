@@ -26,8 +26,6 @@
     "verify:signature": "pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/verify-signature.ps1",
     "smoke:installer": "pwsh -NoProfile -ExecutionPolicy Bypass -File tools/release/smoke-installer.ps1",
     "publish:update:github": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/publish-github-update.ps1",
-    "acceptance:ai": "electron tools/acceptance/run-ai-acceptance.cjs",
-    "test:acceptance:ai": "electron tools/acceptance/run-ai-acceptance.cjs --self-test",
     "test:ipc-review": "tsx --tsconfig tsconfig.node.json tests/unit/main/ipcReviewBoundary.test.ts",
     "test:updater-sdk": "electron tests/integration/main/electronUpdaterSdkFixture.test.cjs"
   },

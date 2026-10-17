@@ -29,7 +29,6 @@ function props(
     notice: null,
     followUp: '',
     onFollowUpChange: () => undefined,
-    onContinue: () => undefined,
     onCancel: () => undefined,
     onSubmitFollowUp: () => undefined,
     onCopy: () => undefined,

@@ -49,7 +49,6 @@ async function verifyWorkspaceDraftBlocksInstall(): Promise<void> {
     ai: {
       startExplanation: () => undefined,
       cancelExplanation: () => undefined,
-      continueExplanation: () => undefined,
       onExplanationChunk: () => unsubscribe,
       onExplanationDone: () => unsubscribe,
       onExplanationError: () => unsubscribe,

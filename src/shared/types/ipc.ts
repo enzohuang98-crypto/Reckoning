@@ -36,10 +36,7 @@ import type {
   EngineProfileId,
   EngineRegistrySnapshot
 } from './EngineRegistry'
-import type {
-  HarnessEvidence,
-  HarnessProgressPayload
-} from './Harness'
+import type { HarnessProgressPayload } from './Harness'
 import type { AppUpdateStatus, LegacyUpdatePreferences } from './AppUpdate'
 
 /** IPC 通道名稱常數 */
@@ -67,7 +64,6 @@ export const IPC = {
   AI_GENERATE_EXPLANATION_DONE: 'ai:generate-explanation:done',
   AI_GENERATE_EXPLANATION_ERROR: 'ai:generate-explanation:error',
   AI_GENERATE_EXPLANATION_CANCEL: 'ai:generate-explanation:cancel',
-  AI_HARNESS_CONTINUE: 'ai:harness:continue',
   AI_HARNESS_PROGRESS: 'ai:harness:progress',
   AI_HARNESS_TRACE_LIST: 'ai:harness:trace:list',
   AI_HARNESS_TRACE_CLEAR: 'ai:harness:trace:clear',
@@ -270,7 +266,6 @@ export interface GenerateExplanationDonePayload {
   provider?: AIProviderId
   model?: string
   usage?: TokenUsage
-  evidence?: HarnessEvidence[]
   warnings?: string[]
   traceId?: string
   clarificationRequired?: boolean
@@ -476,8 +471,6 @@ export interface RendererApi {
     ): Promise<{ ok: true }>
     /** 取消進行中的生成 */
     cancelExplanation(requestId: string): void
-    /** Harness 停滯等待時，允許繼續加深研究 */
-    continueExplanation(requestId: string): void
     /** 低用量實際推論測試；不落地任何草稿金鑰 */
     testCredential(input: TestCredentialInput): Promise<TestCredentialResult>
     /** 自动辨识官方 Provider、取得可用模型、实际生成验证后才安全储存。 */

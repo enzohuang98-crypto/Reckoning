@@ -1,10 +1,9 @@
 /**
  * AI 解釋請求/回應型別 — SDS v0.2 §2.17.9
  *
- * AIExplanationRequest 由 main process 的 buildAIExplanationRequest() 組裝：
- * prompt 來自 PromptBuilder（只讀 EngineAnalysis / MoveComparisonResult /
- * userLevel / explanationStyle，禁止使用 EngineScore.raw），
- * apiKey 來自 SecretStore。renderer 永遠接觸不到此型別的實例。
+ * AIExplanationRequest 由 main process 的解說管線（explain/ExplainPipelineV2）組裝：
+ * prompt 來自 explain/promptV2（只讀程式算好的事實表，禁止使用 EngineScore.raw），
+ * apiKey 來自 SecretStore（經 resolveExplanationCredential）。renderer 永遠接觸不到此型別的實例。
  */
 
 import type { AIProviderId, TokenUsage } from './AIProviderTypes'
@@ -24,7 +23,7 @@ export interface AIExplanationRequest {
   apiKey: string
   /** 只有 openai-compatible 使用；必須先在 main process 通過 URL 安全驗證。 */
   baseUrl?: string
-  /** PromptBuilder 產生的完整 prompt（含防幻覺規則與引擎數據） */
+  /** 解說管線（promptV2）產生的 user prompt（含防幻覺規則與事實表） */
   prompt: string
   /** 選填的 system 指令；provider 以各自的 system 欄位送出，未提供時行為不變。 */
   systemPrompt?: string

@@ -73,8 +73,6 @@ const api: RendererApi = {
       ipcRenderer.invoke(IPC.AI_HARNESS_TRACE_FEEDBACK, { traceId, feedback }),
     cancelExplanation: (requestId: string) =>
       ipcRenderer.send(IPC.AI_GENERATE_EXPLANATION_CANCEL, { requestId }),
-    continueExplanation: (requestId: string) =>
-      ipcRenderer.send(IPC.AI_HARNESS_CONTINUE, { requestId }),
     testCredential: (input) => ipcRenderer.invoke(IPC.AI_TEST_CREDENTIAL, input),
     autoConfigureCredential: (apiKey, model) =>
       ipcRenderer.invoke(IPC.AI_AUTO_CONFIGURE_CREDENTIAL, { apiKey, model }),

@@ -467,8 +467,8 @@ export class HarnessTraceStore {
 
   /**
    * 使用者標記「不清楚／不正確／證據不足」的 trace 轉為自包含回歸案例：
-   * 匯出後可直接加入 tests/fixtures 的回歸評測集，
-   * 用 screenExplanationText 驗證未來版本不再產出同類問題。
+   * 匯出後可整理成 tests/fixtures 的回歸案例（例如 v2 AnswerCheck 的測試），
+   * 驗證未來版本不再產出同類問題。
    */
   async listRegressionCases(): Promise<HarnessRegressionCase[]> {
     return (await this.list())

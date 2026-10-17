@@ -20,15 +20,10 @@ function phaseText(phase: HarnessPhase): string {
 
 interface Props {
   progress: HarnessProgressPayload
-  onContinue: () => void
   onCancel: () => void
 }
 
-export function HarnessProgressCard({
-  progress,
-  onContinue,
-  onCancel
-}: Props): JSX.Element {
+export function HarnessProgressCard({ progress, onCancel }: Props): JSX.Element {
   const [visibleElapsedMs, setVisibleElapsedMs] = useState(progress.elapsedMs ?? 0)
 
   useEffect(() => {
@@ -42,10 +37,7 @@ export function HarnessProgressCard({
   }, [progress.requestId, progress.phase, progress.elapsedMs])
 
   return (
-    <section
-      className={`harness-progress${progress.awaitingDecision ? ' awaiting' : ''}`}
-      aria-live="polite"
-    >
+    <section className="harness-progress" aria-live="polite">
       <div className="live-analysis-head">
         <div>
           <span className="eyebrow">AI 解說生成中</span>
@@ -55,9 +47,7 @@ export function HarnessProgressCard({
             {` · ${Math.floor(visibleElapsedMs / 1000)} 秒`}
           </span>
         </div>
-        <span className={`badge ${progress.awaitingDecision ? 'warn' : 'on'}`}>
-          {progress.awaitingDecision ? '等待你決定' : '處理中'}
-        </span>
+        <span className="badge on">處理中</span>
       </div>
 
       {(progress.displayPrincipalVariation ?? []).length > 0 && (
@@ -67,14 +57,6 @@ export function HarnessProgressCard({
         </div>
       )}
 
-      {progress.awaitingDecision && (
-        <div className="harness-decision">
-          <span>一鍵解說不會停在這一步；手動研究可選擇繼續或取消。</span>
-          <div className="row gap">
-            <button className="btn" onClick={onContinue}>繼續分析</button>
-          </div>
-        </div>
-      )}
       <button className="btn ghost" onClick={onCancel}>取消 AI 解說</button>
     </section>
   )

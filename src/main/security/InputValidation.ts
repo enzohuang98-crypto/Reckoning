@@ -336,7 +336,7 @@ export function validateGenerateExplanationPayload(
           true
         )
   const userMoveReason = normalizedUserMoveReason || undefined
-  // Harness 模式、預算與證據重用由 main 固定（FIXED_HARNESS_OPTIONS）；renderer 傳來的值一律忽略。
+  // 舊版 Harness 模式、預算與證據重用欄位已移除（v2 預算見 ai/explain/budget）；renderer 傳來的值一律忽略。
 
   return {
     requestId,

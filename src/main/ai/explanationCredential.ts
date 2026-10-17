@@ -1,14 +1,12 @@
 /**
- * 解說請求的憑證解析（v1、v2 共用）與 v1 的 AIExplanationRequest 組裝（§2.17.9）。
+ * 解說請求的憑證解析（§2.17.9）。
  * resolveExplanationCredential() 是唯一把 API key 帶進解說流程的入口；金鑰只在 main 內使用，不得 log。
  */
 
 import type { AIProviderId } from '@shared/types/AIProviderTypes'
-import type { AIExplanationRequest } from '@shared/types/AIExplanationTypes'
 import type { SecretStore } from '../storage/SecretStore'
 import { isLoopbackAiBaseUrl } from '../security/InputValidation'
 import type { PreparedExplanationExecution } from './prepareExplanationExecution'
-import { buildExplanationPrompt } from './promptBuilder'
 
 /** API key 缺失（§2.17.9：不得用空字串或 placeholder 繼續呼叫） */
 export class MissingApiKeyError extends Error {
@@ -45,11 +43,7 @@ export function assertProviderEndpointBinding(
   }
 }
 
-/**
- * buildAIExplanationRequest（§2.17.9）：
- * SecretStore、PromptBuilder、ModelRegistry、AnalysisSessionStore 的集中銜接點。
- * IPC handler 不得自己組 prompt 或讀 API key。
- */
+/** IPC handler 不得自己讀 API key；一律經 resolveExplanationCredential 取得。 */
 export interface ResolvedExplanationCredential {
   provider: AIProviderId
   model: string
@@ -58,7 +52,7 @@ export interface ResolvedExplanationCredential {
 }
 
 /**
- * 憑證解析（v1、v2 共用）：取出與這次請求相符的已存金鑰，並守住相容服務網址綁定。
+ * 憑證解析：取出與這次請求相符的已存金鑰，並守住相容服務網址綁定。
  * 金鑰只在 main 內使用，不得 log。
  */
 export async function resolveExplanationCredential(
@@ -107,43 +101,5 @@ export async function resolveExplanationCredential(
     model: payload.model,
     apiKey,
     ...(payload.baseUrl ? { baseUrl: payload.baseUrl } : {})
-  }
-}
-
-/**
- * buildAIExplanationRequest（§2.17.9，v1 Harness 用）：憑證解析＋PromptBuilder 長文 prompt。
- * v2 管線只用 resolveExplanationCredential，prompt 由 explain/promptV2 組裝。
- */
-export async function buildAIExplanationRequest(
-  execution: PreparedExplanationExecution,
-  deps: {
-    secretStore: SecretStore
-    credentialSnapshot?: Awaited<ReturnType<SecretStore['captureActiveCredential']>>
-  }
-): Promise<AIExplanationRequest> {
-  const payload = execution.effective
-  const { apiKey } = await resolveExplanationCredential(execution, deps)
-  const session = payload.session
-  const prompt = buildExplanationPrompt({
-    engineAnalysis: session.engineAnalysis,
-    moveComparison: session.moveComparison,
-    userLevel: payload.userLevel,
-    explanationStyle: payload.explanationStyle,
-    language: payload.language,
-    conversationHistory: payload.conversationHistory,
-    followUpQuestion: payload.followUpQuestion
-  })
-  return {
-    provider: payload.provider,
-    model: payload.model,
-    apiKey,
-    baseUrl: payload.baseUrl,
-    prompt,
-    metadata: {
-      requestId: payload.requestId,
-      analysisId: payload.analysisId,
-      userLevel: payload.userLevel,
-      explanationStyle: payload.explanationStyle
-    }
   }
 }

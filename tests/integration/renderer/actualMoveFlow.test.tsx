@@ -216,7 +216,6 @@ async function main(): Promise<void> {
     ai: {
       startExplanation: (payload: GenerateExplanationStartPayload) => aiStarts.push(payload),
       cancelExplanation: (requestId: string) => aiCancels.push(requestId),
-      continueExplanation: () => undefined,
       onExplanationChunk: (listener: (payload: GenerateExplanationChunkPayload) => void) => {
         aiChunkListener = listener
         return () => {
