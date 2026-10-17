@@ -12,6 +12,7 @@ import type { EngineProtocol } from '@shared/types/EngineAnalysis'
 import type { StorageService } from '../storage/StorageService'
 import { normalizeEnginePath } from '../security/InputValidation'
 import { PikafishAdapter } from './PikafishAdapter'
+import { probeEngineCpu, type EngineCpuProbe } from './bundledEngine'
 import { logger } from '../logger'
 
 export const ENGINE_REGISTRY_FILE = 'engine-registry.json'
@@ -321,6 +322,43 @@ export class EngineRegistryService {
       )
     }
     this.persist()
+  }
+
+  /**
+   * 指向內建 AVX2 版 Pikafish 的登錄項目，在這台 CPU 跑不動時改用同目錄的相容版。
+   * 只在試跑確定是「CPU 不支援的指令」時才改；回傳是否有改。
+   */
+  async useCompatibleBundledEngineIfNeeded(
+    bundledEnginePath: string,
+    compatibleEnginePath: string,
+    probe: (executablePath: string) => Promise<EngineCpuProbe> = probeEngineCpu
+  ): Promise<boolean> {
+    const target = bundledEnginePath.toLowerCase()
+    const affected = new Set(
+      this.snapshot.installations
+        .filter((installation) => installation.executablePath.toLowerCase() === target)
+        .map((installation) => installation.id)
+    )
+    if (affected.size === 0) return false
+    if ((await probe(bundledEnginePath)) !== 'unsupported_cpu') return false
+    for (const id of affected) this.adapters.delete(id)
+    this.snapshot = {
+      ...this.snapshot,
+      installations: this.snapshot.installations.map((installation) =>
+        affected.has(installation.id)
+          ? {
+              ...installation,
+              executablePath: compatibleEnginePath,
+              detectedName: null,
+              verified: false,
+              lastError: undefined
+            }
+          : installation
+      )
+    }
+    this.persist()
+    logger.info('這台 CPU 不支援內建引擎的 AVX2 版本，已改用相容版。')
+    return true
   }
 
   replaceLegacyPath(path: string | null): EngineRegistrySnapshot {

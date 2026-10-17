@@ -9,6 +9,8 @@ import { app, BrowserWindow, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { EngineRegistryService } from './engine/EngineRegistryService'
+import { compatibleEnginePath } from './engine/bundledEngine'
+import { logger } from './logger'
 import { SecretStore } from './storage/SecretStore'
 import { StorageService } from './storage/StorageService'
 import { registerEngineAnalysisHandlers } from './ipc/engineAnalysisHandlers'
@@ -132,10 +134,18 @@ function registerIpc(): AppUpdaterService {
   const packagedEnginePath = app.isPackaged
     ? join(process.resourcesPath, 'engine', 'pikafish.exe')
     : null
-  const engineRegistry = new EngineRegistryService(
-    storage,
+  const bundledEnginePath =
     packagedEnginePath && existsSync(packagedEnginePath) ? packagedEnginePath : null
-  )
+  const engineRegistry = new EngineRegistryService(storage, bundledEnginePath)
+  if (bundledEnginePath) {
+    // 沒有 AVX2 的 CPU 跑不動內建版本；在背景試跑一次，必要時改用同目錄的相容版。
+    const fallback = compatibleEnginePath(bundledEnginePath)
+    if (existsSync(fallback)) {
+      void engineRegistry
+        .useCompatibleBundledEngineIfNeeded(bundledEnginePath, fallback)
+        .catch(() => logger.warn('內建引擎相容性檢查失敗'))
+    }
+  }
   const secretStore = new SecretStore()
   // 短期分析快取（SDS §2.18）：in-memory + TTL，啟動 10 分鐘定時清理
   const sessionStore = new InMemoryAnalysisSessionStore()
