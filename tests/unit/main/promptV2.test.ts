@@ -79,6 +79,21 @@ assert.match(correctPrompt.prompt, /不要硬找缺點/)
 assert.equal(outputs['move-zh-TW'].prompt.includes('不要硬找缺點'), false)
 assert.equal(recentHistory(undefined, 'zh-TW'), '')
 
+// 沒附棋手著法時，不能拿候選著法當成「你走的那步」（實測：猜著選了著法卻沒提交）。
+assert.equal(question.prompt.includes('【注意】'), false, 'a question with the player move attached has no no-move note')
+const noMoveFacts = buildExplanationFacts(openingAnalysis({ userMove: undefined, displayUserMove: undefined }))
+assert.equal(noMoveFacts.userMove, undefined)
+const noMoveQuestion = buildPromptV2({
+  mode: 'question', language: 'zh-TW', userLevel: 'basic', facts: noMoveFacts,
+  factsText: formatFactsForPrompt(noMoveFacts), question: '我的走法為什麼比正著差？'
+})
+assert.match(noMoveQuestion.prompt, /【注意】這次提問沒有附上棋手自己走的著法/)
+assert.match(noMoveQuestion.prompt, /不要猜是哪一步，也不要拿候選著法代替/)
+assert.match(
+  buildPromptV2({ mode: 'question', language: 'en', userLevel: 'basic', facts: noMoveFacts, factsText: formatFactsForPrompt(noMoveFacts, 'en'), question: 'Why is my move worse?' }).prompt,
+  /Do not guess which move they meant/
+)
+
 // 術語只附問題裡真的出現的；無關的兵卒術語不會因為提到「兵」就塞進來。
 const termQuestion = buildPromptV2({
   mode: 'question', language: 'zh-TW', userLevel: 'basic', facts, factsText: formatFactsForPrompt(facts),
