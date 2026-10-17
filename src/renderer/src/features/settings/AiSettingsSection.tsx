@@ -3,17 +3,13 @@ import {
   PROVIDER_LABEL,
   type AIModelInfo
 } from '@shared/types/AIProviderTypes'
-import type { AppSettings } from '@shared/types/Settings'
 import type { SecretStatus } from '@shared/types/ipc'
 import {
   AiConnectionStatus,
   type AiConnectionStage
 } from './AiConnectionStatus'
-import type { SettingsUpdater } from './types'
 
 interface Props {
-  settings: AppSettings
-  update: SettingsUpdater
   apiKey: string
   onApiKeyChange: (value: string) => void
   secretStatus: SecretStatus
@@ -37,8 +33,6 @@ interface Props {
 }
 
 export function AiSettingsSection({
-  settings,
-  update,
   apiKey,
   onApiKeyChange,
   secretStatus,
@@ -283,45 +277,6 @@ export function AiSettingsSection({
             </div>
           </div>
         )}
-      </section>
-
-      <section className="card">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">EXPLANATION PREFERENCES</span>
-            <h3>解說偏好</h3>
-          </div>
-        </div>
-
-        <div className="field">
-          <label className="field-label">你的棋力（影響解說深淺）</label>
-          <select
-            className="select"
-            value={settings.userLevel}
-            onChange={(event) =>
-              update({ userLevel: event.target.value as AppSettings['userLevel'] })
-            }
-          >
-            <option value="basic">初學</option>
-            <option value="intermediate">中級</option>
-            <option value="advanced">進階</option>
-          </select>
-        </div>
-
-        <div className="field">
-          <label className="field-label">解說語言</label>
-          <select
-            className="select"
-            value={settings.language}
-            onChange={(event) =>
-              update({ language: event.target.value as AppSettings['language'] })
-            }
-          >
-            <option value="zh-TW">繁體中文</option>
-            <option value="zh-CN">簡體中文</option>
-            <option value="en">English</option>
-          </select>
-        </div>
       </section>
     </div>
   )

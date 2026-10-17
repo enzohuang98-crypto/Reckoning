@@ -730,6 +730,26 @@ async function main(): Promise<void> {
     assert.match(source, /!toolsOpen && moveError/)
   })
 
+  // 實測回報：點到空格時提示出現在棋盤下方，多出一列把棋盤擠小；點「你的走法」後切回 AI 教練仍無法走棋。
+  await check('走棋提示不會擠小棋盤，離開猜著會退出選擇著法', () => {
+    const board = readFileSync(resolve('src/renderer/src/features/board/BoardEditor.tsx'), 'utf8')
+    const workspace = readFileSync(resolve('src/renderer/src/features/workspace/AnalysisWorkspace.tsx'), 'utf8')
+    const guess = readFileSync(resolve('src/renderer/src/features/guessing/GuessModePanel.tsx'), 'utf8')
+    assert.match(board, /board-editor-toolbar[\s\S]*?board-move-error[\s\S]*?className="board-wrap"/)
+    assert.doesNotMatch(board, /<div className="error-text small board-move-error">/)
+    assert.match(workspace, /if \(next === 'guess'\) setActualMove\(null\)\s*\/\/[^\n]*\n\s*else setGuessSelectionActive\(false\)/)
+    assert.match(guess, /if \(selectionActive\) onCancelMoveSelection\(\)/)
+    assert.match(guess, /取消選擇/)
+  })
+
+  await check('設定不再提供加入引擎與解說偏好；只剩一個引擎時不能移除', () => {
+    const engineSettings = readFileSync(resolve('src/renderer/src/features/settings/EngineSettingsSection.tsx'), 'utf8')
+    const aiSettings = readFileSync(resolve('src/renderer/src/features/settings/AiSettingsSection.tsx'), 'utf8')
+    assert.doesNotMatch(engineSettings, /加入本機引擎|onBrowse|onAdd/)
+    assert.match(engineSettings, /registry\.installations\.length > 1 &&/)
+    assert.doesNotMatch(aiSettings, /解說偏好|你的棋力|解說語言/)
+  })
+
   await check('不可逆刪除會先明確確認，取消時不會呼叫刪除 handler', () => {
     const boardEditor = readFileSync(
       resolve('src/renderer/src/features/board/BoardEditor.tsx'),

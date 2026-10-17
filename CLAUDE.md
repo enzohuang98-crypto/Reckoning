@@ -17,8 +17,8 @@ Stage 1–10 的開發歷史已移到 `docs/history/claude-md-stages-1-10.md`（
   棋局資料：main 的 AppData JSON；機密：Electron `safeStorage`（`SecretStore`，加密落地）。
 - 內建引擎：`resources/engine/` 隨附多種 CPU 指令集的 Pikafish 與 `pikafish.nnue`
   （GPL v3 + 權重授權條款，不受根目錄 MIT 涵蓋）；登錄為空時 `EngineRegistryService`
-  自動加入「Pikafish（內建）」，使用者可換成自備引擎。自備 Pikafish 必須把 `pikafish.nnue`
-  放在同目錄（或 `setoption name EvalFile`），否則可能過不了 `isready`。
+  自動加入「Pikafish（內建）」。設定頁的「加入本機引擎」已於 v0.4.18 移除（main 端加入引擎的 IPC 仍在）；
+  自備 Pikafish 必須把 `pikafish.nnue` 放在同目錄（或 `setoption name EvalFile`），否則可能過不了 `isready`。
 - 自動更新：`electron-updater`（`AppUpdaterService`）只在已封裝的 Windows 版啟用；啟動 5 秒後首次檢查、
   之後每 4 小時；下載完成絕不自動安裝，必須由使用者選擇重新啟動（先持久化資料）。
   見 `docs/operations/update-channel.md`、`docs/operations/release.md`。
@@ -150,7 +150,7 @@ Harness 模式與預算不是使用者設定：`FIXED_HARNESS_OPTIONS`（main �
    （`StorageService` 的同步 `read` 只剩啟動期讀取設定與引擎登錄；互動路徑上的寫入都已是非同步
    ——引擎登錄與診斷紀錄皆以依序佇列寫入。新程式一律用 `readAsync`／`writeAsync`。）
 10. **內建引擎仍是本機二進位**：`EngineRegistryService` 只在登錄為空時自動加入一次內建 Pikafish，
-    使用者可以刪除、換路徑或新增其他引擎，行為與手動指定完全相同。分析只用一個主引擎（雙引擎複核已移除）。
+    設定頁只能測試、選擇引擎，只剩一個引擎時不能移除（v0.4.18 起不再提供加入引擎的介面）。分析只用一個主引擎（雙引擎複核已移除）。
 11. **UI 文字用繁體中文**；`src/shared/logic/**` 保持純函式；renderer 不得引用 main 或 `node:*`。
 
 ## 已移除的子系統（P4-4／P4-5）

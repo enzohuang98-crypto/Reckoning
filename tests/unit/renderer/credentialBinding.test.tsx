@@ -22,8 +22,6 @@ function render(options: {
 } = {}): TestRenderer.ReactTestRenderer {
   return TestRenderer.create(
     <AiSettingsSection
-      settings={DEFAULT_SETTINGS}
-      update={() => undefined}
       apiKey={options.apiKey ?? ''}
       onApiKeyChange={() => undefined}
       secretStatus={options.status ?? {

@@ -259,13 +259,18 @@ export function BoardEditor({
       <div className="board-editor-toolbar">
         <div>
           <b>{guessSelectionActive ? '正在選擇你的著法' : '象棋棋盤'}</b>
-          <span className="muted small">
-            {guessSelectionActive
-              ? selected
-                ? '已選起點，請點目的地'
-                : '請先點棋子，再點目的地'
-              : '點棋子後再點目的地即可走棋'}
-          </span>
+          {/* 提示放在棋盤上方這一行：放在棋盤下方會多一列，棋盤會被擠小。 */}
+          {!toolsOpen && moveError ? (
+            <span className="error-text small board-move-error" role="alert">{moveError}</span>
+          ) : (
+            <span className="muted small">
+              {guessSelectionActive
+                ? selected
+                  ? '已選起點，請點目的地'
+                  : '請先點棋子，再點目的地'
+                : '點棋子後再點目的地即可走棋'}
+            </span>
+          )}
         </div>
         {guessSelectionActive && (
           <button className="btn ghost small" onClick={onGuessSelectionCancel}>
@@ -314,9 +319,6 @@ export function BoardEditor({
           candidates={replayCandidates}
           onClose={() => setReplayOpen(false)}
         />
-      )}
-      {!toolsOpen && moveError && (
-        <div className="error-text small board-move-error">{moveError}</div>
       )}
       {toolsOpen && <div className="editor-controls">
         <div className="panel-heading compact">

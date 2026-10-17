@@ -1,6 +1,5 @@
 import {
   ENGINE_PROFILES,
-  type EngineProfileId,
   type EngineRegistrySnapshot
 } from '@shared/types/EngineRegistry'
 import type { AppSettings } from '@shared/types/Settings'
@@ -11,16 +10,9 @@ interface Props {
   settings: AppSettings
   update: SettingsUpdater
   registry: EngineRegistrySnapshot
-  newProfile: EngineProfileId
-  onNewProfileChange: (profile: EngineProfileId) => void
-  newName: string
-  onNewNameChange: (name: string) => void
-  newPath: string
   testingEngineId: string | null
   message: string | null
   testResult: EngineTestResult | null
-  onBrowse: () => void
-  onAdd: () => void
   onRefresh: () => void
   onTest: (id: string) => void
   onRemove: (id: string) => void
@@ -31,16 +23,9 @@ export function EngineSettingsSection({
   settings,
   update,
   registry,
-  newProfile,
-  onNewProfileChange,
-  newName,
-  onNewNameChange,
-  newPath,
   testingEngineId,
   message,
   testResult,
-  onBrowse,
-  onAdd,
   onRefresh,
   onTest,
   onRemove,
@@ -63,7 +48,7 @@ export function EngineSettingsSection({
         </div>
 
         <p className="muted">
-          軟體不附帶第三方引擎。只有完成握手與短搜尋測試的項目才會標示「已驗證」。
+          使用內建的皮卡魚（Pikafish）本機引擎。按「測試」會做一次握手與短搜尋，通過後標示「已驗證」。
         </p>
 
         <div className="engine-install-list">
@@ -97,12 +82,15 @@ export function EngineSettingsSection({
                 >
                   {testingEngineId === engine.id ? '測試中…' : '測試'}
                 </button>
-                <button
-                  className="btn danger small"
-                  onClick={() => removeEngine(engine.id, engine.detectedName ?? engine.displayName)}
-                >
-                  移除
-                </button>
+                {/* 已不提供加入引擎；只剩一個時不能移除，否則就沒有引擎可用。 */}
+                {registry.installations.length > 1 && (
+                  <button
+                    className="btn danger small"
+                    onClick={() => removeEngine(engine.id, engine.detectedName ?? engine.displayName)}
+                  >
+                    移除
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -124,76 +112,25 @@ export function EngineSettingsSection({
             </div>
           </div>
         )}
+        {message && <div className="notice-text">{message}</div>}
+        {testResult && (
+          <div className={testResult.ok ? 'success-text' : 'error-text'}>
+            {testResult.ok
+              ? `搜尋成功：${testResult.engineName ?? '象棋引擎'}${
+                  testResult.protocol ? `（${testResult.protocol.toUpperCase()}）` : ''
+                }`
+              : testResult.message ?? '引擎測試失敗。'}
+          </div>
+        )}
+        {testResult?.diagnostics && testResult.diagnostics.length > 0 && (
+          <details className="raw-engine-analysis">
+            <summary>查看測試原始輸出</summary>
+            <pre>{testResult.diagnostics.join('\n')}</pre>
+          </details>
+        )}
       </section>
 
       <div className="settings-stack">
-        <section className="card">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">ADD ENGINE</span>
-              <h3>加入本機引擎</h3>
-            </div>
-          </div>
-
-          <div className="engine-add-box">
-            <div className="field">
-              <label className="field-label">引擎類型</label>
-              <select
-                className="select"
-                value={newProfile}
-                onChange={(event) => onNewProfileChange(event.target.value as EngineProfileId)}
-              >
-                {ENGINE_PROFILES.map((profile) => (
-                  <option key={profile.id} value={profile.id}>{profile.label}</option>
-                ))}
-              </select>
-              <div className="muted small">
-                {ENGINE_PROFILES.find((profile) => profile.id === newProfile)?.description}
-              </div>
-            </div>
-            <div className="field">
-              <label className="field-label">顯示名稱（可留空）</label>
-              <input
-                className="text-input"
-                value={newName}
-                onChange={(event) => onNewNameChange(event.target.value)}
-                placeholder="例如：我的旋風引擎"
-              />
-            </div>
-          </div>
-
-          <div className="field">
-            <label className="field-label">引擎 EXE</label>
-            <div className="settings-path-input">
-              <input
-                className="text-input"
-                value={newPath}
-                readOnly
-                placeholder="按「瀏覽」選擇本機引擎 EXE"
-              />
-              <button className="btn ghost" onClick={onBrowse}>瀏覽…</button>
-            </div>
-          </div>
-
-          <button className="btn" onClick={onAdd}>加入引擎</button>
-          {message && <div className="notice-text">{message}</div>}
-          {testResult && (
-            <div className={testResult.ok ? 'success-text' : 'error-text'}>
-              {testResult.ok
-                ? `搜尋成功：${testResult.engineName ?? '象棋引擎'}${
-                    testResult.protocol ? `（${testResult.protocol.toUpperCase()}）` : ''
-                  }`
-                : testResult.message ?? '引擎測試失敗。'}
-            </div>
-          )}
-          {testResult?.diagnostics && testResult.diagnostics.length > 0 && (
-            <details className="raw-engine-analysis">
-              <summary>查看測試原始輸出</summary>
-              <pre>{testResult.diagnostics.join('\n')}</pre>
-            </details>
-          )}
-        </section>
-
         <section className="card">
           <div className="section-heading">
             <div>
