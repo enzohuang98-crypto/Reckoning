@@ -1,36 +1,25 @@
 /**
  * 設定頁控制器。
  *
- * UI 依領域拆到 features/settings；此檔只管理 IPC、狀態與持久化。
+ * UI 依領域拆到 features/settings；各分類的狀態與 IPC 放在對應 hook
+ * （useAiCredentialSettings、useEngineSettings、useSystemSettings），
+ * 此檔只組合它們、共用的提示訊息與一般設定持久化。
  * API Key 永遠走 SecretStore，絕不寫入 renderer 的 localStorage。
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AppDataSnapshot } from '@shared/types/AppData'
 import type { AppUpdateStatus } from '@shared/types/AppUpdate'
-import type { EngineRegistrySnapshot } from '@shared/types/EngineRegistry'
 import type { AppSettings } from '@shared/types/Settings'
-import type { AIModelInfo } from '@shared/types/AIProviderTypes'
-import type {
-  EngineTestResult,
-  SecretCredentialRef,
-  SecretStatus
-} from '@shared/types/ipc'
 import { AiSettingsSection } from '../features/settings/AiSettingsSection'
-import type { AiConnectionStage } from '../features/settings/AiConnectionStatus'
 import { EngineSettingsSection } from '../features/settings/EngineSettingsSection'
 import { SettingsNavigation } from '../features/settings/SettingsNavigation'
 import { SystemSettingsSection } from '../features/settings/SystemSettingsSection'
 import type { SettingsCategory } from '../features/settings/types'
+import { useAiCredentialSettings } from '../features/settings/useAiCredentialSettings'
+import { useEngineSettings } from '../features/settings/useEngineSettings'
+import { useSystemSettings } from '../features/settings/useSystemSettings'
 import { saveSettings } from '../storage/localSettings'
-import { withTimeout } from '../utils/withTimeout'
-
-const SECRET_OPERATION_TIMEOUT_MS = 10_000
-const AI_CONNECT_TIMEOUT_MS = 45_000
-const AI_RECONCILE_TIMEOUT_MS = 10_000
-const UPDATE_OPERATION_TIMEOUT_MS = 15_000
-const UPDATE_PREPARATION_TIMEOUT_MS = 20 * 60 * 1000
-const SECRET_TIMEOUT_MESSAGE = '操作逾時，請確認磁碟權限或重試。'
 
 interface Props {
   settings: AppSettings
@@ -39,18 +28,6 @@ interface Props {
   getCurrentDataSnapshot: () => AppDataSnapshot
   dataRecoveryRequired: boolean
   onInstallUpdate?: () => Promise<AppUpdateStatus>
-}
-
-const EMPTY_SECRET_STATUS: SecretStatus = {
-  configured: false,
-  needsReentry: false,
-  activeCredential: null,
-  credentials: []
-}
-
-const EMPTY_ENGINE_REGISTRY: EngineRegistrySnapshot = {
-  installations: [],
-  activeEngineId: null
 }
 
 export function SettingsPage({
@@ -62,100 +39,8 @@ export function SettingsPage({
   onInstallUpdate = () => window.api.update.install()
 }: Props): JSX.Element {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('ai')
-  const [apiKey, setApiKey] = useState('')
-  const [openRouterModels, setOpenRouterModels] = useState<AIModelInfo[]>([])
-  const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState('')
-  const [savedModelsLoaded, setSavedModelsLoaded] = useState(false)
-  const [savedModelsError, setSavedModelsError] = useState<string | null>(null)
-  const [backupModels, setBackupModels] = useState<string[]>([])
-  const [connectionStage, setConnectionStage] = useState<AiConnectionStage>('idle')
-  const [secretStatus, setSecretStatus] = useState<SecretStatus>(EMPTY_SECRET_STATUS)
-  const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
-  const [traceCount, setTraceCount] = useState<number | null>(null)
-  const [secretBusy, setSecretBusy] = useState(false)
-  const [engineTest, setEngineTest] = useState<EngineTestResult | null>(null)
-  const [engineMessage, setEngineMessage] = useState<string | null>(null)
-  const [engineRegistry, setEngineRegistry] =
-    useState<EngineRegistrySnapshot>(EMPTY_ENGINE_REGISTRY)
-  const [testingEngineId, setTestingEngineId] = useState<string | null>(null)
-  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
-  const [updateBusy, setUpdateBusy] = useState(false)
-  const connectAttemptRef = useRef(0)
-  const savedModelAttemptRef = useRef(0)
-  const mountedRef = useRef(true)
-
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-      connectAttemptRef.current += 1
-      savedModelAttemptRef.current += 1
-    }
-  }, [])
-
-  const refreshEngine = async (): Promise<void> => {
-    try {
-      setEngineRegistry(await window.api.engine.listInstallations())
-      setOperationError(null)
-    } catch {
-      setOperationError('無法查詢引擎狀態。')
-    }
-  }
-
-  useEffect(() => {
-    const unsubscribeUpdate = window.api.update.onChanged(setUpdateStatus)
-    withTimeout(
-      window.api.secret.isAvailable(),
-      SECRET_OPERATION_TIMEOUT_MS,
-      SECRET_TIMEOUT_MESSAGE
-    )
-      .then(setEncryptionAvailable)
-      .catch(() => setEncryptionAvailable(false))
-    withTimeout(
-      window.api.secret.status(),
-      SECRET_OPERATION_TIMEOUT_MS,
-      SECRET_TIMEOUT_MESSAGE
-    )
-      .then((status) => {
-        setSecretStatus(status)
-        if (status.activeCredential?.provider === 'openrouter') {
-          setSelectedOpenRouterModel(status.activeCredential.model)
-        }
-      })
-      .catch(() => setOperationError('無法查詢 API Key 狀態。'))
-    void refreshEngine()
-    // 舊版 preload 或測試替身可能沒有這個通道；讀不到就維持空白，不影響其他設定。
-    // 舊版 preload 或測試替身可能沒有診斷通道；讀不到就不顯示筆數。
-    window.api.ai?.listHarnessTraces?.()
-      ?.then((traces) => {
-        if (mountedRef.current) setTraceCount(traces.length)
-      })
-      .catch(() => undefined)
-    window.api.ai?.getOpenRouterBackupModels?.()
-      ?.then((result) => {
-        if (result.ok && mountedRef.current) setBackupModels(result.models)
-      })
-      .catch(() => undefined)
-    withTimeout(
-      window.api.update.status(),
-      UPDATE_OPERATION_TIMEOUT_MS,
-      '更新狀態查詢逾時。'
-    ).then(setUpdateStatus).catch(() => setUpdateStatus(null))
-    return unsubscribeUpdate
-  }, [])
-
-  useEffect(() => {
-    if (!operationError) return
-    setSavedMessage(null)
-  }, [operationError])
-
-  useEffect(() => {
-    if (!savedMessage) return
-    const timer = window.setTimeout(() => setSavedMessage(null), 10_000)
-    return () => window.clearTimeout(timer)
-  }, [savedMessage])
 
   const update = (patch: Partial<AppSettings>): boolean => {
     const next = { ...settings, ...patch }
@@ -169,400 +54,44 @@ export function SettingsPage({
     return true
   }
 
-  const useCredential = (credential: SecretCredentialRef): boolean => {
-    return update({
-      aiProvider: credential.provider,
-      aiModel: credential.model,
-      aiBaseUrl:
-        credential.provider === 'openai-compatible'
-          ? credential.baseUrl ?? ''
-          : ''
-    })
-  }
+  const ai = useAiCredentialSettings({
+    settings,
+    onSettingsChange,
+    update,
+    setOperationError,
+    setSavedMessage
+  })
+  const engine = useEngineSettings({ setOperationError })
+  const system = useSystemSettings({
+    onDataImported,
+    getCurrentDataSnapshot,
+    dataRecoveryRequired,
+    onInstallUpdate,
+    setOperationError,
+    setSavedMessage
+  })
 
-  const mirrorActiveCredential = (credential: SecretCredentialRef): boolean => {
-    const next = {
-      ...settings,
-      aiProvider: credential.provider,
-      aiModel: credential.model,
-      aiBaseUrl:
-        credential.provider === 'openai-compatible'
-          ? credential.baseUrl ?? ''
-          : ''
-    }
-    const saved = saveSettings(next)
-    // main active 是真實來源；即使 localStorage 失敗，記憶體鏡像也必須立即同步，
-    // 避免下一次生成仍送出舊模型。
-    onSettingsChange(next)
-    if (!saved.ok) {
-      setOperationError(
-        `${saved.message ?? '設定儲存失敗。'} 已依目前使用中的憑證修正本次執行設定；請稍後重試儲存。`
-      )
-      return false
-    }
-    setOperationError(null)
-    return true
-  }
+  // 開啟設定頁時的初始查詢；維持原本的 IPC 呼叫順序。
+  useEffect(() => {
+    const unsubscribeUpdate = system.subscribeUpdateStatus()
+    ai.loadSecretStatus()
+    void engine.refreshEngine()
+    system.loadTraceCount()
+    ai.loadBackupModels()
+    system.loadUpdateStatus()
+    return unsubscribeUpdate
+  }, [])
 
-  const loadSavedModels = async (): Promise<void> => {
-    const source = secretStatus.activeCredential
-    if (source?.provider !== 'openrouter') return
-    const attempt = ++savedModelAttemptRef.current
-    setSecretBusy(true)
-    setConnectionStage('catalog')
-    setSavedModelsError(null)
-    try {
-      const result = await withTimeout(
-        window.api.ai.listSavedOpenRouterModels({ sourceCredential: source }),
-        AI_CONNECT_TIMEOUT_MS,
-        'OpenRouter 模型清單讀取逾時，請稍後重試。'
-      )
-      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
-      setSavedModelsLoaded(true)
-      if (!result.ok) {
-        setSavedModelsError(result.message)
-        setConnectionStage('enabled')
-        return
-      }
-      setSecretStatus(result.status)
-      const currentModel = selectedOpenRouterModel || source.model
-      setOpenRouterModels(result.models)
-      setSelectedOpenRouterModel(currentModel)
-      setConnectionStage('awaiting-model')
-    } catch (error) {
-      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
-      setSavedModelsLoaded(true)
-      setSavedModelsError(
-        error instanceof Error ? error.message : 'OpenRouter 模型清單讀取失敗。'
-      )
-      setConnectionStage('enabled')
-    } finally {
-      if (mountedRef.current && savedModelAttemptRef.current === attempt) {
-        setSecretBusy(false)
-      }
-    }
-  }
+  useEffect(() => {
+    if (!operationError) return
+    setSavedMessage(null)
+  }, [operationError])
 
-  const applySavedSwitchResult = async (
-    result: Awaited<ReturnType<typeof window.api.ai.switchSavedOpenRouterModel>>,
-    attempt: number
-  ): Promise<void> => {
-    if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
-    if (!result.ok) {
-      setOperationError(result.message)
-      setConnectionStage('awaiting-model')
-      return
-    }
-    setSecretStatus(result.status)
-    setSelectedOpenRouterModel(result.credential.model)
-    const saved = mirrorActiveCredential(result.credential)
-    setConnectionStage('enabled')
-    setSavedMessage(saved ? result.message : null)
-  }
-
-  const switchSavedModel = async (): Promise<void> => {
-    const source = secretStatus.activeCredential
-    if (
-      source?.provider !== 'openrouter' ||
-      !openRouterModels.some((model) => model.id === selectedOpenRouterModel)
-    ) return
-    const attempt = ++savedModelAttemptRef.current
-    const input = {
-      sourceCredential: source,
-      targetModel: selectedOpenRouterModel,
-      operationId: crypto.randomUUID()
-    }
-    setSecretBusy(true)
-    setConnectionStage('generation')
-    setOperationError(null)
-    try {
-      const result = await withTimeout(
-        window.api.ai.switchSavedOpenRouterModel(input),
-        AI_CONNECT_TIMEOUT_MS,
-        'OpenRouter 模型切換逾時，正在對帳目前使用中的模型。'
-      )
-      await applySavedSwitchResult(result, attempt)
-    } catch (error) {
-      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
-      const status = await withTimeout(
-        window.api.secret.status(),
-        AI_RECONCILE_TIMEOUT_MS,
-        'API Key 狀態對帳逾時。'
-      ).catch(() => null)
-      if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
-      if (
-        status?.activeCredential?.provider === 'openrouter' &&
-        status.activeCredential.model === selectedOpenRouterModel
-      ) {
-        setSecretStatus(status)
-        mirrorActiveCredential(status.activeCredential)
-        setConnectionStage('enabled')
-        setSavedMessage(`已改用 ${selectedOpenRouterModel}。`)
-        return
-      }
-      try {
-        // 同 operationId 會接回 main 的同一個 bounded operation，不會重送驗證。
-        const reconciled = await withTimeout(
-          window.api.ai.switchSavedOpenRouterModel(input),
-          AI_RECONCILE_TIMEOUT_MS,
-          'OpenRouter 模型切換仍在處理；請稍後重新整理設定確認。'
-        )
-        await applySavedSwitchResult(reconciled, attempt)
-      } catch {
-        if (!mountedRef.current || savedModelAttemptRef.current !== attempt) return
-        if (status) {
-          setSecretStatus(status)
-          if (status.activeCredential) mirrorActiveCredential(status.activeCredential)
-        }
-        setOperationError(
-          error instanceof Error ? error.message : 'OpenRouter 模型切換失敗。'
-        )
-        setConnectionStage('enabled')
-      }
-    } finally {
-      if (mountedRef.current && savedModelAttemptRef.current === attempt) {
-        setSecretBusy(false)
-      }
-    }
-  }
-
-  const saveBackupModels = async (): Promise<void> => {
-    const source = secretStatus.activeCredential
-    if (source?.provider !== 'openrouter') return
-    setSecretBusy(true)
-    setOperationError(null)
-    try {
-      const result = await withTimeout(
-        window.api.ai.setOpenRouterBackupModels({
-          sourceCredential: source,
-          models: backupModels
-        }),
-        AI_CONNECT_TIMEOUT_MS,
-        '備援模型儲存逾時，請稍後重試。'
-      )
-      if (!mountedRef.current) return
-      if (!result.ok) {
-        setOperationError(result.message)
-        return
-      }
-      setBackupModels(result.models)
-      setSavedMessage(
-        result.models.length > 0
-          ? `已儲存備援模型：${result.models.join('、')}。`
-          : '已停用備援模型。'
-      )
-    } catch (error) {
-      if (!mountedRef.current) return
-      setOperationError(error instanceof Error ? error.message : '備援模型儲存失敗。')
-    } finally {
-      if (mountedRef.current) setSecretBusy(false)
-    }
-  }
-
-  const connectionStageForFailure = (): AiConnectionStage =>
-    openRouterModels.length > 0 ? 'awaiting-model' : 'idle'
-
-  const connectKey = async (refreshModels = false): Promise<void> => {
-    const key = apiKey.trim()
-    if (!key) return
-    const attempt = ++connectAttemptRef.current
-    const requestedModel = refreshModels
-      ? undefined
-      : selectedOpenRouterModel || undefined
-    setSecretBusy(true)
-    setConnectionStage(requestedModel ? 'generation' : 'catalog')
-    try {
-      const result = await withTimeout(
-        window.api.ai.autoConfigureCredential(key, requestedModel),
-        AI_CONNECT_TIMEOUT_MS,
-        'AI 連線逾時，請檢查網路後重試。'
-      )
-      if (!mountedRef.current || connectAttemptRef.current !== attempt) return
-      if (!result.ok) {
-        setConnectionStage(connectionStageForFailure())
-        setOperationError(result.message)
-        return
-      }
-      if (!result.configured) {
-        const previousModel = selectedOpenRouterModel
-        const previousModelUnavailable =
-          previousModel !== '' && !result.models.some((model) => model.id === previousModel)
-        setOpenRouterModels(result.models)
-        if (!previousModel) setSelectedOpenRouterModel(result.models[0]?.id ?? '')
-        setConnectionStage('awaiting-model')
-        setSavedMessage(result.message)
-        setOperationError(
-          previousModelUnavailable
-            ? '目前選擇的模型已不在最新清單，請重新選擇模型。'
-            : null
-        )
-        return
-      }
-      setConnectionStage('storage')
-      const settingsSaved = useCredential(result.credential)
-      setSecretStatus(result.status)
-      if (!settingsSaved) {
-        setSavedMessage(null)
-        return
-      }
-      setApiKey('')
-      setOpenRouterModels([])
-      setSelectedOpenRouterModel(result.credential.model)
-      setSavedModelsLoaded(false)
-      setSavedModelsError(null)
-      setConnectionStage('enabled')
-      setSavedMessage(result.message)
-    } catch (error) {
-      if (!mountedRef.current || connectAttemptRef.current !== attempt) return
-      setConnectionStage(connectionStageForFailure())
-      setOperationError(
-        error instanceof Error
-          ? error.message
-          : '無法完成 AI 連線。'
-      )
-    } finally {
-      if (mountedRef.current && connectAttemptRef.current === attempt) {
-        setSecretBusy(false)
-      }
-    }
-  }
-
-  const deleteKey = async (): Promise<void> => {
-    const credential = secretStatus.activeCredential
-    if (!credential) return
-    setSecretBusy(true)
-    try {
-      const result = await withTimeout(
-        window.api.secret.delete(credential),
-        SECRET_OPERATION_TIMEOUT_MS,
-        SECRET_TIMEOUT_MESSAGE
-      )
-      setSecretStatus(result.status)
-      if (result.status.activeCredential) {
-        useCredential(result.status.activeCredential)
-      }
-      setSavedMessage('AI API 金鑰已從本機刪除。')
-      setOperationError(null)
-    } catch (error) {
-      setOperationError(
-        error instanceof Error && error.message === SECRET_TIMEOUT_MESSAGE
-          ? error.message
-          : 'API Key 刪除失敗，請稍後重試。'
-      )
-    } finally {
-      setSecretBusy(false)
-    }
-  }
-
-  const removeEngine = async (id: string): Promise<void> => {
-    try {
-      setEngineRegistry(await window.api.engine.removeInstallation(id))
-      setEngineMessage('引擎已從清單移除；原始 EXE 不會被刪除。')
-    } catch {
-      setEngineMessage('無法移除引擎，可能仍有分析工作正在使用它。')
-    }
-  }
-
-  const testEngine = async (id: string): Promise<void> => {
-    setTestingEngineId(id)
-    setEngineTest(null)
-    try {
-      const result = await window.api.engine.testInstallation(id)
-      setEngineTest(result)
-      if (result.ok) await refreshEngine()
-    } catch {
-      setEngineTest({ ok: false, message: '引擎測試失敗，請確認路徑與執行權限。' })
-    } finally {
-      setTestingEngineId(null)
-    }
-  }
-
-  const selectEngine = async (activeEngineId: string): Promise<void> => {
-    if (!activeEngineId) return
-    try {
-      setEngineRegistry(await window.api.engine.selectInstallation(activeEngineId))
-      setEngineMessage(null)
-    } catch {
-      setEngineMessage('無法切換主引擎，請重新測試該引擎。')
-    }
-  }
-
-  const exportBackup = async (): Promise<void> => {
-    if (dataRecoveryRequired) {
-      setOperationError(
-        '目前資料尚未成功讀取，不能把空白保護資料當作完整備份；請先重新讀取資料。'
-      )
-      return
-    }
-    try {
-      const result = await window.api.data.exportBackup(getCurrentDataSnapshot())
-      if (result.ok) {
-        setSavedMessage(`資料已匯出：${result.filePath}`)
-      } else if (!result.cancelled) {
-        setOperationError(result.message ?? '資料匯出失敗。')
-      }
-    } catch {
-      setOperationError('資料匯出失敗，請確認儲存位置後重試。')
-    }
-  }
-
-  const exportTraces = async (): Promise<void> => {
-    try {
-      const result = await window.api.ai.exportHarnessTraces()
-      if (result.ok) {
-        setSavedMessage(`診斷紀錄已匯出：${result.filePath}`)
-      } else if (!result.cancelled) {
-        setOperationError(result.message ?? '診斷紀錄匯出失敗。')
-      }
-    } catch {
-      setOperationError('診斷紀錄匯出失敗，請確認儲存位置後重試。')
-    }
-  }
-
-  const clearTraces = async (): Promise<void> => {
-    try {
-      await window.api.ai.clearHarnessTraces()
-      setTraceCount(0)
-      setSavedMessage('診斷紀錄已清除。')
-    } catch {
-      setOperationError('診斷紀錄清除失敗，請稍後再試。')
-    }
-  }
-
-  const importBackup = async (): Promise<void> => {
-    try {
-      const result = await window.api.data.importBackup()
-      if (result.ok) {
-        onDataImported(result.snapshot)
-        const total = Object.values(result.summary).reduce((sum, count) => sum + count, 0)
-        setSavedMessage(`匯入完成，共新增 ${total} 筆資料；重複資料已略過。`)
-        setOperationError(null)
-      } else if (!result.cancelled) {
-        setOperationError(result.message ?? '資料匯入失敗。')
-      }
-    } catch {
-      setOperationError('資料匯入失敗；原有資料未被覆寫，請確認備份檔後重試。')
-    }
-  }
-
-  const runUpdateAction = async (
-    action: () => Promise<AppUpdateStatus>,
-    timeoutMs = UPDATE_OPERATION_TIMEOUT_MS
-  ): Promise<void> => {
-    setUpdateBusy(true)
-    setOperationError(null)
-    try {
-      setUpdateStatus(await withTimeout(action(), timeoutMs, '更新操作逾時，請稍後再試。'))
-    } catch (error) {
-      setOperationError(
-        error instanceof Error && error.message
-          ? error.message
-          : '更新操作失敗，請稍後再試。'
-      )
-    } finally {
-      setUpdateBusy(false)
-    }
-  }
+  useEffect(() => {
+    if (!savedMessage) return
+    const timer = window.setTimeout(() => setSavedMessage(null), 10_000)
+    return () => window.clearTimeout(timer)
+  }, [savedMessage])
 
   return (
     <div className="settings-page">
@@ -586,39 +115,25 @@ export function SettingsPage({
         <div className="settings-content">
           {activeCategory === 'ai' && (
             <AiSettingsSection
-              apiKey={apiKey}
-              onApiKeyChange={(value) => {
-                connectAttemptRef.current += 1
-                setApiKey(value)
-                if (value.trim()) {
-                  setOpenRouterModels([])
-                  setSavedModelsLoaded(false)
-                  setSavedModelsError(null)
-                } else if (secretStatus.activeCredential?.provider === 'openrouter') {
-                  setSelectedOpenRouterModel(secretStatus.activeCredential.model)
-                }
-                setConnectionStage('idle')
-              }}
-              secretStatus={secretStatus}
-              encryptionAvailable={encryptionAvailable}
-              secretBusy={secretBusy}
-              openRouterModels={openRouterModels}
-              selectedOpenRouterModel={selectedOpenRouterModel}
-              onOpenRouterModelChange={(model) => {
-                setSelectedOpenRouterModel(model)
-                setOperationError(null)
-              }}
-              onConnectKey={() => void connectKey()}
-              onRefreshOpenRouterModels={() => void connectKey(true)}
-              onLoadSavedOpenRouterModels={() => void loadSavedModels()}
-              onSwitchSavedOpenRouterModel={() => void switchSavedModel()}
-              savedModelsLoaded={savedModelsLoaded}
-              savedModelsError={savedModelsError}
-              backupModels={backupModels}
-              onBackupModelsChange={setBackupModels}
-              onSaveBackupModels={() => void saveBackupModels()}
-              onDeleteKey={() => void deleteKey()}
-              connectionStage={connectionStage}
+              apiKey={ai.apiKey}
+              onApiKeyChange={ai.changeApiKey}
+              secretStatus={ai.secretStatus}
+              encryptionAvailable={ai.encryptionAvailable}
+              secretBusy={ai.secretBusy}
+              openRouterModels={ai.openRouterModels}
+              selectedOpenRouterModel={ai.selectedOpenRouterModel}
+              onOpenRouterModelChange={ai.changeOpenRouterModel}
+              onConnectKey={() => void ai.connectKey()}
+              onRefreshOpenRouterModels={() => void ai.connectKey(true)}
+              onLoadSavedOpenRouterModels={() => void ai.loadSavedModels()}
+              onSwitchSavedOpenRouterModel={() => void ai.switchSavedModel()}
+              savedModelsLoaded={ai.savedModelsLoaded}
+              savedModelsError={ai.savedModelsError}
+              backupModels={ai.backupModels}
+              onBackupModelsChange={ai.setBackupModels}
+              onSaveBackupModels={() => void ai.saveBackupModels()}
+              onDeleteKey={() => void ai.deleteKey()}
+              connectionStage={ai.connectionStage}
             />
           )}
 
@@ -626,41 +141,32 @@ export function SettingsPage({
             <EngineSettingsSection
               settings={settings}
               update={update}
-              registry={engineRegistry}
-              testingEngineId={testingEngineId}
-              message={engineMessage}
-              testResult={engineTest}
-              onRefresh={() => void refreshEngine()}
-              onTest={(id) => void testEngine(id)}
-              onRemove={(id) => void removeEngine(id)}
-              onSelect={(activeId) => void selectEngine(activeId)}
+              registry={engine.engineRegistry}
+              testingEngineId={engine.testingEngineId}
+              message={engine.engineMessage}
+              testResult={engine.engineTest}
+              onRefresh={() => void engine.refreshEngine()}
+              onTest={(id) => void engine.testEngine(id)}
+              onRemove={(id) => void engine.removeEngine(id)}
+              onSelect={(activeId) => void engine.selectEngine(activeId)}
             />
           )}
 
           {activeCategory === 'system' && (
             <SystemSettingsSection
-              updateStatus={updateStatus}
-              updateBusy={updateBusy}
-              onExportBackup={() => void exportBackup()}
-              traceCount={traceCount}
-              onExportTraces={() => void exportTraces()}
-              onClearTraces={() => void clearTraces()}
+              updateStatus={system.updateStatus}
+              updateBusy={system.updateBusy}
+              onExportBackup={() => void system.exportBackup()}
+              traceCount={system.traceCount}
+              onExportTraces={() => void system.exportTraces()}
+              onClearTraces={() => void system.clearTraces()}
               canExportBackup={!dataRecoveryRequired}
-              onImportBackup={() => void importBackup()}
-              onCheckUpdate={() => void runUpdateAction(() => window.api.update.check())}
-              onDownloadUpdate={() =>
-                void runUpdateAction(
-                  () => window.api.update.download(),
-                  UPDATE_PREPARATION_TIMEOUT_MS
-                )
-              }
-              onInstallUpdate={() =>
-                void runUpdateAction(onInstallUpdate)
-              }
+              onImportBackup={() => void system.importBackup()}
+              onCheckUpdate={() => void system.checkUpdate()}
+              onDownloadUpdate={() => void system.downloadUpdate()}
+              onInstallUpdate={() => void system.installUpdate()}
               onSetBackgroundPreparation={(enabled) =>
-                void runUpdateAction(() =>
-                  window.api.update.setBackgroundPreparation(enabled)
-                )
+                void system.setBackgroundPreparation(enabled)
               }
             />
           )}
