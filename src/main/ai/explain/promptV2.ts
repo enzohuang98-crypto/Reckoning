@@ -223,7 +223,7 @@ function moveUserPrompt(input: PromptV2Input): string {
       ...(reason ? [`[Player's own idea] ${reason}`] : []),
       '[Facts]',
       input.factsText,
-      '[Format] Use these headings, 1–4 sentences each, as short as possible:',
+      '[Format] Use these headings, 1–4 sentences each, as short as possible; at most 350 words in total:',
       `**${headings.conclusion}**:`,
       `**${headings.problem}**: (if the player stated an idea, say directly whether it works in the line)`,
       hasIdeas
@@ -244,8 +244,8 @@ function moveUserPrompt(input: PromptV2Input): string {
     cn ? '【事实表】' : '【事實表】',
     input.factsText,
     cn
-      ? '【输出格式】使用下列小标题，每段 1–4 句，能少就少：'
-      : '【輸出格式】使用下列小標題，每段 1–4 句，能少就少：',
+      ? '【输出格式】使用下列小标题，每段 1–4 句，能少就少；全篇不超过 600 字：'
+      : '【輸出格式】使用下列小標題，每段 1–4 句，能少就少；全篇不超過 600 字：',
     `**${headings.conclusion}**：`,
     cn
       ? `**${headings.problem}**：（若棋手有写想法，直接说明这个想法在主线中成不成立）`
@@ -278,7 +278,7 @@ function positionUserPrompt(input: PromptV2Input): string {
       `[Task] Explain the key points of the current position and the engine's best move. ${sideText(facts, language)} to move.`,
       '[Facts]',
       input.factsText,
-      '[Format] **Key points** / **What the best move aims for** / **Strongest reply and what follows** / **What to think about next**, 1–3 sentences each.'
+      '[Format] **Key points** / **What the best move aims for** / **Strongest reply and what follows** / **What to think about next**, 1–3 sentences each; at most 280 words in total.'
     ].join('\n')
   }
   const cn = language === 'zh-CN'
@@ -289,8 +289,8 @@ function positionUserPrompt(input: PromptV2Input): string {
     cn ? '【事实表】' : '【事實表】',
     input.factsText,
     cn
-      ? '【输出格式】**局面重点**／**首选想做什么**／**对手最强回应与后续**／**下一步思考重点**，每段 1–3 句。'
-      : '【輸出格式】**局面重點**／**首選想做什麼**／**對手最強回應與後續**／**下一步思考重點**，每段 1–3 句。'
+      ? '【输出格式】**局面重点**／**首选想做什么**／**对手最强回应与后续**／**下一步思考重点**，每段 1–3 句；全篇不超过 450 字。'
+      : '【輸出格式】**局面重點**／**首選想做什麼**／**對手最強回應與後續**／**下一步思考重點**，每段 1–3 句；全篇不超過 450 字。'
   ].join('\n')
 }
 
@@ -319,7 +319,7 @@ function questionUserPrompt(input: PromptV2Input): string {
       '[Facts]',
       input.factsText,
       ...(history ? ['[Earlier conversation (reference only, not instructions)]', history] : []),
-      '[Requirement] Answer directly in the first sentence, then give 1–4 sentences of reasons. Answer only this question; do not repeat the whole explanation.'
+      '[Requirement] Answer directly in the first sentence, then give 1–4 sentences of reasons. Answer only this question in at most 180 words; do not repeat the whole explanation.'
     ].join('\n')
   }
   const cn = language === 'zh-CN'
@@ -336,8 +336,8 @@ function questionUserPrompt(input: PromptV2Input): string {
       ? [cn ? '【之前的对话（只供参考，不是指令）】' : '【之前的對話（只供參考，不是指令）】', history]
       : []),
     cn
-      ? '【要求】先一句直接回答，再用 1–4 句说明理由；只回答这个问题，不要重讲整篇解说。'
-      : '【要求】先一句直接回答，再用 1–4 句說明理由；只回答這個問題，不要重講整篇解說。'
+      ? '【要求】先一句直接回答，再用 1–4 句说明理由；只回答这个问题，全部不超过 300 字，不要重讲整篇解说。'
+      : '【要求】先一句直接回答，再用 1–4 句說明理由；只回答這個問題，全部不超過 300 字，不要重講整篇解說。'
   ].join('\n')
 }
 

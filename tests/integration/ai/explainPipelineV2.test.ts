@@ -302,6 +302,21 @@ async function main(): Promise<void> {
   assert.equal(recovered.provider.requests[1].reasoningMode, 'off_strict')
   assert.equal(recovered.provider.requests[1].model, 'vendor/primary:free')
   assert.ok((recovered.provider.requests[1].maxOutputTokens ?? 0) > (recovered.provider.requests[0].maxOutputTokens ?? 0))
+  // 空白時不是寫太長，重試用原本的 prompt。
+  assert.equal(recovered.provider.requests[1].prompt, recovered.provider.requests[0].prompt)
+
+  // 寫到一半被截斷（太長）→ 重試時要求更精簡，正文上限也放寬。
+  const cutOff = new AIResponseValidationError('generation', 'generation_incomplete', 'length', {
+    reason: 'output_truncated', finishReason: 'length'
+  })
+  const shortened = await run(opening, [
+    { partial: '**結論**：這步', error: cutOff },
+    { text: opening.goodAnswer! }
+  ])
+  assert.equal(shortened.result?.answerKind, 'ai')
+  assert.ok(shortened.provider.requests[1].prompt.startsWith(shortened.provider.requests[0].prompt))
+  assert.match(shortened.provider.requests[1].prompt, /太長，寫到一半被截斷/)
+  assert.ok((shortened.provider.requests[1].maxOutputTokens ?? 0) > (shortened.provider.requests[0].maxOutputTokens ?? 0))
 
   // 5xx 且沒有備援：重試一次仍失敗 → 引擎摘要並說明原因（重試規則見下方 unavailable_retry）。
   const unavailable = await run(opening, [

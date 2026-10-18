@@ -120,6 +120,13 @@ export function classifyModelFailure(error: unknown): FailureClass {
   }
 }
 
+/** 回答因太長被截斷後重試時附在 prompt 最後。 */
+const SHORTER_NOTE: Record<ExplanationLanguage, string> = {
+  'zh-TW': '【注意】上一次的回答太長，寫到一半被截斷。這次要更精簡：每段最多 2 句，全部寫完，不要停在一半。',
+  'zh-CN': '【注意】上一次的回答太长，写到一半被截断。这次要更精简：每段最多 2 句，全部写完，不要停在一半。',
+  en: '[Note] The previous answer was too long and got cut off. Be more concise this time: at most 2 sentences per part, and finish the whole answer.'
+}
+
 const FAILURE_REASON: Record<
   ExplanationLanguage,
   Record<
@@ -654,8 +661,15 @@ export async function runExplainPipelineV2(
     }
     if (!answer && lastError && classifyModelFailure(lastError) === 'incomplete' && canCallAgain()) {
       progress('provider_retry', 'AI 模型沒有交出完整答案，正在關閉推理後重試一次。')
+      // 已經寫出正文才不完整＝寫太長被截斷：同一份 prompt 重來多半又寫一樣長，明確要它更精簡。
+      const truncated = attempts.at(-1)?.midStream === true
       try {
-        answer = await callModel(payload.model, 'recovery', prompt.prompt, 'off_strict')
+        answer = await callModel(
+          payload.model,
+          'recovery',
+          truncated ? `${prompt.prompt}\n${SHORTER_NOTE[language]}` : prompt.prompt,
+          'off_strict'
+        )
         lastError = null
       } catch (error) {
         if (isAbortError(error) && deps.signal.aborted) throw error

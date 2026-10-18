@@ -21,8 +21,14 @@ export const IDEA_PROBE_ENGINE_MS = 800
 /** 關鍵著法檢查整體的上限（含啟動引擎）；超過就不附，解說照常進行。 */
 export const IDEA_PROBE_DEADLINE_MS = 6_000
 
+/**
+ * 每次呼叫給正文的輸出上限。只是防止失控的護欄：服務只依實際產生的 tokens 計費，上限高不會多花錢；
+ * 上限太低才浪費——回答寫到一半被切斷，整份作廢再重寫一次，兩份都要付錢。
+ * 實測（付費 Sonnet、中文）：提問常寫到 1,000–1,200 tokens，舊上限 800 幾乎每次都截斷。
+ * 長度改由 prompt 的字數上限控制，這裡留足兩倍以上的餘裕。
+ */
 export const VISIBLE_TOKENS = {
-  move: 1_600,
-  position: 1_400,
-  question: 800
+  move: 3_000,
+  position: 2_400,
+  question: 2_000
 } as const
