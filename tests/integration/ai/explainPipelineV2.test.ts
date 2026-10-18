@@ -90,6 +90,8 @@ function sessionFor(fixture: FixtureCase): AnalysisSession {
 
 interface RunOptions {
   backupModels?: string[]
+  /** 假引擎（只需要 probeIdeas）；預設沒有引擎。 */
+  adapter?: unknown
   timing?: ExplainPipelineDeps['timing']
 }
 
@@ -122,7 +124,7 @@ async function run(fixture: FixtureCase, steps: Step[], options: RunOptions = {}
       apiKey: 'synthetic',
       registry: {
         list: () => ({ installations: [], activeEngineId: 'engine-1' }),
-        getAdapter: () => null
+        getAdapter: () => options.adapter ?? null
       } as never,
       traceStore: { save: (trace: HarnessTrace) => traces.push(trace) } as never,
       signal: new AbortController().signal,
@@ -376,6 +378,44 @@ async function main(): Promise<void> {
   const bare = await run(opening, [{ error: new TypeError('x is undefined') }, { text: opening.goodAnswer! }])
   assert.equal(bare.result?.answerKind, 'ai')
   assert.equal(bare.traces.at(-1)?.attempts?.[0].networkCode, undefined)
+
+  // 關鍵著法檢查：解說前另外問引擎「如果…」，結果寫進事實表給模型；失敗不影響解說，同一局面只問一次。
+  const failing = await run(opening, [{ text: opening.goodAnswer! }], {
+    adapter: { probeIdeas: async () => { throw new Error('engine crashed') } }
+  })
+  assert.equal(failing.result?.answerKind, 'ai', 'a failed key-move check never blocks the explanation')
+  assert.doesNotMatch(failing.provider.requests[0].prompt, /關鍵著法檢查/)
+
+  const probeCalls: unknown[] = []
+  const probingAdapter = {
+    probeIdeas: async (input: unknown) => {
+      probeCalls.push(input)
+      // 對手的威脅：假如紅方先不走，黑方炮8進7（炮打馬）。
+      return {
+        opponentThreat: {
+          startFen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b - - 0 1',
+          moves: ['h7h0']
+        }
+      }
+    }
+  }
+  const probed = await run(opening, [{ text: opening.goodAnswer! }], { adapter: probingAdapter })
+  assert.equal(probed.result?.answerKind, 'ai')
+  assert.equal(probeCalls.length, 1)
+  assert.deepEqual(probeCalls[0], {
+    positionFen: opening.analysis.positionFen,
+    bestMove: 'h2e2',
+    bestLine: opening.analysis.principalVariation,
+    userLine: opening.analysis.userMovePrincipalVariation
+  })
+  assert.match(probed.provider.requests[0].prompt, /關鍵著法檢查/)
+  assert.match(probed.provider.requests[0].prompt, /對手的威脅（假如紅方這手先不走、讓黑方先走）/)
+  assert.match(probed.provider.requests[0].prompt, /黑 炮8進7：吃紅二路馬[^\n]*← 關鍵/)
+  assert.match(probed.provider.requests[0].systemPrompt ?? '', /標「關鍵」的那一手/)
+  assert.ok(probed.progress.some((message) => /關鍵著法/.test(message)))
+  const again = await run(opening, [{ text: opening.goodAnswer! }], { adapter: probingAdapter })
+  assert.equal(probeCalls.length, 1, 'the same position reuses the earlier key-move checks')
+  assert.match(again.provider.requests[0].prompt, /關鍵著法檢查/)
 
   // 簡體中文模式：繁體記譜與簡體字不會被誤判。
   const simplified = await run(byId('simplified-chinese'), [{ text: byId('simplified-chinese').goodAnswer! }])

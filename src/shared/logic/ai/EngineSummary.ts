@@ -12,6 +12,7 @@ import {
   FACT_LABELS,
   summarizeLine,
   type ExplanationFacts,
+  type IdeaFact,
   type LineFacts
 } from '../analysis/ExplanationFacts'
 
@@ -31,6 +32,17 @@ function lineText(line: LineFacts, language: ExplanationLanguage): string {
         ? ` (${events.join('; ')})`
         : `（${events.join('；')}）`
   return `${moves.join(' ')}${eventText}`
+}
+
+/** 關鍵著法檢查的一條：「如果…」走到關鍵那一手為止，並點名那一手。 */
+function ideaText(idea: IdeaFact, facts: ExplanationFacts, language: ExplanationLanguage): string {
+  const labels = FACT_LABELS[language]
+  const other = facts.sideToMove === 'red' ? 'black' : 'red'
+  const title = labels.ideaTitle[idea.kind](labels.side[facts.sideToMove], labels.side[other], idea.reply ?? '')
+  const moves = idea.line.plies.slice(0, idea.keyPly).map((ply) => ply.move).join(' ')
+  const key = idea.line.plies[idea.keyPly - 1]?.move ?? ''
+  if (language === 'en') return `${title}: ${moves} (key: ${key})`
+  return `${title}：${moves}（${language === 'zh-CN' ? '关键' : '關鍵'}：${key}）`
 }
 
 export function buildEngineSummary(
@@ -58,6 +70,7 @@ export function buildEngineSummary(
       ...(facts.userLine ? [`• Line after your move: ${lineText(facts.userLine, language)}`] : []),
       ...(facts.userIsBest ? ["• Your move is the engine's best move."] : []),
       ...(firstDifference ? [`• Key difference: ${firstDifference}`] : []),
+      ...(facts.ideas ?? []).map((idea) => `• ${ideaText(idea, facts, language)}`),
       'You can press "Retry AI" or choose another model in Settings.'
     ].join('\n')
   }
@@ -77,6 +90,7 @@ export function buildEngineSummary(
       : []),
     ...(facts.userIsBest ? [cn ? '‧ 你的着法就是引擎首选。' : '‧ 你的著法就是引擎首選。'] : []),
     ...(firstDifference ? [`‧ ${cn ? '关键差异' : '關鍵差異'}：${firstDifference}`] : []),
+    ...(facts.ideas ?? []).map((idea) => `‧ ${ideaText(idea, facts, language)}`),
     cn
       ? '可以按“重试 AI”再试一次，或到设定更换模型。'
       : '可以按「重試 AI」再試一次，或到設定更換模型。'

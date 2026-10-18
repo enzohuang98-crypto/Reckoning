@@ -6,7 +6,8 @@ import type { MistakeLevel } from '../../../types/MoveComparisonResult'
 export const MAX_FACT_LINE_PLIES = 10
 export const MAX_FACT_THREATS = 3
 export const MAX_FACT_DIFFERENCES = 3
-export const MAX_FACTS_PROMPT_CHARS = 1_500
+/** 關鍵著法檢查最多多出三條短線，上限因此從 1,500 放寬。 */
+export const MAX_FACTS_PROMPT_CHARS = 2_100
 /** 盤面子數不超過這個數時（殘局），事實表列出全部棋子，避免模型自己想像盤面上還有哪些子。 */
 export const MAX_INVENTORY_PIECES = 12
 
@@ -87,6 +88,24 @@ export type FactDifference =
       user: Record<PieceColor, PieceType[]>
     }
 
+/** 關鍵著法檢查的種類（見 ideaProbes.ts）。 */
+export type IdeaKind = 'opponentThreat' | 'sameReply' | 'bestThreat'
+
+/**
+ * 一條「如果…」的假設線（不是引擎主線）與程式標出的關鍵那一手。
+ * 只保留有實際內容（吃子、將軍或製造威脅）的檢查；什麼都沒發生的假設線不列。
+ */
+export interface IdeaFact {
+  kind: IdeaKind
+  /** 這條線裡要「做事」的一方：對手的威脅是對手，照樣應著與首選的威脅是輪走方。 */
+  side: PieceColor
+  /** 照樣應著：對手照走的那一手（顯示記譜）。 */
+  reply?: string
+  line: LineFacts
+  /** 關鍵那一手在 line.plies 的編號（ply，從 1 起算）。 */
+  keyPly: number
+}
+
 export interface ExplanationFacts {
   positionFen: string
   sideToMove: PieceColor
@@ -101,6 +120,8 @@ export interface ExplanationFacts {
   userLine?: LineFacts
   candidates: MoveFact[]
   differences: FactDifference[]
+  /** 關鍵著法檢查：主線看不到的「如果…」，每條都標出關鍵的那一手。 */
+  ideas?: IdeaFact[]
   /** 殘局時目前盤面上的全部棋子（依子種排序）；子多時不列。 */
   inventory?: Record<PieceColor, PieceType[]>
 }

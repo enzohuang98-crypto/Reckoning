@@ -1,14 +1,14 @@
 /**
  * 由引擎分析（與可選的著法比較）組出整張事實表：首選線／實戰線重播、評估、錯誤等級與差距、
- * 其他候選、兩線差異，以及殘局時的棋子清單。
+ * 其他候選、兩線差異、關鍵著法檢查（引擎回答的「如果…」），以及殘局時的棋子清單。
  */
 
 import type { BoardState, PieceColor, PieceType } from '../../../types/BoardState'
-import type { EngineAnalysis } from '../../../types/EngineAnalysis'
+import type { EngineAnalysis, IdeaProbeLine, IdeaProbes } from '../../../types/EngineAnalysis'
 import type { MoveComparisonResult } from '../../../types/MoveComparisonResult'
 import { formatChineseMove } from '../../board/ChineseNotation'
 import { parseFen } from '../../board/fen'
-import { INVENTORY_ORDER } from './common'
+import { INVENTORY_ORDER, opponent } from './common'
 import { buildLineFacts } from './lineFacts'
 import { factScore } from './score'
 import {
@@ -16,6 +16,8 @@ import {
   MAX_INVENTORY_PIECES,
   type ExplanationFacts,
   type FactDifference,
+  type IdeaFact,
+  type IdeaKind,
   type LineFacts,
   type MoveFact,
   type PlyFact
@@ -96,10 +98,50 @@ function buildDifferences(bestLine: LineFacts, userLine: LineFacts | undefined):
   return differences.slice(0, MAX_FACT_DIFFERENCES)
 }
 
+/** 關鍵那一手：這條線裡「做事」的一方，從 fromPly 起第一個吃子、將軍或製造新威脅的著法。 */
+function keyPlyOf(line: LineFacts, side: PieceColor, fromPly: number): number | null {
+  const key = line.plies.find(
+    (ply) =>
+      ply.ply >= fromPly &&
+      ply.side === side &&
+      (ply.captured !== null || ply.givesCheck || ply.threats.length > 0)
+  )
+  return key?.ply ?? null
+}
+
+/**
+ * 把引擎回答的「如果…」重播成事實，並標出關鍵的那一手。
+ * 照樣應著的第 1、2 手是首選與對手照走的應著，關鍵從第 3 手（輪走方的回應）找起。
+ */
+function buildIdeas(analysis: EngineAnalysis, probes: IdeaProbes | undefined): IdeaFact[] {
+  if (!probes) return []
+  const side = analysis.sideToMove
+  const ideas: IdeaFact[] = []
+  const add = (kind: IdeaKind, probe: IdeaProbeLine | undefined, actor: PieceColor, fromPly: number): void => {
+    if (!probe || probe.moves.length === 0) return
+    if (
+      kind === 'sameReply' &&
+      (probe.startFen !== analysis.positionFen || probe.moves[0] !== analysis.bestMove)
+    ) {
+      return
+    }
+    const line = buildLineFacts(probe.startFen, probe.moves)
+    const keyPly = keyPlyOf(line, actor, fromPly)
+    if (keyPly === null) return
+    const reply = kind === 'sameReply' ? line.plies[1]?.move : undefined
+    ideas.push({ kind, side: actor, ...(reply ? { reply } : {}), line, keyPly })
+  }
+  add('opponentThreat', probes.opponentThreat, opponent(side), 1)
+  add('sameReply', probes.sameReply, side, 3)
+  add('bestThreat', probes.bestThreat, side, 1)
+  return ideas
+}
+
 /** 由引擎分析（與可選的著法比較）建立事實表。 */
 export function buildExplanationFacts(
   analysis: EngineAnalysis,
-  comparison?: MoveComparisonResult | null
+  comparison?: MoveComparisonResult | null,
+  probes?: IdeaProbes
 ): ExplanationFacts {
   const startFen = analysis.positionFen
   const parsed = parseFen(startFen)
@@ -141,6 +183,7 @@ export function buildExplanationFacts(
     comparison.positionFen === startFen &&
     comparison.userMove === analysis.userMove
   const gap = comparable ? comparison!.scoreDifference : null
+  const ideas = buildIdeas(analysis, probes)
   return {
     positionFen: startFen,
     sideToMove: analysis.sideToMove,
@@ -161,6 +204,7 @@ export function buildExplanationFacts(
       ...(factScore(candidate.score) ? { score: factScore(candidate.score) } : {})
     })),
     differences: buildDifferences(bestLine, userLine),
+    ...(ideas.length > 0 ? { ideas } : {}),
     ...(parsed.valid && boardInventory(parsed.board) ? { inventory: boardInventory(parsed.board) } : {})
   }
 }

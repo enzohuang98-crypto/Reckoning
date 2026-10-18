@@ -39,6 +39,7 @@ import {
 } from '../../src/shared/logic/analysis/MoveComparisonService'
 import type { EngineAnalysis } from '../../src/shared/types/EngineAnalysis'
 import { START_FEN } from '../../src/shared/types/BoardState'
+import { legalPrefix } from '../../src/shared/logic/analysis/ideaProbes'
 
 const FAKE_ENGINE = join(__dirname, '..', 'support', 'fake-engine.exe')
 
@@ -373,6 +374,19 @@ async function main(): Promise<void> {
         sep.scoreAfterUserMove.comparableValue === -0.42 &&
         sep.scoreAfterUserMove.wasInverted === true,
       sep.scoreAfterUserMove
+    )
+
+    // 關鍵著法檢查：三個「如果…」同時送引擎；盡力而為，引擎接出不合法的續著就略過，不會拋錯。
+    const probes = await adapter.probeIdeas(
+      { positionFen: START_FEN, bestMove: 'h2e2', bestLine: ['h2e2', 'h9g7'], userLine: ['g3g4', 'b9c7'] },
+      { movetimeMs: 200 }
+    )
+    check(
+      '關鍵著法檢查回傳的每條假設線都能在棋盤上重播',
+      Object.values(probes).every(
+        (line) => line !== undefined && legalPrefix(line.startFen, line.moves).length === line.moves.length
+      ),
+      probes
     )
 
     // 非法 userMove 在送引擎前被攔（invalid_user_move）

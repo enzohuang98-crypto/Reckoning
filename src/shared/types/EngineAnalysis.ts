@@ -89,6 +89,27 @@ export interface EngineRawAnalysis {
  * 引擎分析結果（§2.6.3）。
  * 所有 evaluation 欄位皆為「原局面行棋方視角」（§2.15.8、附錄 A.3）。
  */
+/**
+ * 「關鍵著法檢查」的一條假設線：程式另外問引擎的「如果…」，不是引擎主線。
+ * startFen 是這條線的起始局面（「先不走一手」的檢查會把輪走方換成對手）；moves 都已確認合法。
+ */
+export interface IdeaProbeLine {
+  startFen: string
+  moves: string[]
+}
+
+/**
+ * 解說前另外問引擎的三個問題（每盤都問，找出主線看不到的關鍵著法）：
+ * - opponentThreat：輪走方這手先不走、讓對手先走，對手最想走什麼（對手的威脅）。
+ * - sameReply：首選之後，對手仍照棋手線上的同一應著走，引擎怎麼接（首選的走法順序好在哪）。
+ * - bestThreat：首選之後對手不理會、輪走方再走一步，首選想做什麼（首選的威脅）。
+ */
+export interface IdeaProbes {
+  opponentThreat?: IdeaProbeLine
+  sameReply?: IdeaProbeLine
+  bestThreat?: IdeaProbeLine
+}
+
 export interface EngineAnalysis {
   positionFen: string
   sideToMove: PieceColor

@@ -28,6 +28,7 @@ import {
   type EngineCandidateMove,
   type EngineProtocol,
   type EngineScore,
+  type IdeaProbes,
   type UserMoveEvaluationSource
 } from '@shared/types/EngineAnalysis'
 import type {
@@ -37,6 +38,7 @@ import type {
 import { parseFen } from '@shared/logic/board/fen'
 import { formatCentipawnDisplay } from '@shared/logic/analysis/EngineScoreDisplay'
 import { applyUciMove, legalMoveCheck } from '@shared/logic/board/moves'
+import { completeIdeaProbe, planIdeaProbes } from '@shared/logic/analysis/ideaProbes'
 import {
   formatChineseMove,
   formatChineseVariation
@@ -994,5 +996,46 @@ export class PikafishAdapter {
         userMove: userMoveRawLines
       }
     }
+  }
+
+  /* ---------- 關鍵著法檢查（解說前另外問引擎的「如果…」） ---------- */
+
+  /**
+   * 對手的威脅、照樣應著、首選的威脅：各搜尋一次，同時進行、彼此獨立（見 ideaProbes.ts）。
+   * 盡力而為：單一檢查失敗或接不出續著就略過；取消時整個以 AbortError 結束。
+   * 假設線只取著法、不取分數，所以沒有視角反轉的問題。
+   */
+  async probeIdeas(
+    input: {
+      positionFen: string
+      bestMove: string
+      bestLine?: readonly string[]
+      userLine?: readonly string[]
+    },
+    options: { movetimeMs: number; signal?: AbortSignal }
+  ): Promise<IdeaProbes> {
+    const enginePath = this.resolveEnginePath()
+    if (!enginePath) return {}
+    const settled = await Promise.allSettled(
+      planIdeaProbes(input).map(async (probe) => {
+        const result = await this.searchPosition({
+          enginePath,
+          fen: probe.startFen,
+          movesUci: probe.prefix,
+          movetimeMs: options.movetimeMs,
+          multiPv: 1,
+          scoreSource: 'candidate_move',
+          signal: options.signal
+        })
+        const line = completeIdeaProbe(probe, result.candidateMoves[0]?.principalVariation ?? [])
+        return { kind: probe.kind, line }
+      })
+    )
+    if (options.signal?.aborted) throw abortError()
+    const probes: IdeaProbes = {}
+    for (const item of settled) {
+      if (item.status === 'fulfilled' && item.value.line) probes[item.value.kind] = item.value.line
+    }
+    return probes
   }
 }
