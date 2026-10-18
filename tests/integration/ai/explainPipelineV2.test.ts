@@ -204,6 +204,7 @@ async function main(): Promise<void> {
   assert.equal(summary.result?.answerKind, 'engine_summary')
   assert.match(summary.result?.finalText ?? '', /引擎重點摘要（非 AI 生成）/)
   assert.match(summary.result?.finalText ?? '', /回答與引擎事實不符/)
+  assert.match(summary.result?.finalText ?? '', /回答與引擎事實不符（H\d：[^）]+）/, 'the summary names which check failed')
   assert.equal(summary.provider.requests.length, 2)
   assert.equal(summary.traces.at(-1)?.answerKind, 'engine_summary')
   assert.ok((summary.traces.at(-1)?.hardErrors?.length ?? 0) > 0)

@@ -189,6 +189,15 @@ function failureDetail(attempt: ExplainAttemptTrace | undefined, language: Expla
   return en ? ` (${parts.join('; ')})` : `（${parts.join('；')}）`
 }
 
+/** 檢查沒過時附上第一條硬錯（程式自己寫的說明，只含事實表著法），截圖就看得出是哪一句被擋。 */
+function checkFailureDetail(check: AnswerCheckResult, language: ExplanationLanguage): string {
+  const first = check.hardErrors[0]
+  if (!first) return ''
+  const message = first.message.replace(/[。.]$/, '')
+  const clipped = message.length > 80 ? `${message.slice(0, 80)}…` : message
+  return language === 'en' ? ` (${first.code}: ${clipped})` : `（${first.code}：${clipped}）`
+}
+
 /** 修正後仍有硬錯時，摘要說明最主要的那一種（事實矛盾優先），不要一律說「與事實不符」。 */
 function checkFailureReason(
   check: AnswerCheckResult
@@ -740,7 +749,7 @@ export async function runExplainPipelineV2(
       }
     }
     if (check.hardErrors.length > 0) {
-      return deliverSummary(checkFailureReason(check))
+      return deliverSummary(checkFailureReason(check), checkFailureDetail(check, language))
     }
 
     progress('completed', '已通過檢查。')
