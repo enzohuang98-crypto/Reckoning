@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AIProvider, TokenUsage } from '@shared/types/AIProviderTypes'
 import type { AIExplanationRequest, ExplanationLanguage } from '@shared/types/AIExplanationTypes'
-import type { EngineAnalysis } from '@shared/types/EngineAnalysis'
+import type { EngineAnalysis, IdeaProbes } from '@shared/types/EngineAnalysis'
 import type {
   ExplainAttemptTrace,
   ExplanationAnswerKind,
@@ -34,6 +34,8 @@ import type { PreparedExplanationExecution } from '../prepareExplanationExecutio
 import {
   CALL_TIMEOUT_MS,
   ENSURE_LINES_ENGINE_MS,
+  IDEA_PROBE_DEADLINE_MS,
+  IDEA_PROBE_ENGINE_MS,
   MAX_CALLS,
   MIN_RETRY_WINDOW_MS,
   RATE_LIMIT_RETRY_MAX_WAIT_MS,
@@ -274,6 +276,58 @@ async function ensureMinimumLines(
   }
 }
 
+/** 同一局面、首選與棋手著法的關鍵著法檢查只算一次，追問直接沿用。 */
+const ideaProbeCache = new Map<string, IdeaProbes>()
+const IDEA_PROBE_CACHE_LIMIT = 20
+
+/**
+ * 關鍵著法檢查：把主線看不到的「如果…」另外問引擎（對手的威脅、對手照樣應著、首選的威脅），
+ * 讓事實表能點出真正關鍵的那一手。盡力而為：沒有引擎、逾時或失敗就不附，解說照常進行；
+ * 只有使用者取消才往外丟。
+ */
+async function findKeyIdeas(
+  analysis: EngineAnalysis,
+  session: AnalysisSession,
+  engineId: string | undefined,
+  registry: EngineRegistryService,
+  signal: AbortSignal
+): Promise<{ probes?: IdeaProbes; engineRounds: number }> {
+  const key = [analysis.positionFen, analysis.bestMove, analysis.userMove ?? ''].join('|')
+  const cached = ideaProbeCache.get(key)
+  if (cached) return { probes: cached, engineRounds: 0 }
+  const resolvedEngineId =
+    engineId ?? session.primaryEngineId ?? registry.list().activeEngineId ?? undefined
+  const adapter = resolvedEngineId ? registry.getAdapter(resolvedEngineId) : null
+  if (!adapter) return { engineRounds: 0 }
+  const controller = new AbortController()
+  const forwardAbort = (): void => controller.abort()
+  signal.addEventListener('abort', forwardAbort, { once: true })
+  const timer = setTimeout(() => controller.abort(), IDEA_PROBE_DEADLINE_MS)
+  try {
+    const probes = await adapter.probeIdeas(
+      {
+        positionFen: analysis.positionFen,
+        bestMove: analysis.bestMove,
+        bestLine: analysis.principalVariation,
+        userLine: analysis.userMove ? analysis.userMovePrincipalVariation : undefined
+      },
+      { movetimeMs: IDEA_PROBE_ENGINE_MS, signal: controller.signal }
+    )
+    if (ideaProbeCache.size >= IDEA_PROBE_CACHE_LIMIT) {
+      const oldest = ideaProbeCache.keys().next().value
+      if (oldest !== undefined) ideaProbeCache.delete(oldest)
+    }
+    ideaProbeCache.set(key, probes)
+    return { probes, engineRounds: 1 }
+  } catch (error) {
+    if (signal.aborted) throw error
+    return { engineRounds: 1 }
+  } finally {
+    clearTimeout(timer)
+    signal.removeEventListener('abort', forwardAbort)
+  }
+}
+
 export async function runExplainPipelineV2(
   execution: PreparedExplanationExecution,
   deps: ExplainPipelineDeps
@@ -393,11 +447,22 @@ export async function runExplainPipelineV2(
     if (ensured.engineRounds > 0) progress('engine_research', '主線太短，已補算一次引擎。')
     throwIfAborted()
 
+    progress('engine_research', '正在找這局的關鍵著法：對手的威脅、對手照樣走會怎樣、首選的威脅。')
+    const ideas = await findKeyIdeas(
+      ensured.analysis,
+      session,
+      payload.engineId,
+      deps.registry,
+      deps.signal
+    )
+    engineRounds += ideas.engineRounds
+    throwIfAborted()
+
     const comparison =
       session.moveComparison.userMove === ensured.analysis.userMove
         ? session.moveComparison
         : null
-    const facts: ExplanationFacts = buildExplanationFacts(ensured.analysis, comparison)
+    const facts: ExplanationFacts = buildExplanationFacts(ensured.analysis, comparison, ideas.probes)
     const factsText = formatFactsForPrompt(facts, language)
     const prompt = buildPromptV2({
       mode,

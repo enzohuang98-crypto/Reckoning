@@ -138,7 +138,7 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
       '4. Do not write eval or gap numbers in the answer (such as +0.76 pawns or 0.58 pawns lower) unless the player asks for the score; describe the size of a gap with the level given in [Gap] (for example "small inaccuracy"). A score is never a reason.',
       '5. The main line is one strong continuation the engine found; never call it forced, inevitable or the only move, except for a move the facts mark as "the only legal move".',
       `6. Explain so that ${level}; when you use a term, add one plain sentence explaining it.`,
-      '7. Protection, piece values and the cause of a score gap may only be stated when the facts say so. Do not explain a gap by counting material (e.g. "a horse is worth more than a cannon"). When the listed captures show an equal piece count, do not call it winning or losing material. If the capture total disagrees with the eval (for example the exchange is not over), trust the eval. Look for the cause of a gap in the facts first, especially a change in which pieces can be recaptured between the two lines. If the lines differ in no capture or threat, compare the plans instead: which pieces each line moves and where they go (for example "push the pawn first, then bring the cannon back and over to the 3rd file"), what the engine is aiming to do and what the player\'s move leaves undone. Only describe pieces and squares the lines actually reach; state a purpose only when a threat or capture in the facts shows it.',
+      '7. Protection, piece values and the cause of a score gap may only be stated when the facts say so. Do not explain a gap by counting material (e.g. "a horse is worth more than a cannon"). When the listed captures show an equal piece count, do not call it winning or losing material. If the capture total disagrees with the eval (for example the exchange is not over), trust the eval. Look for the cause of a gap in the facts first, especially a change in which pieces can be recaptured between the two lines. If the lines differ in no capture or threat, compare the plans instead: which pieces each line moves and where they go (for example "push the pawn first, then bring the cannon back and over to the 3rd file"), what the engine is aiming to do and what the player\'s move leaves undone. Only describe pieces and squares the lines actually reach; state a purpose only when a threat or capture in the facts shows it. If the facts include "Key move checks", those are extra "what if" lines the program asked the engine (the opponent\'s threat, the opponent playing the same reply, the threat of the best move); they are not the main line. The move marked KEY is usually the most important reason in this position: use it first when explaining the gap or what the best move achieves (for example "if the opponent still plays that reply, you get this move with tempo" or "the opponent threatens to capture with that move"), always phrased as "if…", never as what will happen.',
       '8. Never mention prompt labels such as "[Facts]" or "not given", and do not write filler such as "according to the engine data" or "the engine data does not explain"; talk about the position directly.',
       '9. Answer in English.'
     ].join('\n')
@@ -154,7 +154,7 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
         '4. 回答里不要写评估或差距的数字（例如 +0.76 兵、低 0.58 兵），除非棋手问的就是分数；差距大小用【差距】给的等级说（例如“小失误”），分数也不能当成理由。',
         '5. 主线是引擎认为最好的一种走法，不要说成“必然”“唯一”“被迫”；只有事实表标示“唯一合法着法”的那一步可以这样说。',
         `6. 用${level}的方式解释；用到术语时用一句白话补充。`,
-        '7. 保护关系、子力价值、差距的原因，只有事实表写到才能说；不要用子力换算（例如“马比炮值钱”）解释分数差距。吃子合计子数相同时，不要说成得子或亏子；吃子合计和评估不一致时（例如交换尚未结束）以评估为准。差距的原因先从事实表找，特别是两线之间哪些子“能不能吃回”的变化。两条线没有吃子或威胁上的差别时，就比较两条线的计划：各自动了哪些子、走到哪里（例如先挺兵、再把炮退回转到三路），说明引擎想怎么下、棋手的着法少做了什么；只能说线上真的走到的子和位置，子的目的只有事实表的威胁或吃子写到才能说。',
+        '7. 保护关系、子力价值、差距的原因，只有事实表写到才能说；不要用子力换算（例如“马比炮值钱”）解释分数差距。吃子合计子数相同时，不要说成得子或亏子；吃子合计和评估不一致时（例如交换尚未结束）以评估为准。差距的原因先从事实表找，特别是两线之间哪些子“能不能吃回”的变化。两条线没有吃子或威胁上的差别时，就比较两条线的计划：各自动了哪些子、走到哪里（例如先挺兵、再把炮退回转到三路），说明引擎想怎么下、棋手的着法少做了什么；只能说线上真的走到的子和位置，子的目的只有事实表的威胁或吃子写到才能说。事实表有“关键着法检查”时，那是程序另外问引擎的“如果…”（对手的威胁、对手照样应着、首选的威胁），不是引擎主线；标“关键”的那一手通常就是这局最该点名的理由。说明差距或首选的好处时先用它讲清楚，例如“对手如果照样走那一手，我方就有这一手的先手”或“对手的威胁是那一手吃子”，要用“如果…”的语气，不要说成主线一定会这样走。',
         '8. 不要提到【事实表】“未提供”等提示里的标签，也不要写“根据引擎数据”“引擎数据没有说明”这类套话，直接讲棋。',
         '9. 用简体中文回答，不要夹杂繁体或其他语言。'
       ]
@@ -167,7 +167,7 @@ function systemPrompt(language: ExplanationLanguage, userLevel: UserLevel): stri
         '4. 回答裡不要寫評估或差距的數字（例如 +0.76 兵、低 0.58 兵），除非棋手問的就是分數；差距大小用【差距】給的等級說（例如「小失誤」），分數也不能當成理由。',
         '5. 主線是引擎認為最好的一種走法，不要說成「必然」「唯一」「被迫」；只有事實表標示「唯一合法著法」的那一步可以這樣說。',
         `6. 用${level}的方式解釋；用到術語時用一句白話補充。`,
-        '7. 保護關係、子力價值、差距的原因，只有事實表寫到才能說；不要用子力換算（例如「馬比炮值錢」）解釋分數差距。吃子合計子數相同時，不要說成得子或虧子；吃子合計和評估不一致時（例如交換尚未結束）以評估為準。差距的原因先從事實表找，特別是兩線之間哪些子「能不能吃回」的變化。兩條線沒有吃子或威脅上的差別時，就比較兩條線的計畫：各自動了哪些子、走到哪裡（例如先挺兵、再把炮退回轉到三路），說明引擎想怎麼下、棋手的著法少做了什麼；只能說線上真的走到的子和位置，子的目的只有事實表的威脅或吃子寫到才能說。',
+        '7. 保護關係、子力價值、差距的原因，只有事實表寫到才能說；不要用子力換算（例如「馬比炮值錢」）解釋分數差距。吃子合計子數相同時，不要說成得子或虧子；吃子合計和評估不一致時（例如交換尚未結束）以評估為準。差距的原因先從事實表找，特別是兩線之間哪些子「能不能吃回」的變化。兩條線沒有吃子或威脅上的差別時，就比較兩條線的計畫：各自動了哪些子、走到哪裡（例如先挺兵、再把炮退回轉到三路），說明引擎想怎麼下、棋手的著法少做了什麼；只能說線上真的走到的子和位置，子的目的只有事實表的威脅或吃子寫到才能說。事實表有「關鍵著法檢查」時，那是程式另外問引擎的「如果…」（對手的威脅、對手照樣應著、首選的威脅），不是引擎主線；標「關鍵」的那一手通常就是這局最該點名的理由。說明差距或首選的好處時先用它講清楚，例如「對手如果照樣走那一手，我方就有這一手的先手」或「對手的威脅是那一手吃子」，要用「如果…」的語氣，不要說成主線一定會這樣走。',
         '8. 不要提到【事實表】「未提供」等提示裡的標籤，也不要寫「根據引擎資料」「引擎資料沒有說明」這類套話，直接講棋。',
         '9. 用繁體中文回答，不要夾雜簡體字。'
       ]
@@ -214,6 +214,8 @@ function moveUserPrompt(input: PromptV2Input): string {
   const smallGap =
     facts.userIsBest ||
     facts.mistakeLevel === 'acceptable_or_tiny_inaccuracy'
+  // 只有事實表真的有關鍵著法檢查時才提示，沒有時不讓模型去找不存在的段落。
+  const hasIdeas = (facts.ideas?.length ?? 0) > 0
   if (language === 'en') {
     return [
       "[Task] Explain the difference between the player's move and the engine's best move.",
@@ -224,7 +226,9 @@ function moveUserPrompt(input: PromptV2Input): string {
       '[Format] Use these headings, 1–4 sentences each, as short as possible:',
       `**${headings.conclusion}**:`,
       `**${headings.problem}**: (if the player stated an idea, say directly whether it works in the line)`,
-      `**${headings.bestPlan}**:`,
+      hasIdeas
+        ? `**${headings.bestPlan}**: (if the Key move checks include "Same reply" or "Threat of the best move", use the KEY move to show why the best move order works)`
+        : `**${headings.bestPlan}**:`,
       `**${headings.opponent}**: (follow the "Line after the player's move": what ${opponentSide} plays in reply and the concrete result. Do not describe the player's own follow-up moves. If ${opponentSide} has no good reply, say so.)`,
       `**${headings.nextTime}**: (one thinking step the player can repeat)`,
       ...(smallGap
@@ -246,7 +250,11 @@ function moveUserPrompt(input: PromptV2Input): string {
     cn
       ? `**${headings.problem}**：（若棋手有写想法，直接说明这个想法在主线中成不成立）`
       : `**${headings.problem}**：（若棋手有寫想法，直接說明這個想法在主線中成不成立）`,
-    `**${headings.bestPlan}**：`,
+    !hasIdeas
+      ? `**${headings.bestPlan}**：`
+      : cn
+        ? `**${headings.bestPlan}**：（关键着法检查有“照样应着”或“首选的威胁”时，用标“关键”的那一手说明首选的走法顺序好在哪）`
+        : `**${headings.bestPlan}**：（關鍵著法檢查有「照樣應著」或「首選的威脅」時，用標「關鍵」的那一手說明首選的走法順序好在哪）`,
     cn
       ? `**${headings.opponent}**：（沿“棋手着法之后的主线”，写${opponentSide}怎么应对、具体结果是什么；不要写棋手自己的后续着法。${opponentSide}没有好的反击就直接说明）`
       : `**${headings.opponent}**：（沿「棋手著法之後的主線」，寫${opponentSide}怎麼應對、具體結果是什麼；不要寫棋手自己的後續著法。${opponentSide}沒有好的反擊就直接說明）`,

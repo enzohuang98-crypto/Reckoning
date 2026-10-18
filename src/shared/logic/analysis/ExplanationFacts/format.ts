@@ -14,6 +14,7 @@ import {
   MAX_FACTS_PROMPT_CHARS,
   type ExplanationFacts,
   type FactDifference,
+  type IdeaFact,
   type LineFacts,
   type MoveFact,
   type PlyFact,
@@ -132,6 +133,27 @@ function formatLine(
   return lines
 }
 
+/** 一條「如果…」：標題、逐手事實，關鍵那一手後面加上標記。 */
+function formatIdea(
+  idea: IdeaFact,
+  sideToMove: PieceColor,
+  labels: FactLabels,
+  maxPlies: number,
+  language: ExplanationLanguage
+): string[] {
+  const title = labels.ideaTitle[idea.kind](
+    labels.side[sideToMove],
+    labels.side[opponent(sideToMove)],
+    idea.reply ?? ''
+  )
+  const lines = formatLine(title, idea.line, labels, maxPlies, language)
+  // formatLine 的第 0 行是標題，第 N 行就是第 N 手（列出的手數內）。
+  if (idea.keyPly <= Math.min(maxPlies, idea.line.plies.length)) {
+    lines[idea.keyPly] = `${lines[idea.keyPly]}　${labels.keyMove}`
+  }
+  return lines
+}
+
 export function formatDifference(difference: FactDifference, labels: FactLabels): string {
   switch (difference.kind) {
     case 'no_captures':
@@ -203,6 +225,10 @@ function render(facts: ExplanationFacts, labels: FactLabels, maxPlies: number, l
   if (facts.differences.length > 0) {
     out.push(`${labels.differences}：`)
     for (const difference of facts.differences) out.push(` - ${formatDifference(difference, labels)}`)
+  }
+  if (facts.ideas && facts.ideas.length > 0) {
+    out.push(`${labels.ideasHeading}：`)
+    for (const idea of facts.ideas) out.push(...formatIdea(idea, facts.sideToMove, labels, maxPlies, language))
   }
   const others = facts.candidates.filter(
     (candidate) => candidate.move !== facts.bestMove.move && candidate.move !== facts.userMove?.move

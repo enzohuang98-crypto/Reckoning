@@ -58,6 +58,11 @@ assert.equal(/棋手自己的想法|未提供】|】未提供/.test(noReason.pro
 assert.equal(buildPromptV2({ mode: 'move', language: 'en', userLevel: 'basic', facts, factsText: formatFactsForPrompt(facts, 'en') }).prompt.includes("[Player's own idea]"), false)
 assert.match(move.systemPrompt, /不要提到【事實表】「未提供」等提示裡的標籤/)
 assert.match(move.systemPrompt, /不要用子力換算/)
+// 關鍵著法檢查：系統規則說明它是「如果…」的假設線，標「關鍵」的那一手要先講；沒有檢查時格式不提示。
+assert.match(move.systemPrompt, /關鍵著法檢查/)
+assert.match(move.systemPrompt, /要用「如果…」的語氣/)
+assert.equal(move.prompt.includes('照樣應著'), false)
+assert.match(outputs['move-en'].systemPrompt, /Key move checks/)
 // 不再要求模型說「引擎資料沒有說明」（P3-9 live：事實表其實有寫原因時也照抄這句），改為先從事實表找、找不到就不猜。
 assert.equal(move.systemPrompt.includes('就說引擎資料沒有說明原因'), false)
 assert.match(move.systemPrompt, /不要寫「根據引擎資料」「引擎資料沒有說明」這類套話/)

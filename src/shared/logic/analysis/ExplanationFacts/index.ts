@@ -10,7 +10,7 @@
  * 模組結構（外部一律從本檔匯入：`analysis/ExplanationFacts`）：
  * - types.ts      事實表型別與上限常數
  * - lineFacts.ts  逐手重播一條主線（吃子、將軍、新威脅／吃回、唯一合法著法、將死／困斃）
- * - buildFacts.ts 組出整張事實表（兩線、評估、差距、候選、兩線差異、殘局棋子清單）
+ * - buildFacts.ts 組出整張事實表（兩線、評估、差距、候選、兩線差異、關鍵著法檢查、殘局棋子清單）
  * - score.ts      引擎分數 → 事實表評估（兵／殺 N）
  * - queries.ts    給 AnswerCheck／AnswerTidy 的查詢（著法集合、唯一著法、吃子／將軍事件）
  * - labels.ts     zh-TW／zh-CN／en 字串表
@@ -31,6 +31,8 @@ export {
   type FactScore,
   type MoveFact,
   type FactDifference,
+  type IdeaKind,
+  type IdeaFact,
   type ExplanationFacts
 } from './types'
 export { buildLineFacts } from './lineFacts'

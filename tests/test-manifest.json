@@ -62,6 +62,7 @@
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/geminiErrors.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/aiPreferencesStore.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/explanationFacts.test.ts"},
+  {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/keyMoveChecks.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/explanationFactsLiveCases.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/holdoutCases.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/promptV2.test.ts"},

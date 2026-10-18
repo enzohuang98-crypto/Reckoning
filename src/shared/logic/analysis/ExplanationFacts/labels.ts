@@ -5,7 +5,7 @@
 
 import type { ExplanationLanguage } from '../../../types/AIExplanationTypes'
 import type { PieceColor, PieceType } from '../../../types/BoardState'
-import type { PlyDescriptor } from './types'
+import type { IdeaKind, PlyDescriptor } from './types'
 
 export interface FactLabels {
   side: Record<PieceColor, string>
@@ -60,6 +60,12 @@ export interface FactLabels {
   bestLineName: string
   userLineName: string
   truncatedNote: string
+  /** 關鍵著法檢查的總標題。 */
+  ideasHeading: string
+  /** 各種「如果…」的標題：side＝輪走方、other＝對手、reply＝照樣應著的那一手。 */
+  ideaTitle: Record<IdeaKind, (side: string, other: string, reply: string) => string>
+  /** 標在關鍵那一手後面。 */
+  keyMove: string
 }
 
 const PIECES_TW: Record<PieceColor, Record<PieceType, string>> = {
@@ -132,7 +138,14 @@ export const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capturesMore: (side, count) => `${side}方多吃 ${count} 子`,
     bestLineName: '首選線',
     userLineName: '實戰線',
-    truncatedNote: '（主線只列出部分手數）'
+    truncatedNote: '（主線只列出部分手數）',
+    ideasHeading: '關鍵著法檢查（程式另外問引擎的「如果…」，不是引擎主線；標「關鍵」的那一手最該講）',
+    ideaTitle: {
+      opponentThreat: (side, other) => `對手的威脅（假如${side}方這手先不走、讓${other}方先走）`,
+      sameReply: (_side, other, reply) => `照樣應著（首選之後${other}方仍照實戰線走${reply}）`,
+      bestThreat: (side, other) => `首選的威脅（首選之後假如${other}方不理會、${side}方再走一步）`
+    },
+    keyMove: '← 關鍵'
   },
   'zh-CN': {
     side: { red: '红', black: '黑' },
@@ -190,7 +203,14 @@ export const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capturesMore: (side, count) => `${side}方多吃 ${count} 子`,
     bestLineName: '首选线',
     userLineName: '实战线',
-    truncatedNote: '（主线只列出部分手数）'
+    truncatedNote: '（主线只列出部分手数）',
+    ideasHeading: '关键着法检查（程序另外问引擎的“如果…”，不是引擎主线；标“关键”的那一手最该讲）',
+    ideaTitle: {
+      opponentThreat: (side, other) => `对手的威胁（假如${side}方这手先不走、让${other}方先走）`,
+      sameReply: (_side, other, reply) => `照样应着（首选之后${other}方仍照实战线走${reply}）`,
+      bestThreat: (side, other) => `首选的威胁（首选之后假如${other}方不理会、${side}方再走一步）`
+    },
+    keyMove: '← 关键'
   },
   en: {
     side: { red: 'Red', black: 'Black' },
@@ -248,6 +268,13 @@ export const LABELS: Record<ExplanationLanguage, FactLabels> = {
     capturesMore: (side, count) => `${side} captured ${count} more`,
     bestLineName: 'best line',
     userLineName: "player's line",
-    truncatedNote: '(only part of the line is listed)'
+    truncatedNote: '(only part of the line is listed)',
+    ideasHeading: 'Key move checks (extra "what if" questions the program asked the engine; not the main line; the move marked KEY matters most)',
+    ideaTitle: {
+      opponentThreat: (side, other) => `Opponent's threat (if ${side} passed this move and ${other} moved instead)`,
+      sameReply: (_side, other, reply) => `Same reply (after the best move, ${other} still plays ${reply} as in the player's line)`,
+      bestThreat: (side, other) => `Threat of the best move (after the best move, if ${other} ignores it and ${side} moves again)`
+    },
+    keyMove: '<- KEY'
   }
 }

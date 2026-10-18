@@ -12,6 +12,11 @@ export const RATE_LIMIT_RETRY_MAX_WAIT_MS = 5_000
 /** 主線不足時補算一次引擎的上限。 */
 export const ENSURE_LINES_ENGINE_MS = 2_500
 
+/** 關鍵著法檢查（三個「如果…」同時搜尋）每條的搜尋時間。 */
+export const IDEA_PROBE_ENGINE_MS = 800
+/** 關鍵著法檢查整體的上限（含啟動引擎）；超過就不附，解說照常進行。 */
+export const IDEA_PROBE_DEADLINE_MS = 6_000
+
 export const VISIBLE_TOKENS = {
   move: 1_600,
   position: 1_400,
