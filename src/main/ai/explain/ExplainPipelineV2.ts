@@ -38,6 +38,7 @@ import {
   IDEA_PROBE_ENGINE_MS,
   MAX_CALLS,
   MIN_RETRY_WINDOW_MS,
+  RATE_LIMIT_DEFAULT_WAIT_MS,
   RATE_LIMIT_RETRY_MAX_WAIT_MS,
   TOTAL_DEADLINE_MS,
   VISIBLE_TOKENS
@@ -214,7 +215,7 @@ function checkFailureReason(
 function minuteRateLimitWait(error: unknown, maxWaitMs: number): number | null {
   const diagnostic = describeAIExecutionError(error, 'AI 服務')
   if (diagnostic.category !== 'rate_limited' || diagnostic.quota === 'daily') return null
-  const wait = diagnostic.retryAfterMs ?? Math.min(2_000, maxWaitMs)
+  const wait = diagnostic.retryAfterMs ?? Math.min(RATE_LIMIT_DEFAULT_WAIT_MS, maxWaitMs)
   return wait <= maxWaitMs ? wait : null
 }
 
