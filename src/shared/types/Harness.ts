@@ -114,6 +114,10 @@ export interface ExplainAttemptTrace {
   error?: string
   /** network 失敗時的底層連線錯誤代碼（例如 ECONNRESET）。 */
   networkCode?: string
+  /** 服務回報的錯誤代碼（例如串流中途的 server_error）；只收短代碼。 */
+  providerCode?: string
+  /** 失敗前已經收到部分回答文字（回答到一半中斷）。 */
+  midStream?: boolean
 }
 
 /** 「匯出診斷紀錄」的檔案格式。 */

@@ -56,10 +56,18 @@ export class AIHttpError extends Error {
     message: string,
     readonly retryAfterMs?: number,
     /** 429 時可判讀的額度種類；只由固定代碼判斷，不保留服務原文。 */
-    readonly quota?: AIQuotaKind
+    readonly quota?: AIQuotaKind,
+    /** 服務回報的錯誤代碼（只收短代碼，例如 server_error；不保留服務原文訊息）。 */
+    readonly providerCode?: string
   ) {
     super(message)
   }
+}
+
+/** 只接受短的英數代碼，其他（可能是服務原文）一律丟棄。 */
+export function sanitizeProviderCode(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isInteger(value)) return String(value)
+  return typeof value === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(value) ? value : undefined
 }
 
 /** Provider 回應已收到，但不符合正式文字答案契約。 */

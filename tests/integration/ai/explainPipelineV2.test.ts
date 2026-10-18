@@ -28,7 +28,7 @@ const cases = JSON.parse(
 
 type Step =
   | { text: string; finishReason?: string; reasoningTokens?: number }
-  | { error: unknown }
+  | { error: unknown; partial?: string }
   | { hang: true }
 
 class ScriptedProvider implements AIProvider {
@@ -54,7 +54,10 @@ class ScriptedProvider implements AIProvider {
       )
       return
     }
-    if ('error' in step) throw step.error
+    if ('error' in step) {
+      if (step.partial) yield { type: 'text_delta', deltaText: step.partial }
+      throw step.error
+    }
     const half = Math.ceil(step.text.length / 2)
     yield { type: 'text_delta', deltaText: step.text.slice(0, half) }
     yield { type: 'text_delta', deltaText: step.text.slice(half) }
@@ -416,6 +419,23 @@ async function main(): Promise<void> {
   const again = await run(opening, [{ text: opening.goodAnswer! }], { adapter: probingAdapter })
   assert.equal(probeCalls.length, 1, 'the same position reuses the earlier key-move checks')
   assert.match(again.provider.requests[0].prompt, /關鍵著法檢查/)
+
+  // 串流到一半服務回報錯誤（例如 server_error）：重試一次仍失敗 → 摘要原因附上「回答到一半中斷」與服務代碼，
+  // 診斷紀錄也記下代碼；同一句「模型暫時無法回應」底下是哪一種失敗，截圖就看得出來。
+  const midStreamError = (): AIHttpError =>
+    new AIHttpError(502, 'generation', 'stream error', undefined, undefined, 'server_error')
+  const streamCut = await run(opening, [
+    { partial: '**結論**：馬八進七', error: midStreamError() },
+    { partial: '**結論**：馬八進七', error: midStreamError() }
+  ])
+  assert.equal(streamCut.result?.answerKind, 'engine_summary')
+  assert.equal(streamCut.provider.requests.length, 2)
+  assert.match(streamCut.result?.finalText ?? '', /模型暫時無法回應（回答到一半中斷；provider_unavailable；代碼 server_error）/)
+  const midAttempts = streamCut.traces.at(-1)?.attempts ?? []
+  assert.deepEqual(
+    midAttempts.map((attempt) => [attempt.kind, attempt.providerCode, attempt.midStream]),
+    [['primary', 'server_error', true], ['unavailable_retry', 'server_error', true]]
+  )
 
   // 簡體中文模式：繁體記譜與簡體字不會被誤判。
   const simplified = await run(byId('simplified-chinese'), [{ text: byId('simplified-chinese').goodAnswer! }])

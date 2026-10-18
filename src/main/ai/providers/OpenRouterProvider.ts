@@ -22,7 +22,8 @@ import {
   fetchAiResponseBounded,
   parseRateLimitResetMs,
   readJsonResponseBounded,
-  toAITransportError
+  toAITransportError,
+  sanitizeProviderCode
 } from '../http'
 import { SseParser } from './sse'
 import {
@@ -659,7 +660,15 @@ export class OpenRouterProvider implements AIProvider {
               : typeof code === 'string' && /^\d{3}$/.test(code)
                 ? Number(code)
                 : 502
-          throw new AIHttpError(status, 'generation', `OpenRouter 串流中回報錯誤 (${status})。`)
+          const providerCode = sanitizeProviderCode(code)
+          throw new AIHttpError(
+            status,
+            'generation',
+            `OpenRouter 串流中回報錯誤 (${providerCode ?? status})。`,
+            undefined,
+            undefined,
+            providerCode
+          )
         }
         if (typeof chunk.model === 'string') {
           if (!isSameOpenRouterModel(chunk.model, request.model)) {

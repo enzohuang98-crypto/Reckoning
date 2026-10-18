@@ -228,6 +228,10 @@ function isNetworkCode(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Z][A-Z0-9_]{1,39}$/.test(value)
 }
 
+function isProviderCode(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(value)
+}
+
 function sanitizeProviderDiagnostic(value: unknown): AICredentialDiagnostic | undefined {
   if (!isRecord(value)) return undefined
   const stages: AICredentialTestStage[] = ['key', 'catalog', 'generation', 'storage']
@@ -386,7 +390,9 @@ function sanitizeAttempt(value: unknown): ExplainAttemptTrace | null {
     ...(typeof value.outputTokens === 'number' ? { outputTokens: value.outputTokens } : {}),
     ...(typeof value.reasoningTokens === 'number' ? { reasoningTokens: value.reasoningTokens } : {}),
     ...(typeof value.error === 'string' ? { error: value.error.slice(0, 64) } : {}),
-    ...(isNetworkCode(value.networkCode) ? { networkCode: value.networkCode } : {})
+    ...(isNetworkCode(value.networkCode) ? { networkCode: value.networkCode } : {}),
+    ...(isProviderCode(value.providerCode) ? { providerCode: value.providerCode } : {}),
+    ...(value.midStream === true ? { midStream: true } : {})
   }
 }
 

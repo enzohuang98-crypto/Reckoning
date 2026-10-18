@@ -111,6 +111,28 @@ async function main(): Promise<void> {
     assert.equal(error.message.includes('secret'), false)
   })
 
+  // 串流中途錯誤的文字代碼保留下來（只收短代碼），狀態仍當 502；服務原文訊息不保留。
+  await withStreamServer((res) => {
+    sse(res, { model: MODEL, choices: [{ delta: { content: '一半' } }] })
+    sse(res, { error: { code: 'server_error', message: 'upstream secret detail' } })
+    res.end()
+  }, async (provider) => {
+    const { error } = await collect(provider)
+    assert.ok(error instanceof AIHttpError)
+    assert.equal(error.status, 502)
+    assert.equal(error.providerCode, 'server_error')
+    assert.equal(error.message.includes('secret'), false)
+  })
+  await withStreamServer((res) => {
+    sse(res, { model: MODEL, choices: [{ delta: { content: '一半' } }] })
+    sse(res, { error: { code: 'a message with spaces that is not a code', message: 'x' } })
+    res.end()
+  }, async (provider) => {
+    const { error } = await collect(provider)
+    assert.ok(error instanceof AIHttpError)
+    assert.equal(error.providerCode, undefined, 'free text is never kept as a code')
+  })
+
   // 閒置逾時：送出一段後不再有任何位元組。
   await withStreamServer((res) => {
     sse(res, { model: MODEL, choices: [{ delta: { content: '開始' } }] })
