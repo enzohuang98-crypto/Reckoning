@@ -541,6 +541,24 @@ export async function runExplainPipelineV2(
         lastError = error
       }
     }
+    // 服務端暫時錯誤（5xx、過載）而且沒有可用的備援（例如付費模型）：同一模型重試一次。
+    // 實測：Sonnet 偶爾回 5xx，沒有備援時整題直接變成引擎摘要。
+    if (
+      !answer &&
+      lastError &&
+      !hasBackup &&
+      describeAIExecutionError(lastError, 'AI 服務').category === 'provider_unavailable' &&
+      canCallAgain()
+    ) {
+      progress('provider_retry', 'AI 服務暫時忙碌，正在重試一次。')
+      try {
+        answer = await callModel(payload.model, 'unavailable_retry', prompt.prompt)
+        lastError = null
+      } catch (error) {
+        if (isAbortError(error) && deps.signal.aborted) throw error
+        lastError = error
+      }
+    }
     if (!answer && lastError && classifyModelFailure(lastError) === 'incomplete' && canCallAgain()) {
       progress('provider_retry', 'AI 模型沒有交出完整答案，正在關閉推理後重試一次。')
       try {

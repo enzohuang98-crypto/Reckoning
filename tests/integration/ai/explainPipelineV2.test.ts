@@ -237,6 +237,30 @@ async function main(): Promise<void> {
   assert.equal(rateRetried.result?.answerKind, 'ai')
   assert.equal(rateRetried.provider.requests[1].model, 'vendor/primary:free')
   assert.deepEqual(rateRetried.traces.at(-1)?.attempts?.map((attempt) => attempt.kind), ['primary', 'rate_limit_retry'])
+  // 服務端 5xx／過載、沒有備援：同一模型重試一次（實測：Sonnet 偶爾 5xx，整題直接變成摘要）。
+  const overloaded = await run(opening, [{ error: new AIHttpError(503, 'generation', 'overloaded') }, { text: opening.goodAnswer! }])
+  assert.equal(overloaded.result?.answerKind, 'ai')
+  assert.equal(overloaded.provider.requests[1].model, 'vendor/primary:free')
+  assert.deepEqual(overloaded.traces.at(-1)?.attempts?.map((attempt) => attempt.kind), ['primary', 'unavailable_retry'])
+  // 重試仍失敗：照舊交摘要並說明原因，不無限重試。
+  const stillDown = await run(opening, [
+    { error: new AIHttpError(502, 'generation', 'bad gateway') },
+    { error: new AIHttpError(502, 'generation', 'bad gateway') }
+  ])
+  assert.equal(stillDown.result?.answerKind, 'engine_summary')
+  assert.equal(stillDown.provider.requests.length, 2)
+  assert.match(stillDown.result?.finalText ?? '', /模型暫時無法回應/)
+  // 有備援時不重試同一模型，直接改用備援（行為不變）。
+  const withBackup = await run(
+    opening,
+    [{ error: new AIHttpError(503, 'generation', 'overloaded') }, { text: opening.goodAnswer! }],
+    { backupModels: ['vendor/backup:free'] }
+  )
+  assert.deepEqual(withBackup.traces.at(-1)?.attempts?.map((attempt) => attempt.kind), ['primary', 'backup'])
+  // 金鑰錯誤（401）不是暫時錯誤，不重試。
+  const authFail = await run(opening, [{ error: new AIHttpError(401, 'generation', 'bad key') }])
+  assert.equal(authFail.provider.requests.length, 1)
+
   // 服務要求等太久（超過 5 秒）就不重試，直接交摘要。
   const longWait = await run(opening, [{ error: new AIHttpError(429, 'generation', 'rate limited', 60_000, 'minute') }])
   assert.equal(longWait.result?.answerKind, 'engine_summary')
@@ -273,8 +297,11 @@ async function main(): Promise<void> {
   assert.equal(recovered.provider.requests[1].model, 'vendor/primary:free')
   assert.ok((recovered.provider.requests[1].maxOutputTokens ?? 0) > (recovered.provider.requests[0].maxOutputTokens ?? 0))
 
-  // 5xx 且沒有備援 → 引擎摘要並說明原因。
-  const unavailable = await run(opening, [{ error: new AIHttpError(503, 'generation', 'down') }])
+  // 5xx 且沒有備援：重試一次仍失敗 → 引擎摘要並說明原因（重試規則見下方 unavailable_retry）。
+  const unavailable = await run(opening, [
+    { error: new AIHttpError(503, 'generation', 'down') },
+    { error: new AIHttpError(503, 'generation', 'down') }
+  ])
   assert.equal(unavailable.result?.answerKind, 'engine_summary')
   assert.match(unavailable.result?.finalText ?? '', /模型暫時無法回應/)
 

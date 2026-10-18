@@ -370,7 +370,7 @@ function sanitizeTrace(value: unknown): HarnessTrace | null {
 
 function sanitizeAttempt(value: unknown): ExplainAttemptTrace | null {
   if (!isRecord(value)) return null
-  const kinds = ['primary', 'network_retry', 'rate_limit_retry', 'recovery', 'backup', 'repair']
+  const kinds = ['primary', 'network_retry', 'rate_limit_retry', 'unavailable_retry', 'recovery', 'backup', 'repair']
   if (
     typeof value.model !== 'string' ||
     !kinds.includes(value.kind as string) ||
