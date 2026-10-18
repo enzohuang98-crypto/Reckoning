@@ -29,7 +29,7 @@ import type { EngineRegistryService } from '../../engine/EngineRegistryService'
 import type { HarnessTraceStore } from '../../storage/HarnessTraceStore'
 import type { AnalysisSession } from '../../storage/AnalysisSessionStore'
 import { buildBoardQuestionFacts } from '../BoardQuestionFacts'
-import { describeAIExecutionError } from '../http'
+import { AIHttpError, describeAIExecutionError } from '../http'
 import type { PreparedExplanationExecution } from '../prepareExplanationExecution'
 import {
   CALL_TIMEOUT_MS,
@@ -172,6 +172,21 @@ function failureReasonKey(
   if (category === 'timeout') return 'timeout'
   if (category === 'generation_incomplete' || category === 'response_format') return 'incomplete'
   return 'unavailable'
+}
+
+/**
+ * 摘要原因後面補上最後一次失敗的細節（失敗分類、回答到一半中斷、服務回報的代碼）：
+ * 同一句「模型暫時無法回應」底下可能是 5xx、串流中途錯誤或模型路由不一致，只看截圖分不出來。
+ */
+function failureDetail(attempt: ExplainAttemptTrace | undefined, language: ExplanationLanguage): string {
+  if (!attempt?.error) return ''
+  const en = language === 'en'
+  const parts = [
+    ...(attempt.midStream ? [en ? 'stopped mid-answer' : language === 'zh-CN' ? '回答到一半中断' : '回答到一半中斷'] : []),
+    attempt.error,
+    ...(attempt.providerCode ? [`${en ? 'code' : language === 'zh-CN' ? '代码' : '代碼'} ${attempt.providerCode}`] : [])
+  ]
+  return en ? ` (${parts.join('; ')})` : `（${parts.join('；')}）`
 }
 
 /** 修正後仍有硬錯時，摘要說明最主要的那一種（事實矛盾優先），不要一律說「與事實不符」。 */
@@ -552,12 +567,15 @@ export async function runExplainPipelineV2(
         const diagnostic = isAbortError(surfaced)
           ? null
           : describeAIExecutionError(surfaced, 'AI 服務')
+        const providerCode = surfaced instanceof AIHttpError ? surfaced.providerCode : undefined
         attempts.push({
           model,
           kind,
           durationMs: Date.now() - callStartedAt,
           error: diagnostic ? diagnostic.category : 'cancelled',
-          ...(diagnostic?.networkCode ? { networkCode: diagnostic.networkCode } : {})
+          ...(diagnostic?.networkCode ? { networkCode: diagnostic.networkCode } : {}),
+          ...(providerCode ? { providerCode } : {}),
+          ...(text.length > 0 ? { midStream: true } : {})
         })
         throw surfaced
       } finally {
@@ -653,8 +671,12 @@ export async function runExplainPipelineV2(
       }
     }
 
-    const deliverSummary = (reasonKey: keyof (typeof FAILURE_REASON)['zh-TW']): ExplainPipelineResult => {
-      const finalText = buildEngineSummary(facts, FAILURE_REASON[language][reasonKey], language)
+    const deliverSummary = (
+      reasonKey: keyof (typeof FAILURE_REASON)['zh-TW'],
+      detail = ''
+    ): ExplainPipelineResult => {
+      const reason = `${FAILURE_REASON[language][reasonKey]}${detail}`
+      const finalText = buildEngineSummary(facts, reason, language)
       progress('completed', '已改用引擎重點摘要（非 AI 生成）。')
       saveTrace('completed', { finalText, answerKind: 'engine_summary', model: answeringModel })
       return {
@@ -663,13 +685,13 @@ export async function runExplainPipelineV2(
         repairUsed: attempts.some((item) => item.kind === 'repair'),
         usage,
         traceId,
-        warnings: [FAILURE_REASON[language][reasonKey]],
+        warnings: [reason],
         ...(fallbackFromModel ? { fallbackFromModel, fallbackReason } : {})
       }
     }
 
     if (!answer) {
-      return deliverSummary(failureReasonKey(lastError))
+      return deliverSummary(failureReasonKey(lastError), failureDetail(attempts.at(-1), language))
     }
 
     // ---- 客觀檢查；有硬錯就修正一次 ----
