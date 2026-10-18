@@ -265,14 +265,3 @@ export function selectXiangqiKnowledge(
 
   return scored.slice(0, options.limit ?? 18).map((item) => item.entry)
 }
-
-export function findXiangqiKnowledgeEntry(
-  termOrAlias: string
-): XiangqiKnowledgeEntry | undefined {
-  const normalized = normalizeSearchText(termOrAlias)
-  return XIANGQI_KNOWLEDGE_BASE.find((entry) =>
-    [entry.term, ...entry.aliases].some(
-      (name) => normalizeSearchText(name) === normalized
-    )
-  )
-}

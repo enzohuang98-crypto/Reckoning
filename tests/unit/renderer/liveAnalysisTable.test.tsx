@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import React from 'react'
 import TestRenderer from 'react-test-renderer'
 import type { EngineAnalysisResultPayload } from '../../../src/shared/types/ipc'
-import {
-  EngineConsole,
-  type EngineThoughtEntry
-} from '../../../src/renderer/src/features/analysis/EngineConsole'
+import type { EngineThoughtEntry } from '../../../src/renderer/src/features/analysis/engineThoughts'
 import { EngineResultSummary } from '../../../src/renderer/src/features/analysis/EngineResultSummary'
 import { LiveAnalysisTable } from '../../../src/renderer/src/features/analysis/LiveAnalysisTable'
 
@@ -31,26 +28,6 @@ const thought: EngineThoughtEntry = {
   displayPrincipalVariation: ['炮二平五', '馬8進7', '馬二進三'],
   engineName: 'Pikafish'
 }
-
-const consoleView = TestRenderer.create(
-  <EngineConsole
-    status={{ engineName: 'Pikafish', available: true } as never}
-    progress={null}
-    busy={false}
-    completedDepth={18}
-    thoughts={[thought]}
-    liveElapsedMs={null}
-    sinceLastThoughtMs={null}
-  />
-)
-const consoleText = renderedText(consoleView)
-assert.match(consoleText, /深度 18/)
-assert.match(consoleText, /分數 \+0\.42/)
-assert.match(consoleText, /耗時 1\.3s/)
-assert.match(consoleText, /NPS 987\.7K/)
-assert.match(consoleText, /節點 1\.2M/)
-assert.match(consoleText, /炮二平五/)
-assert.match(consoleText, /馬8進7/)
 
 const result = {
   analysisId: 'analysis-table-test',

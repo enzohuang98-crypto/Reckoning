@@ -323,7 +323,7 @@ export function buildBoardQuestionFacts(
   fen: string,
   question: string,
   language: BoardQuestionLanguage
-): { facts: string[]; directAnswer?: string } {
+): BoardQuestionFacts {
   const parsed = parseFen(fen)
   if (!parsed.valid) return { facts: [invalidFenFact(language, parsed.message)] }
 

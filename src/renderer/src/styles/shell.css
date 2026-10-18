@@ -13,9 +13,9 @@
   gap: 12px;
   padding: 0 18px;
   overflow: visible;
-  border-bottom: 1px solid rgba(189, 207, 196, 0.86);
+  border-bottom: 1px solid rgba(189, 196, 207, 0.86);
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8px 24px rgba(44, 72, 58, 0.055);
+  box-shadow: 0 8px 24px rgba(43, 55, 73, 0.055);
   backdrop-filter: blur(20px);
 }
 
@@ -60,7 +60,7 @@
 
 /* 拉丁字母不需要中文標題那種寬字距，0.14em 會把 Reckoning 撐得鬆散。 */
 .app-title {
-  color: #20372b;
+  color: #1f2938;
   font-family: var(--font-serif);
   font-size: 20px;
   font-weight: 700;
@@ -117,14 +117,14 @@
   color: var(--color-primary);
   border-color: transparent;
   background: var(--color-surface);
-  box-shadow: var(--shadow-xs), 0 4px 12px rgba(44, 72, 58, 0.07);
+  box-shadow: var(--shadow-xs), 0 4px 12px rgba(43, 55, 73, 0.07);
 }
 
 /* 選單展開時即使尚未切頁也要有按下感，否則點開會像沒反應。 */
 .app-nav .toolbar-menu[open] > summary.toolbar-btn {
   color: var(--color-primary);
   background: var(--color-surface);
-  box-shadow: var(--shadow-xs), 0 4px 12px rgba(44, 72, 58, 0.07);
+  box-shadow: var(--shadow-xs), 0 4px 12px rgba(43, 55, 73, 0.07);
 }
 
 /* 選單對齊膠囊左緣，並與 header 底線留出與分析工具列相同的間距。 */
@@ -180,7 +180,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgb(12 17 15 / 58%);
+  background: rgb(12 14 17 / 58%);
 }
 
 .app-update-dialog {
@@ -247,9 +247,9 @@
   place-items: center;
   padding: 28px;
   background:
-    radial-gradient(circle at 12% 8%, rgba(73, 151, 115, 0.13), transparent 32%),
+    radial-gradient(circle at 12% 8%, rgba(71, 104, 153, 0.13), transparent 32%),
     radial-gradient(circle at 90% 82%, rgba(210, 170, 104, 0.12), transparent 27%),
-    linear-gradient(145deg, #f7faf7, #edf3ef);
+    linear-gradient(145deg, #f7f8fa, #edeff3);
 }
 
 .startup-card {
@@ -281,7 +281,7 @@
   grid-column: 1 / -1;
   overflow: hidden;
   border-radius: var(--radius-pill);
-  background: #e2ebe5;
+  background: #e2e6eb;
 }
 
 .startup-progress > span {
@@ -289,7 +289,7 @@
   width: 34%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--color-primary), #67aa87);
+  background: linear-gradient(90deg, var(--color-primary), #6581ac);
   animation: startup-progress 1.25s ease-in-out infinite alternate;
 }
 

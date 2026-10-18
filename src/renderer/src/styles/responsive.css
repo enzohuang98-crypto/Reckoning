@@ -9,18 +9,6 @@
     min-width: 64px;
     padding: 0 9px;
   }
-
-  .toolbar-secondary-inline {
-    display: none;
-  }
-
-  .toolbar-secondary-menu {
-    display: block;
-  }
-
-  .toolbar-spacer + .toolbar-group .toolbar-label {
-    display: none;
-  }
 }
 
 @media (max-width: 1179px) {
@@ -65,16 +53,17 @@
     padding: 7px 9px;
   }
 
-  .toolbar-secondary-inline {
+  /* 窄視窗：工具列收成只剩圖示的方塊；名稱仍在 title／aria-label。 */
+  .analysis-command-mount .toolbar-btn {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .analysis-command-mount .toolbar-label {
     display: none;
-  }
-
-  .toolbar-secondary-menu {
-    display: block;
-  }
-
-  .toolbar-separator {
-    margin: 0 2px;
   }
 
   .analyze-layout,
@@ -106,10 +95,7 @@
     grid-template-columns: 1fr;
   }
 
-  .settings-grid,
-  .engine-add-box,
   .engine-selection-grid,
-  .settings-number-grid,
   .analysis-engine-selectors {
     grid-template-columns: 1fr;
   }
@@ -130,15 +116,9 @@
   }
 
   .settings-key-input,
-  .settings-path-input,
   .engine-item-actions {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .settings-grid .card:nth-child(1),
-  .settings-grid .card:nth-child(4) {
-    grid-row: auto;
   }
 }
 
@@ -155,7 +135,6 @@
 
 @media (min-width: 1180px) and (max-width: 1439px) {
   .analyze-layout:not(.board-expanded) .board-editor:not(.tools-open) {
-    width: min(100%, 400px);
     gap: 10px;
     padding: 8px;
   }
@@ -169,30 +148,70 @@
     padding: 8px;
   }
 
-  .analyze-layout:not(.board-expanded) .board-editor:not(.tools-open) .xiangqi-board {
-    width: min(100%, 360px);
-  }
-
-  .inspector-shell {
-    max-height: 477px;
-  }
-
   .live-analysis-table-scroll {
     max-height: 220px;
   }
 }
 
-@media (min-width: 1440px) {
-  .analyze-layout:not(.board-expanded) .board-editor:not(.tools-open) {
-    width: min(100%, 502px);
+@media (min-width: 1180px) {
+  /*
+   * 寬視窗：棋盤卡片的寬度跟著高度走（棋盤本身約 9:10，加上標題列與內距約 0.835），
+   * 棋盤才會撐滿卡片；固定寬度在 1080p 會讓卡片上下留一大片空白。
+   */
+  .analyze-layout .board-editor:not(.tools-open),
+  .analyze-layout.board-expanded .board-editor:not(.tools-open) {
+    width: auto;
+    max-width: 100%;
+    aspect-ratio: 0.835;
   }
 
-  .analyze-layout:not(.board-expanded) .board-editor:not(.tools-open) .xiangqi-board {
-    width: min(100%, 470px);
+  /* 棋盤欄寬度就是棋盤卡片的寬度，其餘空間都給教練欄，兩欄之間不留空白。 */
+  .analyze-layout,
+  .analyze-layout.board-expanded {
+    grid-template-columns: auto minmax(400px, 1fr);
   }
 
-  .inspector-shell {
-    max-height: 616px;
+  /* 擺棋工具打開時，棋盤一樣跟著高度縮放，右側工具欄自己捲動，棋盤不會被切掉。 */
+  .analyze-layout .board-editor.tools-open {
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .analyze-layout .board-editor.tools-open .xiangqi-board {
+    width: auto;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+  }
+
+  .analyze-layout .board-editor.tools-open .editor-controls {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  /* 匯入棋局面板打開時放在棋盤右邊：一邊點棋譜一邊看棋盤，棋盤不必被擠小。 */
+  .left-col:has(> .utility-drawer-body:not([hidden])) {
+    display: grid;
+    grid-template-columns: auto 300px;
+    align-items: stretch;
+  }
+
+  .left-col > .utility-drawer-body:not([hidden]) {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    align-content: start;
+  }
+
+  /* 「放大棋盤」：收起底部的局面分析表，棋盤與教練欄用滿整個高度（分析資料仍可從工具列打開）。 */
+  .analyze-page:has(> .analyze-layout.board-expanded) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .analyze-page:has(> .analyze-layout.board-expanded) > .live-analysis-dock {
+    display: none;
   }
 }
 
@@ -207,10 +226,6 @@
     font-size: 20px;
   }
 
-  .app-subtitle {
-    display: none;
-  }
-
   .nav-btn,
   .app-nav .toolbar-menu > summary.toolbar-btn {
     min-height: 32px;
@@ -221,7 +236,7 @@
   }
 
   .analyze-page {
-    grid-template-rows: minmax(0, 1fr) clamp(220px, 30vh, 280px);
+    grid-template-rows: minmax(0, 1fr) clamp(180px, 24vh, 230px);
     gap: 8px;
   }
 

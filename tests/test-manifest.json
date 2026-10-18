@@ -22,6 +22,7 @@
   {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/credentialBinding.test.tsx"},
   {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/aiConnectionState.test.tsx"},
   {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/pvReplayBoard.test.tsx"},
+  {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/explanationView.test.tsx"},
   {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/liveAnalysisTable.test.tsx"},
   {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/updatePrompt.test.tsx"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/appData.test.ts"},

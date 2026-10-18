@@ -5,23 +5,12 @@ import { Icon } from '../components/ui/Icon'
 
 export type AppTab = 'analyze' | 'settings'
 
-export const UPDATE_REMINDER_DELAY_MS = 4 * 60 * 60 * 1000
 const SKIPPED_UPDATE_KEY = 'xiangqi-analyzer.skipped-update-version'
 const UPDATE_REMINDER_KEY = 'xiangqi-analyzer.update-reminder'
 
 interface UpdateReminder {
   version: string
   remindAfter: number
-}
-
-export function shouldShowUpdateDialog(
-  version: string,
-  skippedVersion: string | null,
-  reminder: UpdateReminder | null,
-  now: number
-): boolean {
-  if (skippedVersion === version) return false
-  return reminder?.version !== version || reminder.remindAfter <= now
 }
 
 function loadSkippedVersion(): string | null {

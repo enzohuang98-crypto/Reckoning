@@ -37,7 +37,7 @@ import type {
 } from '../../../src/shared/types/ipc'
 import type { AIConversation } from '../../../src/shared/types/AppData'
 import type { HarnessProgressPayload } from '../../../src/shared/types/Harness'
-import { ONE_CLICK_EXPLANATION_DEADLINE_MS } from '../../../src/renderer/src/features/analysis/liveAnalysis'
+import { AI_REQUEST_DEADLINE_MS } from '../../../src/renderer/src/features/analysis/liveAnalysis'
 
 interface PendingTimer {
   callback: () => void
@@ -454,7 +454,7 @@ async function main(): Promise<void> {
       '成功完成上一個再生成後，新的再生成應使用目前設定模型'
     )
     const timeout = [...timers.entries()].find(([, timer]) =>
-      timer.delayMs >= ONE_CLICK_EXPLANATION_DEADLINE_MS - 1_000
+      timer.delayMs >= AI_REQUEST_DEADLINE_MS - 1_000
     )
     assert.ok(timeout, '再生成必須保有既有的 120 秒 deadline')
     timers.delete(timeout[0])

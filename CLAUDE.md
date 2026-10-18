@@ -15,7 +15,7 @@ Stage 1–10 的開發歷史已移到 `docs/history/claude-md-stages-1-10.md`（
 - Electron + React + TypeScript + Vite（以 `electron-vite` 建置），目標平台 Windows 10/11 64-bit。
 - 一般設定：renderer `localStorage`（`xiangqi.settings`，schema v5，**不含金鑰**）；
   棋局資料：main 的 AppData JSON；機密：Electron `safeStorage`（`SecretStore`，加密落地）。
-- 內建引擎：`resources/engine/` 隨附多種 CPU 指令集的 Pikafish 與 `pikafish.nnue`
+- 內建引擎：`resources/engine/` 只隨附兩個 Pikafish 版本（`pikafish.exe`＝AVX2、`pikafish-sse41-popcnt.exe`）與 `pikafish.nnue`
   （GPL v3 + 權重授權條款，不受根目錄 MIT 涵蓋）；登錄為空時 `EngineRegistryService`
   自動加入「Pikafish（內建）」（`pikafish.exe` 為 AVX2 版；啟動時 `bundledEngine.probeEngineCpu` 試跑，
   只有 STATUS_ILLEGAL_INSTRUCTION 才把內建項目改指同目錄的 `pikafish-sse41-popcnt.exe`）。設定頁的「加入本機引擎」已於 v0.4.18 移除（main 端加入引擎的 IPC 仍在）；

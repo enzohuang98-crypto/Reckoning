@@ -11,7 +11,7 @@
   grid-template-areas:
     "workspace"
     "live";
-  grid-template-rows: minmax(0, 1fr) clamp(240px, 32vh, 320px);
+  grid-template-rows: minmax(0, 1fr) clamp(190px, 25vh, 250px);
   gap: 10px;
 }
 
@@ -21,26 +21,40 @@
   height: 68px;
   align-items: center;
   justify-content: flex-end;
-  gap: 3px;
+  gap: 8px;
   padding: 0;
 }
 
 /*
- * 工具列一律是等大的方形 icon 按鈕（參考傳統象棋 GUI 的工具列）。
- * 先前每顆按鈕都帶文字標籤，寬度隨字數 2～5 字不等，並排起來參差不齊，
- * 這是整條工具列看起來「散」的主因。文字改走 title／aria-label，
- * 滑鼠停留仍看得到名稱，朗讀器也讀得到，但視覺上只剩整齊的方塊。
- * 主要動作與危險動作靠顏色區分，不靠尺寸。
+ * 工具列分成四組（局面／悔棋與下一步／分析／檢視），每組一個淺底框，
+ * 按鈕一律「圖示在上、兩到四字標籤在下」、寬度固定：
+ * 只放圖示看不懂，圖示加文字橫排又會因字數不同而參差不齊。
+ * 窄視窗（< 1180px）才收成只剩圖示的方塊（見 responsive.css）。
  */
-.analysis-command-mount .toolbar-btn {
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
-  min-height: 38px;
-  padding: 0;
+.analysis-command-mount .toolbar-group {
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg-soft);
 }
 
-.analysis-command-mount .toolbar-label,
+.analysis-command-mount .toolbar-btn {
+  width: 60px;
+  min-width: 60px;
+  height: 50px;
+  min-height: 50px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 2px 4px;
+}
+
+.analysis-command-mount .toolbar-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
 .analysis-command-mount .toolbar-menu-chevron {
   display: none;
 }
@@ -49,18 +63,6 @@
   display: flex;
   align-items: center;
   gap: 2px;
-}
-
-.toolbar-primary-actions {
-  padding: 0 2px;
-}
-
-.toolbar-separator {
-  width: 1px;
-  height: 28px;
-  flex: 0 0 auto;
-  margin: 0 4px;
-  background: var(--color-border-strong);
 }
 
 .toolbar-spacer {
@@ -97,7 +99,7 @@
 
 .toolbar-btn.active {
   color: var(--color-primary);
-  border-color: #b8d2c2;
+  border-color: #b7c2d3;
   background: var(--color-primary-soft);
 }
 
@@ -105,7 +107,7 @@
   color: #fff;
   border-color: var(--color-primary);
   background: var(--color-primary);
-  box-shadow: 0 5px 13px rgba(47, 118, 88, 0.2);
+  box-shadow: 0 5px 13px rgba(45, 75, 120, 0.2);
 }
 
 .toolbar-btn.primary:hover:not(:disabled) {
@@ -131,10 +133,6 @@
   font-size: 14px;
   font-weight: 750;
   white-space: nowrap;
-}
-
-.toolbar-secondary-menu {
-  display: none;
 }
 
 .toolbar-menu {
@@ -170,12 +168,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: #fff;
-  box-shadow: 0 18px 44px rgba(34, 64, 48, 0.16);
-}
-
-.toolbar-secondary-menu .toolbar-popover {
-  right: 0;
-  left: auto;
+  box-shadow: 0 18px 44px rgba(33, 46, 65, 0.16);
 }
 
 .toolbar-menu-item {
@@ -195,8 +188,8 @@
 .toolbar-menu-item:hover,
 .toolbar-menu-item.active {
   color: var(--color-primary-hover);
-  border-color: #d7e6dc;
-  background: #f2f8f4;
+  border-color: #d7dde6;
+  background: #f2f4f8;
 }
 
 .toolbar-menu-item.danger {
@@ -224,7 +217,7 @@
   display: grid;
   height: 100%;
   min-height: 0;
-  grid-template-columns: minmax(0, 56fr) minmax(360px, 44fr);
+  grid-template-columns: minmax(0, 45fr) minmax(400px, 55fr);
   grid-area: workspace;
   gap: 14px;
   align-items: stretch;
@@ -293,6 +286,14 @@
   min-width: 0;
   flex-direction: column;
   gap: 2px;
+}
+
+.board-editor-toolbar > div:first-child > b {
+  padding-left: 10px;
+  border-left: 3px solid var(--color-primary);
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  font-size: 17px;
 }
 
 .board-wrap {
@@ -368,18 +369,14 @@
   gap: 14px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
-  background: #f8fbf9;
+  background: #f8f9fb;
 }
 
 .analysis-data-drawer-heading h2 {
   margin: 2px 0 0;
-  color: #244232;
+  color: #233043;
   font-family: var(--font-serif);
   font-size: 20px;
-}
-
-.live-dock-message {
-  margin: 10px 14px 0;
 }
 
 .piece-glyph,
@@ -388,7 +385,7 @@
 }
 
 .piece-selection {
-  filter: drop-shadow(0 0 5px rgba(47, 125, 92, 0.7));
+  filter: drop-shadow(0 0 5px rgba(45, 78, 127, 0.7));
 }
 
 .board-hit-target {
@@ -400,7 +397,7 @@
 }
 
 .board-hit-target.interactive:focus-visible {
-  fill: rgba(47, 125, 92, 0.16);
+  fill: rgba(45, 78, 127, 0.16);
   stroke: var(--jade);
   stroke-width: 3px;
   vector-effect: non-scaling-stroke;
@@ -416,10 +413,10 @@
   min-height: 27px;
   align-items: center;
   padding: 0 9px;
-  border: 1px solid #dce7df;
+  border: 1px solid #dce0e7;
   border-radius: var(--radius-pill);
-  color: #456052;
-  background: #f5f8f6;
+  color: #445061;
+  background: #f5f6f8;
   font-size: 11px;
   font-weight: 700;
 }
@@ -484,7 +481,7 @@
 .palette-piece.active {
   outline: 2px solid var(--color-primary);
   outline-offset: 3px;
-  box-shadow: 0 0 0 6px rgba(47, 125, 92, 0.1), 0 8px 16px rgba(56, 76, 65, 0.15);
+  box-shadow: 0 0 0 6px rgba(45, 78, 127, 0.1), 0 8px 16px rgba(55, 64, 76, 0.15);
 }
 
 .editor-hint {
@@ -500,8 +497,8 @@
   overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: 9px;
-  color: #50645a;
-  background: #f6f8f6;
+  color: #4f5864;
+  background: #f6f7f8;
   font-size: 10px;
   line-height: 1.5;
   word-break: break-all;
@@ -541,7 +538,7 @@
   padding: 3px 7px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  color: #65776d;
+  color: #656c77;
   background: #fff;
   cursor: pointer;
   font-family: var(--font-mono);
@@ -550,7 +547,7 @@
 
 .move-chip:hover {
   color: var(--color-primary-hover);
-  border-color: #b8cfc1;
+  border-color: #b7c1d0;
 }
 
 .move-chip.current {
@@ -573,7 +570,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid #e7ede9;
+  border-bottom: 1px solid #e7e9ed;
 }
 
 .saved-position-list .link-btn {

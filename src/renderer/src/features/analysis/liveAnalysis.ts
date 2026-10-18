@@ -8,8 +8,6 @@ export const LIVE_REFINEMENT_ANALYSIS_MIN_MS = 15_000
 export const ACTUAL_MOVE_ENGINE_DEADLINE_MS = 8_000
 /** 所有 AI 請求的 renderer 硬截止；main 端 Harness 總截止（110 秒）必須早於它。 */
 export const AI_REQUEST_DEADLINE_MS = 120_000
-/** 舊名稱，保留給既有測試與呼叫端相容。 */
-export const ONE_CLICK_EXPLANATION_DEADLINE_MS = AI_REQUEST_DEADLINE_MS
 
 /** 已完成結果達此深度時，追問可直接使用它，不必等背景 live 精煉跑完。 */
 export const MIN_EXPLAIN_DEPTH = 14

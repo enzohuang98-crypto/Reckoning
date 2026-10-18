@@ -9,7 +9,7 @@ import {
   AUTO_INITIAL_ANALYSIS_MAX_MS,
   AUTO_USER_MOVE_ANALYSIS_MAX_MS,
   LIVE_REFINEMENT_ANALYSIS_MIN_MS,
-  ONE_CLICK_EXPLANATION_DEADLINE_MS,
+  AI_REQUEST_DEADLINE_MS,
   automaticRootMovetimeMs,
   canScheduleLiveAnalysis,
   liveAnalysisRetryDelayMs,
@@ -292,7 +292,7 @@ async function main(): Promise<void> {
   })
 
   await check('一鍵 AI 解說截止時間從明確 AI 點擊起算且不會變成零或負數', () => {
-    assert.equal(ONE_CLICK_EXPLANATION_DEADLINE_MS, 120_000)
+    assert.equal(AI_REQUEST_DEADLINE_MS, 120_000)
     assert.equal(remainingOneClickDeadlineMs(10_000, 10_000), 120_000)
     assert.equal(remainingOneClickDeadlineMs(10_000, 124_500), 5_500)
     assert.equal(remainingOneClickDeadlineMs(10_000, 140_000), 1)
@@ -333,10 +333,6 @@ async function main(): Promise<void> {
       resolve('src/renderer/src/features/analysis/AskCoachForm.tsx'),
       'utf8'
     )
-    const console = readFileSync(
-      resolve('src/renderer/src/features/analysis/EngineConsole.tsx'),
-      'utf8'
-    )
     const table = readFileSync(
       resolve('src/renderer/src/features/analysis/LiveAnalysisTable.tsx'),
       'utf8'
@@ -347,8 +343,6 @@ async function main(): Promise<void> {
       assert.match(form, new RegExp(`htmlFor="${id}"[\\s\\S]*?id="${id}"`))
     }
     assert.match(form, /event\.key === 'Enter' && !event\.nativeEvent\.isComposing\) onAsk\(\)/)
-    assert.doesNotMatch(console, /<section className="engine-console" aria-live=/)
-    assert.match(console, /<span role="status" aria-atomic="true">/)
     assert.match(table, /<section className="live-analysis-table" aria-live="polite">/)
     assert.match(table, /className="live-analysis-message error-text" role="alert"/)
     assert.match(table, /className=\{`live-analysis-status \$\{stateClass\}`\}/)
@@ -415,7 +409,9 @@ async function main(): Promise<void> {
     assert.match(appShell, /aria-label="設定"/)
   })
 
-  await check('分析首頁沿用已驗收比例：預設中等棋盤與局面分析同屏', () => {
+  // v0.4.23 版面重排（使用者要求）：底部分析表變矮、寬視窗棋盤欄寬度跟著棋盤高度，
+  // 其餘寬度給教練欄；「放大棋盤」改成收起底部分析表。以下釘住新的比例。
+  await check('分析首頁比例：棋盤撐滿高度、教練欄拿其餘寬度、局面分析同屏', () => {
     const shellStyles = readFileSync(
       resolve('src/renderer/src/styles/shell.css'),
       'utf8'
@@ -426,6 +422,10 @@ async function main(): Promise<void> {
     )
     const analysisStyles = readFileSync(
       resolve('src/renderer/src/styles/analysis.css'),
+      'utf8'
+    )
+    const responsiveStyles = readFileSync(
+      resolve('src/renderer/src/styles/responsive.css'),
       'utf8'
     )
 
@@ -439,13 +439,13 @@ async function main(): Promise<void> {
     assert.doesNotMatch(analyzePage, /"toolbar"/)
     assert.match(
       analyzePage,
-      /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+clamp\(240px,\s*32vh,\s*320px\);/
+      /grid-template-rows:\s*minmax\(0,\s*1fr\)\s+clamp\(190px,\s*25vh,\s*250px\);/
     )
 
     const layout = cssRuleBody(workspaceStyles, '.analyze-layout')
     assert.match(
       layout,
-      /grid-template-columns:\s*minmax\(0,\s*56fr\)\s+minmax\(360px,\s*44fr\);/
+      /grid-template-columns:\s*minmax\(0,\s*45fr\)\s+minmax\(400px,\s*55fr\);/
     )
     assert.doesNotMatch(workspaceStyles, /\.analyze-layout\.board-compact/)
     assert.match(
@@ -463,6 +463,13 @@ async function main(): Promise<void> {
     assert.match(
       cssRuleBody(workspaceStyles, '.analyze-layout.board-expanded .xiangqi-board'),
       /width:\s*min\(100%,\s*650px\);/
+    )
+    // 寬視窗：棋盤卡片寬度由高度換算，棋盤欄 auto；放大棋盤時收起底部分析表。
+    assert.match(responsiveStyles, /aspect-ratio:\s*0\.835;/)
+    assert.match(responsiveStyles, /grid-template-columns:\s*auto\s+minmax\(400px,\s*1fr\);/)
+    assert.match(
+      responsiveStyles,
+      /\.analyze-page:has\(> \.analyze-layout\.board-expanded\) > \.live-analysis-dock\s*\{\s*display:\s*none;/
     )
     assert.match(
       cssRuleBody(workspaceStyles, '.live-analysis-dock', -1),

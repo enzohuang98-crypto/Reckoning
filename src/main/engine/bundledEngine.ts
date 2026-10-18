@@ -13,7 +13,6 @@ import { dirname, join } from 'node:path'
 /** Windows 的 STATUS_ILLEGAL_INSTRUCTION：程式用到 CPU 不支援的指令。 */
 export const ILLEGAL_INSTRUCTION_EXIT_CODE = 0xc000001d
 
-export const BUNDLED_ENGINE_FILE = 'pikafish.exe'
 export const COMPATIBLE_ENGINE_FILE = 'pikafish-sse41-popcnt.exe'
 
 const PROBE_TIMEOUT_MS = 5_000

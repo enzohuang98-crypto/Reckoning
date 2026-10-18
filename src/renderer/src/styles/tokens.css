@@ -1,26 +1,31 @@
+/*
+ * 配色：深藍為主、木色點綴。
+ * - 主色深藍：介面的按鈕、選取、連結與棋盤上的引擎箭頭（藍色與棋盤木色互補，箭頭最醒目）。
+ * - 中性色帶一點冷藍灰，同一色相只換明暗，整體才協調。
+ * - 木色只出現在棋盤與棋子；紅色只留給紅方棋子與錯誤，警告用琥珀色。
+ */
 :root {
   color-scheme: light;
 
-  --color-bg: #edf3ef;
-  --color-bg-soft: #f5f8f6;
+  --color-bg: #eef2f7;
+  --color-bg-soft: #f5f7fb;
   --color-surface: #ffffff;
-  --color-surface-muted: #f7faf8;
+  --color-surface-muted: #f7f9fc;
   --color-surface-raised: #ffffff;
-  --color-text: #20362b;
-  --color-text-soft: #486054;
-  --color-muted: #718178;
-  --color-border: #dbe6de;
-  --color-border-strong: #c8d7cd;
-  --color-primary: #2f7658;
-  --color-primary-hover: #245f46;
-  --color-primary-soft: #edf7f1;
+  --color-text: #1c2b45;
+  --color-text-soft: #44536b;
+  --color-muted: #6b778c;
+  --color-border: #dce3ee;
+  --color-border-strong: #c7d2e2;
+  --color-primary: #2b5797;
+  --color-primary-hover: #224679;
+  --color-primary-soft: #edf3fc;
   --color-danger: #bd4d44;
   --color-danger-soft: #fff3f2;
   --color-warning: #946727;
   --color-warning-soft: #fff8eb;
   --color-info: #2d6598;
-  --color-info-soft: #eef6fc;
-  --color-board-shell: #fffdf8;
+  --color-info-soft: #eef5fc;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -28,35 +33,19 @@
   --radius-xl: 20px;
   --radius-pill: 999px;
 
-  --shadow-xs: 0 1px 2px rgba(35, 66, 50, 0.06);
-  --shadow-sm: 0 6px 18px rgba(35, 66, 50, 0.07);
-  --shadow-md: 0 14px 36px rgba(35, 66, 50, 0.1);
+  --shadow-xs: 0 1px 2px rgba(28, 43, 69, 0.06);
+  --shadow-sm: 0 6px 18px rgba(28, 43, 69, 0.07);
+  --shadow-md: 0 14px 36px rgba(28, 43, 69, 0.1);
   --shadow-board: 0 18px 38px rgba(77, 58, 34, 0.15);
 
   --font-sans: "Noto Sans TC", "Microsoft JhengHei UI", "Microsoft JhengHei", system-ui, sans-serif;
   --font-serif: "Noto Serif TC", "PMingLiU", Georgia, serif;
   --font-mono: Consolas, "Courier New", monospace;
 
-  /* Compatibility tokens used by the SVG board and existing components. */
-  --ivory: var(--color-text);
-  --ivory-soft: var(--color-text-soft);
+  /* 棋盤 SVG 與棋盤右鍵選單用的顏色。 */
   --muted: var(--color-muted);
-  --walnut: var(--color-primary);
-  --walnut-light: #3d8765;
   --cinnabar: #bd554a;
-  --cinnabar-bright: #d46b5f;
   --jade: var(--color-primary);
-  --jade-bright: #4d9875;
-  --gold: #ae8650;
-  --warn: var(--color-warning);
-  --danger: var(--color-danger);
-  --panel: var(--color-surface);
-  --panel-raised: var(--color-surface-raised);
-  --panel-soft: var(--color-surface-muted);
-  --border: var(--color-border);
-  --border-strong: var(--color-border-strong);
-  --shadow: var(--shadow-md);
-  --shadow-soft: var(--shadow-sm);
   --board-line: #6d4d2f;
-  --ink-piece: #26352e;
+  --ink-piece: #1f2a38;
 }
