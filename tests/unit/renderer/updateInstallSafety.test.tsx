@@ -108,9 +108,7 @@ async function verifyWorkspaceDraftBlocksInstall(): Promise<void> {
     })
     assert.ok(renderer)
 
-    TestRenderer.act(() => {
-      renderer?.root.findByProps({ id: 'analysis-tab-guess' }).props.onClick()
-    })
+    // 「你的想法」欄位一直在右側表單上（不再需要先切到猜著模式）。
     TestRenderer.act(() => {
       renderer?.root.findByProps({ id: 'guess-reason-input' }).props.onChange({
         target: { value: '尚未送出的理由' }

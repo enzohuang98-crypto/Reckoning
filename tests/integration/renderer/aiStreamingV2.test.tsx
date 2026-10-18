@@ -357,7 +357,7 @@ async function main(): Promise<void> {
     assert.equal(lastConversation?.messages.at(-1)?.model, 'vendor/backup:free')
 
     // 引擎重點摘要：黃色橫幅＋「重試 AI」原樣重送同一個請求。
-    const input = renderer.root.findByProps({ 'aria-label': 'AI 提問' })
+    const input = renderer.root.findByProps({ 'aria-label': 'AI 追問' })
     act(() => input.props.onChange({ target: { value: '為什麼不好？' } }))
     const ask = renderer.root
       .findAllByType('button')

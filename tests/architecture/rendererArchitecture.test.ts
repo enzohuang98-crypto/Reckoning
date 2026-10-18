@@ -298,22 +298,22 @@ async function main(): Promise<void> {
     assert.equal(remainingOneClickDeadlineMs(10_000, 140_000), 1)
   })
 
-  // 原本只有一顆「猜著」切換鈕：使用者看不出目前在哪個模式、該在哪一格輸入（實測回報），
-  // 改為兩個並排且標出目前模式的選項；其餘版面規則不變。
-  await check('分析模式並排顯示「問 AI 教練／猜著練習」，AI 教練內容與局面分析位置不變', () => {
-    const tabs = readFileSync(
-      resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
+  // 「問 AI 教練」與「猜著練習」兩個模式只差在著法來源與能否寫想法，使用者分不清該用哪個（實測回報），
+  // 合併成一個表單：著法、想法、問題都選填，只有一個「請 AI 解說」；其餘版面規則不變。
+  await check('右側只有一個「問 AI 教練」表單，AI 教練內容與局面分析位置不變', () => {
+    const form = readFileSync(
+      resolve('src/renderer/src/features/analysis/AskCoachForm.tsx'),
       'utf8'
     )
     const workspace = readFileSync(
       resolve('src/renderer/src/features/workspace/AnalysisWorkspace.tsx'),
       'utf8'
     )
-    assert.doesNotMatch(tabs, /id: 'live'/)
-    assert.doesNotMatch(tabs, /id: 'details'/)
-    assert.match(tabs, /問 AI 教練/)
-    assert.match(tabs, /猜著練習/)
-    assert.match(tabs, /inspector-mode-hint/)
+    assert.match(workspace, /<AskCoachForm/)
+    assert.match(workspace, /問 AI 教練/)
+    assert.doesNotMatch(workspace, /AnalysisInspectorTabs|GuessModePanel|activeView ===/)
+    assert.match(form, /你的走法（選填）[\s\S]*你的想法（選填）[\s\S]*你的問題（選填）[\s\S]*請 AI 解說/)
+    assert.match(form, /inspector-mode-hint/)
     assert.match(workspace, /className="live-analysis-dock"/)
     assert.match(
       workspace,
@@ -328,9 +328,9 @@ async function main(): Promise<void> {
     assert.match(workspace, /<AnalysisPanel[\s\S]*?visible[\s\S]*?activeView="coach"/)
   })
 
-  await check('猜著切換與 Live 引擎訊息具備穩定的鍵盤及朗讀語意', () => {
-    const tabs = readFileSync(
-      resolve('src/renderer/src/features/analysis/AnalysisInspectorTabs.tsx'),
+  await check('問 AI 教練表單與 Live 引擎訊息具備穩定的鍵盤及朗讀語意', () => {
+    const form = readFileSync(
+      resolve('src/renderer/src/features/analysis/AskCoachForm.tsx'),
       'utf8'
     )
     const console = readFileSync(
@@ -342,8 +342,11 @@ async function main(): Promise<void> {
       'utf8'
     )
 
-    assert.match(tabs, /aria-pressed=\{activeView === view\.id\}/)
-    assert.match(tabs, /onClick=\{\(\) => onChange\(view\.id\)\}/)
+    // 每個欄位都有 label 與 aria-label；問題欄按 Enter（非組字中）即送出。
+    for (const id of ['guess-move-input', 'guess-reason-input', 'ask-question-input']) {
+      assert.match(form, new RegExp(`htmlFor="${id}"[\\s\\S]*?id="${id}"`))
+    }
+    assert.match(form, /event\.key === 'Enter' && !event\.nativeEvent\.isComposing\) onAsk\(\)/)
     assert.doesNotMatch(console, /<section className="engine-console" aria-live=/)
     assert.match(console, /<span role="status" aria-atomic="true">/)
     assert.match(table, /<section className="live-analysis-table" aria-live="polite">/)
@@ -746,16 +749,16 @@ async function main(): Promise<void> {
     assert.match(source, /!toolsOpen && moveError/)
   })
 
-  // 實測回報：點到空格時提示出現在棋盤下方，多出一列把棋盤擠小；點「你的走法」後切回 AI 教練仍無法走棋。
-  await check('走棋提示不會擠小棋盤，離開猜著會退出選擇著法', () => {
+  // 實測回報：點到空格時提示出現在棋盤下方，多出一列把棋盤擠小；點「你的走法」後無法回到正常走棋。
+  await check('走棋提示不會擠小棋盤，選擇著法可以退出，送出時也會結束選擇', () => {
     const board = readFileSync(resolve('src/renderer/src/features/board/BoardEditor.tsx'), 'utf8')
     const workspace = readFileSync(resolve('src/renderer/src/features/workspace/AnalysisWorkspace.tsx'), 'utf8')
-    const guess = readFileSync(resolve('src/renderer/src/features/guessing/GuessModePanel.tsx'), 'utf8')
+    const form = readFileSync(resolve('src/renderer/src/features/analysis/AskCoachForm.tsx'), 'utf8')
     assert.match(board, /board-editor-toolbar[\s\S]*?board-move-error[\s\S]*?className="board-wrap"/)
     assert.doesNotMatch(board, /<div className="error-text small board-move-error">/)
-    assert.match(workspace, /if \(next === 'guess'\) setActualMove\(null\)\s*\/\/[^\n]*\n\s*else setGuessSelectionActive\(false\)/)
-    assert.match(guess, /if \(selectionActive\) onCancelMoveSelection\(\)/)
-    assert.match(guess, /取消選擇/)
+    assert.match(workspace, /const askCoach = \(\): void =>[\s\S]*?setGuessSelectionActive\(false\)/)
+    assert.match(form, /if \(selectionActive\) onCancelMoveSelection\(\)/)
+    assert.match(form, /取消選擇/)
   })
 
   await check('設定不再提供加入引擎與解說偏好；只剩一個引擎時不能移除', () => {

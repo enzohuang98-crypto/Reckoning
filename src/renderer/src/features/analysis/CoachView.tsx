@@ -37,7 +37,7 @@ interface Props {
   canChangeModel?: boolean
   onChangeModel?: () => void
   notice: string | null
-  /** 猜著練習尚未提交時為 false，畫面上只留「你的走法」一個輸入處。 */
+  /** 追問框只在已有回答時出現；第一次請求從「問 AI 教練」表單送出，畫面上不會同時有兩個起點。 */
   showQuestion?: boolean
   followUp: string
   onFollowUpChange: (value: string) => void
@@ -124,7 +124,7 @@ export function CoachView({
             {error ?? (actualMove && aiBlockedReason
               ? aiBlockedReason
               : actualMove
-              ? `正在比較實戰著法 ${actualMove.displayMove} 與 AI 首選；完成後按一次「AI 解說」即可取得完整說明。`
+              ? `正在比較實戰著法 ${actualMove.displayMove} 與 AI 首選；完成後按「請 AI 解說」即可取得完整說明。`
               : aiBlockedReason ?? '引擎結果完成後，才能建立有證據的 AI 解說。')}
           </p>
         </div>
@@ -193,14 +193,14 @@ export function CoachView({
         </section>
       )}
 
-      {result && showQuestion && (
-        <section className="ai-question" aria-label="直接提問">
+      {result && showQuestion && (conversation || explanation) && (
+        <section className="ai-question" aria-label="追問">
           <div className="follow-up-row">
             <input
               className="text-input"
               value={followUp}
-              placeholder="直接問，例如：為什麼我這步不好？照我的想法走會怎樣？"
-              aria-label="AI 提問"
+              placeholder="接著追問，例如：那我應該怎麼走？"
+              aria-label="AI 追問"
               disabled={aiBusy}
               onChange={(event) => onFollowUpChange(event.target.value)}
               onKeyDown={(event) => {
@@ -214,16 +214,14 @@ export function CoachView({
               onClick={onSubmitFollowUp}
               disabled={aiBusy || !followUp.trim()}
             >
-              {conversation ? '追問' : '提問'}
+              追問
             </button>
-            {(conversation || explanation) && (
-              <button className="btn ghost small" onClick={onCopy}>複製</button>
-            )}
+            <button className="btn ghost small" onClick={onCopy}>複製</button>
           </div>
 
           {submittedGuess?.move && (
             <div className="muted small">
-              提問會附加棋盤上選取的著法：
+              追問會沿用你的著法：
               {engineAnalysis?.displayUserMove ?? '目前選取著法'}
             </div>
           )}

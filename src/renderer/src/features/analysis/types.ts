@@ -41,6 +41,8 @@ export const EMPTY_ANALYSIS_STATUS: AnalysisPanelStatus = {
 
 export interface AnalysisPanelHandle {
   requestExplanation: () => void
+  /** 不帶著法，直接就目前局面問一個問題。 */
+  askQuestion: (question: string) => void
   startAnalysis: () => void
   cancelAnalysis: () => void
   cancelExplain: () => void

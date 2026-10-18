@@ -80,7 +80,7 @@ src/
   preload/index.ts              # contextBridge 暴露型別安全的 window.api
   renderer/src/                 # React UI（無 Node 權限）
     App.tsx、app/               #   App Shell（分析／設定）、StartupScreen、ErrorBoundary
-    features/                   #   analysis（AnalysisPanel、CoachView、AiErrorCard…）、board、workspace、guessing、
+    features/                   #   analysis（AnalysisPanel、AskCoachForm、CoachView、AiErrorCard…）、board、workspace、
                                 #   explanations、settings（AI／引擎／資料與系統三類）、app-data
     pages/                      #   SettingsPage、SetupWizard
     storage/localSettings.ts    #   一般設定（schema v5；v4→v5 遷移只丟棄已移除欄位）

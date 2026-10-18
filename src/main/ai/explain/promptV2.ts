@@ -294,14 +294,14 @@ function questionUserPrompt(input: PromptV2Input): string {
       ? `; player's move ${facts.userMove.move}, engine best move ${facts.bestMove.move}`
       : `；棋手的著法 ${facts.userMove.move}，引擎首選 ${facts.bestMove.move}`
     : ''
-  // 沒附著法時，模型曾把候選著法當成「你走的那步」來回答（實測：棋手在猜著練習選了著法卻沒提交）。
+  // 沒附著法時，模型曾把候選著法當成「你走的那步」來回答（實測：棋手選了著法卻沒送出）。
   const noMoveNote = facts.userMove
     ? []
     : language === 'en'
-      ? ["[Note] No move of the player's own came with this question. If the question is about \"my move\" or \"this move\", say first that you did not receive which move they played and ask them to pick it on the board (submit the guess, or click the move in the imported game) and ask again. Do not guess which move they meant and do not substitute a candidate move."]
+      ? ["[Note] No move of the player's own came with this question. If the question is about \"my move\" or \"this move\", say first that you did not receive which move they played and ask them to pick it on the board (pick it under \"Your move\", or click the move in the imported game) and ask again. Do not guess which move they meant and do not substitute a candidate move."]
       : language === 'zh-CN'
-        ? ['【注意】这次提问没有附上棋手自己走的着法。如果问题问的是「我的走法」「这步」，第一句就说这次没有收到你走的是哪一步，请先在棋盘选定着法（猜着练习要按「提交猜着」，或在棋谱点那一步）再问；不要猜是哪一步，也不要拿候选着法代替。']
-        : ['【注意】這次提問沒有附上棋手自己走的著法。如果問題問的是「我的走法」「這步」，第一句就說這次沒有收到你走的是哪一步，請先在棋盤選定著法（猜著練習要按「提交猜著」，或在棋譜點那一步）再問；不要猜是哪一步，也不要拿候選著法代替。']
+        ? ['【注意】这次提问没有附上棋手自己走的着法。如果问题问的是「我的走法」「这步」，第一句就说这次没有收到你走的是哪一步，请先在棋盘选定着法（在「你的走法」选一步，或在棋谱点那一步）再问；不要猜是哪一步，也不要拿候选着法代替。']
+        : ['【注意】這次提問沒有附上棋手自己走的著法。如果問題問的是「我的走法」「這步」，第一句就說這次沒有收到你走的是哪一步，請先在棋盤選定著法（在「你的走法」選一步，或在棋譜點那一步）再問；不要猜是哪一步，也不要拿候選著法代替。']
   if (language === 'en') {
     return [
       `[Question] ${input.question ?? ''}`,

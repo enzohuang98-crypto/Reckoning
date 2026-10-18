@@ -1,4 +1,4 @@
-import type { AnalysisPanelStatus, AnalysisView } from '../analysis/types'
+import type { AnalysisPanelStatus } from '../analysis/types'
 import { Icon, type IconName } from '../../components/ui/Icon'
 import { ToolbarMenu } from '../../components/ui/ToolbarMenu'
 
@@ -16,8 +16,6 @@ interface Props {
   onToggleBoardSize: () => void
   detailsOpen: boolean
   onToggleDetails: () => void
-  activeView: AnalysisView
-  onViewChange: (view: AnalysisView) => void
   status: AnalysisPanelStatus
   onStartAnalysis: () => void
   onStopAnalysis: () => void
@@ -79,8 +77,6 @@ export function AnalysisToolbar({
   onToggleBoardSize,
   detailsOpen,
   onToggleDetails,
-  activeView,
-  onViewChange,
   status,
   onStartAnalysis,
   onStopAnalysis,
@@ -162,19 +158,13 @@ export function AnalysisToolbar({
           disabled={!analysisRunning || stopCancelling}
           onClick={onStopAnalysis}
         />
-        {activeView !== 'guess' && (
-          <ToolbarButton
-            icon="sparkles"
-            label={status.aiBusy ? '解說中' : status.hasExplanation ? '重新解說' : 'AI 解說'}
-            title={status.aiBlockedReason ?? '請 AI 依照設定語言解說目前局面'}
-            active={activeView === 'coach'}
-            disabled={Boolean(status.aiBlockedReason)}
-            onClick={() => {
-              onViewChange('coach')
-              onRequestExplanation()
-            }}
-          />
-        )}
+        <ToolbarButton
+          icon="sparkles"
+          label={status.aiBusy ? '解說中' : status.hasExplanation ? '重新解說' : 'AI 解說'}
+          title="和右側「請 AI 解說」相同：有選著法就比較這步，沒選就解說目前局面"
+          disabled={status.aiBusy}
+          onClick={onRequestExplanation}
+        />
       </div>
 
       <div className="toolbar-spacer" />
@@ -196,13 +186,6 @@ export function AnalysisToolbar({
           ariaExpanded={detailsOpen}
           ariaControls="analysis-data-drawer"
           onClick={onToggleDetails}
-        />
-        <ToolbarButton
-          icon="target"
-          label="猜著模式"
-          title="先選擇你的著法，再與引擎比較"
-          active={activeView === 'guess'}
-          onClick={() => onViewChange('guess')}
         />
       </div>
     </div>

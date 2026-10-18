@@ -875,3 +875,14 @@
 .ai-answer-model {
   margin: 6px 0;
 }
+
+/* 右側只有一個「問 AI 教練」：標題列不再分兩欄。 */
+.inspector-tabs.inspector-title {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ask-coach-form .inspector-mode-hint {
+  padding: 0 0 4px;
+  border-bottom: 0;
+  background: transparent;
+}

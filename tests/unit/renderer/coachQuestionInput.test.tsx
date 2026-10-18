@@ -44,14 +44,36 @@ act(() => {
 })
 assert.equal(renderer!.root.findAllByType('input').length, 0, 'no engine result → no question box')
 
-// 第一次 AI 失敗（error 有值、沒有對話）時仍可直接提問。
+// 合併「問 AI 教練／猜著練習」後，第一次請求（含第一次 AI 失敗後再問）一律從 AskCoachForm 送出；
+// CoachView 的輸入框只負責對已有回答追問，畫面上不會同時出現兩個起點。
+act(() => {
+  renderer!.update(<CoachView {...props({ result, error: 'AI 服務暫時不可用' })} />)
+})
+assert.equal(
+  renderer!.root.findAllByType('input').length,
+  0,
+  'no answer yet → no follow-up box; the first question goes through the ask form'
+)
+
+const conversation = {
+  id: 'conversation-1',
+  analysisId: 'analysis-1',
+  positionFen: 'fen',
+  createdAt: 't',
+  updatedAt: 't',
+  messages: [
+    { id: 'm1', role: 'user', text: '為什麼我這步不好？', createdAt: 't' },
+    { id: 'm2', role: 'assistant', text: '因為……', createdAt: 't' }
+  ]
+} as unknown as NonNullable<React.ComponentProps<typeof CoachView>['conversation']>
+
 act(() => {
   renderer!.update(
     <CoachView
       {...props({
         result,
-        error: 'AI 服務暫時不可用',
-        followUp: '為什麼我這步不好？',
+        conversation,
+        followUp: '那我應該怎麼走？',
         onSubmitFollowUp: () => {
           submitted += 1
         }
@@ -60,34 +82,29 @@ act(() => {
   )
 })
 const [input] = renderer!.root.findAllByType('input')
-assert.ok(input, 'question box must render once an engine result exists')
-assert.match(String(input.props.placeholder), /直接問/)
+assert.ok(input, 'follow-up box renders once there is an answer')
+assert.match(String(input.props.placeholder), /接著追問/)
 const ask = renderer!.root
   .findAllByType('button')
-  .find((button) => button.children.join('') === '提問')
-assert.ok(ask, 'first question uses the 提問 label')
+  .find((button) => button.children.join('') === '追問')
+assert.ok(ask, 'follow-up uses the 追問 label')
 assert.equal(ask.props.disabled, false)
 act(() => ask.props.onClick())
 assert.equal(submitted, 1)
 assert.equal(
   renderer!.root.findAllByType('button').some((button) => button.children.join('') === '複製'),
-  false,
-  'nothing to copy before any answer'
+  true,
+  'an answer can be copied'
 )
 
 act(() => {
-  renderer!.update(<CoachView {...props({ result, aiBusy: true, followUp: 'x' })} />)
+  renderer!.update(<CoachView {...props({ result, conversation, aiBusy: true, followUp: 'x' })} />)
 })
 assert.equal(renderer!.root.findAllByType('input')[0].props.disabled, true)
 
-// 猜著練習尚未提交時，畫面上只留「你的走法」一個輸入處。
 act(() => {
-  renderer!.update(<CoachView {...props({ result, showQuestion: false })} />)
+  renderer!.update(<CoachView {...props({ result, conversation, showQuestion: false })} />)
 })
-assert.equal(
-  renderer!.root.findAllByType('input').length,
-  0,
-  'guess drafting hides the question box so there is only one place to type'
-)
+assert.equal(renderer!.root.findAllByType('input').length, 0, 'showQuestion=false hides the follow-up box')
 act(() => renderer!.unmount())
 console.log('Coach question input renderer checks passed.')

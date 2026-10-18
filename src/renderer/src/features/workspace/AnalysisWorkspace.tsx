@@ -19,13 +19,12 @@ import {
   type GameImportState,
   type ImportedMoveSelection
 } from '../board/GameImportPanel'
-import { GuessModePanel } from '../guessing/GuessModePanel'
-import { AnalysisInspectorTabs } from '../analysis/AnalysisInspectorTabs'
+import { AskCoachForm } from '../analysis/AskCoachForm'
+import { buildCoachRequest } from '../analysis/coachRequest'
 import {
   EMPTY_ANALYSIS_STATUS,
   type ActualMoveSelection,
-  type AnalysisPanelStatus,
-  type AnalysisView
+  type AnalysisPanelStatus
 } from '../analysis/types'
 
 interface Props {
@@ -79,9 +78,10 @@ export function AnalysisWorkspace({
   onOpenAiSettings,
   onUnsavedDraftChange
 }: Props): JSX.Element {
-  const [activeView, setActiveView] = useState<AnalysisView>('coach')
   const [draftMove, setDraftMove] = useState('')
   const [draftReason, setDraftReason] = useState('')
+  const [draftQuestion, setDraftQuestion] = useState('')
+  const [askError, setAskError] = useState<string | null>(null)
   const [submittedGuess, setSubmittedGuess] = useState<SubmittedGuess | null>(null)
   const [actualMove, setActualMove] = useState<ActualMoveSelection | null>(null)
   const [gameImportState, setGameImportState] = useState<GameImportState>(
@@ -113,6 +113,8 @@ export function AnalysisWorkspace({
     setReplayCandidates([])
     setDraftMove('')
     setDraftReason('')
+    setDraftQuestion('')
+    setAskError(null)
     setSubmittedGuess(null)
     setGuessSelectionActive(false)
   }, [board.fen])
@@ -135,20 +137,41 @@ export function AnalysisWorkspace({
     })
     setSubmittedGuess(null)
     setGuessSelectionActive(false)
-    setActiveView('coach')
     onBoardChange(selection.position)
   }
 
-  const changeView = (next: AnalysisView): void => {
-    if (next === 'guess') setActualMove(null)
-    // 離開猜著時一併退出「選擇你的著法」，否則棋盤點擊仍被當成選猜著，無法正常走棋。
-    else setGuessSelectionActive(false)
-    setActiveView(next)
-  }
-
-  const requestExplanation = (): void => {
-    setActiveView('coach')
-    analysisPanelRef.current?.requestExplanation()
+  /**
+   * 「請 AI 解說」（表單與頂部工具列共用）：
+   * 有著法（自己選的、已送出的或棋譜點的）→ 以這步建立一次請求，引擎比較後 AI 回應想法與問題；
+   * 沒有著法 → 有問題就直接問目前局面，否則解說目前局面。
+   */
+  const askCoach = (): void => {
+    if (analysisStatus.aiBusy) return
+    const request = buildCoachRequest({
+      board,
+      draftMove,
+      draftReason,
+      draftQuestion,
+      submittedGuess,
+      actualMove,
+      submissionId: crypto.randomUUID(),
+      now: Date.now()
+    })
+    setAskError(null)
+    if (request.kind === 'invalid') {
+      setAskError(request.message)
+      return
+    }
+    setGuessSelectionActive(false)
+    if (request.kind === 'submit') {
+      setSubmittedGuess(request.guess)
+      setDraftQuestion('')
+    } else if (request.kind === 'question') {
+      analysisPanelRef.current?.askQuestion(request.question)
+      setDraftQuestion('')
+    } else {
+      analysisPanelRef.current?.requestExplanation()
+    }
   }
 
   const closeDetails = (): void => {
@@ -210,12 +233,10 @@ export function AnalysisWorkspace({
               if (detailsOpen) closeDetails()
               else setDetailsOpen(true)
             }}
-            activeView={activeView}
-            onViewChange={changeView}
             status={analysisStatus}
             onStartAnalysis={() => analysisPanelRef.current?.startAnalysis()}
             onStopAnalysis={() => analysisPanelRef.current?.stopAll()}
-            onRequestExplanation={requestExplanation}
+            onRequestExplanation={askCoach}
           />,
           headerCommandMount
         )
@@ -265,7 +286,6 @@ export function AnalysisWorkspace({
             onGuessMoveSelected={(move) => {
               setDraftMove(move)
               setGuessSelectionActive(false)
-              setActiveView('guess')
             }}
             onGuessSelectionCancel={() => setGuessSelectionActive(false)}
             savedPositions={savedPositions}
@@ -297,44 +317,41 @@ export function AnalysisWorkspace({
 
         <aside className="right-col" aria-label="分析檢視">
           <div className="inspector-shell">
-            <AnalysisInspectorTabs
-              activeView={activeView}
-              onChange={changeView}
-            />
+            <div className="inspector-tabs inspector-title" aria-label="分析模式">
+              <span className="inspector-tab active">問 AI 教練</span>
+            </div>
 
             <div className="inspector-content">
               <div>
-                {activeView === 'guess' && (
-                  <GuessModePanel
-                    board={board}
-                    draftMove={draftMove}
-                    draftReason={draftReason}
-                    submittedGuess={submittedGuess}
-                    onDraftMoveChange={setDraftMove}
-                    onDraftReasonChange={setDraftReason}
-                    onSubmitGuess={(guess) => {
-                      setSubmittedGuess(guess)
-                      setGuessSelectionActive(false)
-                    }}
-                    onUnlockGuess={() => {
-                      setSubmittedGuess(null)
-                      setGuessSelectionActive(false)
-                      setResult(null)
-                    }}
-                    selectionActive={guessSelectionActive}
-                    onBeginMoveSelection={() => {
-                      setActualMove(null)
-                      setGuessSelectionActive(true)
-                    }}
-                    onCancelMoveSelection={() => setGuessSelectionActive(false)}
-                    result={result}
-                    onRecordGuess={onRecordGuess}
-                    aiBusy={analysisStatus.aiBusy}
-                    aiError={analysisStatus.aiError}
-                    hasExplanation={analysisStatus.hasExplanation}
-                    onRetryExplanation={() => analysisPanelRef.current?.requestExplanation()}
-                  />
-                )}
+                <AskCoachForm
+                  board={board}
+                  actualMove={actualMove}
+                  draftMove={draftMove}
+                  draftReason={draftReason}
+                  draftQuestion={draftQuestion}
+                  submittedGuess={submittedGuess}
+                  onDraftMoveChange={setDraftMove}
+                  onDraftReasonChange={setDraftReason}
+                  onDraftQuestionChange={setDraftQuestion}
+                  selectionActive={guessSelectionActive}
+                  onBeginMoveSelection={() => {
+                    setActualMove(null)
+                    setGuessSelectionActive(true)
+                  }}
+                  onCancelMoveSelection={() => setGuessSelectionActive(false)}
+                  onEditMove={() => {
+                    setSubmittedGuess(null)
+                    setGuessSelectionActive(false)
+                    setResult(null)
+                  }}
+                  onAsk={askCoach}
+                  error={askError}
+                  result={result}
+                  onRecordGuess={onRecordGuess}
+                  aiBusy={analysisStatus.aiBusy}
+                  aiError={analysisStatus.aiError}
+                  onRetryExplanation={() => analysisPanelRef.current?.requestExplanation()}
+                />
                 <AnalysisPanel
                   ref={analysisPanelRef}
                   visible
@@ -352,7 +369,6 @@ export function AnalysisWorkspace({
                   onExplanation={() => undefined}
                   onStatusChange={setAnalysisStatus}
                   onOpenAiSettings={onOpenAiSettings}
-                  showQuestion={activeView !== 'guess' || submittedGuess !== null}
                 />
               </div>
 

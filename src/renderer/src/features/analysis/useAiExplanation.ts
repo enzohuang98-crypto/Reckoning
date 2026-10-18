@@ -437,9 +437,12 @@ export function useAiExplanation({
   }
 
   /** 先排隊一個局面解說，等引擎完成這輪分析再送出。 */
-  const queueExplanationUntilAnalysisCompletes = (target: AiRequestTarget): void => {
+  const queueExplanationUntilAnalysisCompletes = (
+    target: AiRequestTarget,
+    question: string | null = null
+  ): void => {
     queuedExplanation.current = {
-      question: null,
+      question,
       regenerate: false,
       target: { ...target }
     }

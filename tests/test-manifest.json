@@ -50,6 +50,7 @@
   {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/aiRequest.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/main/explanationPayloadValidation.test.ts"},
   {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/coachQuestionInput.test.tsx"},
+  {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/coachRequest.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/settingsNormalization.test.ts"},
   {"command":"tsx --tsconfig tsconfig.web.json tests/unit/renderer/localSettingsMigration.test.ts"},
   {"command":"tsx --tsconfig tsconfig.node.json tests/unit/shared/aiErrorPresentation.test.ts"},
