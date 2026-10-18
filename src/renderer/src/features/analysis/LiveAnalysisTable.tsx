@@ -3,7 +3,7 @@ import type {
   EngineAnalysisResultPayload,
   EngineStatus
 } from '@shared/types/ipc'
-import type { EngineThoughtEntry } from './EngineConsole'
+import type { EngineThoughtEntry } from './engineThoughts'
 
 function formatElapsedMs(value?: number | null): string {
   if (value === undefined || value === null || !Number.isFinite(value) || value < 0) {

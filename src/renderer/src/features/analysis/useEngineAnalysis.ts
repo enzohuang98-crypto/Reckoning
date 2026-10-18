@@ -12,7 +12,7 @@ import type { EngineCandidateMove } from '@shared/types/EngineAnalysis'
 import type { EngineRegistrySnapshot } from '@shared/types/EngineRegistry'
 import { validateMoveInput } from '@shared/logic/validation/ValidationUtils'
 import { hasVerifiedActiveEngine, retryOnce } from './engineHealth'
-import { thoughtSignature, type EngineThoughtEntry } from './EngineConsole'
+import { thoughtSignature, type EngineThoughtEntry } from './engineThoughts'
 import type { ActualMoveSelection } from './types'
 import {
   automaticRootMovetimeMs,

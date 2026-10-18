@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
 
 /**
- * 把 Harness renderAnswer 產生的段落文字（## 標題、### 區塊、AI 答：、[E1] 證據標記、- 條列）
- * 渲染成結構化區塊。沒有這種結構的純文字（追問澄清、使用者訊息等）維持原樣輸出。
+ * 把回答文字渲染成段落：每行一段、「- 」開頭的連續行合成條列、**粗體** 轉成粗體字，
+ * [E1] 證據標記拿掉。舊版 Harness 的「## 標題／### 區塊」結構另外分區顯示。
+ * v2 的回答是多行純文字（prompt 要求「**結論**：」這類小標），不能整段塞進一個 <p>，
+ * 否則換行被吃掉、星號原樣露出。
  */
 
 type SectionKind = 'qa' | 'general' | 'notice' | 'raw'
@@ -21,7 +23,13 @@ function classifyHeading(heading: string): SectionKind {
 }
 
 function renderInline(text: string): ReactNode {
-  return text.replace(/\s*\[E\d+\]/g, '')
+  const clean = text.replace(/\s*\[E\d+\]/g, '')
+  // split 帶捕捉群組：奇數位置是 ** 中間的字。串流中還沒收尾的 ** 會原樣留著，收完就變粗體。
+  const parts = clean.split(/\*\*(.+?)\*\*/g)
+  if (parts.length === 1) return clean
+  return parts.map((part, index) =>
+    index % 2 === 1 ? <strong key={index}>{part}</strong> : part
+  )
 }
 
 function renderBody(lines: string[]): ReactNode[] {
@@ -69,7 +77,7 @@ function renderBody(lines: string[]): ReactNode[] {
 
 export function ExplanationView({ text }: { text: string }): JSX.Element {
   if (!text.includes('## ')) {
-    return <p className="explanation-text">{text}</p>
+    return <div className="explanation-view plain">{renderBody(text.split('\n'))}</div>
   }
   const lines = text.split('\n')
   let title = ''

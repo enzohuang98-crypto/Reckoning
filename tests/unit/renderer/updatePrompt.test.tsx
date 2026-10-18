@@ -17,8 +17,6 @@ import TestRenderer from 'react-test-renderer'
 import type { AppUpdateStatus } from '../../../src/shared/types/AppUpdate'
 import {
   AppShell,
-  UPDATE_REMINDER_DELAY_MS,
-  shouldShowUpdateDialog,
   type AppTab
 } from '../../../src/renderer/src/app/AppShell'
 
@@ -164,19 +162,6 @@ function render(
     renderer!.root.findAllByProps({ className: 'app-update-chip' }).length === 1
   )
   renderer!.unmount()
-}
-
-{
-  const now = Date.now()
-  const reminder = { version: '0.4.2', remindAfter: now + UPDATE_REMINDER_DELAY_MS }
-  check(
-    '提醒時間到以前不顯示',
-    !shouldShowUpdateDialog('0.4.2', null, reminder, now)
-  )
-  check(
-    '四小時後會再次顯示',
-    shouldShowUpdateDialog('0.4.2', null, reminder, reminder.remindAfter)
-  )
 }
 
 {

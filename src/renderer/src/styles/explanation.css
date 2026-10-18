@@ -16,7 +16,7 @@
   padding: 10px 12px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
-  background: #fbfdfb;
+  background: #fbfcfd;
 }
 
 .explanation-heading {
@@ -25,7 +25,7 @@
   flex-wrap: wrap;
   gap: 7px;
   margin: 0 0 6px;
-  color: #2f7557;
+  color: #2d4b77;
   font-size: 12px;
   font-weight: 800;
 }
@@ -44,29 +44,16 @@
 .claim-label {
   flex: none;
   padding: 1px 7px;
-  border: 1px solid #d8e6dd;
+  border: 1px solid #d8dee6;
   border-radius: var(--radius-pill);
-  color: #34795b;
-  background: #f2f8f4;
+  color: #324f7b;
+  background: #f2f4f8;
   font-size: 10px;
   font-weight: 800;
 }
 
 .claim-text {
   min-width: 0;
-}
-
-.evidence-badge {
-  display: inline-block;
-  margin: 0 3px;
-  padding: 0 7px;
-  border: 1px solid rgba(47, 125, 92, 0.32);
-  border-radius: var(--radius-pill);
-  color: #2f7557;
-  background: rgba(47, 125, 92, 0.1);
-  font-size: 10px;
-  font-weight: 800;
-  vertical-align: 1px;
 }
 
 .explanation-view ul {
@@ -108,7 +95,7 @@
 }
 
 .explanation-section.raw {
-  background: #f3f6f4;
+  background: #f3f4f6;
 }
 
 .explanation-section.raw .explanation-heading,
@@ -119,4 +106,25 @@
 .explanation-section.raw li {
   font-family: var(--font-mono);
   font-size: 10px;
+}
+
+/* v2 純文字回答：一行一段，小標（**結論**：）用主色粗體標出段落開頭。 */
+.explanation-view.plain {
+  color: var(--color-text);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.explanation-view.plain .explanation-claim.plain {
+  margin: 0 0 10px;
+}
+
+.explanation-view.plain strong {
+  color: var(--color-primary-hover);
+  font-weight: 750;
+}
+
+.explanation-view.plain ul {
+  margin: 0 0 10px;
+  padding-left: 22px;
 }

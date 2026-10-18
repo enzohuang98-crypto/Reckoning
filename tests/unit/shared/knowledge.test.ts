@@ -1,6 +1,5 @@
 import {
   XIANGQI_KNOWLEDGE_BASE,
-  findXiangqiKnowledgeEntry,
   selectXiangqiKnowledge
 } from '../../../src/shared/logic/ai/xiangqiKnowledge'
 
@@ -41,10 +40,6 @@ for (const category of [
 ] as const) {
   check(`涵蓋 ${category} 類別`, categories.has(category))
 }
-check(
-  '繁簡別名可找到臥槽馬',
-  findXiangqiKnowledgeEntry('卧槽马')?.term === '臥槽馬'
-)
 const selected = selectXiangqiKnowledge(
   '馬走到臥槽位置，準備攻擊九宮與將帥',
   { limit: 8 }

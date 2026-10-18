@@ -120,8 +120,6 @@ export function AnalysisToolbar({
         />
       </div>
 
-      <div className="toolbar-separator" />
-
       <div className="toolbar-group">
         <ToolbarButton
           icon="undo"
@@ -139,9 +137,7 @@ export function AnalysisToolbar({
         />
       </div>
 
-      <div className="toolbar-separator" />
-
-      <div className="toolbar-group toolbar-primary-actions">
+      <div className="toolbar-group">
         <ToolbarButton
           icon="play"
           label={status.analysisBusy ? '分析中' : status.hasResult ? '重新分析' : '開始分析'}

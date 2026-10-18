@@ -9,7 +9,7 @@
  *   例：起始局面紅炮在 b2 / h2，即 grid[7][1] / grid[7][7]。
  *
  * 合法性驗證分三層：
- *   1. basicMoveCheck — 格式、起點為輪走方棋子、終點非己方棋子
+ *   1. 基本檢查（checkBasicsAt）— 格式、起點為輪走方棋子、終點非己方棋子
  *   2. 兵種走法（含蹩馬腿、塞象眼、炮架、過河兵、九宮限制）
  *   3. 走後狀態 — 己方不可被將軍（送將）、王不見王
  */
@@ -123,21 +123,6 @@ const FORMAT_ERROR: { ok: false; message: string } = {
   message: '著法格式錯誤，請輸入如 h2e2 的 UCI 著法。'
 }
 
-/**
- * 基本著法檢查：格式、起點為輪走方棋子、終點非己方棋子、起訖不同。
- * 不含兵種走法規則；通過此檢查仍可能是非法著法（完整驗證用 legalMoveCheck）。
- */
-export function basicMoveCheck(
-  grid: BoardGrid,
-  sideToMove: PieceColor,
-  move: string
-): MoveCheckResult {
-  const coords = parseUciMove(move)
-  if (!coords) return FORMAT_ERROR
-  const basics = checkBasicsAt(grid, sideToMove, coords, move)
-  return basics.ok ? { ok: true } : basics
-}
-
 /* ---------- 兵種走法 ---------- */
 
 /** 是否在九宮內（紅方 row 7-9、黑方 row 0-2，col 3-5） */
@@ -173,7 +158,7 @@ function countBetween(
 
 /**
  * 兵種走法檢查（不含走後送將/王不見王）。
- * 假設已通過 basicMoveCheck（起點有 piece、終點非己方）。
+ * 假設已通過基本檢查 checkBasicsAt（起點有 piece、終點非己方）。
  */
 function pieceMoveCheck(
   grid: BoardGrid,

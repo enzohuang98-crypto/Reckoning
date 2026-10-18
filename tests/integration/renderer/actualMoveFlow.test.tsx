@@ -14,7 +14,7 @@ import {
   ACTUAL_MOVE_ENGINE_DEADLINE_MS,
   AUTO_INITIAL_ANALYSIS_MAX_MS,
   AUTO_USER_MOVE_ANALYSIS_MAX_MS,
-  ONE_CLICK_EXPLANATION_DEADLINE_MS
+  AI_REQUEST_DEADLINE_MS
 } from '../../../src/renderer/src/features/analysis/liveAnalysis'
 import type { ActualMoveSelection } from '../../../src/renderer/src/features/analysis/types'
 import { compareMove } from '../../../src/shared/logic/analysis/MoveComparisonService'
@@ -407,8 +407,8 @@ async function main(): Promise<void> {
     assert.equal(timeouts.size, 1, 'AI 請求只應建立一個截止計時器')
     const [deadlineId, deadline] = [...timeouts.entries()][0]
     assert.ok(
-      deadline.delayMs > ONE_CLICK_EXPLANATION_DEADLINE_MS - 1_000 &&
-        deadline.delayMs <= ONE_CLICK_EXPLANATION_DEADLINE_MS
+      deadline.delayMs > AI_REQUEST_DEADLINE_MS - 1_000 &&
+        deadline.delayMs <= AI_REQUEST_DEADLINE_MS
     )
     timeouts.delete(deadlineId)
     act(() => deadline.callback())

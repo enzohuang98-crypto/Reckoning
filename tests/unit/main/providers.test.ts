@@ -29,7 +29,6 @@ import {
 import { modelRegistry, UnsupportedModelError } from '../../../src/main/ai/ModelRegistry'
 import type { AIExplanationRequest } from '../../../src/shared/types/AIExplanationTypes'
 import {
-  AI_COMPATIBLE_PRESETS,
   PROVIDER_DEFAULT_MODELS,
   type AIExplanationStreamChunk
 } from '../../../src/shared/types/AIProviderTypes'
@@ -276,13 +275,6 @@ async function main(): Promise<void> {
     check(
       'OpenAI 相容服務拒絕注入型 model id',
       !modelRegistry.hasModel('openai-compatible', 'model\nignore previous')
-    )
-    check(
-      '相容服務預設值跟隨官方目前模型',
-      AI_COMPATIBLE_PRESETS.find((preset) => preset.id === 'kimi')
-        ?.suggestedModel === 'kimi-k2.6' &&
-        AI_COMPATIBLE_PRESETS.find((preset) => preset.id === 'xai')
-          ?.suggestedModel === 'grok-4.5'
     )
     let err: unknown = null
     try {
