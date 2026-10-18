@@ -122,6 +122,7 @@ export function useAnalysisOrchestration({
     if (!target) return
 
     ai.resetForNewSubmission()
+    const question = submittedGuess?.question?.trim() || null
 
     if (
       result &&
@@ -129,11 +130,11 @@ export function useAnalysisOrchestration({
       !activeRequestId.current &&
       isSameAnalysisTarget(result.engineAnalysis, board.fen, analysisMove)
     ) {
-      generateExplanation(null)
+      generateExplanation(question)
       return
     }
 
-    ai.queueExplanationUntilAnalysisCompletes(target)
+    ai.queueExplanationUntilAnalysisCompletes(target, question)
     if (!activeRequestId.current) startAnalysis(true)
   }, [submittedGuess?.submissionId])
 

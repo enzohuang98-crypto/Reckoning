@@ -352,7 +352,7 @@ async function main(): Promise<void> {
     assert.equal(conversationChanges.at(-1)?.messages.at(-1)?.text, 'OLD_ANSWER_MUST_REMAIN_VISIBLE')
     conversationChanges.length = 0
 
-    const followUpInput = renderer.root.findByProps({ 'aria-label': 'AI 提問' })
+    const followUpInput = renderer.root.findByProps({ 'aria-label': 'AI 追問' })
     act(() => followUpInput.props.onChange({ target: { value: 'WHY_FOLLOW_UP' } }))
     act(() => findButton(renderer!, '追問').props.onClick())
     assert.equal(aiStarts.length, 2, '追問應建立一個新請求')

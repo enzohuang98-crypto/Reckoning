@@ -44,7 +44,7 @@ interface Props {
   onExplanation: (explanation: AIExplanationResponse | null) => void
   onStatusChange: (status: AnalysisPanelStatus) => void
   onOpenAiSettings?: () => void
-  /** 猜著練習尚未提交時隱藏提問框，避免與「你的走法」同時出現兩個輸入處。 */
+  /** 追問框只在已有回答時出現；第一次請求一律從「問 AI 教練」表單送出。 */
   showQuestion?: boolean
 }
 
@@ -172,6 +172,11 @@ export const AnalysisPanel = forwardRef<AnalysisPanelHandle, Props>(function Ana
         null,
         explanation !== null || conversationRef.current !== null
       )
+      explanationAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    },
+    askQuestion: (question: string) => {
+      if ((!result && !busy) || aiBusy || !question.trim()) return
+      generateExplanation(question.trim())
       explanationAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     },
     startAnalysis: () => startAnalysis(false),

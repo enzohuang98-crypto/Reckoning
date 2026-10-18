@@ -49,7 +49,6 @@ src/renderer/src/
     workspace/               分析工作區與命令工具列
     analysis/                持續引擎、AI 教練與局面資料檢視
     explanations/            跨頁面共用的 AI 解說顯示
-    guessing/                猜著互動與結果
     settings/                分類式設定 UI 與各領域 section
   components/
     ui/                      無業務狀態的共用元件與 SVG icon
@@ -62,7 +61,7 @@ src/renderer/src/
 ### 元件責任
 
 - `App.tsx`：只組裝頂層頁面、設定、資料 store 與棋盤工作階段。
-- `AnalysisWorkspace.tsx`：管理首頁版面、右側教練／猜著選擇與猜著互動，不執行 IPC 驗證。
+- `AnalysisWorkspace.tsx`：管理首頁版面與右側「問 AI 教練」表單（`AskCoachForm`：著法、想法、問題皆選填，`coachRequest.buildCoachRequest` 決定送出內容），不執行 IPC 驗證。
 - `AnalysisPanel.tsx`：唯一的分析與 AI IPC controller；同一份狀態透過 portal 餵給右側教練、頂部資料抽屜與底部 Live dock，禁止為不同區塊重複掛載 controller。
   元件本身只組裝三個 hook：`useEngineAnalysis`（引擎分析生命週期）、`useAiExplanation`（AI 解說生命週期）、
   `useAnalysisOrchestration`（自動分析、live 精煉、等引擎再回答、提交觸發解說）；呼叫順序即 effect 順序，不可調換。
@@ -78,12 +77,12 @@ App Header
   分析（固定首頁分頁） | 工具 ▾（錯題本 / 待理解 / 設定）
 
 Analysis Command Bar
-  局面工具 ▾ | 悔棋 | 下一步 | 重新分析 | 停止 | AI 解說 | 棋盤尺寸 | 分析資料 | 猜著模式
+  局面工具 ▾ | 悔棋 | 下一步 | 重新分析 | 停止 | AI 解說 | 棋盤尺寸 | 分析資料
 
 Workspace
   ├─ 頂部：可收合的當前局面資料
   ├─ 左上：可縮放棋盤、擺棋抽屜、匯入抽屜
-  ├─ 右上：AI 教練 | 猜著
+  ├─ 右上：問 AI 教練（單一表單）
   └─ 底部：跨欄持續即時分析與最新引擎結果
 ```
 
@@ -91,7 +90,7 @@ Workspace
 - 引擎監聽與 AI 生成不因切換右側檢視或頂層頁面而卸載；只有使用者按「停止」、局面不合法或引擎不可用才停止排程。
 - Live 採有界 movetime 搜尋區段連續串接：先快速產生可用結果，再以較長區段持續加深；錯誤使用 1、2、4、5 秒上限退避重試。不能直接改成 `go infinite`，因為每段完成後的穩定 analysis ID 是 AI session 與持久化的邊界。
 - 常用動作直接顯示；低頻局面功能放在「局面工具」選單。
-- 原始輸出、主引擎選擇與收藏工具由頂部「分析資料」展開，不占用右側教練／猜著空間。
+- 原始輸出、主引擎選擇與收藏工具由頂部「分析資料」展開，不占用右側教練空間。
 - 設定依用途分成 AI、本機引擎、資料與系統三類，分類導覽固定在設定內容上方。解說預算不是使用者設定（`explain/budget.ts` 常數；設定 schema v5）；本機診斷紀錄的匯出／清除在「資料與系統」。
 - 錯題本／待理解頁面上方都有搜尋（錯題本另加錯誤等級與理解狀態篩選），沿用 `.list-toolbar` 樣式，篩選結果數與總數並列顯示在頁首右上角。
 
@@ -185,6 +184,6 @@ npm run build
 npm run dist
 ```
 
-封裝後還要從安裝版以滑鼠驗證：啟動、棋盤走子、局面工具、悔棋/下一步、引擎即時分析、右側檢視切換、猜著選棋、AI 解說入口、設定分類與版本頁。
+封裝後還要從安裝版以滑鼠驗證：啟動、棋盤走子、局面工具、悔棋/下一步、引擎即時分析、在「你的走法」選棋、請 AI 解說、設定分類與版本頁。
 
 發行完成後必須核對：安裝版版本、`app.asar` 與本次封裝一致，桌面捷徑指向新的安裝位置。

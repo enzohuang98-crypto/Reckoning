@@ -378,7 +378,7 @@ async function main(): Promise<void> {
       })
     }
     const askQuestion = (question: string): void => {
-      const input = renderer!.root.findByProps({ 'aria-label': 'AI 提問' })
+      const input = renderer!.root.findByProps({ 'aria-label': 'AI 追問' })
       act(() => input.props.onChange({ target: { value: question } }))
       const button = renderer!.root
         .findAllByType('button')
