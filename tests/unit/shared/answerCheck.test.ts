@@ -63,6 +63,11 @@ const fakeCapture = check('炮二平五吃掉中卒，黑方很被動。', { mod
 assert.ok(fakeCapture.hardErrors.some((error) => error.code === 'H5' && error.message.includes('沒有吃子')))
 assert.ok(codes('炮二平五將軍，黑方必須應將。', { mode: 'question' }).includes('H5'))
 assert.ok(!codes('炮二平五之後可以吃中卒。', { mode: 'question' }).includes('H5'), 'hedged capture is fine')
+// 威脅的講法（要吃、去吃、追吃、再吃、捉、下一手吃）是意圖，不是說這步吃子；真的說它吃掉還是擋下。
+for (const threat of ['炮二平五要吃中卒。', '炮二平五去吃中卒。', '炮二平五追吃中卒。', '炮二平五再吃中卒。', '炮二平五捉住中卒，下一手吃。', '炮二平五下一手吃中卒。']) {
+  assert.ok(!codes(threat, { mode: 'question' }).includes('H5'), threat)
+}
+assert.ok(codes('炮二平五吃掉中卒。', { mode: 'question' }).includes('H5'), 'a real false capture claim is still caught')
 assert.ok(!codes('炮二平五沒有吃子，但威脅中卒。', { mode: 'question' }).includes('H5'))
 assert.ok(!codes('炮二平五，接著黑方吃不到東西。', { mode: 'question' }).includes('H5'), 'window stops at the clause break')
 assert.ok(!codes('炮二進七吃馬，車9平8吃回炮。', { mode: 'question', facts: tradeFacts }).includes('H5'), 'real captures pass')

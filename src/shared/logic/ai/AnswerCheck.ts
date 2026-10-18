@@ -88,7 +88,11 @@ const LEAK_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
 ]
 
 /** 著法後面接這些字，代表是可能性或否定，不是「這步吃了／將了」。 */
-const HEDGE_PATTERN = /可以|可|能|威脅|威胁|準備|准备|打算|想|沒有|没有|未|不|若|如果|would|could|can|threat|not|no\b/i
+/**
+ * 著法後面出現這些字，表示講的是意圖或之後的手（「車一平二要吃炮」「去吃」「再吃」「捉炮」），
+ * 不是說這一步本身吃子；關鍵著法檢查上線後模型常這樣講威脅，不能當成吃子矛盾。
+ */
+const HEDGE_PATTERN = /可以|可|能|威脅|威胁|準備|准备|打算|想|要|去|追|捉|抓|再|下一手|下一步|沒有|没有|未|不|若|如果|would|could|can|will|threat|next|not|no\b/i
 const CAPTURE_PATTERN = /吃|captur/i
 const CHECK_PATTERN = /將軍|将军|\bcheck/i
 const CLAUSE_BREAK = /[，。；,.;！？!?\n]/
