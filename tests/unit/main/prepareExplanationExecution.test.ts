@@ -138,6 +138,34 @@ async function main(): Promise<void> {
   )
   assert.equal(positionQuestion.answerStrategy, 'conversation-follow-up')
 
+  // 問題裡直接寫了一步：分析那一步（優先於表單或局面先前選的著法），問題沒寫著法時照舊。
+  const noMoveSession = { ...mutableSession, userMove: undefined, engineAnalysis: { ...mutableSession.engineAnalysis, userMove: undefined } }
+  const typedMove = prepareExplanationExecution(
+    { ...mutablePayload, attachedMove: undefined, followUpQuestion: '為什麼要走馬八進七？' },
+    noMoveSession,
+    'gpt-5.6-sol'
+  )
+  assert.equal(typedMove.effective.attachedMove, 'b0c2')
+  assert.equal(typedMove.answerStrategy, 'conversation-follow-up')
+  const overridesSelection = prepareExplanationExecution(
+    { ...mutablePayload, followUpQuestion: '那马八进七呢？' },
+    mutableSession,
+    'gpt-5.6-sol'
+  )
+  assert.equal(overridesSelection.effective.attachedMove, 'b0c2')
+  const keepsSelection = prepareExplanationExecution(
+    { ...mutablePayload, followUpQuestion: '這步為什麼不好？' },
+    mutableSession,
+    'gpt-5.6-sol'
+  )
+  assert.equal(keepsSelection.effective.attachedMove, ordinaryCase.attachedMove)
+  const illegalTyped = prepareExplanationExecution(
+    { ...mutablePayload, attachedMove: undefined, followUpQuestion: '為什麼不走車一進九？' },
+    noMoveSession,
+    'gpt-5.6-sol'
+  )
+  assert.equal(illegalTyped.effective.attachedMove, undefined)
+
   const ordinaryFollowUpPayload = payloadFor(ordinaryCase)
   const ordinaryFollowUp = prepareExplanationExecution(
     ordinaryFollowUpPayload,
