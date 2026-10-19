@@ -6,6 +6,8 @@ import type {
 } from '@shared/types/Harness'
 import { EXPLANATION_EXECUTION_SEMANTICS_VERSION } from '@shared/types/Harness'
 import type { GenerateExplanationStartPayload } from '@shared/types/ipc'
+import { parseFen } from '@shared/logic/board/fen'
+import { findQuestionMove } from '@shared/logic/ai/questionMove'
 import type { AnalysisSession } from '../storage/AnalysisSessionStore'
 
 const PREPARED_EXECUTION = Symbol('PreparedExplanationExecution')
@@ -82,11 +84,17 @@ export function prepareExplanationExecution(
 ): PreparedExplanationExecution {
   const session = cloneAndFreeze(authoritativeSession)
   const sourceHistory = cloneAndFreeze(validatedPayload.conversationHistory ?? [])
+  const question = validatedPayload.followUpQuestion
+  // 棋手在問題裡直接寫了一步（「為什麼要走炮二平五？」）：分析問題裡的那一步。
+  // 問的就是那一步，所以優先於「你的走法」或棋譜上選到的著法；問題沒寫著法時照舊。
+  const parsedPosition = question ? parseFen(authoritativeSession.positionFen) : null
+  const questionMove =
+    question && parsedPosition?.valid ? findQuestionMove(parsedPosition.board, question) : undefined
   const attachedMove =
+    questionMove ??
     validatedPayload.attachedMove ??
     authoritativeSession.userMove ??
     authoritativeSession.engineAnalysis.userMove
-  const question = validatedPayload.followUpQuestion
   const answerStrategy = ordinaryStrategy(question, sourceHistory, attachedMove)
 
   const effective = cloneAndFreeze({
