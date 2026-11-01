@@ -4,6 +4,11 @@ Reckoning 是 Windows 桌面象棋分析工具：由本機 Pikafish／UCI／UCCI
 
 核心原則很簡單：**引擎負責棋力判斷，語言模型負責解釋；模型不得取代引擎捏造變化。**
 
+## 作品說明影片
+
+- [7 分鐘作品說明（精華版）](https://drive.google.com/file/d/1WpqDu_oynH5BjKRglYsc2NX2JmDswgR0/view)
+- [42 分鐘作品說明（完整版）](https://drive.google.com/file/d/1tY5wDEbkT3M23GB1YMXmahZfEbwpG3Os/view)
+
 ## 功能總覽
 
 ### 棋盤與棋譜
